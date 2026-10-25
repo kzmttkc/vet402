@@ -17,11 +17,35 @@
 // 照合器は金に近い経路なので import せず、tests/export-request-body.test.ts が同じ表で両者の一致を固定する。
 // ============================================================
 
-export const SETTLEMENT_SOURCES = ["seller_claim", "vet402_index"] as const;
+export const SETTLEMENT_SOURCES = ["seller_claim", "vet402_index", "circle_gateway"] as const;
 export type SettlementSource = (typeof SETTLEMENT_SOURCES)[number];
 
-/** tx の無い行は null（名指された tx が無い）。 */
-export function settlementSourceOf(row: { txHash: string | null | undefined; lateSettlement: unknown }): SettlementSource | null {
+/**
+ * Circle Gateway のバッチ tx（raw_response_meta.circleGateway.batchTx）。
+ * 共有のバッチ tx は行の tx_hash に置かない（一意索引が 1 tx を 1 購入に縛る）。
+ * 請求が確認できるまで batchTx は空で、この関数は null に落ちる。
+ */
+function circleGatewayBatchTx(meta: unknown): string | null {
+  let value = meta;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const batch = (value as Record<string, unknown>).batchTx;
+  return typeof batch === "string" && batch !== "" ? batch : null;
+}
+
+/** tx の無い行は null。Gateway のバッチ tx が行の横にあれば circle_gateway（tx_hash が空でも）。 */
+export function settlementSourceOf(row: {
+  txHash: string | null | undefined;
+  lateSettlement: unknown;
+  circleGateway?: unknown;
+}): SettlementSource | null {
+  if (circleGatewayBatchTx(row.circleGateway)) return "circle_gateway";
   if (typeof row.txHash !== "string" || row.txHash === "") return null;
   let late = row.lateSettlement;
   if (typeof late === "string") {
@@ -54,11 +78,13 @@ function lateLinkedSql(p: string): string {
   );
 }
 
-/** `settlementSourceOf` と同じ規則の SQL 式（値の文字列、tx の無い行は NULL）。 */
+/** `settlementSourceOf` と同じ規則の SQL 式（値の文字列、tx も Gateway のバッチ tx も無い行は NULL）。 */
 export function settlementSourceSql(alias = ""): string {
   const p = assertAlias("settlementSourceSql", alias);
+  const gw = `${p}raw_response_meta->'circleGateway'`;
   return (
-    `CASE WHEN ${p}tx_hash IS NULL OR ${p}tx_hash = '' THEN NULL` +
+    `CASE WHEN jsonb_typeof(${gw}) = 'object' AND coalesce(${gw}->>'batchTx', '') <> '' THEN 'circle_gateway'` +
+    ` WHEN ${p}tx_hash IS NULL OR ${p}tx_hash = '' THEN NULL` +
     ` WHEN ${lateLinkedSql(p)} THEN 'vet402_index'` +
     ` ELSE 'seller_claim' END`
   );

@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ARC_DAILY_CAP_USD_DEFAULT,
+  ARC_GATEWAY_DAILY_CAP_USD_DEFAULT,
   ARBITRUM_DAILY_CAP_USD_DEFAULT,
   BNB_DAILY_CAP_USD_DEFAULT,
   CELO_DAILY_CAP_USD_DEFAULT,
@@ -167,6 +168,33 @@ test("BNB の既定は $0.5。0 は BNB を止める。壊れた値は既定へ�
     withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => {
       assert.equal(chainDailyCapUnits("bnb"), 0n);
       assert.equal(chainDailyCapUnits("celo"), 2_000_000n);
+    });
+  });
+});
+
+test("Arc Gateway: eip155:5042 は arc のまま。arc_gateway は network から返さない", () => {
+  assert.equal(cappedChainFor("eip155:5042"), "arc");
+  assert.equal(cappedChainFor("circle-gateway:5042"), null);
+  assert.equal(cappedChainFor("arc_gateway"), null);
+  assert.equal(cappedChainFor(""), null);
+  assert.equal(CHAIN_DAILY_CAPS.arc_gateway.env, "L1_ARC_GATEWAY_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.arc_gateway.networkLike, "circle-gateway:5042");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.arc_gateway.networkLike), "LIKE のワイルドカードを含まない");
+  assert.equal(ARC_GATEWAY_DAILY_CAP_USD_DEFAULT, 2);
+});
+
+test("Arc Gateway の既定は $2。0 は Gateway を止める。壊れた値は既定へ倒す。Arc の別枠は動かさない", () => {
+  withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("arc_gateway"), 2_000_000n));
+  withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", "0.5", () => assert.equal(chainDailyCapUnits("arc_gateway"), 500_000n));
+  withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", "0", () => assert.equal(chainDailyCapUnits("arc_gateway"), 0n, "0 は 1 件も払わない"));
+  for (const v of ["", "abc", "-1", "NaN", "Infinity"]) {
+    withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", v, () => assert.equal(chainDailyCapUnits("arc_gateway"), 2_000_000n, `value ${JSON.stringify(v)}`));
+  }
+  withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", "100", () => assert.equal(chainDailyCapUnits("arc_gateway"), BigInt(DAILY_BUDGET_USD) * 1_000_000n));
+  withEnv("L1_ARC_GATEWAY_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_ARC_DAILY_CAP_USD", undefined, () => {
+      assert.equal(chainDailyCapUnits("arc_gateway"), 0n);
+      assert.equal(chainDailyCapUnits("arc"), 2_000_000n);
     });
   });
 });

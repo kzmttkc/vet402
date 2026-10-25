@@ -45,7 +45,7 @@ import { redactForLog } from "./redact";
  * "bnb"（2026-10-19）: 同じ EOA の USD1（18 桁）を 6 桁へ切り捨てる。読めなければ throw（署名しない側）。
  * "arbitrum"（2026-10-22）: 同じ EOA のネイティブ USDC。読めなければ throw（署名しない側）。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -179,6 +179,8 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
       args: [owner as `0x${string}`],
     });
   }
+  // Gateway の残高はウォレットの USDC ではない。ここに落ちると Solana の読みに流れるので、先に止める。
+  if (chain === "arc_gateway") throw new Error("arc_gateway_balance_is_not_wallet_usdc");
   if (chain === "base") {
     const rpc = process.env.BASE_RPC_URL?.trim();
     if (!rpc) throw new Error("base_rpc_unset: BASE_RPC_URL is required to read the payer's USDC balance");

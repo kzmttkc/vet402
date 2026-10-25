@@ -1016,12 +1016,16 @@ paths:
           republished; it is the seller's text and the seller's 402 serves it
           to anyone. Blank otherwise.
         - `settlement_source` — who named `tx_hash`: `seller_claim` (the paid
-          response carried a settlement receipt naming it) or `vet402_index`
+          response carried a settlement receipt naming it), `vet402_index`
           (no receipt came back; vet402's own settlements index found the
           transfer by payer, payee, exact amount and time window, and the row
-          then went through the same on-chain re-read). Blank when the row has
-          no `tx_hash`. The settled count of `vet402_index` rows is
-          `l1.settledLateLinked` on `/api/v1/observatory/state`.
+          then went through the same on-chain re-read), or `circle_gateway`
+          (a Circle Gateway batch transaction stored beside the row). That
+          value can be set when `tx_hash` is empty, because the batch
+          transaction is not the row's own `tx_hash`. Blank when the row has
+          no `tx_hash` and no Circle Gateway batch transaction. The settled
+          count of `vet402_index` rows is `l1.settledLateLinked` on
+          `/api/v1/observatory/state`.
         - `request_query` — which URL the paid request went to: `declared`
           (the query arguments the seller's own 402 declares in
           `extensions.bazaar.info.input.queryParams`, appended to the listed
@@ -3074,12 +3078,16 @@ paths:
                         settlementSource:
                           type: string
                           nullable: true
-                          enum: [seller_claim, vet402_index, null]
+                          enum: [seller_claim, vet402_index, circle_gateway, null]
                           description: >-
                             Who named `txHash`: the seller's settlement receipt
-                            (`seller_claim`) or vet402's own settlements index after no
-                            receipt came back (`vet402_index`). Null when the row has no
-                            `txHash`. Same rule as the `settlement_source` column of
+                            (`seller_claim`), vet402's own settlements index after no
+                            receipt came back (`vet402_index`), or a Circle Gateway
+                            batch transaction stored beside the row (`circle_gateway`).
+                            `circle_gateway` can be set when `txHash` is empty, because
+                            the batch transaction is not the row's own `txHash`. Null
+                            when the row has no `txHash` and no Circle Gateway batch
+                            transaction. Same rule as the `settlement_source` column of
                             export.csv. Since 2026-09-20.
                   disclaimer: { type: string }
                   methodology: { type: string }

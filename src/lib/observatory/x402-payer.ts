@@ -492,6 +492,19 @@ function signableUsdcAccept(raw: unknown): { accept: ChallengeAccept; chain: Evm
 }
 
 /**
+ * True when the direct Arc rail would sign a native USDC accept on this challenge today.
+ * Flag-aware. The Gateway fetch uses SQL, not this function, to keep a listing that also
+ * has a native Arc accept out of the Gateway rail.
+ */
+export function hasSignableNativeArcAccept(accepts: readonly unknown[]): boolean {
+  for (const raw of accepts) {
+    const hit = signableUsdcAccept(raw);
+    if (hit && hit.chain.caip2 === ARC_CAIP2 && isEvmPayChainEnabled(hit.chain)) return true;
+  }
+  return false;
+}
+
+/**
  * The payTos the CATALOG declared for `chain` (2026-09-19 review W1): of the endpoint's
  * raw_accepts, only accepts that pass signableUsdcAccept on exactly that chain contribute their
  * payTo (lowercased; the match in selectAccept is case-insensitive). A GatewayWalletBatched

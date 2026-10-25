@@ -13,7 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-25 Circle Gateway rail on Arc, off by default
 
+- **What**: A second rail on eip155:5042 pays a listing only when the live challenge has a pinned GatewayWalletBatched accept and no signable native Arc USDC accept. `OBSERVATORY_ARC_GATEWAY_L1_ENABLED` must be the exact string `true`. Default off. The daily cap is `L1_ARC_GATEWAY_DAILY_CAP_USD` (default 2 USD, 0 stops the rail) and does not consume the native Arc cap. A signed row stays `settle_claimed` until the Circle Gateway API names a batch transaction and the buyer's GatewayWallet debit in that transaction matches the charged authorizations. `settlement_source` can be `circle_gateway`. The batch transaction is stored beside the row, not in `tx_hash`. `ops/arc-gateway/DeliveryLedger.sol` and `scripts/arc-gateway-anchor.mjs` prepare a daily Merkle root. The script prints the deploy and anchor commands and refuses `--send` and `--broadcast`.
+- **Why**: Circle Grants milestone 1. Many Arc x402 sellers accept only through Gateway. The native Arc lane still refuses that signing domain.
+- **Impact**: Nothing is paid on this rail until the flag is exactly `true` and `ARC_RPC_URL` is set. Native Arc purchases are unchanged. Gateway rows do not raise the public score and do not appear on the home receipt, because `tx_hash` stays empty. A deposit into Circle Gateway and the DeliveryLedger deploy stay manual. The seller-attribution freshness fixture now uses a delivery five days before the clock, so the expected ALLOW stays inside `L1_FRESH_DAYS`.
+- **Commits**: not written in this session. The worktree git directory `/Users/takeshi/vouch/.git` refused the index lock (EPERM), so the hashes are not assigned yet. Prepared subjects: `feat(l1): pay Gateway-only Arc listings through Circle Gateway, off by default` and `test(l1): pin the Arc Gateway rail so a broken gate fails`. Replace this line with those hashes when the commits land. The changelog file itself is the third commit.
 
 ## 2026-10-24 Other measurement services leave settlement_30d_real
 

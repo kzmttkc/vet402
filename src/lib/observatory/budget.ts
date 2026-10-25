@@ -83,6 +83,16 @@ export const BNB_DAILY_CAP_USD_DEFAULT = 0.5;
 export const ARBITRUM_DAILY_CAP_USD_DEFAULT = 2;
 
 /**
+ * Circle Gateway on Arc の別枠（2026-10-25）。共有 $25 の内側。既定は $2。
+ * 環境変数 L1_ARC_GATEWAY_DAILY_CAP_USD で変えられる（0 で止める）。
+ * ネイティブ Arc（eip155:5042 の EIP-3009）と同じ network なので、行の印
+ * circleGatewayRail で分ける。cappedChainFor("eip155:5042") は "arc" のまま。
+ * この別枠は reserveSpend の capChain で明示する。レーンのスイッチではない
+ * （スイッチは OBSERVATORY_ARC_GATEWAY_L1_ENABLED が正確に "true"）。
+ */
+export const ARC_GATEWAY_DAILY_CAP_USD_DEFAULT = 2;
+
+/**
  * 1 人の売り手が 1 UTC 日に受け取れる上限（2026-09-29 監査 5 周目・高・お金）。**受取先（payTo）ごと**と
  * **ホスト（ポート無視・小文字＝census の売り手の単位）ごと**に、別々に数える。全チェーン共有の $25 の内側。
  *
@@ -135,7 +145,7 @@ export function domainDailyCapUnits(): bigint {
 }
 
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum";
+export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -157,6 +167,9 @@ export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: nu
   bnb: { env: "L1_BNB_DAILY_CAP_USD", defaultUsd: BNB_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:56" },
   // 完全一致（ワイルドカード無し）。Arbitrum Sepolia（eip155:421614）や Nova（eip155:42170）を巻き込まない。
   arbitrum: { env: "L1_ARBITRUM_DAILY_CAP_USD", defaultUsd: ARBITRUM_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:42161" },
+  // どの network にも一致しない番兵。支出の数え方は chainCapNetworkSql（印で eip155:5042 を分ける）。
+  // LIKE のワイルドカードは置かない。cappedChainFor はこの名前を返さない。
+  arc_gateway: { env: "L1_ARC_GATEWAY_DAILY_CAP_USD", defaultUsd: ARC_GATEWAY_DAILY_CAP_USD_DEFAULT, networkLike: "circle-gateway:5042" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */

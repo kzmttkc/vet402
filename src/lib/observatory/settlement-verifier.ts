@@ -27,6 +27,7 @@ import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
+import { reconcileArcGatewayClaims } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
@@ -209,6 +210,10 @@ export type SettlementVerifierDeps = {
     l1: typeof fireL1RegistryHook;
     l2: typeof fireL2RegistryHook;
   };
+  /** Circle Gateway の請求一覧。未指定なら本番の Gateway API。テストはここを差し替える。 */
+  gatewayFetch?: typeof fetch;
+  /** バッチ tx での購入元の GatewayWallet 残高の減り。未指定なら ARC_RPC_URL。読めなければ照合は保留。 */
+  readGatewayDebit?: (txHash: string, buyer: string) => Promise<bigint | null>;
 };
 
 export async function runSettlementVerification(options?: {
@@ -253,6 +258,21 @@ export async function runSettlementVerification(options?: {
   const wrongChain = new Set<string>();
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
+
+  // Circle Gateway の行は tx_hash が空なので下の SELECT に入らない。請求とバッチ tx の残高の減りは
+  // 別経路。ここで落ちてもネイティブの照合は続ける。scanned には数えない（下の SELECT の件数のまま）。
+  try {
+    const gateway = await reconcileArcGatewayClaims({
+      db,
+      ...(options?.deps?.gatewayFetch ? { fetchImpl: options.deps.gatewayFetch } : {}),
+      ...(options?.deps?.readGatewayDebit ? { readDebit: options.deps.readGatewayDebit } : {}),
+      limit,
+    });
+    summary.verified += gateway.settled;
+    summary.refuted += gateway.refuted;
+  } catch (error) {
+    logServerErrorSafe("settlement-verifier.arc_gateway", error);
+  }
 
   // 対象: 決済を主張していて、まだ照合が確定していない行。
   // 既存の 'settled'（2026-08-23 より前に、照合前の意味で書かれたもの）も

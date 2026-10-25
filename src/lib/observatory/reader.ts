@@ -388,6 +388,7 @@ function withSettledTier<
     authNonce: string | null;
     settlementVerified: boolean | null;
     lateSettlement: unknown;
+    circleGateway: unknown;
     l2Schema: string | null;
     l2Detail: unknown;
     l2BodyHead: string | null;
@@ -396,15 +397,15 @@ function withSettledTier<
 >(
   rows: T[],
   declaredSchema: unknown,
-): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement" | "l2Detail" | "l2BodyHead" | "l2ContentType"> & {
+): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement" | "circleGateway" | "l2Detail" | "l2BodyHead" | "l2ContentType"> & {
   settledTier: SettledTier | null;
   settlementSource: SettlementSource | null;
   l2Reading: string | null;
 })[] {
-  return rows.map(({ authNonce, settlementVerified, lateSettlement, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
+  return rows.map(({ authNonce, settlementVerified, lateSettlement, circleGateway, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
     ...rest,
     settledTier: settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network }),
-    settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement }),
+    settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway }),
     // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
     l2Reading: rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema),
   }));
@@ -577,6 +578,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
+          circleGateway: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'circleGateway'`,
           l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
           l2BodyHead: sql<string | null>`CASE WHEN ${x402L1Purchases.l2Schema} = 'mismatch' AND jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'bodyHead', 500) END`,
           l2ContentType: sql<string | null>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'contentType', 60) END`,
@@ -716,6 +718,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
+          circleGateway: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'circleGateway'`,
           l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
           l2BodyHead: sql<string | null>`CASE WHEN ${x402L1Purchases.l2Schema} = 'mismatch' AND jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'bodyHead', 500) END`,
           l2ContentType: sql<string | null>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN left(${x402L1Purchases.rawResponseMeta}->>'contentType', 60) END`,

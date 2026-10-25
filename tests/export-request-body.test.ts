@@ -3,7 +3,7 @@
 //
 //   request_body        declared / empty / none / 空（記録なし）
 //   request_body_sha256  宣言本文（送ったバイト列そのもの）の SHA-256。本文は出さない
-//   settlement_source    seller_claim / vet402_index / 空（tx なし）
+//   settlement_source    seller_claim / vet402_index / circle_gateway / 空（tx もバッチ tx もなし）
 //
 // 守ること:
 //  1. 「記録なし」は空で、false 側の値（empty・none・seller_claim）に倒さない。
@@ -30,7 +30,7 @@ import {
   confirmedUnitsSql,
 } from "@/lib/observatory/export-columns";
 import { requestBodyKindOf, requestBodySha256Of, requestBodyRecord, REQUEST_BODY_KINDS } from "@/lib/observatory/request-body";
-import { settlementSourceOf, SETTLEMENT_SOURCES } from "@/lib/observatory/settlement-source";
+import { settlementSourceOf, settlementSourceSql, SETTLEMENT_SOURCES } from "@/lib/observatory/settlement-source";
 import { lateLinkOf } from "@/lib/observatory/settlement-verifier";
 
 const ROOT = join(__dirname, "..");
@@ -98,7 +98,7 @@ test("ランナーは requestBodyRecord を行に書く（手書きの別形を�
 });
 
 test("settlement_source: tx を名指したのが売り手か vet402 の索引か——照合器の lateLinkOf と同じ行を選ぶ", () => {
-  assert.deepEqual([...SETTLEMENT_SOURCES], ["seller_claim", "vet402_index"]);
+  assert.deepEqual([...SETTLEMENT_SOURCES], ["seller_claim", "vet402_index", "circle_gateway"]);
   const TX = `0x${"1".repeat(64)}`;
   const OTHER = `0x${"2".repeat(64)}`;
   const cases: { name: string; txHash: string | null; late: unknown; want: string | null }[] = [
@@ -119,6 +119,25 @@ test("settlement_source: tx を名指したのが売り手か vet402 の索引�
       assert.equal(verifierSaysLate, c.want === "vet402_index", `lateLinkOf と一致: ${c.name}`);
     }
   }
+  assert.equal(
+    settlementSourceOf({ txHash: null, lateSettlement: null, circleGateway: { batchTx: TX, from: "0xabc" } }),
+    "circle_gateway",
+    "tx_hash が空でもバッチ tx が行の横にあれば circle_gateway",
+  );
+  assert.equal(
+    settlementSourceOf({ txHash: null, lateSettlement: null, circleGateway: { from: "0xabc" } }),
+    null,
+    "請求前（batchTx なし）は settled の出どころを名乗らない",
+  );
+  assert.equal(
+    settlementSourceOf({ txHash: TX, lateSettlement: null, circleGateway: { batchTx: OTHER } }),
+    "circle_gateway",
+    "バッチ tx がある行は売り手のレシートより先に circle_gateway",
+  );
+  const sqlText = settlementSourceSql("pu");
+  const gwAt = sqlText.indexOf("'circle_gateway'");
+  const blankAt = sqlText.indexOf("tx_hash IS NULL");
+  assert.ok(gwAt >= 0 && blankAt >= 0 && gwAt < blankAt, "SQL は tx 無しの NULL より先に circle_gateway を見る");
 });
 
 test("列の説明: 足した列は openapi・methodology・llms.txt のどれにも名前で出る", () => {

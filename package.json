@@ -75,6 +75,7 @@
     "rwa:test": "tsx --test packages/rwa/test/*.test.ts"
   },
   "dependencies": {
+    "@circle-fin/x402-batching": "^3.5.0",
     "@neondatabase/serverless": "^1.1.0",
     "@solana/web3.js": "^1.98.4",
     "@stellar/stellar-sdk": "16.3.1",

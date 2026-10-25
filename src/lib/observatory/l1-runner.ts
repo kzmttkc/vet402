@@ -93,6 +93,22 @@ import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type R
 import { requestBodyRecord } from "./request-body";
 import { isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
+import {
+  arcGatewayCapOpen,
+  arcGatewayFundsOk,
+  chainCapNetworkSql,
+  gatewayCandidateInclusionSql,
+  gatewayDeclaredPayTosFor,
+  gatewayLeafFacts,
+  gatewayPrimaryExclusionSql,
+  hasSignableNativeArcAccept,
+  isArcGatewayL1Enabled,
+  readArcGatewayAvailable as readArcGatewayAvailableProd,
+  selectArcGatewayAccept,
+  signArcGatewayPayment,
+  type ArcGatewaySigned,
+  type ArcGatewaySigner,
+} from "./arc-gateway";
 import { createHash } from "node:crypto";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
 // フラグ OBSERVATORY_TEMPO_L1_ENABLED（既定 off）が無ければ Tempo は lanes で候補外（行 0）。
@@ -302,6 +318,11 @@ type Candidate = {
    * レーンとして優先された Arbitrum の accept の payTo は、この集合と照合する。先頭（Base）の pay_to とは比べない。
    */
   arbitrumDeclaredPayTos: string[];
+  /**
+   * カタログの Arc accept のうち、GatewayWalletBatched（ピンしたウォレット）の payTo。
+   * Gateway レーンはこの集合と照合する。ネイティブ USDC の宣言は arcDeclaredPayTos のまま。
+   */
+  gatewayDeclaredPayTos: string[];
 };
 
 /**
@@ -373,7 +394,7 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // （下の LANE_SECONDARY_ACCEPT_FILTER）。permit2・USDT だけの行は枠に載せない。
 // Arbitrum（2026-10-22）: 実測で eip155:42161 の accept は CDP Bazaar 28,000 件中 5,890 件・331 ホスト（2026-10-21）。
 // Celo と同じく secondary を枠に入れる。署名するのはネイティブ USDC だけ。USDC.e だけの行は selectAccept が断る。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true };
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true, arc_gateway: false };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -803,14 +824,20 @@ async function reserveSpend(input: {
   meta?: Record<string, unknown> | null;
   /** 初回購入の日次枠（既定 FIRST_PURCHASE_DAILY_QUOTA）。census の候補だけ censusFirstPurchaseQuota（2026-09-29）。 */
   firstPurchaseQuota?: number;
+  /**
+   * 別枠の名前を明示する（Circle Gateway）。eip155:5042 は cappedChainFor が "arc" を返すので、
+   * Gateway の支出はここが "arc_gateway" のときだけ Gateway の別枠に入る。省略時は従来どおり。
+   */
+  capChain?: CappedChain;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
   const metaJson = input.meta ? JSON.stringify(input.meta) : null;
   // チェーン別の別枠（budget.ts CHAIN_DAILY_CAPS）。2026-09-15 の Solana の別枠を 2026-09-17 に
   // Arc と共通の表にした。Base は別枠を持たないので CTE も条件も入らない（従来と同じ 1 文）。
   const capChain = cappedChainFor(network);
-  const capLike = capChain ? CHAIN_DAILY_CAPS[capChain].networkLike : null;
-  const capUnits = capChain ? String(chainDailyCapUnits(capChain)) : null;
+  const spendCap = input.capChain ?? capChain;
+  const capLike = spendCap ? CHAIN_DAILY_CAPS[spendCap].networkLike : null;
+  const capUnits = spendCap ? String(chainDailyCapUnits(spendCap)) : null;
   // 初回購入の日次枠は、別枠を持つチェーンには掛けない（2026-09-17 本番: 枠 120 が当日ぶん
   // 使い切られ、Tempo 265 件・XRPL 1 件の候補が「購入行が無い」だけで除外され、レーン枠が
   // 0 だった）。新しいチェーンの掃引は初回購入しか無いので、この枠に当たると永久に始まらない。
@@ -835,7 +862,7 @@ async function reserveSpend(input: {
       -- 何にも一致しないパターンで 0 を返す（条件も付かない）。
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
       FROM x402_l1_purchases
-      WHERE attempted_at >= ${utcDayStart()} AND network LIKE ${capLike ?? ""}
+      WHERE attempted_at >= ${utcDayStart()} AND ${chainCapNetworkSql(spendCap, capLike)}
     ), dup AS (
       SELECT EXISTS (
         SELECT 1 FROM x402_l1_purchases pu
@@ -920,10 +947,10 @@ async function reserveSpend(input: {
       return { ok: false, reason: "seller_daily_cap", scope: "domain" };
     }
   }
-  if (capChain !== null) {
+  if (spendCap !== null) {
     const chainSpent = typeof row.chain_spent === "string" ? BigInt(row.chain_spent.split(".")[0]) : null;
     // 読めなければ別枠の判定とみなす（行を書かない側へ倒す——書くと 6 日締め出す）
-    if (chainSpent === null || chainSpent + BigInt(amountUnits) > chainDailyCapUnits(capChain)) {
+    if (chainSpent === null || chainSpent + BigInt(amountUnits) > chainDailyCapUnits(spendCap)) {
       return { ok: false, reason: "chain_daily_cap" };
     }
   }
@@ -1163,6 +1190,10 @@ export async function runL1Batch(
     batchBudgetMs?: number;
     /** Test seam: 購入元の USDC 残高（基本単位）。既定は BASE_RPC_URL / SOLANA_RPC_URL を読む。 */
     getPayerUsdcBalance?: PayerUsdcBalanceReader;
+    /** Test seam: Circle Gateway の available。既定は GatewayClient.getBalances。テストはここを差し替え、ネットへ出ない。 */
+    readArcGatewayAvailable?: () => Promise<bigint | null>;
+    /** Test seam: Gateway の署名。既定は BatchEvmScheme（ローカル署名、ブロードキャストしない）。 */
+    signArcGateway?: ArcGatewaySigner;
     /** Test seam: Tempo（MPP）の署名器。既定は mppx/client（Tempo RPC へ出る）。 */
     mppxCharge?: MppxCharge;
     /** Test seam: XRPL の Sequence と validated ledger。既定は XRPL_RPC_URL（JSON-RPC）を読む。 */
@@ -1309,6 +1340,8 @@ export async function runL1Batch(
   const lanes: { chain: CappedChain; ready: boolean }[] = [
     { chain: "solana", ready: solanaReady },
     { chain: "arc", ready: isArcL1Enabled() },
+    // Circle Gateway（2026-10-25）: 旗が正確に "true" かつ ARC_RPC_URL。ネイティブ Arc のフラグとは独立。
+    { chain: "arc_gateway", ready: isArcGatewayL1Enabled() && !!process.env.ARC_RPC_URL?.trim() },
     // Tempo（MPP・2026-09-17）: Base と同じ EOA・USDC.e。有効条件はフラグだけ。
     { chain: "tempo", ready: isTempoL1Enabled() },
     // XRPL（2026-09-17）: 独立フラグ + 独立 seed。どちらか欠ければ候補から外れる。
@@ -1325,7 +1358,7 @@ export async function runL1Batch(
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
   ];
-  const laneExclusions: SQL[] = [];
+  const laneExclusionChains: { chain: CappedChain; clause: SQL }[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
   /** そのレーンの当日支出（バッチ開始時の台帳 + このバッチで署名した額）。別枠を使い切ったら優先を止める（レビュー C2）。 */
   const laneSpent = new Map<CappedChain, bigint>();
@@ -1333,17 +1366,24 @@ export async function runL1Batch(
     let selectable = lane.ready;
     if (selectable) {
       try {
+        const capPredicate =
+          lane.chain === "arc" || lane.chain === "arc_gateway"
+            ? chainCapNetworkSql(lane.chain, CHAIN_DAILY_CAPS[lane.chain].networkLike)
+            : sql`network LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike}`;
         const rawLane = await db.execute(sql`
           SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
           FROM x402_l1_purchases
-          WHERE attempted_at >= ${utcDayStart()} AND network LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike}
+          WHERE attempted_at >= ${utcDayStart()} AND ${capPredicate}
         `);
         const laneRows = (Array.isArray(rawLane) ? rawLane : (rawLane as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
         const spentRaw = laneRows[0]?.spent;
-        if (typeof spentRaw !== "string" || BigInt(spentRaw.split(".")[0]) >= chainDailyCapUnits(lane.chain)) {
+        if (typeof spentRaw !== "string") {
           selectable = false;
         } else {
-          laneSpent.set(lane.chain, BigInt(spentRaw.split(".")[0]));
+          const spentNow = BigInt(spentRaw.split(".")[0]);
+          const open = lane.chain === "arc_gateway" ? arcGatewayCapOpen(spentNow) : spentNow < chainDailyCapUnits(lane.chain);
+          if (!open) selectable = false;
+          else laneSpent.set(lane.chain, spentNow);
         }
       } catch (error) {
         logServerErrorSafe(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
@@ -1360,9 +1400,16 @@ export async function runL1Batch(
       (lane.chain === "stellar" && process.env.OBSERVATORY_STELLAR_L1_ENABLED !== "true") ||
       (lane.chain === "bnb" && process.env.OBSERVATORY_BNB_L1_ENABLED !== "true");
     if (!selectable && !flagOffKeepsCandidates) {
-      laneExclusions.push(sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`);
+      laneExclusionChains.push({
+        chain: lane.chain,
+        clause: sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`,
+      });
     }
   }
+  // 主候補は従来どおり。Gateway の専用取得だけは、ネイティブ Arc が止まっていても eip155:5042 を隠さない
+  // （Gateway だけの出品は network が eip155:5042。arc の NOT LIKE を掛けると旗が on でも 0 件になる）。
+  const laneExclusions: SQL[] = laneExclusionChains.map((x) => x.clause);
+  const gatewayExclusions: SQL[] = laneExclusionChains.filter((x) => x.chain !== "arc").map((x) => x.clause);
   /** レーンの優先がまだ開いているか: selectable で、バッチ内の加算込みの支出が別枠未満。 */
   const laneOpen = (chain: CappedChain): boolean =>
     laneSelectable.get(chain) === true && (laneSpent.get(chain) ?? chainDailyCapUnits(chain)) < chainDailyCapUnits(chain);
@@ -1413,6 +1460,8 @@ export async function runL1Batch(
     lane?: { chain: CappedChain; networkLike: string; limit: number },
     census?: CensusSelection,
     retest?: RetestParams,
+    extraWhere: SQL = gatewayPrimaryExclusionSql(),
+    exclusions: SQL[] = laneExclusions,
   ) => sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
@@ -1507,7 +1556,7 @@ export async function runL1Batch(
       -- 下の候補ループにも isPathTemplate のガードを置く二重防御）。
       AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
-      ${sql.join(laneExclusions, sql` `)}
+      ${sql.join(exclusions, sql` `)}
       ${
         // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行（従来どおり・
         // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc・XRPL・Celo・Stellar・BNB）だけは raw_accepts のいずれかの
@@ -1618,6 +1667,7 @@ export async function runL1Batch(
                  WHERE recent.status IN ('settled', 'settle_claimed')
                ) = 0
       )
+      ${extraWhere}
     -- §7.4（2026-09-02）: C2（決済帰属あり ∨ 問い合わせ多）を最初に買う。日次予算が
     -- 尽きれば残りは未実施のまま（facts では l1_not_attempted = 未検証。pass とは書かない）。
     -- C2 だけに絞らないのは、決済索引が空の初日に L1 が完全に止まるのを避けるため——
@@ -1675,6 +1725,17 @@ export async function runL1Batch(
     lanes,
     floor: onlyEndpointId ? 0 : laneFloorPerRun(),
     fetchLane: async (chain, laneLimit) => {
+      // Gateway は共有の枠 SQL を使わない。networkLike を "%" にするのは、初回購入の EXISTS を
+      // レーン付きの問い合わせとして飛ばすため（その三項は固定）。出品の条件は inclusion が掛ける。
+      // 別枠 0・残高で閉じたあとはここで問い合わせない。
+      if (chain === "arc_gateway") {
+        if (!laneOpen("arc_gateway")) return [];
+        const lane = { chain, networkLike: "%", limit: laneLimit };
+        return await withDailyFallback(
+          async () => await db.execute(targetsSql(true, lane, undefined, undefined, gatewayCandidateInclusionSql(), gatewayExclusions)),
+          async () => await db.execute(targetsSql(false, lane, undefined, undefined, gatewayCandidateInclusionSql(), gatewayExclusions)),
+        );
+      }
       const lane = { chain, networkLike: CHAIN_DAILY_CAPS[chain].networkLike, limit: laneLimit };
       return await withDailyFallback(
         async () => await db.execute(targetsSql(true, lane)),
@@ -1777,6 +1838,27 @@ export async function runL1Batch(
   // Arbitrum（2026-10-22）: Celo の celoLaneUnavailable と同じ型。未入金のあと、以後の arbitrum の優先を閉じ、
   // Base 先頭のその候補は優先なしで 1 回だけ買い直す。主ネットワークが eip155:42161 の行はやり直さない。
   let arbitrumLaneUnavailable = false;
+  // Circle Gateway（2026-10-25）: 残高が足りない／読めないと分かったら、そのバッチの Gateway 優先を閉じる。
+  // Gateway しか受けない出品はやり直さない（selectAccept が別の accept を見つけるときだけ 1 回買い直す）。
+  let arcGatewayLaneUnavailable = false;
+  let gatewayRead: Promise<bigint | null> | null = null;
+  let gatewayCommitted = 0n;
+  const readArcGatewayAvailable = async (): Promise<bigint | null> => {
+    if (!gatewayRead) {
+      const read = options.readArcGatewayAvailable ?? (() => readArcGatewayAvailableProd(pk as `0x${string}`));
+      gatewayRead = read().then(
+        (v) => (typeof v === "bigint" && v >= 0n ? v : null),
+        () => null,
+      );
+    }
+    const available = await gatewayRead;
+    if (available === null) return null;
+    const left = available - gatewayCommitted;
+    return left >= 0n ? left : 0n;
+  };
+  const commitArcGateway = (amount: bigint) => {
+    gatewayCommitted += amount;
+  };
   // Stellar（2026-10-18・段4）: 未入金、または署名器が落ちたら、以後の stellar の優先を閉じる
   // （Celo の celoLaneUnavailable と同じ型）。閉じないと、Base 先頭で Stellar の accept も持つ出品は
   // レーン枠から Stellar で買おうとして毎回 payer_unfunded（行なし）になり、入金するまで Base でも買えない。
@@ -1818,6 +1900,12 @@ export async function runL1Batch(
       summary.skipped++;
       continue;
     }
+    // Gateway の優先が閉じている間、残りの Gateway 出品には 402 も取りに行かない（no_eligible_accept を売り手に書かない）。
+    if (candidate.laneChain === "arc_gateway" && (arcGatewayLaneUnavailable || !laneOpen("arc_gateway"))) {
+      summary.skipped++;
+      continue;
+    }
+    const arcGatewayPreferred = candidate.laneChain === "arc_gateway" && !arcGatewayLaneUnavailable && laneOpen("arc_gateway");
     // XRPL の secondary accept の優先（2026-09-18・Arc の preferNetworks と同じ条件）: レーン枠から来た
     // 候補にだけ、別枠がまだ開いていて、この endpoint に XRPL での決済主張も非決済も無いとき。
     const xrplLanePreferred =
@@ -1868,7 +1956,7 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge };
+      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
       // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
@@ -1903,9 +1991,15 @@ export async function runL1Batch(
         stellarLaneUnavailable = true;
         outcome = await purchaseOne({ ...purchaseInput, stellarLanePreferred: false, preferNetworks: [] });
       }
+      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "arc_gateway") {
+        arcGatewayLaneUnavailable = true;
+        if (outcome.retryWithoutGateway) {
+          outcome = await purchaseOne({ ...purchaseInput, arcGatewayPreferred: false, preferNetworks: [] });
+        }
+      }
       spentToday += outcome.spent;
       // バッチ内のレーン支出を加算する（署名した額。決済は非同期なので使ったとみなす）。
-      const outcomeLane = outcome.network ? cappedChainFor(outcome.network) : null;
+      const outcomeLane = outcome.capChain ?? (outcome.network ? cappedChainFor(outcome.network) : null);
       if (outcomeLane !== null && outcome.spent > 0n) laneSpent.set(outcomeLane, (laneSpent.get(outcomeLane) ?? 0n) + outcome.spent);
       // XRPL で署名したら閉じる（主でも secondary でも）。Base へ落ちて買われた secondary 候補は閉じない。
       if (outcome.network === XRPL_MAINNET_CAIP2 && outcome.spent > 0n) xrplLaneClosed = true;
@@ -2002,6 +2096,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     bnbDeclaredPayTos: declaredPayTosFor(BNB_CHAIN, r.bnb_declared_accepts),
     arbitrumDeclaredPayTos: declaredPayTosFor(ARBITRUM_CHAIN, r.arbitrum_declared_accepts),
     stellarDeclaredPayTos: parseTextArray(r.stellar_declared_pay_tos),
+    gatewayDeclaredPayTos: gatewayDeclaredPayTosFor(r.arc_declared_accepts),
     laneChain: null,
     selection: null,
   };
@@ -2331,6 +2426,11 @@ async function purchaseOne(input: {
   xrplLanePreferred: boolean;
   /** Stellar のレーン枠から来た Base 先頭の候補で、Stellar の accept を先に試してよいか（2026-10-18・段4）。 */
   stellarLanePreferred: boolean;
+  /** Gateway レーンの候補で、GatewayWalletBatched を先に試してよいか。ネイティブ Arc がある出品では偽のまま。 */
+  arcGatewayPreferred: boolean;
+  readArcGatewayAvailable: () => Promise<bigint | null>;
+  commitArcGateway: (amount: bigint) => void;
+  signArcGateway: ArcGatewaySigner;
   account: ReturnType<typeof privateKeyToAccount>;
   solanaKeypair: Keypair | null;
   getSolanaBlockhash: () => Promise<string>;
@@ -2365,13 +2465,17 @@ async function purchaseOne(input: {
   network?: string;
   /** kind === "payer_unfunded" のとき、残高が足りなかった（読めなかった）購入元のチェーン。 */
   payerChain?: PayerChain;
+  /** Gateway の支出は eip155:5042 でも別枠 arc_gateway に足す。 */
+  capChain?: CappedChain | null;
+  /** Gateway の残高不足のあと、別レールの accept があるので優先なしで 1 回買い直す。 */
+  retryWithoutGateway?: boolean;
   /**
    * Stellar の署名前の故障で、secondary の未署名予約を消したときだけ true。
    * バッチはその候補を Base で 1 回買い直す。署名後は付けない。
    */
   retryBase?: boolean;
 }> {
-  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge } = input;
+  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
@@ -2387,6 +2491,8 @@ async function purchaseOne(input: {
   // selectXrplSecondaryAccept が通ったときにだけ入る（下で isXrpl / payerLabel を切り替える）。
   const isXrplPrimary = candidate.network === XRPL_MAINNET_CAIP2;
   let isXrpl = isXrplPrimary;
+  let isArcGateway = false;
+  let gatewaySigned: ArcGatewaySigned | null = null;
   // 台帳上の payer 表記: EVM は小文字（既存の join 規約）・base58 は原文
   // （小文字化は base58 を破壊する——catalog-source と同じ理由）。
   let payerLabel = isSolana
@@ -2587,7 +2693,33 @@ async function purchaseOne(input: {
           declaredPayTo: candidate.payTo,
         })
       : null;
-  const selection = mppSelection
+  // Gateway は、ネイティブ Arc の accept が署名できる出品では選ばない（native_present は下の selectAccept へ落とす）。
+  // それ以外の拒否は行に残し、同じ呼び出しで Base へは落とさない。
+  const gatewayPick =
+    arcGatewayPreferred && !isSolana && !isTempo && !isXrpl && !isStellar
+      ? selectArcGatewayAccept(challenge.accepts, {
+          nativeArcSignable: hasSignableNativeArcAccept(challenge.accepts),
+          declaredAmount: candidate.priceAmount,
+          declaredPayTo: candidate.payTo,
+          declaredNetwork: candidate.network,
+          gatewayDeclaredPayTos: candidate.gatewayDeclaredPayTos,
+        })
+      : null;
+  if (gatewayPick && !gatewayPick.accept && gatewayPick.reason !== "native_present") {
+    await record({
+      status: gatewayPick.reason,
+      rawResponseMeta: tagMeta({
+        phase: "select",
+        declaredAmount: candidate.priceAmount,
+        declaredPayTo: candidate.payTo,
+        circleGateway: { reason: gatewayPick.reason },
+      }),
+    });
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  const selection = gatewayPick?.accept
+    ? gatewayPick
+    : mppSelection
     ? mppSelection
     : xrplSecondary?.accept
     ? xrplSecondary
@@ -2614,6 +2746,7 @@ async function purchaseOne(input: {
           // （2026-09-19）。優先していない accept（Base）の照合先は従来どおり candidate.payTo。
           declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos },
         });
+  if (gatewayPick?.accept) isArcGateway = true;
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
   // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
   // 行は eip155:5042・別枠 arc・残高 arc になる（tests/l1-lane-accept-preference.pg.test.ts）。
@@ -2804,10 +2937,34 @@ async function purchaseOne(input: {
   const evmPayChainId = evmChainFor(accept.network)?.chainId;
   const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : account.address;
-  const funds = await payerFunds.check(payerChain, payerOwner, amount);
-  if (!funds.ok) {
-    onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
-    return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain };
+  if (isArcGateway) {
+    let available: bigint | null = null;
+    try {
+      available = await readArcGatewayAvailable();
+    } catch {
+      available = null;
+    }
+    if (!arcGatewayFundsOk(available, amount)) {
+      const fallback = selectAccept(challenge.accepts, {
+        declaredAmount: candidate.priceAmount,
+        declaredPayTo: candidate.payTo,
+        declaredNetwork: candidate.network,
+        preferNetworks: [],
+        declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos },
+      });
+      onPayerUnfunded("arc_gateway", {
+        reason: available === null ? "unreadable" : "insufficient",
+        amountUnits: String(amount),
+        ...(available === null ? {} : { balanceUnits: String(available) }),
+      });
+      return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain: "arc_gateway", retryWithoutGateway: fallback.accept !== null };
+    }
+  } else {
+    const funds = await payerFunds.check(payerChain, payerOwner, amount);
+    if (!funds.ok) {
+      onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
+      return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain };
+    }
   }
 
   // Reserve BEFORE signing. This is the authoritative gate: it re-reads the
@@ -2827,7 +2984,8 @@ async function purchaseOne(input: {
       isPriority: candidate.isPriority,
       isMature: candidate.isMature,
     }),
-    meta: selectionMeta,
+    meta: isArcGateway ? { ...(selectionMeta ?? {}), circleGatewayRail: "true" } : selectionMeta,
+    ...(isArcGateway ? { capChain: "arc_gateway" as const } : {}),
     // census の初回購入だけ census の枠（2026-09-29・既定は同じ 120）。retest・主候補・レーンは従来の枠。
     ...(candidate.selection === "census" ? { firstPurchaseQuota: censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA) } : {}),
   });
@@ -2905,7 +3063,9 @@ async function purchaseOne(input: {
 
   // ここから先は署名する。このバッチの残高の見積もりから差し引く（決済は非同期なので、
   // 成立を待たずに「使った」とみなす——過大に見積もって署名し続けないため）。
-  payerFunds.commit(payerChain, payerOwner, amount);
+  // Gateway はウォレットの USDC ではなく、バッチ内の Gateway available から引く。
+  if (isArcGateway) commitArcGateway(amount);
+  else payerFunds.commit(payerChain, payerOwner, amount);
 
   try {
     // Sign — from here on the money is live, so the ledger row ALWAYS carries
@@ -3054,6 +3214,26 @@ async function purchaseOne(input: {
         payload,
         resourceUrl: candidate.resourceUrl,
       });
+    } else if (isArcGateway) {
+      // BatchEvmScheme は署名するだけ（ブロードキャストしない）。payload が返る前の throw は金が動いていない。
+      try {
+        gatewaySigned = await signArcGateway({
+          account,
+          accept,
+          x402Version: challenge.x402Version,
+          resourceUrl: candidate.resourceUrl,
+        });
+      } catch (error) {
+        logServerErrorSafe("observatory.l1.arc_gateway_sign", redactedError(error));
+        await releaseUnsignedReservation(db, reservation.rowId, {
+          status: "request_error",
+          rawResponseMeta: tagMeta({ phase: "arc_gateway_sign", error: redactForLog(error), circleGatewayRail: "true" }),
+        });
+        invalidateDecisionCache(candidate.id);
+        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+      }
+      authNonce = gatewaySigned.authorization.nonce;
+      header = gatewaySigned.header;
     } else {
       const authorization = buildAuthorization({
         from: account.address,
@@ -3073,9 +3253,26 @@ async function purchaseOne(input: {
     }
     // 署名の直後に nonce を確定させる。ここから先で落ちても、行には
     // 「何に署名したか」が残る（予約行は既にあるので UPDATE）。
+    const gatewayAuthMeta =
+      isArcGateway && gatewaySigned
+        ? {
+            ...(selectionMeta ?? {}),
+            circleGatewayRail: "true",
+            circleGateway: {
+              from: gatewaySigned.authorization.from,
+              to: gatewaySigned.authorization.to,
+              value: gatewaySigned.authorization.value,
+              validAfter: gatewaySigned.authorization.validAfter,
+              validBefore: gatewaySigned.authorization.validBefore,
+              nonce: gatewaySigned.authorization.nonce,
+              signature: gatewaySigned.signature,
+              verifyingContract: gatewaySigned.verifyingContract,
+            },
+          }
+        : null;
     await db
       .update(x402L1Purchases)
-      .set({ authNonce })
+      .set(gatewayAuthMeta ? { authNonce, rawResponseMeta: gatewayAuthMeta } : { authNonce })
       .where(eq(x402L1Purchases.id, reservation.rowId));
 
     let paid: Response | null = null;
@@ -3279,7 +3476,8 @@ async function purchaseOne(input: {
     // から外れ、売り手が後で決済した tx が台帳に結び付かない。status は常に settle_failed のままにし、
     // 我々の機械の中の失敗だったことは transportFailure.side の印だけで残す（今は印を残すだけで、読む側はまだ無い）。
     const transportSide = !paid ? paidTransportFailureSide(paidErrorRaw) : null;
-    const status = !paid
+    // Gateway はバッチ決済で、この場に支払いごとの tx が無い。請求が確認できるまで settle_claimed。
+    const status = isArcGateway ? "settle_claimed" : !paid
       ? "settle_failed"
       : claimedAndWellFormed
         ? "settle_claimed"
@@ -3290,10 +3488,39 @@ async function purchaseOne(input: {
             : "settle_failed";
     // summary の互換のため「売り手が決済を主張したか」は残すが、これは
     // settled ではない。名前で取り違えないよう別名にしてある。
-    const settled = claimedAndWellFormed;
+    // Gateway は売り手が tx を名乗っても、ここでは settled にしない。
+    const settled = isArcGateway ? false : claimedAndWellFormed;
 
     // Resolve the reservation in place — spent_units stays exactly what was
     // reserved (signed = counted, success or not); only the outcome is filled in.
+    const gatewayFacts =
+      isArcGateway && gatewaySigned
+        ? gatewayLeafFacts({
+            resourceUrl: candidate.resourceUrl,
+            method,
+            paidUrl: paidRequestUrl?.url ?? candidate.resourceUrl,
+            requestBody: paidRequestBody?.body ?? "",
+            responseBody: paidBody,
+            httpStatus: paid?.status ?? 0,
+          })
+        : null;
+    const gatewayMeta =
+      isArcGateway && gatewaySigned
+        ? {
+            circleGatewayRail: "true" as const,
+            circleGateway: {
+              from: gatewaySigned.authorization.from,
+              to: gatewaySigned.authorization.to,
+              value: gatewaySigned.authorization.value,
+              validAfter: gatewaySigned.authorization.validAfter,
+              validBefore: gatewaySigned.authorization.validBefore,
+              nonce: gatewaySigned.authorization.nonce,
+              signature: gatewaySigned.signature,
+              verifyingContract: gatewaySigned.verifyingContract,
+              ...(gatewayFacts ?? {}),
+            },
+          }
+        : null;
     const rawResponseMeta = {
       phase: "paid",
       // 支払い付き要求で張った待ち（ミリ秒）。分類はこれを読む。無い行は 20 秒とみなす。
@@ -3344,6 +3571,7 @@ async function purchaseOne(input: {
         : {}),
       // census / retest の候補から来た行（2026-09-28）。どちらでもなければ鍵ごと無い。
       ...(selectionMeta ?? {}),
+      ...(gatewayMeta ?? {}),
     };
     // 売り手から来た文字列（本文の先頭・受領証・tx）は pgSafeJson / pgSafeText を通す（2026-09-29）。通さないと
     // バイナリの本文の U+0000 で UPDATE ごと落ち、払った後の行が tx も HTTP status も無い settle_failed になった。
@@ -3354,7 +3582,7 @@ async function purchaseOne(input: {
       if (r.changed) sanitizedFields.push(field);
       return r.value;
     };
-    const claimedTx = settlement?.transaction ? safe("txHash", settlement.transaction) : null;
+    const claimedTx = isArcGateway ? null : (settlement?.transaction ? safe("txHash", settlement.transaction) : null);
     const safeSettlement = safe(
       "rawSettlement",
       settlement
@@ -3445,6 +3673,7 @@ async function purchaseOne(input: {
               ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
               ...requestBodyRecord(paidRequestBody),
               ...(selectionMeta ?? {}),
+              ...(gatewayMeta ?? {}),
               outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
             }),
             ...pgSanitizedMark(sanitizedFields),
@@ -3510,18 +3739,26 @@ async function purchaseOne(input: {
 
     return {
       kind: "attempted",
-      // 再利用 tx を弾いた行は settled の候補ではない。
+      // 再利用 tx を弾いた行は settled の候補ではない。Gateway は claimedAndWellFormed でも settled にしない。
       settled: settled && recordedStatus === status,
       spent: amount,
       status: recordedStatus,
       network: ledgerNetwork,
+      ...(isArcGateway ? { capChain: "arc_gateway" as const } : {}),
     };
   } catch (error) {
     logServerErrorSafe("observatory.l1.purchase_after_reservation", redactedError(error));
     const writtenStatus = await resolveReservationAsFailed(db, reservation.rowId, error);
     invalidateDecisionCache(candidate.id);
     // spent はこのバッチの見積もり（spentToday）用で、過大側に倒したまま（予約を戻したかは DB が正）。
-    return { kind: "attempted", settled: false, spent: amount, status: writtenStatus, network: ledgerNetwork };
+    return {
+      kind: "attempted",
+      settled: false,
+      spent: amount,
+      status: writtenStatus,
+      network: ledgerNetwork,
+      ...(isArcGateway ? { capChain: "arc_gateway" as const } : {}),
+    };
   }
 }
 

@@ -151,8 +151,9 @@ export const LATE_RECOVERABLE_SIGNED_ERROR_STATUS = "request_error" as const;
 export const LATE_PRIOR_STATUSES = [...LATE_RECOVERABLE_STATUSES, LATE_RECOVERABLE_SIGNED_ERROR_STATUS] as const;
 
 /** 回収の対象の行（別名 pu）。全段（索引・nonce・組・チェーン直読み・貼り付けの読み直し）で同じ条件を使う。 */
-const RECOVERABLE_ROW = sql`(pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
-  OR (pu.status = ${LATE_RECOVERABLE_SIGNED_ERROR_STATUS} AND pu.auth_nonce IS NOT NULL AND btrim(pu.auth_nonce) <> ''))`;
+const RECOVERABLE_ROW = sql`((pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+  OR (pu.status = ${LATE_RECOVERABLE_SIGNED_ERROR_STATUS} AND pu.auth_nonce IS NOT NULL AND btrim(pu.auth_nonce) <> ''))
+  AND coalesce(pu.raw_response_meta->>'circleGatewayRail', '') <> 'true')`;
 
 /** 1 回の実行で曖昧さの解消のために読むレシートの上限（RPC の呼び出し回数の上限）。 */
 export const AMBIGUOUS_RECEIPTS_PER_RUN = 60;
