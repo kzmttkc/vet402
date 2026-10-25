@@ -24,6 +24,7 @@ import {
   gatewayCandidateInclusionSql,
   gatewayLeafFacts,
   gatewayPrimaryExclusionSql,
+  gatewayRootWaitNote,
   gatewaySignedStatus,
   hasSignableOtherRailAccept,
   isArcGatewayL1Enabled,
@@ -35,8 +36,10 @@ import {
 import { buildGatewayDayRecords, gatewayLeafV1, sortedMerkleRoot } from "@/lib/observatory/arc-gateway-root";
 import {
   encodeSubmitBatchCalldata,
+  GATEWAY_RECONCILE_BUDGET_MS,
   gatewayAuthorizationRecovers,
   gatewayBuyerDebit,
+  gatewayReadBudgetMs,
   interpretGatewayTransfers,
   judgeGatewayBatch,
   planGatewayReconcile,
@@ -46,6 +49,8 @@ import {
   type GatewayClaimRow,
 } from "@/lib/observatory/arc-gateway-verify";
 import { ARC_USDC, BASE_USDC, hasSignableNativeArcAccept, selectAccept, MAX_PER_PURCHASE_UNITS } from "@/lib/observatory/x402-payer";
+import { STELLAR_USDC_CLASSIC, STELLAR_USDC_SAC } from "@/lib/observatory/stellar402-payer";
+import { createDeadline } from "@/lib/util/deadline";
 import { classifyRow, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { DECISION_STATUSES } from "@/lib/observatory/decisions";
 import { cappedChainFor, chainDailyCapUnits } from "@/lib/observatory/budget";
@@ -240,6 +245,9 @@ test("請求が無い行は settled にしない。請求があって残高の�
   assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: null }), "defer");
   assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: 1000n }), "settle");
   assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: 999n }), "refute");
+  assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: 999n, unresolved: true }), "refute");
+  assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: 1001n }), "defer");
+  assert.deepEqual(judgeGatewayBatch({ rowSum: 1000n, debit: 1001n, unresolved: true }), "defer");
 
   const row = { id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() };
   const base = {
@@ -329,7 +337,7 @@ test("日次 root の葉はアンカーのスクリプトと同じ", () => {
       httpStatus: leaf.httpStatus,
     }],
   }));
-  const anchorEnv = { ...process.env, ARC_GATEWAY_RECORDER: "", ARC_GATEWAY_PAYER: "" };
+  const anchorEnv = { ...process.env, ARC_GATEWAY_RECORDER: BUYER, ARC_GATEWAY_PAYER: PAY_TO };
   const ran = spawnSync(process.execPath, [join(ROOT, "scripts/arc-gateway-anchor.mjs"), file], { encoding: "utf8", env: anchorEnv });
   assert.equal(ran.status, 0, ran.stderr);
   assert.match(ran.stdout, new RegExp(`root ${one}`));
@@ -364,8 +372,11 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway.ts", 'if (options.nativeArcSignable) return { accept: null, reason: "native_present" };');
   once("src/lib/observatory/arc-gateway.ts", "if (extra.verifyingContract.toLowerCase() !== ARC_GATEWAY_WALLET.toLowerCase()) return null;");
   once("src/lib/observatory/arc-gateway.ts", "return sql`network = 'eip155:5042' AND raw_response_meta->>'circleGatewayRail' = 'true'`");
-  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.unresolved || input.debit === null) return "defer"');
-  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.debit === input.rowSum) return "settle"');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.debit === null) return "defer";');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.debit < input.rowSum) return "refute";');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.debit > input.rowSum) return "defer";');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.unresolved) return "defer";');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (input.debit === input.rowSum) return "settle";');
   once("src/lib/observatory/arc-gateway-verify.ts", 'if (!hit) return { kind: "absent" }');
   once("src/lib/observatory/budget.ts", 'networkLike: "circle-gateway:5042"');
   once("src/lib/observatory/budget.ts", 'if (network === "eip155:5042") return "arc"');
@@ -385,6 +396,9 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/settlement-verifier.ts", "summary.verified += gateway.settled");
   once("src/lib/observatory/settlement-verifier.ts", "summary.gatewayDeferred = gateway.deferred");
   once("src/lib/observatory/settlement-verifier.ts", "summary.gatewayNoted = gateway.noted");
+  once("src/lib/observatory/settlement-verifier.ts", "summary.gatewayExpired = gateway.expired");
+  once("src/lib/observatory/settlement-verifier.ts", "summary.gatewayOverDebit = gateway.overDebit");
+  once("src/lib/observatory/settlement-verifier.ts", "createDeadline(gatewayReadBudgetMs(deadline.remaining()))");
   once("src/lib/observatory/settlement-verifier.ts", "const gateway = await reconcileArcGatewayClaims(");
   once("src/lib/observatory/arc-gateway.ts", "if (typeof rec.maxTimeoutSeconds === \"number\" && rec.maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS) return null;");
   once("src/lib/observatory/arc-gateway.ts", 'if (!gatewayAuthWindowOk(authorization.validBefore, nowSec)) throw new Error("gateway_validity_window");');
@@ -398,7 +412,11 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway-verify.ts", "const signal = AbortSignal.timeout(budget);");
   once("src/lib/observatory/arc-gateway-verify.ts", 'if (decoded.kind === "amount") return decoded;');
   once("src/lib/observatory/arc-gateway-verify.ts", "if (read.kind === \"use_balance\" && balanceDelta !== null && balanceDelta >= 0n) return balanceDelta;");
-  once("src/lib/observatory/arc-gateway-verify.ts", "if (loaded.unresolved > 0) {");
+  once("src/lib/observatory/arc-gateway-verify.ts", "const unresolved = loaded.unresolved > 0 || buyersBlocked.has(buyer);");
+  once("src/lib/observatory/arc-gateway-verify.ts", 'if (lookup.reason === "budget") break;');
+  once("src/lib/observatory/arc-gateway-verify.ts", 'const expires = hit.kind !== "pending" && pastGrace(auth, nowSec);');
+  once("src/lib/observatory/arc-gateway-verify.ts", "export const GATEWAY_RECONCILE_BUDGET_MS = 75_000;");
+  once("src/lib/observatory/arc-gateway-verify.ts", "for (const plan of plans) {");
   once("src/lib/observatory/arc-gateway-verify.ts", "AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')");
   once("src/lib/observatory/l1-runner.ts", "if (!gatewayAuthWindowOk(gatewaySigned.authorization.validBefore, nowSec)) {");
   once("src/lib/observatory/l1-runner.ts", 'logServerErrorSafe("observatory.l1.arc_gateway_balance", error)');
@@ -406,7 +424,11 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("ops/arc-gateway/DeliveryLedger.sol", "if (recorder_ == address(0)) revert ZeroRecorder();");
   once("ops/arc-gateway/DeliveryLedger.sol", "if (delivered > purchases) revert DeliveredExceedsPurchases();");
   once("src/lib/observatory/arc-gateway-root.ts", 'return { ok: false, reason: "missing_hash" };');
-  once("scripts/arc-gateway-anchor.mjs", 'if (recorderAddress !== "" && payerAddress !== "" && recorderAddress === payerAddress) {');
+  once("scripts/arc-gateway-anchor.mjs", 'if (recorderAddress === "" || payerAddress === "") {');
+  once("scripts/arc-gateway-anchor.mjs", "if (recorderAddress === payerAddress) {");
+  once("src/lib/observatory/arc-gateway.ts", 'if (stellarRailConfigured() && network === "stellar:pubnet" && (asset === STELLAR_USDC_CLASSIC || asset === STELLAR_USDC_SAC)) return true;');
+  once("scripts/arc-gateway-records.ts", "(${dayArg}::timestamp AT TIME ZONE 'UTC')");
+  once("scripts/arc-gateway-records.ts", "gatewayRootWaitNote(dayArg)");
   assert.equal(read("src/lib/observatory/settlement-verifier.ts").includes("summary.scanned += gateway"), false);
   once("src/lib/observatory/reader.ts", "settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway })");
   const sqlText = settlementSourceSql("pu");
@@ -422,6 +444,8 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   assert.ok(!/\b(we|our|us)\b/i.test(block));
   assert.ok(block.includes("604900"));
   assert.ok(block.includes("7 days + 100 seconds"));
+  assert.ok(block.includes("8 days and 100 seconds"));
+  assert.ok(block.includes("pending row does not expire"));
   assert.equal(block.includes("getBalances"), false);
   const absent = "This value is absent while the Arc Gateway lane flag is off.";
   assert.ok(read("public/llms.txt").includes(absent));
@@ -700,7 +724,7 @@ test("日次 records の root はアンカーと一致し、ハッシュが欠�
   writeFileSync(file, JSON.stringify(built.document));
   const ran = spawnSync(process.execPath, [join(ROOT, "scripts/arc-gateway-anchor.mjs"), file], {
     encoding: "utf8",
-    env: { ...process.env, ARC_GATEWAY_RECORDER: "", ARC_GATEWAY_PAYER: "" },
+    env: { ...process.env, ARC_GATEWAY_RECORDER: BUYER, ARC_GATEWAY_PAYER: PAY_TO },
   });
   assert.equal(ran.status, 0, ran.stderr);
   assert.match(ran.stdout, new RegExp(`root ${built.document.root}`));
@@ -720,7 +744,161 @@ test("日次 records の root はアンカーと一致し、ハッシュが欠�
   });
   assert.equal(stopped.status, 2);
   assert.match(stopped.stderr, /recorder address matches the payer address/);
+  const missingPayer = spawnSync(process.execPath, [join(ROOT, "scripts/arc-gateway-anchor.mjs")], {
+    encoding: "utf8",
+    env: { ...process.env, ARC_GATEWAY_RECORDER: BUYER, ARC_GATEWAY_PAYER: "" },
+  });
+  assert.equal(missingPayer.status, 2);
+  assert.match(missingPayer.stderr, /ARC_GATEWAY_PAYER/);
+  const missingRecorder = spawnSync(process.execPath, [join(ROOT, "scripts/arc-gateway-anchor.mjs")], {
+    encoding: "utf8",
+    env: { ...process.env, ARC_GATEWAY_RECORDER: "", ARC_GATEWAY_PAYER: PAY_TO },
+  });
+  assert.equal(missingRecorder.status, 2);
+  assert.match(missingRecorder.stderr, /ARC_GATEWAY_RECORDER/);
   const send = spawnSync(join(ROOT, "node_modules/.bin/tsx"), [join(ROOT, "scripts/arc-gateway-records.ts"), "--send"], { encoding: "utf8" });
   assert.equal(send.status, 2);
   assert.match(send.stderr, /refusing to send/);
+  const note = gatewayRootWaitNote("2026-10-25");
+  assert.match(note, /8 days and 100 seconds/);
+  assert.match(note, /pending charge does not expire/);
+  assert.equal(/[;—–]/.test(note) || /--/.test(note), false);
+  assert.equal(/\b(we|our|us)\b/i.test(note), false);
+});
+
+test("減額が行の合計より大きいときは refute せず、pending は期限切れにしない", async () => {
+  const row = { id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() };
+  const base = {
+    rows: [row],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    nowSec: 1_700_000_000,
+  };
+  const over = await planGatewayReconcile({
+    ...base,
+    lookupNonce: async () => ({ ok: true, body: charged() }),
+    readDebit: async () => 1001n,
+  });
+  assert.equal(over[0]?.action, "defer");
+  assert.equal(over[0] && "reason" in over[0] ? over[0].reason : "", "gateway_debit_exceeds_rows");
+  const pending = await planGatewayReconcile({
+    ...base,
+    rows: [{ id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth({ validBefore: "100" }) }],
+    lookupNonce: async () => ({ ok: true, body: { transfers: [{ nonce: NONCE, status: "batched" }] } }),
+    readDebit: async () => 1000n,
+    nowSec: 100 + GATEWAY_NOT_CHARGED_GRACE_SECONDS + 5,
+  });
+  assert.equal(pending[0]?.action, "defer");
+  assert.equal(pending[0] && "reason" in pending[0] ? pending[0].reason : "", "gateway_pending");
+  const failed = await planGatewayReconcile({
+    ...base,
+    rows: [{ id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth({ validBefore: "100" }) }],
+    lookupNonce: async () => ({ ok: true, body: { transfers: [{ nonce: NONCE, status: "failed" }] } }),
+    readDebit: async () => 1000n,
+    nowSec: 100 + GATEWAY_NOT_CHARGED_GRACE_SECONDS + 5,
+  });
+  assert.equal(failed[0]?.action, "expire");
+});
+
+test("予算切れは購入元を止めず、判定済みの行は settle のまま残る", async () => {
+  const first = { id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() };
+  const secondNonce = `0x${"ef".repeat(32)}`;
+  const second = { id: "row-2", status: "settle_claimed", payer: BUYER, circleGateway: auth({ nonce: secondNonce }) };
+  const plans = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    readDebit: async () => 1000n,
+    lookupNonce: async (nonce) => (nonce === secondNonce ? { ok: false, reason: "budget" } : { ok: true, body: charged() }),
+    nowSec: 1_700_000_000,
+  });
+  assert.equal(plans.find((p) => p.id === "row-1")?.action, "settle");
+  assert.equal(plans.find((p) => p.id === "row-2"), undefined);
+  const blocked = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    readDebit: async () => 500n,
+    lookupNonce: async (nonce) =>
+      nonce === NONCE
+        ? { ok: false }
+        : { ok: true, body: { transfers: [{ nonce: secondNonce, status: "confirmed", txHash: TX, from: BUYER, amount: "1000" }] } },
+    nowSec: 1_700_000_000,
+  });
+  assert.equal(blocked.find((p) => p.id === "row-2")?.action, "refute");
+  const held = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    readDebit: async () => 1000n,
+    lookupNonce: async (nonce) =>
+      nonce === NONCE
+        ? { ok: false }
+        : { ok: true, body: { transfers: [{ nonce: secondNonce, status: "confirmed", txHash: TX, from: BUYER, amount: "1000" }] } },
+    nowSec: 1_700_000_000,
+  });
+  const heldRow = held.find((p) => p.id === "row-2");
+  assert.equal(heldRow?.action, "defer");
+  assert.equal(heldRow && "reason" in heldRow ? heldRow.reason : "", "gateway_batch_unresolved");
+});
+
+test("Gateway の読み予算は 60 秒から 90 秒で、短い予算でもネイティブの 8 秒を残す", () => {
+  assert.ok(GATEWAY_RECONCILE_BUDGET_MS >= 60_000 && GATEWAY_RECONCILE_BUDGET_MS <= 90_000);
+  assert.equal(gatewayReadBudgetMs(240_000), GATEWAY_RECONCILE_BUDGET_MS);
+  assert.equal(gatewayReadBudgetMs(25_000), 2_000);
+  const tight = gatewayReadBudgetMs(20_000);
+  assert.ok(tight > 0);
+  assert.ok(20_000 - tight >= 8_000);
+  assert.equal(createDeadline(tight).expired(), false);
+});
+
+test("Stellar は USDC だけを署名できる accept と数える", () => {
+  const stellar = (asset: string) => ({
+    scheme: "exact",
+    network: "stellar:pubnet",
+    amount: "1000",
+    asset,
+    payTo: "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+    maxTimeoutSeconds: 60,
+    extra: {},
+  });
+  const names = ["OBSERVATORY_STELLAR_L1_ENABLED", "STELLAR_PAYER_SECRET", "STELLAR_RPC_URL", "STELLAR_HORIZON_URL"] as const;
+  const saved = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+  for (const name of names) process.env[name] = name === "OBSERVATORY_STELLAR_L1_ENABLED" ? "true" : "set";
+  try {
+    withEnv("OBSERVATORY_ARC_GATEWAY_L1_ENABLED", "true", () => {
+      assert.equal(hasSignableOtherRailAccept([stellar("XLM")]), false);
+      assert.equal(hasSignableOtherRailAccept([stellar(STELLAR_USDC_CLASSIC)]), true);
+      assert.equal(hasSignableOtherRailAccept([stellar(STELLAR_USDC_SAC)]), true);
+      const sqlText = JSON.stringify(gatewayPrimaryExclusionSql());
+      assert.ok(sqlText.includes(STELLAR_USDC_CLASSIC));
+      assert.ok(sqlText.includes(STELLAR_USDC_SAC));
+    });
+  } finally {
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
+  }
+});
+
+test("実物の Gateway バッチ tx の購入元の減額は公開ラウンドの額と一致する", () => {
+  for (const file of ["tests/fixtures/arc-gateway-batch-r2.json", "tests/fixtures/arc-gateway-batch-r3.json"]) {
+    const fixture = JSON.parse(read(file)) as {
+      buyer: string;
+      expectedDebit: string;
+      transaction: { to: string; input: string };
+      receipt: { status: string; to: string; logs: { address: string; topics: string[]; data: string }[] };
+    };
+    assert.equal(fixture.receipt.status, "0x1");
+    const readDebit = gatewayBuyerDebit({
+      status: "success",
+      to: fixture.receipt.to,
+      calldata: fixture.transaction.input,
+      logs: fixture.receipt.logs,
+      buyer: fixture.buyer,
+      otherBuyerMovement: true,
+    });
+    assert.deepEqual(readDebit, { kind: "amount", debit: BigInt(fixture.expectedDebit) });
+  }
 });

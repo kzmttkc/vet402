@@ -575,5 +575,350 @@ if (!TEST_DB) {
       assert.equal(rows[0]?.settlement_verified, true);
       assert.equal(rows[0]?.tx_hash, null);
     });
+
+    function rowsOf(raw: unknown): Record<string, unknown>[] {
+      if (Array.isArray(raw)) return raw as Record<string, unknown>[];
+      const rows = (raw as { rows?: unknown[] } | null)?.rows;
+      return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
+    }
+
+    async function endpointId(): Promise<string> {
+      const raw = await db.execute(sql`SELECT id::text AS id FROM x402_endpoints WHERE resource_url = ${BASE_URL}`);
+      const id = rowsOf(raw)[0]?.id;
+      assert.equal(typeof id, "string");
+      return String(id);
+    }
+
+    const BUYER = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266";
+
+    await t.test("期限切れは status に書け、照合済みにはしない", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      const nonce = `0x${"a1".repeat(32)}`;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "settle_claimed",
+        network: ARC,
+        asset: ARC_USDC,
+        payTo: GW_PAYTO,
+        payer: BUYER,
+        amountUnits: "1000",
+        spentUnits: "1000",
+        rawResponseMeta: {
+          circleGatewayRail: "true",
+          circleGateway: {
+            from: BUYER,
+            to: GW_PAYTO,
+            value: "1000",
+            validAfter: "1",
+            validBefore: "100",
+            nonce,
+            signature: `0x${"11".repeat(65)}`,
+            verifyingContract: ARC_GATEWAY_WALLET,
+          },
+        },
+      });
+      const { reconcileArcGatewayClaims } = await import("@/lib/observatory/arc-gateway-verify");
+      const summary = await reconcileArcGatewayClaims({
+        db,
+        verifySignature: async () => true,
+        readDebit: async () => 1000n,
+        fetchImpl: async () => new Response(JSON.stringify({ transfers: [] }), { status: 200 }),
+      });
+      assert.equal(summary.expired, 1);
+      const after = rowsOf(await db.execute(sql`
+        SELECT status, settlement_verified, settlement_verify_reason
+        FROM x402_l1_purchases
+        WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      `));
+      assert.equal(after[0]?.status, "gateway_not_charged_expired");
+      assert.equal(after[0]?.settlement_verified, false);
+      assert.equal(after[0]?.settlement_verify_reason, "gateway_not_charged_expired");
+    });
+
+    await t.test("nonce 未取得の行は、古い pending が limit を埋めても先に進む", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      await db.execute(sql`
+        INSERT INTO x402_l1_purchases (
+          endpoint_id, status, network, asset, pay_to, payer, amount_units, spent_units, attempted_at, raw_response_meta
+        )
+        SELECT
+          ${id}::uuid,
+          'settle_claimed',
+          ${ARC},
+          ${ARC_USDC},
+          ${GW_PAYTO},
+          ${BUYER},
+          '1000',
+          '1000',
+          timestamptz '2026-01-01 00:00:00+00' + (gs * interval '1 second'),
+          jsonb_build_object(
+            'circleGatewayRail', 'true',
+            'circleGateway', jsonb_build_object(
+              'from', ${BUYER}::text,
+              'to', ${GW_PAYTO}::text,
+              'value', '1000',
+              'validAfter', '1',
+              'validBefore', '100',
+              'nonce', '0x' || lpad(to_hex(1000 + gs), 64, '0'),
+              'nonceLookup', 'pending',
+              'signature', '0x' || repeat('11', 65),
+              'verifyingContract', ${ARC_GATEWAY_WALLET}::text
+            )
+          )
+        FROM generate_series(0, 29) AS gs
+      `);
+      await db.execute(sql`
+        INSERT INTO x402_l1_purchases (
+          endpoint_id, status, network, asset, pay_to, payer, amount_units, spent_units, attempted_at, raw_response_meta
+        )
+        SELECT
+          ${id}::uuid,
+          'settle_claimed',
+          ${ARC},
+          ${ARC_USDC},
+          ${GW_PAYTO},
+          ${BUYER},
+          '1000',
+          '1000',
+          timestamptz '2026-06-01 00:00:00+00' + (gs * interval '1 second'),
+          jsonb_build_object(
+            'circleGatewayRail', 'true',
+            'circleGateway', jsonb_build_object(
+              'from', ${BUYER}::text,
+              'to', ${GW_PAYTO}::text,
+              'value', '1000',
+              'validAfter', '1',
+              'validBefore', '100',
+              'nonce', '0x' || lpad(to_hex(gs), 64, '0'),
+              'signature', '0x' || repeat('22', 65),
+              'verifyingContract', ${ARC_GATEWAY_WALLET}::text
+            )
+          )
+        FROM generate_series(0, 4) AS gs
+      `);
+      const { reconcileArcGatewayClaims } = await import("@/lib/observatory/arc-gateway-verify");
+      const summary = await reconcileArcGatewayClaims({
+        db,
+        limit: 10,
+        verifySignature: async () => true,
+        readDebit: async () => 1000n,
+        fetchImpl: (async (input: unknown) => {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input);
+          const nonce = new URL(url).searchParams.get("nonce") ?? "0x0";
+          const pending = BigInt(nonce) >= 1000n;
+          const body = pending
+            ? { transfers: [{ nonce, status: "batched" }] }
+            : { transfers: [] };
+          return new Response(JSON.stringify(body), { status: 200 });
+        }) as typeof fetch,
+      });
+      assert.equal(summary.expired, 5);
+      const after = rowsOf(await db.execute(sql`
+        SELECT
+          count(*) FILTER (WHERE status = 'gateway_not_charged_expired')::int AS expired,
+          count(*) FILTER (
+            WHERE raw_response_meta->'circleGateway'->>'nonceLookup' = 'pending'
+              AND status = 'settle_claimed'
+              AND settlement_verified IS NULL
+          )::int AS pending_open
+        FROM x402_l1_purchases
+        WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      `))[0];
+      assert.equal(Number(after?.expired), 5);
+      assert.equal(Number(after?.pending_open), 30);
+    });
+
+    await t.test("遅い Gateway API でも 2000 行の未照合は毎回進み、ネイティブ照合も走る", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      await db.execute(sql`
+        INSERT INTO x402_l1_purchases (
+          endpoint_id, status, network, asset, pay_to, payer, amount_units, spent_units, attempted_at, raw_response_meta
+        )
+        SELECT
+          ${id}::uuid,
+          'settle_claimed',
+          ${ARC},
+          ${ARC_USDC},
+          ${GW_PAYTO},
+          '0x' || lpad(to_hex(gs), 40, '0'),
+          '1000',
+          '1000',
+          timestamptz '2026-01-01 00:00:00+00' + (gs * interval '1 second'),
+          jsonb_build_object(
+            'circleGatewayRail', 'true',
+            'circleGateway', jsonb_build_object(
+              'from', '0x' || lpad(to_hex(gs), 40, '0'),
+              'to', ${GW_PAYTO}::text,
+              'value', '1000',
+              'validAfter', '1',
+              'validBefore', CASE WHEN gs % 3 = 1 THEN '100' ELSE '9999999999' END,
+              'nonce', '0x' || lpad(to_hex(gs), 64, '0'),
+              'signature', '0x' || repeat('33', 65),
+              'verifyingContract', ${ARC_GATEWAY_WALLET}::text
+            )
+          )
+        FROM generate_series(0, 1999) AS gs
+      `);
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "settle_claimed",
+        network: BASE,
+        asset: BASE_USDC,
+        payTo: BASE_ONLY_PAYTO,
+        payer: BUYER,
+        amountUnits: "1000",
+        spentUnits: "1000",
+        txHash: `0x${"cd".repeat(32)}`,
+      });
+      const { runSettlementVerification } = await import("@/lib/observatory/settlement-verifier");
+      const seen = { settled: 0, expired: 0, noted: 0 };
+      for (let run = 0; run < 3; run += 1) {
+        let calls = 0;
+        let nativeRan = false;
+        const summary = await runSettlementVerification({
+          budgetMs: 25_000,
+          deps: {
+            verifySignature: async (auth) => BigInt(auth.nonce) % 3n !== 2n,
+            readGatewayDebit: async () => 1000n,
+            gatewayFetch: (async (input: unknown) => {
+              calls += 1;
+              if (calls > 2) await new Promise((resolve) => setTimeout(resolve, 2_500));
+              const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input);
+              const nonce = new URL(url).searchParams.get("nonce") ?? "0x0";
+              const kind = Number(BigInt(nonce) % 3n);
+              if (kind === 1) return new Response(JSON.stringify({ transfers: [] }), { status: 200 });
+              const from = `0x${BigInt(nonce).toString(16).padStart(40, "0")}`;
+              return new Response(JSON.stringify({
+                transfers: [{ nonce, status: "confirmed", txHash: nonce, from, amount: "1000" }],
+              }), { status: 200 });
+            }) as typeof fetch,
+            verify: async () => {
+              nativeRan = true;
+              return { ok: false, reason: "rpc_unavailable" };
+            },
+          },
+        });
+        assert.equal(nativeRan, true);
+        assert.ok(summary.verified > 0);
+        assert.ok(summary.gatewayExpired > 0);
+        assert.ok(summary.gatewayNoted > 0);
+        assert.ok(summary.verified + summary.gatewayExpired + summary.gatewayNoted < 200);
+        const counts = rowsOf(await db.execute(sql`
+          SELECT
+            count(*) FILTER (WHERE status = 'settled' AND settlement_verified IS TRUE)::int AS settled,
+            count(*) FILTER (
+              WHERE status = 'gateway_not_charged_expired' AND settlement_verified IS FALSE
+            )::int AS expired,
+            count(*) FILTER (
+              WHERE raw_response_meta->'circleGateway'->>'note' = 'gateway_signature_invalid'
+            )::int AS noted,
+            count(*) FILTER (
+              WHERE settlement_verified IS NULL
+                AND raw_response_meta->>'circleGatewayRail' = 'true'
+                AND coalesce(raw_response_meta->'circleGateway'->>'nonceLookup', '') = ''
+            )::int AS unread
+          FROM x402_l1_purchases
+        `))[0];
+        const settled = Number(counts?.settled);
+        const expired = Number(counts?.expired);
+        const noted = Number(counts?.noted);
+        const unread = Number(counts?.unread);
+        assert.ok(settled > seen.settled);
+        assert.ok(expired > seen.expired);
+        assert.ok(noted > seen.noted);
+        assert.equal(summary.gatewayExpired, expired - seen.expired);
+        assert.ok(unread > 1500);
+        seen.settled = settled;
+        seen.expired = expired;
+        seen.noted = noted;
+      }
+    });
+
+    await t.test("減額が行より大きい照合は summary に残り、status は倒さない", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      const nonce = `0x${"b2".repeat(32)}`;
+      const tx = `0x${"c3".repeat(32)}`;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "settle_claimed",
+        network: ARC,
+        asset: ARC_USDC,
+        payTo: GW_PAYTO,
+        payer: BUYER,
+        amountUnits: "1000",
+        spentUnits: "1000",
+        rawResponseMeta: {
+          circleGatewayRail: "true",
+          circleGateway: {
+            from: BUYER,
+            to: GW_PAYTO,
+            value: "1000",
+            validAfter: "1",
+            validBefore: "9999999999",
+            nonce,
+            signature: `0x${"44".repeat(65)}`,
+            verifyingContract: ARC_GATEWAY_WALLET,
+          },
+        },
+      });
+      const { runSettlementVerification } = await import("@/lib/observatory/settlement-verifier");
+      const summary = await runSettlementVerification({
+        budgetMs: 25_000,
+        deps: {
+          verifySignature: async () => true,
+          readGatewayDebit: async () => 5000n,
+          gatewayFetch: (async () => new Response(JSON.stringify({
+            transfers: [{ nonce, status: "confirmed", txHash: tx, from: BUYER, amount: "1000" }],
+          }), { status: 200 })) as typeof fetch,
+        },
+      });
+      assert.equal(summary.gatewayOverDebit, 1);
+      assert.equal(summary.verified, 0);
+      const after = rowsOf(await db.execute(sql`
+        SELECT status, settlement_verified
+        FROM x402_l1_purchases
+        WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      `))[0];
+      assert.equal(after?.status, "settle_claimed");
+      assert.equal(after?.settlement_verified, null);
+    });
+
+    await t.test("日次の境界はセッションのタイムゾーンではなく UTC", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      const inserted = rowsOf(await db.execute(sql`
+        INSERT INTO x402_l1_purchases (
+          endpoint_id, status, network, asset, pay_to, payer, amount_units, spent_units, attempted_at
+        )
+        VALUES (
+          ${id}::uuid, 'settle_claimed', ${BASE}, ${BASE_USDC}, ${BASE_ONLY_PAYTO}, ${BUYER}, '1000', '1000',
+          timestamptz '2026-10-25 15:00:00+00'
+        )
+        RETURNING id::text AS id
+      `));
+      const rowId = String(inserted[0]?.id);
+      const compared = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT set_config('TimeZone', 'Asia/Tokyo', true)`);
+        return rowsOf(await tx.execute(sql`
+          SELECT
+            count(*) FILTER (
+              WHERE attempted_at >= ('2026-10-25'::timestamp AT TIME ZONE 'UTC')
+                AND attempted_at < (('2026-10-25'::timestamp + interval '1 day') AT TIME ZONE 'UTC')
+            )::int AS utc_day,
+            count(*) FILTER (
+              WHERE attempted_at >= '2026-10-25'::date
+                AND attempted_at < '2026-10-26'::date
+            )::int AS session_day
+          FROM x402_l1_purchases
+          WHERE id = ${rowId}::uuid
+        `))[0];
+      });
+      assert.equal(Number(compared?.utc_day), 1);
+      assert.equal(Number(compared?.session_day), 0);
+    });
   });
 }
