@@ -140,12 +140,17 @@ export function interpretGatewayTransfers(body: unknown, nonce: string): Gateway
 }
 
 /**
- * Settle when the batch debit equals the sum of our rows in that batch.
- * An unread debit, or a signed sibling whose nonce is still unread, defers.
- * A different debit refutes. The buyer's full transfer history is not an input.
+ * Settle only when the debit equals the sum of the vet402 rows in that batch.
+ * A smaller debit refutes: the batch names a charge the wallet did not take.
+ * A larger debit defers: other movement may be mixed in.
+ * An unread debit defers. An unread sibling, or a blocked buyer, stops settle only.
+ * The buyer's full transfer history is not an input.
  */
 export function judgeGatewayBatch(input: { rowSum: bigint; debit: bigint | null; unresolved?: boolean }): "settle" | "refute" | "defer" {
-  if (input.unresolved || input.debit === null) return "defer";
+  if (input.debit === null) return "defer";
+  if (input.debit < input.rowSum) return "refute";
+  if (input.debit > input.rowSum) return "defer";
+  if (input.unresolved) return "defer";
   if (input.debit === input.rowSum) return "settle";
   return "refute";
 }
@@ -296,7 +301,7 @@ export type GatewayPlan =
   | { id: string; action: "note"; reason: "gateway_signature_invalid" }
   | { id: string; action: "defer"; reason: string };
 
-type Lookup = { ok: true; body: unknown } | { ok: false };
+type Lookup = { ok: true; body: unknown } | { ok: false; reason?: "budget" | "error" };
 
 function valueOf(auth: GatewayAuth | null): bigint | null {
   if (!auth || !/^[0-9]+$/.test(auth.value)) return null;
@@ -314,10 +319,12 @@ function pastGrace(auth: GatewayAuth, nowSec: number): boolean {
 }
 
 /**
- * Pure plan. No charge stays deferred until validBefore plus the grace, then it expires.
- * Expiry is not a refutation. A charge whose debit does not match the sum of our rows in
- * that batch is a refute. A bad signature is a note, not a seller finding.
- * A signed row for the same buyer whose nonce is still unread defers the whole batch.
+ * Pure plan. Absent and failed stay deferred until validBefore plus the grace, then they expire.
+ * Pending stays deferred, including after that grace. Expiry is not a refutation.
+ * A debit below the sum of the vet402 rows refutes. A larger debit defers.
+ * A bad signature is a note, not a seller finding.
+ * An unread sibling, or a buyer whose lookup failed, stops settle only.
+ * A spent read budget stops this pass. It does not block the buyer.
  */
 export async function planGatewayReconcile(input: {
   rows: GatewayClaimRow[];
@@ -375,6 +382,7 @@ export async function planGatewayReconcile(input: {
       lookup = { ok: false };
     }
     if (!lookup.ok) {
+      if (lookup.reason === "budget") break;
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_api_error" });
       buyersBlocked.add(buyer);
       continue;
@@ -385,9 +393,13 @@ export async function planGatewayReconcile(input: {
       buyersBlocked.add(buyer);
       continue;
     }
-    if (hit.kind === "absent" || hit.kind === "pending" || hit.kind === "failed") {
+    if (hit.kind === "absent" || hit.kind === "failed" || hit.kind === "pending") {
       await remember(row.id, buyer, hit.kind, null);
-      if (pastGrace(auth, nowSec)) {
+      const expires = hit.kind !== "pending" && pastGrace(auth, nowSec);
+      if (hit.kind === "pending" && pastGrace(auth, nowSec)) {
+        logServerErrorSafe("arc-gateway-verify.pending", `row ${row.id} still pending after validBefore plus grace`);
+      }
+      if (expires) {
         plans.set(row.id, { id: row.id, action: "expire", reason: GATEWAY_NOT_CHARGED_EXPIRED });
       } else {
         const reason = hit.kind === "absent" ? "gateway_not_charged" : `gateway_${hit.kind}`;
@@ -411,19 +423,11 @@ export async function planGatewayReconcile(input: {
     const split = key.indexOf("|");
     const batchTx = key.slice(0, split);
     const buyer = key.slice(split + 1);
-    if (buyersBlocked.has(buyer)) {
-      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unresolved" });
-      continue;
-    }
     let loaded: { rows: GatewayClaimRow[]; unresolved: number } = { rows: [], unresolved: 0 };
     try {
       loaded = (await input.loadBatch?.(batchTx, buyer)) ?? loaded;
     } catch {
       for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unreadable" });
-      continue;
-    }
-    if (loaded.unresolved > 0) {
-      for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unresolved" });
       continue;
     }
     const seen = new Set(members.map((m) => m.row.id));
@@ -450,12 +454,20 @@ export async function planGatewayReconcile(input: {
     } catch {
       debit = null;
     }
-    const verdict = judgeGatewayBatch({ rowSum, debit, unresolved: false });
+    const unresolved = loaded.unresolved > 0 || buyersBlocked.has(buyer);
+    const verdict = judgeGatewayBatch({ rowSum, debit, unresolved });
     const gatewayStatus = members[0]?.gatewayStatus ?? "confirmed";
+    let deferReason = "gateway_debit_deferred";
+    if (debit !== null && debit > rowSum) {
+      deferReason = "gateway_debit_exceeds_rows";
+      logServerErrorSafe("arc-gateway-verify.debit_exceeds_rows", `batch ${batchTx} buyer ${buyer} debit ${debit} rows ${rowSum}`);
+    } else if (unresolved) {
+      deferReason = "gateway_batch_unresolved";
+    }
     for (const m of members) {
       if (verdict === "settle") plans.set(m.row.id, { id: m.row.id, action: "settle", batchTx, gatewayStatus });
       else if (verdict === "refute") plans.set(m.row.id, { id: m.row.id, action: "refute", reason: "gateway_debit_mismatch" });
-      else plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_debit_deferred" });
+      else plans.set(m.row.id, { id: m.row.id, action: "defer", reason: deferReason });
     }
   }
 
@@ -471,21 +483,48 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
 }
 
 async function gatewayFetch(url: string, fetchImpl: typeof fetch, fetchTimeoutMs: number, deadline?: Deadline): Promise<Lookup> {
-  if (deadline?.expired()) return { ok: false };
+  if (deadline?.expired()) return { ok: false, reason: "budget" };
   const budget = deadline ? deadline.budgetFor(fetchTimeoutMs) : fetchTimeoutMs;
-  if (budget <= 0) return { ok: false };
+  if (budget <= 0) return { ok: false, reason: "budget" };
   const signal = AbortSignal.timeout(budget);
   try {
     const res = await fetchImpl(url, { signal });
-    if (!res.ok) return { ok: false };
+    if (!res.ok) return { ok: false, reason: "error" };
     return { ok: true, body: await res.json() };
   } catch (error) {
     logServerErrorSafe("arc-gateway-verify.fetch", error);
-    return { ok: false };
+    if (deadline?.expired()) return { ok: false, reason: "budget" };
+    return { ok: false, reason: "error" };
   }
 }
 
-export type GatewayReconcileSummary = { settled: number; refuted: number; deferred: number; noted: number; expired: number };
+/** Read budget for one Gateway pass. Writes of judged rows sit outside this clock. */
+export const GATEWAY_RECONCILE_BUDGET_MS = 75_000;
+/** Kept for those writes so a spent read budget does not discard a finished group. */
+export const GATEWAY_WRITE_RESERVE_MS = 15_000;
+const NATIVE_VERIFY_FLOOR_MS = 8_000;
+
+/**
+ * How long this pass may spend reading Gateway.
+ * The verify cron's 240s budget, inside maxDuration 300s, gets the 75s read budget.
+ * A shorter outer budget keeps the native 8s floor so a hung Gateway call still leaves native work.
+ */
+export function gatewayReadBudgetMs(outerRemainingMs: number): number {
+  if (!Number.isFinite(outerRemainingMs)) return GATEWAY_RECONCILE_BUDGET_MS;
+  const room = outerRemainingMs - GATEWAY_WRITE_RESERVE_MS - NATIVE_VERIFY_FLOOR_MS;
+  if (room >= GATEWAY_RECONCILE_BUDGET_MS) return GATEWAY_RECONCILE_BUDGET_MS;
+  if (room > 0) return room;
+  return Math.max(0, Math.min(GATEWAY_FETCH_TIMEOUT_MS, outerRemainingMs - NATIVE_VERIFY_FLOOR_MS));
+}
+
+export type GatewayReconcileSummary = {
+  settled: number;
+  refuted: number;
+  deferred: number;
+  noted: number;
+  expired: number;
+  overDebit: number;
+};
 
 /** Load Gateway rows and apply the plan. A throw here must not fail the native verifier. */
 export async function reconcileArcGatewayClaims(options?: {
@@ -498,7 +537,7 @@ export async function reconcileArcGatewayClaims(options?: {
   nowSec?: number;
   verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
 }): Promise<GatewayReconcileSummary> {
-  const empty: GatewayReconcileSummary = { settled: 0, refuted: 0, deferred: 0, noted: 0, expired: 0 };
+  const empty: GatewayReconcileSummary = { settled: 0, refuted: 0, deferred: 0, noted: 0, expired: 0, overDebit: 0 };
   const db = options?.db === undefined ? getDb() : options.db;
   if (!db) return empty;
   if (options?.deadline?.expired()) return empty;
@@ -506,6 +545,7 @@ export async function reconcileArcGatewayClaims(options?: {
   const fetchTimeoutMs = options?.fetchTimeoutMs ?? GATEWAY_FETCH_TIMEOUT_MS;
   const readDebit = options?.readDebit ?? ((tx, buyer) => readArcGatewayDebit(tx, buyer, options?.deadline));
   const limit = options?.limit ?? 100;
+  // Rows with no nonceLookup come first, so a pending head does not fill the limit.
   const raw = await db.execute(sql`
     SELECT pu.id::text AS id, pu.status, pu.payer, pu.raw_response_meta->'circleGateway' AS circle_gateway
     FROM x402_l1_purchases pu
@@ -513,7 +553,7 @@ export async function reconcileArcGatewayClaims(options?: {
       AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
       AND jsonb_typeof(pu.raw_response_meta->'circleGateway') = 'object'
       AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
-    ORDER BY (coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '') DESC, pu.attempted_at ASC
+    ORDER BY (coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '') DESC, pu.attempted_at ASC, pu.id ASC
     LIMIT ${limit}
   `);
   const rows: GatewayClaimRow[] = rowsOf(raw).map((r) => ({
@@ -588,9 +628,9 @@ export async function reconcileArcGatewayClaims(options?: {
   });
   const summary = { ...empty };
   for (const plan of plans) {
-    if (options?.deadline?.expired()) break;
     if (plan.action === "defer") {
       summary.deferred++;
+      if (plan.reason === "gateway_debit_exceeds_rows") summary.overDebit++;
       continue;
     }
     if (plan.action === "note") {

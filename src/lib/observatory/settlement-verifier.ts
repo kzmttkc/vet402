@@ -27,7 +27,7 @@ import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
-import { reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
+import { gatewayReadBudgetMs, reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
@@ -200,6 +200,10 @@ export type VerifySettlementsSummary = {
   gatewayDeferred: number;
   /** Gateway の照合が署名不正として印だけ残した件数。0 が正常。 */
   gatewayNoted: number;
+  /** Gateway の照合が期限切れにした件数。0 が正常。refuted には数えない。 */
+  gatewayExpired: number;
+  /** 減額が自社の行の合計より大きく、settle も refute もせず保留にした件数。 */
+  gatewayOverDebit: number;
 };
 
 /**
@@ -263,6 +267,8 @@ export async function runSettlementVerification(options?: {
     wrongChainNetworks: [],
     gatewayDeferred: 0,
     gatewayNoted: 0,
+    gatewayExpired: 0,
+    gatewayOverDebit: 0,
   };
   // wrong_chain を出したチェーン。その行は読みに行かず wrong_chain として deferred に積む。
   const wrongChain = new Set<string>();
@@ -272,7 +278,7 @@ export async function runSettlementVerification(options?: {
   // Circle Gateway の行は tx_hash が空なので下の SELECT に入らない。請求とバッチ tx の残高の減りは
   // 別経路。ここで落ちてもネイティブの照合は続ける。scanned には数えない（下の SELECT の件数のまま）。
   try {
-    const gatewayDeadline = createDeadline(Math.min(8_000, deadline.remaining()));
+    const gatewayDeadline = createDeadline(gatewayReadBudgetMs(deadline.remaining()));
     const gateway = await reconcileArcGatewayClaims({
       db,
       ...(options?.deps?.gatewayFetch ? { fetchImpl: options.deps.gatewayFetch } : {}),
@@ -286,6 +292,8 @@ export async function runSettlementVerification(options?: {
     summary.refuted += gateway.refuted;
     summary.gatewayDeferred = gateway.deferred;
     summary.gatewayNoted = gateway.noted;
+    summary.gatewayExpired = gateway.expired;
+    summary.gatewayOverDebit = gateway.overDebit;
   } catch (error) {
     logServerErrorSafe("settlement-verifier.arc_gateway", error);
   }
