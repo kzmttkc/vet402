@@ -1,0 +1,194 @@
+{
+ "chainId": 5042,
+ "contract": "0x1c9c78007d66c62c23db6795b4ebdee248c63c1b",
+ "tx": "0xcd51164fd727990a05729b0374b40fac7655d1433f2c1a15b5f3b9d1bec96171",
+ "block": 27783460,
+ "status": "success",
+ "recorder": "0xC07FbE308913e51a88A51Ab4315d1EcE3B883284",
+ "compiler": "0.8.28+commit.7893614a.Emscripten.clang",
+ "optimizer": {
+  "enabled": true,
+  "runs": 200
+ },
+ "evmVersion": "cancun",
+ "source": "ops/arc-gateway/DeliveryLedger.sol",
+ "deployedAt": "2026-10-25T10:55:19.761Z",
+ "payer": "0xc9c7b38C0942914fC8EA12063BC92dcd3b581670",
+ "note": "Arc mainnet DeliveryLedger for the Circle Gateway lane day roots. The recorder key is used only for day roots and is not the payer.",
+ "abi": [
+  {
+   "inputs": [
+    {
+     "internalType": "address",
+     "name": "recorder_",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "nonpayable",
+   "type": "constructor"
+  },
+  {
+   "inputs": [],
+   "name": "DeliveredExceedsPurchases",
+   "type": "error"
+  },
+  {
+   "inputs": [],
+   "name": "EmptyRoot",
+   "type": "error"
+  },
+  {
+   "inputs": [],
+   "name": "NotRecorder",
+   "type": "error"
+  },
+  {
+   "inputs": [],
+   "name": "ZeroRecorder",
+   "type": "error"
+  },
+  {
+   "anonymous": false,
+   "inputs": [
+    {
+     "indexed": true,
+     "internalType": "uint256",
+     "name": "round",
+     "type": "uint256"
+    },
+    {
+     "indexed": true,
+     "internalType": "bytes32",
+     "name": "root",
+     "type": "bytes32"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint32",
+     "name": "purchases",
+     "type": "uint32"
+    },
+    {
+     "indexed": false,
+     "internalType": "uint32",
+     "name": "delivered",
+     "type": "uint32"
+    },
+    {
+     "indexed": false,
+     "internalType": "string",
+     "name": "uri",
+     "type": "string"
+    }
+   ],
+   "name": "RoundAnchored",
+   "type": "event"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "bytes32",
+     "name": "root",
+     "type": "bytes32"
+    },
+    {
+     "internalType": "uint32",
+     "name": "purchases",
+     "type": "uint32"
+    },
+    {
+     "internalType": "uint32",
+     "name": "delivered",
+     "type": "uint32"
+    },
+    {
+     "internalType": "string",
+     "name": "uri",
+     "type": "string"
+    }
+   ],
+   "name": "anchor",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "round",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "nonpayable",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "recorder",
+   "outputs": [
+    {
+     "internalType": "address",
+     "name": "",
+     "type": "address"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [
+    {
+     "internalType": "uint256",
+     "name": "round",
+     "type": "uint256"
+    }
+   ],
+   "name": "roundOf",
+   "outputs": [
+    {
+     "components": [
+      {
+       "internalType": "bytes32",
+       "name": "root",
+       "type": "bytes32"
+      },
+      {
+       "internalType": "uint32",
+       "name": "purchases",
+       "type": "uint32"
+      },
+      {
+       "internalType": "uint32",
+       "name": "delivered",
+       "type": "uint32"
+      },
+      {
+       "internalType": "uint64",
+       "name": "anchoredAt",
+       "type": "uint64"
+      },
+      {
+       "internalType": "string",
+       "name": "uri",
+       "type": "string"
+      }
+     ],
+     "internalType": "struct DeliveryLedger.Round",
+     "name": "",
+     "type": "tuple"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  },
+  {
+   "inputs": [],
+   "name": "rounds",
+   "outputs": [
+    {
+     "internalType": "uint256",
+     "name": "",
+     "type": "uint256"
+    }
+   ],
+   "stateMutability": "view",
+   "type": "function"
+  }
+ ]
+}

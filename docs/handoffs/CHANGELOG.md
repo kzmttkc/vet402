@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-25 Arc Gateway lane is on in production, DeliveryLedger deployed
+
+- **What**: Production env now has `OBSERVATORY_ARC_GATEWAY_L1_ENABLED=true` and `L1_ARC_GATEWAY_DAILY_CAP_USD=0.3` (redeployed 19:55 JST). The payer `0xc9c7…1670` holds 10 USDC in Circle Gateway on Arc (owner deposit with depositFor). DeliveryLedger is at `0x1c9c78007d66c62c23db6795b4ebdee248c63c1b` on Arc mainnet (tx `0xcd51164f…6171`, block 27783460). The recorder is `0xC07FbE308913e51a88A51Ab4315d1EcE3B883284`, a key used only for day roots. The record is `ops/arc-gateway/deployment.json`.
+- **Why**: Circle Grants Milestone 1 (Gateway settlements matched by the Gateway API, and a day root on Arc for 30 days in a row).
+- **Impact**: The first Gateway purchase is the 12:00 UTC l1-purchase run, and the first match is the 14:00 UTC verify run. At 0.3 USD a day the 10 USDC deposit lasts about 30 days. Day roots are not sent yet. The anchor script still refuses to send, and a day root is final 8 days and 100 seconds after its UTC day.
+- **Commits**: this entry and `ops/arc-gateway/deployment.json`.
+
 ## 2026-10-25 Gateway reconcile reads 2000 rows, flag still off
 
 - **What**: One Gateway pass loads 2000 rows. The native verifier still loads 200. One fifth of the Gateway rows is reserved for purchases already looked up (absent, pending, failed, or a charge still open). An HTTP error or an incomplete transfer page does not add the buyer to buyersBlocked. The failed row stays without nonceLookup. The signature time rule remains the block on a batch that could still contain that authorization. The verify cron stays at `0 14 * * *`.
