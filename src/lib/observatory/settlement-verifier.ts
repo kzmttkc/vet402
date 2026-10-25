@@ -222,6 +222,8 @@ export type SettlementVerifierDeps = {
   gatewayFetch?: typeof fetch;
   /** バッチ tx での購入元の GatewayWallet 残高の減り。未指定なら ARC_RPC_URL。読めなければ照合は保留。 */
   readGatewayDebit?: (txHash: string, buyer: string) => Promise<bigint | null>;
+  /** バッチ tx のブロック時刻（秒）。未指定なら ARC_RPC_URL。読めなければ、未照会が残る購入元のバッチは保留。 */
+  readGatewayBatchTime?: (txHash: string) => Promise<bigint | null>;
   /** 1 回の Gateway API 呼び出しの上限。未指定は数秒。 */
   gatewayFetchTimeoutMs?: number;
   /** 署名の回復。未指定はピンしたドメインでの EIP-712。 */
@@ -283,6 +285,7 @@ export async function runSettlementVerification(options?: {
       db,
       ...(options?.deps?.gatewayFetch ? { fetchImpl: options.deps.gatewayFetch } : {}),
       ...(options?.deps?.readGatewayDebit ? { readDebit: options.deps.readGatewayDebit } : {}),
+      ...(options?.deps?.readGatewayBatchTime ? { readBatchTime: options.deps.readGatewayBatchTime } : {}),
       ...(options?.deps?.gatewayFetchTimeoutMs !== undefined ? { fetchTimeoutMs: options.deps.gatewayFetchTimeoutMs } : {}),
       ...(options?.deps?.verifySignature ? { verifySignature: options.deps.verifySignature } : {}),
       deadline: gatewayDeadline,

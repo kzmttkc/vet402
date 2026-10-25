@@ -20,7 +20,7 @@ import {
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import type { Deadline } from "@/lib/util/deadline";
+import { createDeadline, type Deadline } from "@/lib/util/deadline";
 import { updateWithCorrection } from "./corrections";
 import { ARC_USDC } from "./x402-payer";
 import {
@@ -143,7 +143,7 @@ export function interpretGatewayTransfers(body: unknown, nonce: string): Gateway
  * Settle only when the debit equals the sum of the vet402 rows in that batch.
  * A smaller debit refutes: the batch names a charge the wallet did not take.
  * A larger debit defers: other movement may be mixed in.
- * An unread debit defers. An unread sibling, or a blocked buyer, stops settle only.
+ * An unread debit defers. An unread authorization signed early enough for this batch, or a blocked buyer, stops settle only.
  * The buyer's full transfer history is not an input.
  */
 export function judgeGatewayBatch(input: { rowSum: bigint; debit: bigint | null; unresolved?: boolean }): "settle" | "refute" | "defer" {
@@ -323,15 +323,25 @@ function pastGrace(auth: GatewayAuth, nowSec: number): boolean {
  * Pending stays deferred, including after that grace. Expiry is not a refutation.
  * A debit below the sum of the vet402 rows refutes. A larger debit defers.
  * A bad signature is a note, not a seller finding.
- * An unread sibling, or a buyer whose lookup failed, stops settle only.
- * A spent read budget stops this pass. It does not block the buyer.
+ * An unread authorization stops settle only when its signature time can still sit in this batch.
+ * A buyer whose lookup failed stops settle. A spent read budget stops this pass and does not block the buyer.
  */
 export async function planGatewayReconcile(input: {
   rows: GatewayClaimRow[];
   nowSec?: number;
   lookupNonce: (nonce: string) => Promise<Lookup>;
   readDebit: (txHash: string, buyer: string) => Promise<bigint | null>;
-  loadBatch?: (txHash: string, buyer: string) => Promise<{ rows: GatewayClaimRow[]; unresolved: number }>;
+  /** Block timestamp of the batch tx, in seconds. Null blocks any unread authorization. */
+  readBatchTime?: (txHash: string) => Promise<bigint | null>;
+  loadBatch?: (
+    txHash: string,
+    buyer: string,
+  ) => Promise<{
+    rows: GatewayClaimRow[];
+    unresolved: number;
+    /** Set by the DB loader. Earliest unread validAfter, plus rows whose validAfter cannot be read. */
+    unread?: { earliestValidAfter: string | null; unreadable: number };
+  }>;
   rememberLookup?: (id: string, lookup: string, batchTx: string | null) => Promise<void>;
   verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
 }): Promise<GatewayPlan[]> {
@@ -423,12 +433,31 @@ export async function planGatewayReconcile(input: {
     const split = key.indexOf("|");
     const batchTx = key.slice(0, split);
     const buyer = key.slice(split + 1);
-    let loaded: { rows: GatewayClaimRow[]; unresolved: number } = { rows: [], unresolved: 0 };
+    let loaded: {
+      rows: GatewayClaimRow[];
+      unresolved: number;
+      unread?: { earliestValidAfter: string | null; unreadable: number };
+    } = { rows: [], unresolved: 0 };
     try {
       loaded = (await input.loadBatch?.(batchTx, buyer)) ?? loaded;
     } catch {
       for (const m of members) plans.set(m.row.id, { id: m.row.id, action: "defer", reason: "gateway_batch_unreadable" });
       continue;
+    }
+    if (loaded.unread) {
+      const hasUnread = loaded.unread.unreadable > 0 || loaded.unread.earliestValidAfter !== null;
+      let unresolvedCount = 0;
+      if (hasUnread) {
+        let blockTime: bigint | null = null;
+        try {
+          blockTime = (await input.readBatchTime?.(batchTx)) ?? null;
+        } catch {
+          blockTime = null;
+        }
+        const signatureTime = loaded.unread.unreadable > 0 ? null : gatewaySignatureTimeSec(loaded.unread.earliestValidAfter);
+        unresolvedCount = unreadAuthorizationCanEnterBatch(signatureTime, blockTime) ? 1 : 0;
+      }
+      loaded = { ...loaded, unresolved: unresolvedCount };
     }
     const seen = new Set(members.map((m) => m.row.id));
     let rowSum = 0n;
@@ -482,6 +511,23 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
   return Array.isArray(rows) ? (rows as Record<string, unknown>[]) : [];
 }
 
+/** SQL count. A missing or odd value blocks, so a bad read does not settle early. */
+function countSql(v: unknown): number {
+  if (typeof v === "number" && Number.isInteger(v) && v >= 0) return v;
+  if (typeof v === "string" && /^[0-9]+$/.test(v)) return Number(v);
+  return 1;
+}
+
+/** Integer text from a numeric aggregate. A trailing .0 is still that integer. */
+function numericText(v: unknown): string | null {
+  if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) return String(v);
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  if (/^[0-9]+$/.test(trimmed)) return trimmed;
+  if (/^[0-9]+\.0+$/.test(trimmed)) return trimmed.slice(0, trimmed.indexOf("."));
+  return null;
+}
+
 async function gatewayFetch(url: string, fetchImpl: typeof fetch, fetchTimeoutMs: number, deadline?: Deadline): Promise<Lookup> {
   if (deadline?.expired()) return { ok: false, reason: "budget" };
   const budget = deadline ? deadline.budgetFor(fetchTimeoutMs) : fetchTimeoutMs;
@@ -498,9 +544,36 @@ async function gatewayFetch(url: string, fetchImpl: typeof fetch, fetchTimeoutMs
   }
 }
 
+/**
+ * BatchEvmScheme stores validAfter as the signature second minus 600.
+ * circleGateway has no separate signed-at column. Signature time is validAfter plus this lead.
+ */
+export const GATEWAY_VALID_AFTER_LEAD_SECONDS = 600;
+/**
+ * Signer clock versus the batch block timestamp, after the 600 second lead is added back.
+ * The native authorization uses the same 60 seconds (validAfter = now minus 60).
+ * An unread signature later than the block time minus this margin cannot be inside that batch.
+ */
+export const GATEWAY_BATCH_CLOCK_SKEW_SECONDS = 60;
+
+/** Signature second for a stored validAfter. Null when the field is not a base-10 integer. */
+export function gatewaySignatureTimeSec(validAfter: string | null): bigint | null {
+  if (validAfter === null || !/^[0-9]+$/.test(validAfter)) return null;
+  return BigInt(validAfter) + BigInt(GATEWAY_VALID_AFTER_LEAD_SECONDS);
+}
+
+/**
+ * True when this unread authorization can still sit in the batch mined at blockTimeSec.
+ * A missing clock blocks. A signature later than blockTimeSec minus the skew margin does not.
+ */
+export function unreadAuthorizationCanEnterBatch(signatureTimeSec: bigint | null, blockTimeSec: bigint | null): boolean {
+  if (signatureTimeSec === null || blockTimeSec === null) return true;
+  return signatureTimeSec <= blockTimeSec - BigInt(GATEWAY_BATCH_CLOCK_SKEW_SECONDS);
+}
+
 /** Read budget for one Gateway pass. Writes of judged rows sit outside this clock. */
 export const GATEWAY_RECONCILE_BUDGET_MS = 75_000;
-/** Kept for those writes so a spent read budget does not discard a finished group. */
+/** Kept for those writes so a spent read budget does not discard a finished group. Chain reads of groups already looked up use the same reserve, starting when the first of those reads runs. */
 export const GATEWAY_WRITE_RESERVE_MS = 15_000;
 const NATIVE_VERIFY_FLOOR_MS = 8_000;
 
@@ -536,6 +609,7 @@ export async function reconcileArcGatewayClaims(options?: {
   deadline?: Deadline;
   nowSec?: number;
   verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
+  readBatchTime?: (txHash: string) => Promise<bigint | null>;
 }): Promise<GatewayReconcileSummary> {
   const empty: GatewayReconcileSummary = { settled: 0, refuted: 0, deferred: 0, noted: 0, expired: 0, overDebit: 0 };
   const db = options?.db === undefined ? getDb() : options.db;
@@ -543,7 +617,14 @@ export async function reconcileArcGatewayClaims(options?: {
   if (options?.deadline?.expired()) return empty;
   const fetchImpl = options?.fetchImpl ?? fetch;
   const fetchTimeoutMs = options?.fetchTimeoutMs ?? GATEWAY_FETCH_TIMEOUT_MS;
-  const readDebit = options?.readDebit ?? ((tx, buyer) => readArcGatewayDebit(tx, buyer, options?.deadline));
+  // The API clock is often spent when judging starts. This clock starts on the first chain read of a group already looked up.
+  let judgeDeadline: Deadline | null = null;
+  const judgeClock = () => {
+    judgeDeadline ??= createDeadline(GATEWAY_WRITE_RESERVE_MS);
+    return judgeDeadline;
+  };
+  const readDebit = options?.readDebit ?? ((tx, buyer) => readArcGatewayDebit(tx, buyer, judgeClock()));
+  const readBatchTime = options?.readBatchTime ?? ((tx) => readArcGatewayBatchTime(tx, judgeClock()));
   const limit = options?.limit ?? 100;
   // Rows with no nonceLookup come first, so a pending head does not fill the limit.
   const raw = await db.execute(sql`
@@ -575,6 +656,7 @@ export async function reconcileArcGatewayClaims(options?: {
         options?.deadline,
       ),
     readDebit,
+    readBatchTime,
     rememberLookup: async (id, lookup, batchTx) => {
       if (batchTx) {
         await db.execute(sql`
@@ -600,8 +682,20 @@ export async function reconcileArcGatewayClaims(options?: {
           AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'batchTxSeen', pu.raw_response_meta->'circleGateway'->>'batchTx', '')) = lower(${txHash})
           AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'from', pu.payer, '')) = lower(${buyer})
       `);
-      const unresolvedRaw = await db.execute(sql`
-        SELECT count(*)::text AS n
+      const timeRaw = await db.execute(sql`
+        SELECT
+          count(*) FILTER (
+            WHERE coalesce(pu.raw_response_meta->'circleGateway'->>'validAfter', '') !~ '^[0-9]+$'
+          )::int AS unreadable,
+          count(*) FILTER (
+            WHERE coalesce(pu.raw_response_meta->'circleGateway'->>'validAfter', '') ~ '^[0-9]+$'
+          )::int AS readable,
+          min(
+            CASE
+              WHEN coalesce(pu.raw_response_meta->'circleGateway'->>'validAfter', '') ~ '^[0-9]+$'
+              THEN (pu.raw_response_meta->'circleGateway'->>'validAfter')::numeric
+            END
+          )::bigint::text AS earliest
         FROM x402_l1_purchases pu
         WHERE pu.settlement_verified IS NULL
           AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
@@ -612,8 +706,10 @@ export async function reconcileArcGatewayClaims(options?: {
           AND lower(coalesce(pu.raw_response_meta->'circleGateway'->>'from', pu.payer, '')) = lower(${buyer})
           AND pu.status = ANY (ARRAY['settle_claimed','settle_failed','delivered_no_receipt','settle_claimed_unverifiable'])
       `);
-      const n = rowsOf(unresolvedRaw)[0]?.n;
-      const unresolved = typeof n === "string" && /^[0-9]+$/.test(n) ? Number(n) : 1;
+      const timeRow = rowsOf(timeRaw)[0];
+      const unreadable = countSql(timeRow?.unreadable);
+      const readable = countSql(timeRow?.readable);
+      const earliest = numericText(timeRow?.earliest);
       return {
         rows: rowsOf(sib).map((r) => ({
           id: String(r.id),
@@ -622,7 +718,11 @@ export async function reconcileArcGatewayClaims(options?: {
           circleGateway: r.circle_gateway,
           settled: String(r.status) === "settled",
         })),
-        unresolved,
+        unresolved: 0,
+        unread: {
+          earliestValidAfter: earliest,
+          unreadable: unreadable + (readable > 0 && earliest === null ? readable : 0),
+        },
       };
     },
   });
@@ -715,6 +815,25 @@ function logTouchesBuyer(logs: readonly TxLog[], buyer: string): boolean {
       log.address.toLowerCase() === ARC_GATEWAY_WALLET.toLowerCase() &&
       log.topics.some((t) => t.toLowerCase() === topic),
   );
+}
+
+/** Block timestamp of a Gateway batch tx, in seconds. Null when the clock cannot be read. */
+export async function readArcGatewayBatchTime(txHash: string, deadline?: Deadline): Promise<bigint | null> {
+  if (deadline?.expired()) return null;
+  const rpc = process.env.ARC_RPC_URL?.trim();
+  if (!rpc) return null;
+  try {
+    const { createPublicClient, http } = await import("viem");
+    const timeout = Math.min(4_000, deadline ? Math.max(1, deadline.budgetFor(4_000)) : 4_000);
+    const client = createPublicClient({ transport: http(rpc, { timeout, retryCount: 0 }) });
+    const rc = await client.getTransactionReceipt({ hash: txHash as Hex });
+    if (deadline?.expired()) return null;
+    const block = await client.getBlock({ blockNumber: rc.blockNumber });
+    return block.timestamp;
+  } catch (error) {
+    logServerErrorSafe("arc-gateway-verify.batch_time", error);
+    return null;
+  }
 }
 
 /** On-chain debit for this buyer in the batch tx. Null defers. Never uses a mixed balance delta to refute. */
