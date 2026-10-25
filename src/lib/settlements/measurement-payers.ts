@@ -57,7 +57,8 @@ export const MEASUREMENT_PAYERS: readonly MeasurementPayer[] = [
       "The method looks for those agreements, measures how many of them hold, and compares the prices of the endpoints that hold them.",
     addedOn: "2026-10-24",
     basis:
-      "Seller report in kzmttkc/vet402 issue 43. The method page says the method measures how many agreements hold, and that the wallet pays for probes.",
+      "Seller report in kzmttkc/vet402 issue 43. The method page says the method measures how many agreements hold, and that the wallet pays for probes. " +
+      "On 2026-10-25 vet402 read the 24 settlement transactions the seller listed on Base: each is a USDC transfer from this address to that seller.",
   },
   {
     chain: BASE,
@@ -68,7 +69,8 @@ export const MEASUREMENT_PAYERS: readonly MeasurementPayer[] = [
     sourceQuote: "Ten measurement errors have been found and fixed so far",
     addedOn: "2026-10-24",
     basis:
-      "Seller report in kzmttkc/vet402 issue 43. The field station page calls the work a field record of knocks and paid buys, and names measurement errors in that record.",
+      "Seller report in kzmttkc/vet402 issue 43. The field station page calls the work a field record of knocks and paid buys, and names measurement errors in that record. " +
+      "On 2026-10-25 vet402 read the 1 settlement transaction the seller listed on Base: a USDC transfer from this address to that seller.",
   },
 ];
 
