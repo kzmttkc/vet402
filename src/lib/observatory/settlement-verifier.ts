@@ -27,7 +27,7 @@ import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
 import { updateWithCorrection } from "./corrections";
-import { gatewayReadBudgetMs, reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
+import { GATEWAY_RECONCILE_ROW_LIMIT, gatewayReadBudgetMs, reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 
@@ -289,7 +289,8 @@ export async function runSettlementVerification(options?: {
       ...(options?.deps?.gatewayFetchTimeoutMs !== undefined ? { fetchTimeoutMs: options.deps.gatewayFetchTimeoutMs } : {}),
       ...(options?.deps?.verifySignature ? { verifySignature: options.deps.verifySignature } : {}),
       deadline: gatewayDeadline,
-      limit,
+      // ネイティブの limit は下の SELECT のまま。Gateway は読み予算に合わせた別の件数。
+      limit: GATEWAY_RECONCILE_ROW_LIMIT,
     });
     summary.verified += gateway.settled;
     summary.refuted += gateway.refuted;

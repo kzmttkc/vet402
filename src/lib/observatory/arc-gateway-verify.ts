@@ -17,7 +17,7 @@ import {
   verifyTypedData,
   type Hex,
 } from "viem";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { createDeadline, type Deadline } from "@/lib/util/deadline";
@@ -143,7 +143,7 @@ export function interpretGatewayTransfers(body: unknown, nonce: string): Gateway
  * Settle only when the debit equals the sum of the vet402 rows in that batch.
  * A smaller debit refutes: the batch names a charge the wallet did not take.
  * A larger debit defers: other movement may be mixed in.
- * An unread debit defers. An unread authorization signed early enough for this batch, or a blocked buyer, stops settle only.
+ * An unread debit defers. An unread authorization signed early enough for this batch, or a buyer whose lookup could not be stored, stops settle only.
  * The buyer's full transfer history is not an input.
  */
 export function judgeGatewayBatch(input: { rowSum: bigint; debit: bigint | null; unresolved?: boolean }): "settle" | "refute" | "defer" {
@@ -324,7 +324,9 @@ function pastGrace(auth: GatewayAuth, nowSec: number): boolean {
  * A debit below the sum of the vet402 rows refutes. A larger debit defers.
  * A bad signature is a note, not a seller finding.
  * An unread authorization stops settle only when its signature time can still sit in this batch.
- * A buyer whose lookup failed stops settle. A spent read budget stops this pass and does not block the buyer.
+ * A failed nonce lookup or an incomplete page does not block the buyer. That row stays without nonceLookup.
+ * Remembering a lookup, when that write throws, still blocks the buyer for this pass.
+ * A spent read budget stops this pass and does not block the buyer.
  */
 export async function planGatewayReconcile(input: {
   rows: GatewayClaimRow[];
@@ -394,13 +396,11 @@ export async function planGatewayReconcile(input: {
     if (!lookup.ok) {
       if (lookup.reason === "budget") break;
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_api_error" });
-      buyersBlocked.add(buyer);
       continue;
     }
     const hit = interpretGatewayTransfers(lookup.body, auth.nonce);
     if (hit.kind === "incomplete") {
       plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_incomplete" });
-      buyersBlocked.add(buyer);
       continue;
     }
     if (hit.kind === "absent" || hit.kind === "failed" || hit.kind === "pending") {
@@ -573,6 +573,57 @@ export function unreadAuthorizationCanEnterBatch(signatureTimeSec: bigint | null
 
 /** Read budget for one Gateway pass. Writes of judged rows sit outside this clock. */
 export const GATEWAY_RECONCILE_BUDGET_MS = 75_000;
+/**
+ * Rows loaded for one Gateway pass. Separate from the native verifier limit of 200.
+ * 75 seconds at about 37 ms per nonce lookup covers 2000 lookups.
+ * One fifth is reserved for rows already looked up, so the fresh slot is 1600.
+ * A day that buys 1500 rows still fits in that fresh slot.
+ */
+export const GATEWAY_RECONCILE_ROW_LIMIT = 2_000;
+/** Share of the Gateway row limit reserved for rows already looked up. Below 5 rows the reread slot is 0. */
+export const GATEWAY_REREAD_SHARE_NUMERATOR = 1;
+export const GATEWAY_REREAD_SHARE_DENOMINATOR = 5;
+
+const gatewayOpenRowSql = sql`pu.settlement_verified IS NULL
+      AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
+      AND jsonb_typeof(pu.raw_response_meta->'circleGateway') = 'object'
+      AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')`;
+const gatewayUnreadSql = sql`AND coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '' /* unread queue */`;
+const gatewayRereadSql = sql`AND coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') IN ('absent', 'pending', 'failed', 'charged')`;
+
+/** Fresh rows are unread. Reread rows are the reserved share, 0 until the limit reaches the denominator. */
+export function gatewayReadSlots(limit: number): { fresh: number; reread: number } {
+  if (!Number.isFinite(limit) || limit <= 0) return { fresh: 0, reread: 0 };
+  const n = Math.floor(limit);
+  const denom = GATEWAY_REREAD_SHARE_DENOMINATOR;
+  const numer = GATEWAY_REREAD_SHARE_NUMERATOR;
+  if (denom <= 0 || numer <= 0) return { fresh: n, reread: 0 };
+  const reread = Math.min(n, Math.floor((n * numer) / denom));
+  return { fresh: n - reread, reread };
+}
+
+/**
+ * Mix unread and already looked up rows so a budget stop still reaches both.
+ * With a one fifth share, each group is four fresh rows then one reread row.
+ * A zero share returns only the fresh rows.
+ */
+export function interleaveGatewayRows<T>(fresh: readonly T[], reread: readonly T[]): T[] {
+  const rereadPer = GATEWAY_REREAD_SHARE_NUMERATOR;
+  const freshPer = GATEWAY_REREAD_SHARE_DENOMINATOR - rereadPer;
+  if (rereadPer <= 0 || freshPer <= 0) return rereadPer <= 0 ? [...fresh] : [...reread];
+  const out: T[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < fresh.length && j < reread.length) {
+    const freshStop = Math.min(fresh.length, i + freshPer);
+    const rereadStop = Math.min(reread.length, j + rereadPer);
+    while (i < freshStop) out.push(fresh[i++] as T);
+    while (j < rereadStop) out.push(reread[j++] as T);
+  }
+  while (i < fresh.length) out.push(fresh[i++] as T);
+  while (j < reread.length) out.push(reread[j++] as T);
+  return out;
+}
 /** Kept for those writes so a spent read budget does not discard a finished group. Chain reads of groups already looked up use the same reserve, starting when the first of those reads runs. */
 export const GATEWAY_WRITE_RESERVE_MS = 15_000;
 const NATIVE_VERIFY_FLOOR_MS = 8_000;
@@ -625,24 +676,30 @@ export async function reconcileArcGatewayClaims(options?: {
   };
   const readDebit = options?.readDebit ?? ((tx, buyer) => readArcGatewayDebit(tx, buyer, judgeClock()));
   const readBatchTime = options?.readBatchTime ?? ((tx) => readArcGatewayBatchTime(tx, judgeClock()));
-  const limit = options?.limit ?? 100;
-  // Rows with no nonceLookup come first, so a pending head does not fill the limit.
-  const raw = await db.execute(sql`
-    SELECT pu.id::text AS id, pu.status, pu.payer, pu.raw_response_meta->'circleGateway' AS circle_gateway
-    FROM x402_l1_purchases pu
-    WHERE pu.settlement_verified IS NULL
-      AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
-      AND jsonb_typeof(pu.raw_response_meta->'circleGateway') = 'object'
-      AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')
-    ORDER BY (coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '') DESC, pu.attempted_at ASC, pu.id ASC
-    LIMIT ${limit}
-  `);
-  const rows: GatewayClaimRow[] = rowsOf(raw).map((r) => ({
-    id: String(r.id),
-    status: String(r.status),
-    payer: typeof r.payer === "string" ? r.payer : null,
-    circleGateway: r.circle_gateway,
-  }));
+  const limit = options?.limit ?? GATEWAY_RECONCILE_ROW_LIMIT;
+  const slots = gatewayReadSlots(limit);
+  // The fresh slot is unread rows. The reread slot is absent, pending, failed, and a charge still open.
+  // A pending head cannot fill the pass, and old looked up rows are read again before unread rows run out.
+  const loadQueue = async (extra: SQL, take: number): Promise<GatewayClaimRow[]> => {
+    if (take <= 0) return [];
+    const raw = await db.execute(sql`
+      SELECT pu.id::text AS id, pu.status, pu.payer, pu.raw_response_meta->'circleGateway' AS circle_gateway
+      FROM x402_l1_purchases pu
+      WHERE ${gatewayOpenRowSql}
+        ${extra}
+      ORDER BY pu.attempted_at ASC, pu.id ASC
+      LIMIT ${take}
+    `);
+    return rowsOf(raw).map((r) => ({
+      id: String(r.id),
+      status: String(r.status),
+      payer: typeof r.payer === "string" ? r.payer : null,
+      circleGateway: r.circle_gateway,
+    }));
+  };
+  const fresh = await loadQueue(gatewayUnreadSql, slots.fresh);
+  const reread = await loadQueue(gatewayRereadSql, slots.reread);
+  const rows = interleaveGatewayRows(fresh, reread);
   if (rows.length === 0) return empty;
   const plans = await planGatewayReconcile({
     rows,
