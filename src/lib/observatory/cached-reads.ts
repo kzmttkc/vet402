@@ -113,6 +113,9 @@ export function overviewFromCache(c: CachedOverview): ObservatoryOverview {
   return { ...c, rows: c.rows.map((r) => ({ ...r, lastProbedAt: r.lastProbedAt ? new Date(r.lastProbedAt) : null })) };
 }
 
+/** これより深いページは毎回読む。 */
+export const OVERVIEW_CACHED_MAX_PAGE = 10;
+
 const overviewCached = unstable_cache(
   async (key: string) => overviewToCache(await getObservatoryOverview(JSON.parse(key) as ObservatoryOverviewQuery)),
   ["observatory:overview:v1"],
@@ -121,6 +124,8 @@ const overviewCached = unstable_cache(
 
 /** 絞り込みごとに使い回す。鍵は値のある項目だけを名前順に並べた JSON。 */
 export async function getObservatoryOverviewCached(query: ObservatoryOverviewQuery): Promise<ObservatoryOverview> {
+  // 深いページは鍵の数を増やすだけなので使い回さない（2026-10-25 審査: page に上限が無く鍵が無制限に増える）。
+  if ((query.page ?? 1) > OVERVIEW_CACHED_MAX_PAGE) return getObservatoryOverview(query);
   const entries = Object.entries(query).filter(([, v]) => v !== undefined && v !== null).sort(([a], [b]) => a.localeCompare(b));
   return overviewFromCache(await overviewCached(JSON.stringify(Object.fromEntries(entries))));
 }
