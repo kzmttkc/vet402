@@ -8,6 +8,10 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+# Documentation and code
+
+When a repository's documentation and its existing code disagree, follow the conventions used in the existing code, and in your final reply point out each inconsistency you found between the documentation and the code.
+
 # ⛔ ETHOnline 2026 Continuity フリーズ（2026-08-26 〜 09-04 00:00 UTC）
 
 このリポは ETHGlobal の **Continuity トラック**で提出される。賞の対象は**会期中(09-04→09-13)の差分だけ**で、
