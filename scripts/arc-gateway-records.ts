@@ -2,6 +2,7 @@
 // Reads the database. Does not send a transaction and does not read a private key.
 import { writeFileSync } from "node:fs";
 import postgres from "postgres";
+import { gatewayRootWaitNote } from "@/lib/observatory/arc-gateway";
 import { buildGatewayDayRecords, type GatewayDaySourceRow } from "@/lib/observatory/arc-gateway-root";
 
 const args = process.argv.slice(2);
@@ -53,8 +54,8 @@ async function main(dayArg: string, outArg: string, databaseUrl: string): Promis
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.status = 'settled'
         AND pu.raw_response_meta->>'circleGatewayRail' = 'true'
-        AND pu.attempted_at >= ${dayArg}::date
-        AND pu.attempted_at < (${dayArg}::date + interval '1 day')
+        AND pu.attempted_at >= (${dayArg}::timestamp AT TIME ZONE 'UTC')
+        AND pu.attempted_at < ((${dayArg}::timestamp + interval '1 day') AT TIME ZONE 'UTC')
       ORDER BY pu.attempted_at ASC, pu.id ASC
     `;
     const rows: GatewayDaySourceRow[] = found.map((r) => ({
@@ -75,6 +76,7 @@ async function main(dayArg: string, outArg: string, databaseUrl: string): Promis
     console.log(`root ${built.document.root}`);
     console.log(`purchases ${built.document.purchases}`);
     console.log(`delivered ${built.document.delivered}`);
+    console.log(gatewayRootWaitNote(dayArg));
     console.log(`wrote ${outArg}`);
   } finally {
     await sql.end();

@@ -12,7 +12,11 @@ if (args.some((a) => a === "--send" || a === "--broadcast")) {
 
 const recorderAddress = (process.env.ARC_GATEWAY_RECORDER ?? "").trim().toLowerCase();
 const payerAddress = (process.env.ARC_GATEWAY_PAYER ?? "").trim().toLowerCase();
-if (recorderAddress !== "" && payerAddress !== "" && recorderAddress === payerAddress) {
+if (recorderAddress === "" || payerAddress === "") {
+  console.error("ARC_GATEWAY_RECORDER and ARC_GATEWAY_PAYER must both be set");
+  process.exit(2);
+}
+if (recorderAddress === payerAddress) {
   console.error("recorder address matches the payer address");
   process.exit(2);
 }

@@ -38,8 +38,24 @@ export const ARC_GATEWAY_MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60 + 100;
 /** After validBefore, wait this long before closing an uncharged row. */
 export const GATEWAY_NOT_CHARGED_GRACE_SECONDS = 24 * 60 * 60;
 export { GATEWAY_NOT_CHARGED_EXPIRED } from "./arc-gateway-words";
-/** One Gateway API call. The verifier also keeps a budget and then moves on to native rows. */
+/** One Gateway API call. The verifier also keeps a read budget, writes judged rows, then moves on to native rows. */
 export const GATEWAY_FETCH_TIMEOUT_MS = 2_000;
+/**
+ * How long a UTC day's root can still gain a row. An authorization lasts at most
+ * 7 days + 100 seconds, then an uncharged absent or failed row waits 24 hours.
+ * 8 days and 100 seconds after that UTC day ends.
+ */
+export const GATEWAY_ROOT_WAIT_SECONDS = ARC_GATEWAY_MAX_TIMEOUT_SECONDS + GATEWAY_NOT_CHARGED_GRACE_SECONDS;
+
+/** vet402 pays these Stellar assets and no others. Same strings as stellar402-payer.ts. */
+const STELLAR_USDC_CLASSIC = "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const STELLAR_USDC_SAC = "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75";
+
+export function gatewayRootWaitNote(day: string): string {
+  const days = Math.floor(GATEWAY_ROOT_WAIT_SECONDS / 86_400);
+  const extra = GATEWAY_ROOT_WAIT_SECONDS % 86_400;
+  return `day ${day} UTC. This root is not final until ${days} days and ${extra} seconds after this UTC day ends. A pending charge does not expire, so the root stays open while any row attempted on this day is still unverified.`;
+}
 /** Reservation marker. Native Arc cap counts rows that lack it. */
 export const ARC_GATEWAY_RAIL_KEY = "circleGatewayRail";
 /** Signed authorization plus the batch tx, once Circle names one. */
@@ -310,8 +326,8 @@ function stellarRailConfigured(): boolean {
 /**
  * True when an enabled rail other than native Arc would sign one of these accepts.
  * Arc is excluded here because nativeArcSignable already covers it.
- * A non-EVM rail counts when its flag is on and the key and RPC env vars are non-empty.
- * The values of those env vars are not read.
+ * A non-EVM rail counts when its flag is on, the key and RPC env vars are non-empty,
+ * and the asset is one vet402 can pay. The values of those env vars are not read.
  */
 export function hasSignableOtherRailAccept(accepts: readonly unknown[]): boolean {
   if (hasSignableEnabledEvmAccept(accepts, ARC_CAIP2)) return true;
@@ -332,7 +348,7 @@ export function hasSignableOtherRailAccept(accepts: readonly unknown[]): boolean
     ) {
       return true;
     }
-    if (stellarRailConfigured() && network === "stellar:pubnet") return true;
+    if (stellarRailConfigured() && network === "stellar:pubnet" && (asset === STELLAR_USDC_CLASSIC || asset === STELLAR_USDC_SAC)) return true;
   }
   return false;
 }
@@ -351,7 +367,7 @@ function existsOtherSignable(): string {
     parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'xrpl:0' AND (upper(o->>'asset') = '524C555344000000000000000000000000000000' OR o->>'asset' = 'RLUSD') AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
   }
   if (stellarRailConfigured()) {
-    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'stellar:pubnet' AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
+    parts.push(`EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} o WHERE o->>'scheme' = 'exact' AND o->>'network' = 'stellar:pubnet' AND (o->>'asset' = '${STELLAR_USDC_CLASSIC}' OR o->>'asset' = '${STELLAR_USDC_SAC}') AND o->>'payTo' <> '' AND o->>'amount' ~ '^[1-9][0-9]{0,29}$')`);
   }
   return parts.length === 0 ? "FALSE" : parts.join(" OR ");
 }
