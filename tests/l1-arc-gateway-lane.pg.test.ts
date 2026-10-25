@@ -4,6 +4,7 @@
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-arc-gateway-lane.pg.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -28,6 +29,8 @@ if (!TEST_DB) {
   const DUAL_URL = "https://dual-arc.example/api";
   const BASE_GW_URL = "https://base-gw.example/api";
   const BASE_URL = "https://base-only.example/api";
+  const ARC_BASE_URL = "https://arc-base.example/api";
+  const ARC_BASE_PAYTO = "0x7777777777777777777777777777777777777777";
 
   test("L1 Arc Gateway lane", async (t) => {
     const { runL1Batch } = await import("@/lib/observatory/l1-runner");
@@ -92,6 +95,7 @@ if (!TEST_DB) {
       [DUAL_URL]: [native(DUAL_PAYTO), gw(DUAL_PAYTO)],
       [BASE_GW_URL]: [base(BASE_PAYTO), gw(BASE_GW_PAYTO)],
       [BASE_URL]: [base(BASE_ONLY_PAYTO)],
+      [ARC_BASE_URL]: [gw(ARC_BASE_PAYTO), base(ARC_BASE_PAYTO)],
     };
 
     let txSeq = 0;
@@ -188,6 +192,11 @@ if (!TEST_DB) {
       });
 
     await t.test("旗 off と true 以外: Gateway の出品に 1 リクエストも出さない", async () => {
+      const runner = readFileSync(new URL("../src/lib/observatory/l1-runner.ts", import.meta.url), "utf8");
+      assert.equal(
+        runner.includes('{ chain: "arc_gateway", ready: isArcGatewayL1Enabled() && !!process.env.ARC_RPC_URL?.trim() },'),
+        true,
+      );
       for (const value of [undefined, "1", "TRUE", "on"]) {
         await seed([GW_URL, BASE_URL]);
         if (value === undefined) delete process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED;
@@ -302,6 +311,269 @@ if (!TEST_DB) {
       await run(w.fetchImpl, async () => 5_000_000n);
       assert.equal(w.seen.filter((s) => s.url === GW_URL).length, 0);
       assert.equal((await ledger(GW_URL)).length, 0);
+    });
+
+    async function paidOutcome(status: number | null) {
+      await seed([GW_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      delete process.env.OBSERVATORY_ARC_L1_ENABLED;
+      delete process.env.L1_ARC_GATEWAY_DAILY_CAP_USD;
+      const w = wall();
+      const fetchImpl: typeof fetch = async (input, init) => {
+        const headers = new Headers(init?.headers);
+        const paid = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+        if (!paid) return w.fetchImpl(input, init);
+        if (status === null) throw new Error("seller_silent");
+        return new Response(JSON.stringify({ data: "no" }), { status, headers: { "content-type": "application/json" } });
+      };
+      await run(fetchImpl, async () => 5_000_000n);
+      return ledger(GW_URL);
+    }
+
+    await t.test("応答なし・402・500 は settle_claimed にしない", async () => {
+      for (const status of [null, 402, 500] as const) {
+        const rows = await paidOutcome(status);
+        assert.equal(rows.length, 1, String(status));
+        assert.equal(rows[0]?.status, "settle_failed", String(status));
+        assert.equal(rows[0]?.rail, "true");
+        assert.equal(rows[0]?.tx_hash, null);
+      }
+      const quiet = await paidOutcome(200);
+      assert.equal(quiet[0]?.status, "delivered_no_receipt");
+      assert.equal(quiet[0]?.rail, "true");
+    });
+
+    await t.test("旗 off では Base と Gateway を受ける出品を Base で買う", async () => {
+      await seed([BASE_GW_URL, ARC_BASE_URL]);
+      delete process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED;
+      process.env.OBSERVATORY_ARC_L1_ENABLED = "true";
+      const w = wall();
+      await run(w.fetchImpl, async () => 5_000_000n);
+      const basePaid = w.seen.filter((s) => s.url === BASE_GW_URL && s.paid);
+      assert.equal(basePaid.length, 1);
+      assert.equal(basePaid[0]?.accepted?.network, BASE);
+      assert.notEqual((await ledger(BASE_GW_URL))[0]?.rail, "true");
+      const arcPaid = w.seen.filter((s) => s.url === ARC_BASE_URL && s.paid);
+      assert.equal(arcPaid.length, 1);
+      assert.equal(arcPaid[0]?.accepted?.network, BASE);
+      assert.notEqual((await ledger(ARC_BASE_URL))[0]?.rail, "true");
+    });
+
+    await t.test("旗 on でも Base で払える出品は Gateway で払わない", async () => {
+      await seed([BASE_GW_URL, ARC_BASE_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_ARC_L1_ENABLED = "true";
+      const w = wall();
+      await run(w.fetchImpl, async () => 5_000_000n);
+      for (const url of [BASE_GW_URL, ARC_BASE_URL]) {
+        const paid = w.seen.filter((s) => s.url === url && s.paid);
+        assert.equal(paid.length, 1, url);
+        assert.equal(paid[0]?.accepted?.network, BASE, url);
+        assert.notEqual((await ledger(url))[0]?.rail, "true");
+      }
+    });
+
+    await t.test("旗 on の onlyEndpointId は Gateway だけの 1 件を買う", async () => {
+      await seed([GW_URL, BASE_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const raw = await db.execute(sql`SELECT id::text AS id FROM x402_endpoints WHERE resource_url = ${GW_URL}`);
+      const id = ((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { id: string }[])[0]?.id;
+      assert.ok(id);
+      const w = wall();
+      await runL1Batch({
+        limit: 10,
+        onlyEndpointId: id,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: funded,
+        readArcGatewayAvailable: async () => 5_000_000n,
+      });
+      const paid = w.seen.filter((s) => s.paid);
+      assert.equal(paid.length, 1);
+      assert.equal((paid[0]?.accepted?.extra as { name?: string } | undefined)?.name, "GatewayWalletBatched");
+      assert.equal((await ledger(BASE_URL)).length, 0);
+    });
+
+    await t.test("ライブの 402 に Base があれば Gateway の拒否で止めない", async () => {
+      await seed([GW_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const wrong = "0x9999999999999999999999999999999999999999";
+      const w = wall({ [GW_URL]: [gw(wrong), base(GW_PAYTO)] });
+      await run(w.fetchImpl, async () => 5_000_000n);
+      const paid = w.seen.filter((s) => s.paid);
+      assert.equal(paid.length, 1);
+      assert.equal(paid[0]?.accepted?.network, BASE);
+      const rows = await ledger(GW_URL);
+      assert.equal(rows.length, 1);
+      assert.notEqual(rows[0]?.status, "payto_mismatch");
+      assert.notEqual(rows[0]?.rail, "true");
+    });
+
+    await t.test("署名後の窓が上限を外れたら行もヘッダも出さない", async () => {
+      await seed([GW_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const w = wall();
+      await runL1Batch({
+        limit: 10,
+        fetchImpl: w.fetchImpl,
+        getPayerUsdcBalance: funded,
+        readArcGatewayAvailable: async () => 5_000_000n,
+        signArcGateway: async () => ({
+          header: { headerName: "PAYMENT-SIGNATURE", headerValue: "not-sent" },
+          authorization: {
+            from: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            to: GW_PAYTO,
+            value: "1000",
+            validAfter: "1",
+            validBefore: String(Math.floor(Date.now() / 1000) + 10_000_000),
+            nonce: `0x${"ab".repeat(32)}`,
+          },
+          signature: `0x${"11".repeat(65)}`,
+          verifyingContract: ARC_GATEWAY_WALLET,
+        }),
+      });
+      assert.equal(w.seen.filter((s) => s.paid).length, 0);
+      assert.deepEqual(await ledger(GW_URL), []);
+    });
+
+    await t.test("残高が読めない失敗はログに残る", async () => {
+      await seed([GW_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const w = wall();
+      const lines: string[] = [];
+      const orig = console.error;
+      console.error = (...args: unknown[]) => {
+        lines.push(args.map(String).join(" "));
+      };
+      try {
+        await run(w.fetchImpl, async () => {
+          throw new Error("balance down");
+        });
+      } finally {
+        console.error = orig;
+      }
+      assert.equal(w.seen.filter((s) => s.paid).length, 0);
+      assert.ok(lines.some((line) => line.includes("[vouch] observatory.l1.arc_gateway_balance")));
+    });
+
+    await t.test("応答しない Gateway API でもネイティブの照合は走る", async () => {
+      await seed([BASE_URL]);
+      const raw = await db.execute(sql`SELECT id::text AS id FROM x402_endpoints WHERE resource_url = ${BASE_URL}`);
+      const id = ((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { id: string }[])[0]?.id;
+      assert.ok(id);
+      const nonce = `0x${"ab".repeat(32)}`;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "settle_claimed",
+        network: BASE,
+        asset: BASE_USDC,
+        payTo: BASE_ONLY_PAYTO,
+        payer: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        amountUnits: "1000",
+        spentUnits: "1000",
+        txHash: `0x${"cd".repeat(32)}`,
+      });
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "delivered_no_receipt",
+        network: ARC,
+        asset: ARC_USDC,
+        payTo: GW_PAYTO,
+        payer: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        amountUnits: "1000",
+        spentUnits: "1000",
+        rawResponseMeta: {
+          circleGatewayRail: "true",
+          circleGateway: {
+            from: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            to: GW_PAYTO,
+            value: "1000",
+            validAfter: "1",
+            validBefore: "9999999999",
+            nonce,
+            signature: `0x${"11".repeat(65)}`,
+            verifyingContract: ARC_GATEWAY_WALLET,
+          },
+        },
+      });
+      const { runSettlementVerification } = await import("@/lib/observatory/settlement-verifier");
+      let sawSignal = false;
+      let nativeRan = false;
+      await runSettlementVerification({
+        budgetMs: 20_000,
+        deps: {
+          gatewayFetchTimeoutMs: 200,
+          verifySignature: async () => true,
+          readGatewayDebit: async () => 1000n,
+          gatewayFetch: (async (_input: unknown, init?: RequestInit) => {
+            sawSignal = Boolean(init?.signal);
+            if (!init?.signal) throw new Error("missing signal");
+            await new Promise<void>((_resolve, reject) => {
+              const timer = setTimeout(() => reject(new Error("hung")), 30_000);
+              init.signal?.addEventListener("abort", () => {
+                clearTimeout(timer);
+                reject(new Error("aborted"));
+              });
+            });
+            return new Response("no");
+          }) as typeof fetch,
+          verify: async () => {
+            nativeRan = true;
+            return { ok: false, reason: "rpc_unavailable" };
+          },
+        },
+      });
+      assert.equal(sawSignal, true);
+      assert.equal(nativeRan, true);
+    });
+
+    await t.test("delivered_no_receipt は請求が一致したら settled になる", async () => {
+      await seed([BASE_URL]);
+      const raw = await db.execute(sql`SELECT id::text AS id FROM x402_endpoints WHERE resource_url = ${BASE_URL}`);
+      const id = ((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { id: string }[])[0]?.id;
+      assert.ok(id);
+      const nonce = `0x${"ef".repeat(32)}`;
+      const tx = `0x${"12".repeat(32)}`;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "delivered_no_receipt",
+        network: ARC,
+        asset: ARC_USDC,
+        payTo: GW_PAYTO,
+        payer: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        amountUnits: "1000",
+        spentUnits: "1000",
+        rawResponseMeta: {
+          circleGatewayRail: "true",
+          circleGateway: {
+            from: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+            to: GW_PAYTO,
+            value: "1000",
+            validAfter: "1",
+            validBefore: "9999999999",
+            nonce,
+            signature: `0x${"22".repeat(65)}`,
+            verifyingContract: ARC_GATEWAY_WALLET,
+          },
+        },
+      });
+      const { reconcileArcGatewayClaims } = await import("@/lib/observatory/arc-gateway-verify");
+      const summary = await reconcileArcGatewayClaims({
+        db,
+        verifySignature: async () => true,
+        readDebit: async () => 1000n,
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ transfers: [{ nonce, status: "confirmed", txHash: tx, from: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266", amount: "1000" }] }), { status: 200 }),
+      });
+      assert.equal(summary.settled, 1);
+      const after = await db.execute(sql`
+        SELECT status, settlement_verified, tx_hash
+        FROM x402_l1_purchases
+        WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      `);
+      const rows = (Array.isArray(after) ? after : (after as { rows?: unknown[] }).rows ?? []) as { status: string; settlement_verified: boolean; tx_hash: string | null }[];
+      assert.equal(rows[0]?.status, "settled");
+      assert.equal(rows[0]?.settlement_verified, true);
+      assert.equal(rows[0]?.tx_hash, null);
     });
   });
 }
