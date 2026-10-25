@@ -38,11 +38,16 @@ import {
   encodeSubmitBatchCalldata,
   GATEWAY_BATCH_CLOCK_SKEW_SECONDS,
   GATEWAY_RECONCILE_BUDGET_MS,
+  GATEWAY_RECONCILE_ROW_LIMIT,
+  GATEWAY_REREAD_SHARE_DENOMINATOR,
+  GATEWAY_REREAD_SHARE_NUMERATOR,
   GATEWAY_VALID_AFTER_LEAD_SECONDS,
   gatewayAuthorizationRecovers,
   gatewayBuyerDebit,
   gatewayReadBudgetMs,
+  gatewayReadSlots,
   gatewaySignatureTimeSec,
+  interleaveGatewayRows,
   interpretGatewayTransfers,
   judgeGatewayBatch,
   planGatewayReconcile,
@@ -420,6 +425,10 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway-verify.ts", 'if (lookup.reason === "budget") break;');
   once("src/lib/observatory/arc-gateway-verify.ts", 'const expires = hit.kind !== "pending" && pastGrace(auth, nowSec);');
   once("src/lib/observatory/arc-gateway-verify.ts", "export const GATEWAY_RECONCILE_BUDGET_MS = 75_000;");
+  once("src/lib/observatory/arc-gateway-verify.ts", "export const GATEWAY_RECONCILE_ROW_LIMIT = 2_000;");
+  once("src/lib/observatory/arc-gateway-verify.ts", "export const GATEWAY_REREAD_SHARE_NUMERATOR = 1;");
+  once("src/lib/observatory/arc-gateway-verify.ts", "export const GATEWAY_REREAD_SHARE_DENOMINATOR = 5;");
+  once("src/lib/observatory/settlement-verifier.ts", "limit: GATEWAY_RECONCILE_ROW_LIMIT,");
   once("src/lib/observatory/arc-gateway-verify.ts", "for (const plan of plans) {");
   once("src/lib/observatory/arc-gateway-verify.ts", "AND pu.status IN ('settle_claimed', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable')");
   once("src/lib/observatory/l1-runner.ts", "if (!gatewayAuthWindowOk(gatewaySigned.authorization.validBefore, nowSec)) {");
@@ -881,20 +890,91 @@ test("予算切れは購入元を止めず、判定済みの行は settle のま
     nowSec: 1_700_000_000,
   });
   assert.equal(blocked.find((p) => p.id === "row-2")?.action, "refute");
-  const held = await planGatewayReconcile({
+});
+
+test("API の失敗と不完全な頁は購入元を止めない。記録できない照会は止める", async () => {
+  const first = { id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() };
+  const secondNonce = `0x${"ef".repeat(32)}`;
+  const secondTx = `0x${"ab".repeat(32)}`;
+  const second = { id: "row-2", status: "settle_claimed", payer: BUYER, circleGateway: auth({ nonce: secondNonce }) };
+  const chargedSecond = {
+    transfers: [{ nonce: secondNonce, status: "confirmed", txHash: secondTx, from: BUYER, amount: "1000" }],
+  };
+  const open = await planGatewayReconcile({
     rows: [first, second],
     verifySignature: async () => true,
     loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
     readDebit: async () => 1000n,
-    lookupNonce: async (nonce) =>
-      nonce === NONCE
-        ? { ok: false }
-        : { ok: true, body: { transfers: [{ nonce: secondNonce, status: "confirmed", txHash: TX, from: BUYER, amount: "1000" }] } },
+    lookupNonce: async (nonce) => (nonce === NONCE ? { ok: false } : { ok: true, body: chargedSecond }),
     nowSec: 1_700_000_000,
   });
-  const heldRow = held.find((p) => p.id === "row-2");
-  assert.equal(heldRow?.action, "defer");
-  assert.equal(heldRow && "reason" in heldRow ? heldRow.reason : "", "gateway_batch_unresolved");
+  const failed = open.find((p) => p.id === "row-1");
+  assert.equal(failed?.action, "defer");
+  assert.equal(failed && "reason" in failed ? failed.reason : "", "gateway_api_error");
+  assert.equal(open.find((p) => p.id === "row-2")?.action, "settle");
+  const full = Array.from({ length: 100 }, (_, i) => ({ nonce: `0x${i.toString(16).padStart(64, "0")}`, status: "confirmed", txHash: TX, amount: "1" }));
+  const page = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    readDebit: async () => 1000n,
+    lookupNonce: async (nonce) => (nonce === NONCE ? { ok: true, body: { transfers: full } } : { ok: true, body: chargedSecond }),
+    nowSec: 1_700_000_000,
+  });
+  const missed = page.find((p) => p.id === "row-1");
+  assert.equal(missed?.action, "defer");
+  assert.equal(missed && "reason" in missed ? missed.reason : "", "gateway_incomplete");
+  assert.equal(page.find((p) => p.id === "row-2")?.action, "settle");
+  const stillUnread = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    readDebit: async () => 1000n,
+    readBatchTime: async () => 2_000_000_000n,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0, unread: { earliestValidAfter: "1000", unreadable: 0 } }),
+    lookupNonce: async (nonce) => (nonce === NONCE ? { ok: false } : { ok: true, body: chargedSecond }),
+    nowSec: 1_700_000_000,
+  });
+  const held = stillUnread.find((p) => p.id === "row-2");
+  assert.equal(held?.action, "defer");
+  assert.equal(held && "reason" in held ? held.reason : "", "gateway_batch_unresolved");
+  const unstored = await planGatewayReconcile({
+    rows: [first, second],
+    verifySignature: async () => true,
+    loadBatch: async () => ({ rows: [] as GatewayClaimRow[], unresolved: 0 }),
+    readDebit: async () => 1000n,
+    rememberLookup: async () => {
+      throw new Error("remember_failed");
+    },
+    lookupNonce: async (nonce) => (nonce === NONCE ? { ok: true, body: charged() } : { ok: true, body: chargedSecond }),
+    nowSec: 1_700_000_000,
+  });
+  const blocked = unstored.find((p) => p.id === "row-1");
+  assert.equal(blocked?.action, "defer");
+  assert.equal(blocked && "reason" in blocked ? blocked.reason : "", "gateway_batch_unresolved");
+  assert.equal(unstored.find((p) => p.id === "row-2")?.action, "defer");
+});
+
+test("読み直しの枠は Gateway の limit の 5 分の 1 で、5 件未満は 0", () => {
+  assert.equal(GATEWAY_RECONCILE_ROW_LIMIT, 2_000);
+  assert.equal(GATEWAY_REREAD_SHARE_NUMERATOR, 1);
+  assert.equal(GATEWAY_REREAD_SHARE_DENOMINATOR, 5);
+  assert.deepEqual(gatewayReadSlots(0), { fresh: 0, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(-3), { fresh: 0, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(Number.NaN), { fresh: 0, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(Number.POSITIVE_INFINITY), { fresh: 0, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(1), { fresh: 1, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(4), { fresh: 4, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(4.9), { fresh: 4, reread: 0 });
+  assert.deepEqual(gatewayReadSlots(5), { fresh: 4, reread: 1 });
+  assert.deepEqual(gatewayReadSlots(5.9), { fresh: 4, reread: 1 });
+  assert.deepEqual(gatewayReadSlots(200), { fresh: 160, reread: 40 });
+  const production = gatewayReadSlots(GATEWAY_RECONCILE_ROW_LIMIT);
+  assert.deepEqual(production, { fresh: 1_600, reread: 400 });
+  assert.ok(production.fresh >= 1_500);
+  assert.deepEqual(interleaveGatewayRows(["a", "b", "c", "d", "e"], ["r1", "r2"]), ["a", "b", "c", "d", "r1", "e", "r2"]);
+  assert.deepEqual(interleaveGatewayRows(["u1", "u2"], []), ["u1", "u2"]);
+  assert.deepEqual(interleaveGatewayRows([], ["p1"]), ["p1"]);
+  assert.deepEqual(interleaveGatewayRows([], []), []);
 });
 
 test("Gateway の読み予算は 60 秒から 90 秒で、短い予算でもネイティブの 8 秒を残す", () => {

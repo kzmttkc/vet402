@@ -492,8 +492,8 @@ const MUTATIONS = [
   },
   {
     id: "G57",
-    what: "購入元を止めた印を settle の条件から外す",
-    rule: "API エラーの購入元は同額でも settle しない",
+    what: "照会の記録に失敗した購入元を settle の条件から外す",
+    rule: "remember に失敗した購入元は同額でも settle しない",
     file: VERIFY,
     find: "const unresolved = loaded.unresolved > 0 || buyersBlocked.has(buyer);",
     replace: "const unresolved = loaded.unresolved > 0; /* MUTANT */",
@@ -553,8 +553,8 @@ const MUTATIONS = [
     rule: "nonce 未取得の行が limit の先頭に来る",
     file: VERIFY,
     needsDb: true,
-    find: "ORDER BY (coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '') DESC, pu.attempted_at ASC, pu.id ASC",
-    replace: "ORDER BY pu.attempted_at ASC, pu.id ASC /* MUTANT */",
+    find: "AND coalesce(pu.raw_response_meta->'circleGateway'->>'nonceLookup', '') = '' /* unread queue */",
+    replace: "AND true /* MUTANT unread queue */",
   },
   {
     id: "G64",
@@ -629,6 +629,36 @@ const MUTATIONS = [
     file: VERIFY,
     find: "unresolvedCount = unreadAuthorizationCanEnterBatch(signatureTime, blockTime) ? 1 : 0;",
     replace: "unresolvedCount = 1; /* MUTANT */",
+  },
+  {
+    id: "G73",
+    what: "Gateway の読み件数を 200 に戻す",
+    rule: "Gateway の limit は 1 日 1500 行を 1 回で読む",
+    file: VERIFY,
+    needsDb: true,
+    find: "export const GATEWAY_RECONCILE_ROW_LIMIT = 2_000;",
+    replace: "export const GATEWAY_RECONCILE_ROW_LIMIT = 200; /* MUTANT */",
+  },
+  {
+    id: "G74",
+    what: "照会済みの読み直し枠を 0 にする",
+    rule: "未照会が残っていても照会済みの行を読み直す",
+    file: VERIFY,
+    needsDb: true,
+    find: "export const GATEWAY_REREAD_SHARE_NUMERATOR = 1;",
+    replace: "export const GATEWAY_REREAD_SHARE_NUMERATOR = 0; /* MUTANT */",
+  },
+  {
+    id: "G75",
+    what: "gateway_api_error を購入元の停止に戻す",
+    rule: "API の 5xx 1 回で、失敗より前のバッチまで settle を 0 にしない",
+    file: VERIFY,
+    needsDb: true,
+    find: `      plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_api_error" });
+      continue;`,
+    replace: `      plans.set(row.id, { id: row.id, action: "defer", reason: "gateway_api_error" });
+      buyersBlocked.add(buyer); /* MUTANT */
+      continue;`,
   },
 ];
 
