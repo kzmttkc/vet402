@@ -34,12 +34,14 @@ import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
 import {
   getChainScope,
   getCoverageShare,
+  getObservatoryOverview,
   getObservatoryStats,
   getObservatoryStatsByChain,
   getUnverifiedBreakdown,
   type ChainScope,
   type ChainStats,
   type CoverageShare,
+  type ObservatoryOverview,
   type ObservatoryStats,
   type UnverifiedBreakdown,
 } from "@/lib/observatory/reader";
@@ -89,3 +91,36 @@ export const getUnverifiedBreakdownCached: () => Promise<UnverifiedBreakdown> = 
   ["observatory:unverified-breakdown"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
+
+
+/**
+ * 2026-10-25: /observatory は表示のたびに 8.7 万件の一覧を集計していて、サーバーの待ちが 2 秒前後あった。
+ * 同じ絞り込みの読みは公開の窓（PUBLIC_READ_REVALIDATE）の間使い回す。キャッシュは JSON なので
+ * lastProbedAt の Date は ISO 文字列で預け、取り出すときに Date に戻す（overviewToCache / overviewFromCache）。
+ */
+/** getObservatoryOverview の引数の形。 */
+type ObservatoryOverviewQuery = NonNullable<Parameters<typeof getObservatoryOverview>[0]>;
+
+type CachedOverview = Omit<ObservatoryOverview, "rows"> & {
+  rows: Array<Omit<ObservatoryOverview["rows"][number], "lastProbedAt"> & { lastProbedAt: string | null }>;
+};
+
+export function overviewToCache(o: ObservatoryOverview): CachedOverview {
+  return { ...o, rows: o.rows.map((r) => ({ ...r, lastProbedAt: r.lastProbedAt ? r.lastProbedAt.toISOString() : null })) };
+}
+
+export function overviewFromCache(c: CachedOverview): ObservatoryOverview {
+  return { ...c, rows: c.rows.map((r) => ({ ...r, lastProbedAt: r.lastProbedAt ? new Date(r.lastProbedAt) : null })) };
+}
+
+const overviewCached = unstable_cache(
+  async (key: string) => overviewToCache(await getObservatoryOverview(JSON.parse(key) as ObservatoryOverviewQuery)),
+  ["observatory:overview:v1"],
+  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
+);
+
+/** 絞り込みごとに使い回す。鍵は値のある項目だけを名前順に並べた JSON。 */
+export async function getObservatoryOverviewCached(query: ObservatoryOverviewQuery): Promise<ObservatoryOverview> {
+  const entries = Object.entries(query).filter(([, v]) => v !== undefined && v !== null).sort(([a], [b]) => a.localeCompare(b));
+  return overviewFromCache(await overviewCached(JSON.stringify(Object.fromEntries(entries))));
+}
