@@ -81,4 +81,4 @@ console.log("compile: solc --bin --abi ops/arc-gateway/DeliveryLedger.sol");
 console.log("deploy (not run by this script): forge create ops/arc-gateway/DeliveryLedger.sol:DeliveryLedger --rpc-url $ARC_RPC_URL --private-key $ARC_GATEWAY_DEPLOYER_KEY --constructor-args $ARC_GATEWAY_RECORDER");
 console.log("anchor (not run by this script): cast send $ARC_GATEWAY_LEDGER \"anchor(bytes32,uint32,uint32,string)\" $ARC_GATEWAY_ROOT $ARC_GATEWAY_PURCHASES $ARC_GATEWAY_DELIVERED $ARC_GATEWAY_URI --rpc-url $ARC_RPC_URL --private-key $ARC_GATEWAY_RECORDER_KEY");
 console.log("env names: ARC_RPC_URL ARC_GATEWAY_DEPLOYER_KEY ARC_GATEWAY_RECORDER ARC_GATEWAY_LEDGER ARC_GATEWAY_ROOT ARC_GATEWAY_PURCHASES ARC_GATEWAY_DELIVERED ARC_GATEWAY_URI ARC_GATEWAY_RECORDER_KEY");
-console.log("recorder is the payer EOA. This script does not read those values and does not send a transaction.");
+console.log("the recorder is a key used only for day roots, not the payer EOA. This script does not read those values and does not send a transaction.");
