@@ -332,12 +332,15 @@ const inputOf = (purchases: PurchaseInput[], extra: { method?: string; declaredS
     lastAttemptAt: purchases[0]?.attemptedAt ?? null,
   });
 /** 本番の経路（loadSellerFacts → decide）と同じく、facts と除く数を組にして判定する。 */
+// 2026-10-25: the fixtures are dated September 2026. With the real clock, the 30-day window drops them and this
+// file started failing on 2026-10-25. The clock is pinned to a day inside the fixtures' window.
+const NOW = Date.parse("2026-10-01T00:00:00Z");
 const judge = (purchases: PurchaseInput[], extra: { method?: string; declaredSchema?: unknown; declaredInput?: unknown } = {}) => {
   const input = inputOf(purchases, extra);
   const facts = assembleSellerFacts(input);
-  const notCounted = l1NotCountedOf(input);
+  const notCounted = l1NotCountedOf(input, NOW);
   // 本番（decide.ts）と同じく並び（l1TimelineOf）も渡す。
-  return { facts, notCounted, decision: decidePayer(facts, { l1NotCounted: notCounted, l1Timeline: l1TimelineOf(input) }) };
+  return { facts, notCounted, decision: decidePayer(facts, { l1NotCounted: notCounted, l1Timeline: l1TimelineOf(input, NOW), now: new Date(NOW) }) };
 };
 
 test("8: stableenrich の people-search 型（L1 3 回とも「レシート無しの 200・着金なし」）は BLOCK にしない", () => {
