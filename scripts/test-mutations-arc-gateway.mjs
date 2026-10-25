@@ -246,12 +246,14 @@ const MUTATIONS = [
   },
   {
     id: "G28",
-    what: "別枠 0 でも DB のバッチが Gateway を開く",
+    // 別枠 0 は選ぶ段（arcGatewayCapOpen）と laneOpen の2か所で閉じる。片方だけ開けても規則は破れないので、
+    // 0 の読み取りそのもの（chainDailyCapUnits）を壊して両方を一度に開ける。
+    what: "別枠 0 を既定 $2 と読み、DB のバッチが Gateway を開く",
     rule: "0 は 1 件も払わない",
-    file: RUNNER,
+    file: BUDGET,
     needsDb: true,
-    find: "arcGatewayCapOpen(spentNow)",
-    replace: "/* MUTANT */ true",
+    find: "  let usd = cap.defaultUsd;\n  if (raw !== undefined && raw.trim() !== \"\") {\n    const n = Number(raw);\n    if (Number.isFinite(n) && n >= 0) usd = n;\n  }\n  usd = Math.min(usd, DAILY_BUDGET_USD);",
+    replace: "  let usd = cap.defaultUsd;\n  if (raw !== undefined && raw.trim() !== \"\") {\n    const n = Number(raw);\n    if (Number.isFinite(n) && n > 0) usd = n; /* MUTANT */\n  }\n  usd = Math.min(usd, DAILY_BUDGET_USD);",
   },
   {
     id: "G29",

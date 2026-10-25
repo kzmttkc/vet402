@@ -167,7 +167,7 @@ if (!TEST_DB) {
         FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
         WHERE e.resource_url = ${resourceUrl}
       `);
-      return (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+      return (Array.isArray(raw) ? [...raw] : (raw as { rows?: unknown[] }).rows ?? []) as {
         status: string;
         network: string;
         tx_hash: string | null;
