@@ -107,6 +107,40 @@ test("Circle の取得は limit 200 を守り、途中で失敗しても読め�
   assert.equal(accepts.filter((a) => a.network === "eip155:5042" && a.extra?.name === "GatewayWalletBatched").length, 1);
 });
 
+test("Circle の実物は Gateway だけの出品を Arc に、Base の exact を Base にする", () => {
+  const gatewayOnly = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/circle-x402-discovery-gateway-only.json"), "utf8")) as { accepts?: unknown[] };
+  const withBase = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/circle-x402-discovery-base-exact.json"), "utf8")) as { accepts?: unknown[] };
+  const page = JSON.parse(readFileSync(FIXTURE, "utf8")) as { items: Record<string, unknown>[] };
+  const gw = parseCatalogItem(gatewayOnly);
+  const base = parseCatalogItem(withBase);
+  const gwAccepts = (gatewayOnly.accepts ?? []) as { network?: string; extra?: { name?: string } }[];
+  assert.equal(gwAccepts[0]?.network, "eip155:1");
+  assert.equal(gwAccepts[0]?.extra?.name, "GatewayWalletBatched");
+  assert.equal(gwAccepts.some((a) => a.network === "eip155:5042" && a.extra?.name === "GatewayWalletBatched"), true);
+  assert.equal(gw.network, "eip155:5042");
+  const baseAccepts = (withBase.accepts ?? []) as { network?: string; extra?: { name?: string; assetTransferMethod?: string } }[];
+  assert.equal(baseAccepts.some((a) => a.network === "eip155:8453" && a.extra?.name !== "GatewayWalletBatched"), true);
+  assert.equal(base.network, "eip155:8453");
+  for (const item of page.items) {
+    assert.equal(parseCatalogItem(item).network, "eip155:5042");
+  }
+  const patch = parseCatalogItem({
+    resource: "https://patch.example/v1/item",
+    metadata: { method: "PATCH" },
+    accepts: [{ scheme: "exact", network: "eip155:8453", amount: "1", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x1111111111111111111111111111111111111111" }],
+  });
+  assert.equal(patch.method, "PATCH");
+  const bazaar = parseCatalogItem({
+    resource: "https://bazaar.example/v1/item",
+    accepts: [
+      { scheme: "exact", network: "eip155:1", amount: "1", asset: "0x1", payTo: "0x2222222222222222222222222222222222222222", extra: { name: "GatewayWalletBatched" } },
+      { scheme: "exact", network: "eip155:8453", amount: "1", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x1111111111111111111111111111111111111111" },
+    ],
+    extensions: { bazaar: { info: { input: { method: "GET" } } } },
+  });
+  assert.equal(bazaar.network, "eip155:1", "CDP の行は先頭の accept のまま");
+});
+
 test("Circle の取得締切は aux の maxDuration の中に収まる", () => {
   const route = readFileSync(join(ROOT, "src/app/api/cron/catalog-sync-aux/route.ts"), "utf8");
   assert.match(route, /export const maxDuration = 300/);

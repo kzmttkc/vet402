@@ -16,18 +16,27 @@
 //     delisting judgement for the day. A fetch gap must never read as
 //     "the endpoint vanished" (verify-the-instrument).
 //
-// No scoring/chain imports — the observatory is an independent domain.
+// No scoring imports. isMainnet is the chain-identity check for Circle's
+// primary accept. CDP Bazaar items still use accepts[0].
 // ============================================================
 import { declaredInputSummary } from "./declared-input-rules";
 import type { DeclaredInputSummary } from "./declared-input-summary";
+import { isMainnet } from "./chains";
 
 export const CATALOG_URL =
   "https://api.cdp.coinbase.com/platform/v2/x402/discovery/resources";
 
 export const CATALOG_SOURCE = "cdp_bazaar";
 
-/** Methods the catalog can declare and the prober will honor. Anything else = undeclared. */
-const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE"]);
+/**
+ * Methods stored as declared. GET, POST, HEAD, and DELETE are sent as declared.
+ * PATCH and PUT are stored and not sent (the probe stays unverified). Anything
+ * else is stored as null and measured with GET.
+ */
+const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE", "PATCH", "PUT"]);
+/** Circle Gateway batch wallet. Not a chain vet402 signs as a native accept. */
+const GATEWAY_ACCEPT_NAME = "GatewayWalletBatched";
+const ARC_CAIP2 = "eip155:5042";
 
 export type ParsedCatalogItem = {
   resourceKey: string;
@@ -127,15 +136,41 @@ function asDate(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function isGatewayAccept(accept: Record<string, unknown>): boolean {
+  const extra = asRecord(accept.extra);
+  return extra?.name === GATEWAY_ACCEPT_NAME;
+}
+
+/**
+ * Primary accept for a listing that has no CDP Bazaar extension (Circle).
+ * A mainnet exact vet402 can sign (not GatewayWalletBatched, transfer method
+ * absent or eip3009) wins. Else an Arc Gateway accept. Else the first accept.
+ * CDP Bazaar items keep accepts[0], which is what price checks and lanes read.
+ */
+function selectPrimaryAccept(accepts: readonly unknown[]): Record<string, unknown> | null {
+  const records = accepts.map(asRecord).filter((r): r is Record<string, unknown> => r !== null);
+  const signable = records.find((accept) => {
+    const network = asString(accept.network);
+    if (!network || !isMainnet(network) || isGatewayAccept(accept)) return false;
+    const scheme = asString(accept.scheme);
+    if (scheme && scheme !== "exact") return false;
+    const transfer = asString(asRecord(accept.extra)?.assetTransferMethod);
+    return transfer === null || transfer === "eip3009";
+  });
+  if (signable) return signable;
+  const arcGateway = records.find((accept) => asString(accept.network) === ARC_CAIP2 && isGatewayAccept(accept));
+  return arcGateway ?? records[0] ?? null;
+}
+
 /** Extract the DB row shape from one raw catalog item. Defensive on every path — catalog data is third-party input. */
 export function parseCatalogItem(item: unknown): ParsedCatalogItem {
   const rec = stripNul(asRecord(item) ?? {});
   const resourceUrl = asString(rec.resource) ?? "";
 
   // Declared method: extensions.bazaar.info.input.method. A missing method and
-  // any method outside GET, POST, HEAD, and DELETE are stored as null. The
-  // probe measures null with GET. Two consecutive failures of that probe can
-  // be published as fail.
+  // any method outside GET, POST, HEAD, DELETE, PATCH, and PUT are stored as
+  // null. The probe measures null with GET. PATCH and PUT are stored and not
+  // sent. Two consecutive failures of a GET probe can be published as fail.
   // Circle's catalog has no extensions.bazaar (measured 2026-10-26). Method and
   // description then live on metadata. The fallback applies only when bazaar is
   // absent, so a CDP item keeps its bazaar method, including an undeclared one.
@@ -152,8 +187,11 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
   const declaredSchema = bazaar?.schema ?? asRecord(bazaar?.info)?.schema ?? null;
 
   const accepts = Array.isArray(rec.accepts) ? rec.accepts : [];
-  const first = asRecord(accepts[0]);
-  const payToRaw = asString(first?.payTo) ?? asString(first?.recipient);
+  // Bazaar items keep the first accept. Circle (no bazaar) picks a signable
+  // mainnet exact before an Arc Gateway accept, so a Gateway listing is not
+  // stored as Ethereum just because that accept is first.
+  const primary = bazaar ? asRecord(accepts[0]) : selectPrimaryAccept(accepts);
+  const payToRaw = asString(primary?.payTo) ?? asString(primary?.recipient);
 
   const quality = asRecord(rec.quality);
 
@@ -161,14 +199,14 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
     resourceKey: normalizeResourceKey(resourceUrl),
     resourceUrl,
     method,
-    network: asString(first?.network),
+    network: asString(primary?.network),
     // 0x（EVM）だけ小文字化する。EVMのアドレスは大文字小文字非依存で、
     // verifiedPayees.wallet（小文字）へのclaim-joinを外さないための正規化。
     // base58（Solana等）は大文字小文字が情報そのもの——小文字化は破壊
     // （2026-08-20 実測: 本番218件のSolana行が復元不能な形で保存されていた）。
     payTo: payToRaw ? (payToRaw.startsWith("0x") ? payToRaw.toLowerCase() : payToRaw) : null,
-    priceAmount: asString(first?.amount),
-    priceAsset: asString(first?.asset),
+    priceAmount: asString(primary?.amount),
+    priceAsset: asString(primary?.asset),
     description: asString(rec.description) ?? (bazaar ? null : asString(metadata?.description)),
     declaredSchema,
     declaredInput: declaredInputSummary({ resourceUrl, document: rec }),

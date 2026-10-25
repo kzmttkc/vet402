@@ -9,12 +9,21 @@
 //  - settle_drop compares against the STORED call count, which the first
 //    run of the day already advanced.
 //
+// CDP Bazaar and Circle share one row per resource_key. The first writer
+// owns `source`. Accepts are stored per source and unioned into raw_accepts.
+// A delist of a shared row requires the other catalog's absence to be proven
+// (a complete snapshot, or an incomplete one unioned with the previous
+// complete snapshot). A daily reconcile delists an active shared-source row
+// that is absent from both proven sets, so a missed one-day diff still closes.
+// MPP stays a separate row.
+//
 // No scoring/chain imports. Writers here are trusted-cron-only — nothing in
 // this module is reachable from a request handler that accepts user input.
 // ============================================================
 import { canonicalUrl, endpointHash, payeeId, resourceId } from "@/lib/ids/canonical";
 import { and, eq, inArray, lt, desc, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { isUniqueViolationError } from "@/lib/db/pg-errors";
 import {
   x402CatalogSnapshots,
   x402DelistingEvents,
@@ -44,6 +53,8 @@ export type SyncSummary = {
 
 /** Keep each INSERT under Postgres' 65535-parameter ceiling (~20 cols × 500 rows ≈ 10k). */
 const UPSERT_CHUNK = 500;
+/** Shared-row updates carry two jsonb blobs. Keep the VALUES list small. */
+const SHARED_UPDATE_CHUNK = 100;
 
 /**
  * Pages in flight against the CDP discovery API. One page takes ~1.2s from Vercel; the catalog
@@ -65,16 +76,13 @@ const FETCH_PAGE_RETRIES = 5;
  */
 const FETCH_THROTTLE_RETRIES = 12;
 
+const SHARED_SOURCES = [CATALOG_SOURCE, CIRCLE_DISCOVERY_SOURCE] as const;
+
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
 /**
  * CDP Bazaar と Circle の目録は同じ resource_key を 1 行にする。先に書いた source が
- * 行の持ち主。後の同期は行を足さず、accepts を足して status を active に戻す。
- * snapshot は source ごとなので、片方の目録に残っている鍵は delist しない。
- * 兄弟の最新 snapshot が不完全なら、その鍵と、直前の完全な snapshot の鍵の和を
- * 「まだ載っている」と見る（読んでいないページを不在にしない）。
- * 兄弟の最新が完全で、その鍵が無く、この取得も完全で、以前の snapshot にあった鍵は、
- * 行の持ち主がどちらでも delist する。MPP はこの対に入れない。
+ * 行の持ち主。MPP はこの対に入れない。
  */
 function sharedSibling(source: string): string | null {
   if (source === CATALOG_SOURCE) return CIRCLE_DISCOVERY_SOURCE;
@@ -82,19 +90,46 @@ function sharedSibling(source: string): string | null {
   return null;
 }
 
-/** 完全な snapshot は total > 0 かつ fetched >= total。0/0 は不完全（既存の規則）。 */
+/** 件数だけの完全判定。complete 列が NULL の古い snapshot にだけ使う。 */
 function snapshotIsComplete(totalCount: number, fetchedCount: number): boolean {
   return totalCount > 0 && fetchedCount >= totalCount;
 }
+
+/**
+ * 取得側の finish() と同じ規則。complete が true/false なら件数が一致してもそれに従う
+ * （page_shape は fetched >= total のまま complete=false になり得る）。NULL は旧規則。
+ */
+function snapshotRowComplete(row: { complete: boolean | null; totalCount: number; fetchedCount: number }): boolean {
+  if (row.complete === true) return true;
+  if (row.complete === false) return false;
+  return snapshotIsComplete(row.totalCount, row.fetchedCount);
+}
+
+const COMPLETE_SNAPSHOT_SQL = sql`(
+  ${x402CatalogSnapshots.complete} = true
+  OR (
+    ${x402CatalogSnapshots.complete} IS NULL
+    AND ${x402CatalogSnapshots.totalCount} > 0
+    AND ${x402CatalogSnapshots.fetchedCount} >= ${x402CatalogSnapshots.totalCount}
+  )
+)`;
 
 function keysOf(value: unknown): Set<string> {
   return new Set(Array.isArray(value) ? (value as string[]) : []);
 }
 
-/** 既存の accept を残し、相手の目録にしか無い accept を足す。同じ JSON は 1 回。 */
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function asAccepts(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/** 既存の accept を残し、相手の目録にしか無い accept を足す。同じ JSON は 1 回。空なら null。 */
 function unionAccepts(existing: unknown, incoming: unknown): unknown[] | null {
-  const a = Array.isArray(existing) ? existing : [];
-  const b = Array.isArray(incoming) ? incoming : [];
+  const a = asAccepts(existing);
+  const b = asAccepts(incoming);
   const seen = new Set<string>();
   const out: unknown[] = [];
   for (const item of [...a, ...b]) {
@@ -106,7 +141,46 @@ function unionAccepts(existing: unknown, incoming: unknown): unknown[] | null {
   return out.length > 0 ? out : null;
 }
 
-type SiblingListing = { keys: Set<string>; latestComplete: boolean };
+type StoredAccepts = { rawAccepts: unknown[] | null; acceptsBySource: Record<string, unknown[]> };
+
+/**
+ * この source の slice を今回の accepts で置き換える。keepSibling のときだけ相手の slice を残し、
+ * raw_accepts はその和。相手が載せていない（不在が証明済み）ときは相手の slice を消す。
+ * accepts_by_source が NULL の既存行で相手がまだ載せているときは、今回の取得に無い要素を
+ * 相手の slice として 1 回だけ残す。
+ */
+function composeAccepts(input: {
+  existingBySource: unknown;
+  existingRaw: unknown;
+  incoming: unknown;
+  source: string;
+  sibling: string | null;
+  keepSibling: boolean;
+}): StoredAccepts {
+  const incoming = asAccepts(input.incoming);
+  const by: Record<string, unknown[]> = {};
+  const existing = asRecord(input.existingBySource);
+  if (existing) {
+    for (const [key, value] of Object.entries(existing)) {
+      if (Array.isArray(value)) by[key] = value;
+    }
+  } else if (input.keepSibling && input.sibling && Array.isArray(input.existingRaw)) {
+    const seen = new Set(incoming.map((item) => JSON.stringify(item)));
+    const rest = input.existingRaw.filter((item) => !seen.has(JSON.stringify(item)));
+    if (rest.length > 0) by[input.sibling] = rest;
+  }
+  by[input.source] = incoming;
+  if (!input.keepSibling && input.sibling) delete by[input.sibling];
+  const siblingSlice = input.keepSibling && input.sibling ? (by[input.sibling] ?? []) : [];
+  return { rawAccepts: unionAccepts(siblingSlice, incoming), acceptsBySource: by };
+}
+
+function hasSiblingSlice(bySource: unknown, sibling: string): boolean {
+  const rec = asRecord(bySource);
+  return Array.isArray(rec?.[sibling]) && (rec?.[sibling] as unknown[]).length > 0;
+}
+
+type SiblingListing = { keys: Set<string>; latestComplete: boolean; absenceProven: boolean };
 
 async function loadSiblingListing(db: Db, sibling: string): Promise<SiblingListing> {
   const latest = await db
@@ -115,37 +189,77 @@ async function loadSiblingListing(db: Db, sibling: string): Promise<SiblingListi
       totalCount: x402CatalogSnapshots.totalCount,
       fetchedCount: x402CatalogSnapshots.fetchedCount,
       resourceKeys: x402CatalogSnapshots.resourceKeys,
+      complete: x402CatalogSnapshots.complete,
     })
     .from(x402CatalogSnapshots)
     .where(eq(x402CatalogSnapshots.source, sibling))
     .orderBy(desc(x402CatalogSnapshots.snapshotDate))
     .limit(1);
-  if (latest.length === 0) return { keys: new Set(), latestComplete: false };
+  if (latest.length === 0) return { keys: new Set(), latestComplete: false, absenceProven: false };
   const row = latest[0];
   const latestKeys = keysOf(row.resourceKeys);
-  if (snapshotIsComplete(row.totalCount, row.fetchedCount)) return { keys: latestKeys, latestComplete: true };
+  if (snapshotRowComplete(row)) return { keys: latestKeys, latestComplete: true, absenceProven: true };
   const prevComplete = await db
     .select({ resourceKeys: x402CatalogSnapshots.resourceKeys })
     .from(x402CatalogSnapshots)
-    .where(
-      and(
-        eq(x402CatalogSnapshots.source, sibling),
-        lt(x402CatalogSnapshots.snapshotDate, row.snapshotDate),
-        sql`${x402CatalogSnapshots.totalCount} > 0`,
-        sql`${x402CatalogSnapshots.fetchedCount} >= ${x402CatalogSnapshots.totalCount}`,
-      ),
-    )
+    .where(and(eq(x402CatalogSnapshots.source, sibling), lt(x402CatalogSnapshots.snapshotDate, row.snapshotDate), COMPLETE_SNAPSHOT_SQL))
     .orderBy(desc(x402CatalogSnapshots.snapshotDate))
     .limit(1);
   const keys = new Set(latestKeys);
   if (prevComplete.length > 0) for (const key of keysOf(prevComplete[0].resourceKeys)) keys.add(key);
-  return { keys, latestComplete: false };
+  // 直前の完全な snapshot が無い不完全な取得は、読んでいないページを不在にしない。
+  return { keys, latestComplete: false, absenceProven: prevComplete.length > 0 };
 }
 
-type SiblingRow = { id: string; resourceKey: string; status: string; rawAccepts: unknown };
+/**
+ * この実行の「載っている」集合。完全なら今回の鍵だけ。不完全なら今回の鍵と、
+ * 直近の完全な snapshot（今日の早い完全な実行を含む）の和。完全な snapshot が
+ * 一度も無ければ不在は証明できない。
+ */
+async function loadOwnProven(
+  db: Db,
+  source: string,
+  currentKeys: Set<string>,
+  currentComplete: boolean,
+): Promise<{ keys: Set<string>; absenceProven: boolean }> {
+  if (currentComplete) return { keys: new Set(currentKeys), absenceProven: true };
+  const prev = await db
+    .select({ resourceKeys: x402CatalogSnapshots.resourceKeys })
+    .from(x402CatalogSnapshots)
+    .where(and(eq(x402CatalogSnapshots.source, source), COMPLETE_SNAPSHOT_SQL))
+    .orderBy(desc(x402CatalogSnapshots.snapshotDate))
+    .limit(1);
+  if (prev.length === 0) return { keys: new Set(currentKeys), absenceProven: false };
+  const keys = new Set(currentKeys);
+  for (const key of keysOf(prev[0].resourceKeys)) keys.add(key);
+  return { keys, absenceProven: true };
+}
 
-async function selectSiblingRows(db: Db, sibling: string, keys: string[]): Promise<SiblingRow[]> {
-  const out: SiblingRow[] = [];
+type SiblingIdentity = { id: string; resourceKey: string; status: string };
+type BlobRow = SiblingIdentity & { source: string; rawAccepts: unknown; acceptsBySource: unknown };
+
+async function selectSiblingIdentity(db: Db, sibling: string, keys: string[] | null): Promise<SiblingIdentity[]> {
+  if (keys === null) {
+    return db
+      .select({ id: x402Endpoints.id, resourceKey: x402Endpoints.resourceKey, status: x402Endpoints.status })
+      .from(x402Endpoints)
+      .where(eq(x402Endpoints.source, sibling));
+  }
+  const out: SiblingIdentity[] = [];
+  for (let i = 0; i < keys.length; i += UPSERT_CHUNK) {
+    const chunk = keys.slice(i, i + UPSERT_CHUNK);
+    if (chunk.length === 0) continue;
+    const part = await db
+      .select({ id: x402Endpoints.id, resourceKey: x402Endpoints.resourceKey, status: x402Endpoints.status })
+      .from(x402Endpoints)
+      .where(and(eq(x402Endpoints.source, sibling), inArray(x402Endpoints.resourceKey, chunk)));
+    out.push(...part);
+  }
+  return out;
+}
+
+async function selectBlobs(db: Db, sources: readonly string[], keys: string[]): Promise<BlobRow[]> {
+  const out: BlobRow[] = [];
   for (let i = 0; i < keys.length; i += UPSERT_CHUNK) {
     const chunk = keys.slice(i, i + UPSERT_CHUNK);
     if (chunk.length === 0) continue;
@@ -153,11 +267,13 @@ async function selectSiblingRows(db: Db, sibling: string, keys: string[]): Promi
       .select({
         id: x402Endpoints.id,
         resourceKey: x402Endpoints.resourceKey,
+        source: x402Endpoints.source,
         status: x402Endpoints.status,
         rawAccepts: x402Endpoints.rawAccepts,
+        acceptsBySource: x402Endpoints.acceptsBySource,
       })
       .from(x402Endpoints)
-      .where(and(eq(x402Endpoints.source, sibling), inArray(x402Endpoints.resourceKey, chunk)));
+      .where(and(inArray(x402Endpoints.source, [...sources]), inArray(x402Endpoints.resourceKey, chunk)));
     out.push(...part);
   }
   return out;
@@ -166,6 +282,8 @@ async function selectSiblingRows(db: Db, sibling: string, keys: string[]): Promi
 function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+
 
 export async function syncCatalog(
   options: {
@@ -233,49 +351,88 @@ export async function syncCatalog(
       : null;
 
   const sibling = sharedSibling(source);
-  const siblingListing = sibling ? await loadSiblingListing(db, sibling) : { keys: new Set<string>(), latestComplete: false };
-  const siblingRows = new Map<string, SiblingRow>();
+  const siblingListing = sibling ? await loadSiblingListing(db, sibling) : { keys: new Set<string>(), latestComplete: false, absenceProven: false };
+  const ownProven = sibling ? await loadOwnProven(db, source, currentKeys, result.complete) : { keys: currentKeys, absenceProven: result.complete };
+  const siblingRows = new Map<string, SiblingIdentity>();
   if (sibling) {
-    // Circle 側は行が少ないので全部読む。CDP 側は今回と前回の鍵だけ引く。
+    // Circle 側は行が少ないので id・鍵・status だけ全部読む。accepts は今回触る鍵だけ。
+    // CDP 側は今回と前回の鍵だけ引く（CDP の全行は読まない）。
     const loaded =
       sibling === CIRCLE_DISCOVERY_SOURCE
-        ? await db
-            .select({
-              id: x402Endpoints.id,
-              resourceKey: x402Endpoints.resourceKey,
-              status: x402Endpoints.status,
-              rawAccepts: x402Endpoints.rawAccepts,
-            })
-            .from(x402Endpoints)
-            .where(eq(x402Endpoints.source, sibling))
-        : await selectSiblingRows(db, sibling, [...new Set([...currentKeys, ...(prevKeys ?? [])])]);
+        ? await selectSiblingIdentity(db, sibling, null)
+        : await selectSiblingIdentity(db, sibling, [...new Set([...currentKeys, ...(prevKeys ?? [])])]);
     for (const row of loaded) siblingRows.set(row.resourceKey, row);
   }
-  const ownItems: ParsedCatalogItem[] = [];
-  const sharedItems: ParsedCatalogItem[] = [];
-  for (const item of result.items) {
-    if (siblingRows.has(item.resourceKey)) sharedItems.push(item);
-    else ownItems.push(item);
+
+  const blobKeys = new Set<string>();
+  for (const key of currentKeys) {
+    if (siblingRows.has(key) || siblingListing.keys.has(key)) blobKeys.add(key);
+  }
+  const blobs = blobKeys.size > 0 ? await selectBlobs(db, sibling ? [source, sibling] : [source], [...blobKeys]) : [];
+  const blobByKey = new Map<string, BlobRow>();
+  for (const row of blobs) blobByKey.set(`${row.source}\0${row.resourceKey}`, row);
+
+  // 相手の不在がまだ証明できないあいだは、既に保存した相手の slice を消さない。
+  if (sibling && !siblingListing.absenceProven) {
+    const kept = await db
+      .select({
+        id: x402Endpoints.id,
+        resourceKey: x402Endpoints.resourceKey,
+        source: x402Endpoints.source,
+        status: x402Endpoints.status,
+        rawAccepts: x402Endpoints.rawAccepts,
+        acceptsBySource: x402Endpoints.acceptsBySource,
+      })
+      .from(x402Endpoints)
+      .where(and(eq(x402Endpoints.source, source), sql`${x402Endpoints.acceptsBySource} -> ${sibling} IS NOT NULL`));
+    for (const row of kept) {
+      if (!currentKeys.has(row.resourceKey)) continue;
+      blobByKey.set(`${row.source}\0${row.resourceKey}`, row);
+    }
   }
 
+  const ownItems: ParsedCatalogItem[] = [];
+  const sharedItems: ParsedCatalogItem[] = [];
+  const transferItems: ParsedCatalogItem[] = [];
+  for (const item of result.items) {
+    const ownedBySibling = siblingRows.has(item.resourceKey);
+    if (ownedBySibling && siblingListing.absenceProven && !siblingListing.keys.has(item.resourceKey)) {
+      transferItems.push(item);
+    } else if (ownedBySibling) {
+      sharedItems.push(item);
+    } else {
+      ownItems.push(item);
+    }
+  }
+
+  const keepSiblingSlice = (key: string, existingBySource: unknown): boolean => {
+    if (!sibling) return false;
+    if (siblingListing.keys.has(key)) return true;
+    return !siblingListing.absenceProven && hasSiblingSlice(existingBySource, sibling);
+  };
+
   // ---- diff (pure) ----
-  // 兄弟の snapshot がまだその鍵を載せている delist は記録しない。
+  // 兄弟がまだ載せている鍵、不在が証明できない共有行、すでに delisted の兄弟行は記録しない。
   const events = computeCatalogDiff({
     prevKeys,
     currentKeys,
     currentComplete: result.complete,
     knownEndpoints,
     currentQuality: new Map(result.items.map((i) => [i.resourceKey, i.qualityCalls30d])),
-  }).filter((e) => e.eventType !== "delisted" || !siblingListing.keys.has(e.resourceKey));
+  }).filter((event) => {
+    if (event.eventType !== "delisted") return true;
+    if (siblingListing.keys.has(event.resourceKey)) return false;
+    const sib = siblingRows.get(event.resourceKey);
+    const own = knownEndpoints.get(event.resourceKey);
+    if (sib && !siblingListing.absenceProven) return false;
+    if (sib && sib.status === "delisted" && own?.status !== "active") return false;
+    return true;
+  });
 
   // ---- upsert endpoints (chunked, row-fallback on chunk failure) ----
-  // Live lesson (2026-08-14): ONE catalog item with a NUL byte failed its
-  // whole 500-row chunk and with it the day's sync. parseCatalogItem now
-  // sanitizes NUL, but the class of "one seller's bytes poison the batch"
-  // stays: on a chunk failure, retry row-by-row and skip only what the DB
-  // refuses — counted in `skipped`, never silently.
   let upserted = 0;
   let skipped = 0;
+  const sharedRelists: CatalogDiffEvent[] = [];
   // §5 canonical ID（2026-09-02）。method 未宣言は GET（§6.1 と同じ既定）。
   const idsOf = (item: ParsedCatalogItem) => {
     const c = canonicalUrl(item.resourceUrl);
@@ -287,28 +444,85 @@ export async function syncCatalog(
       undeclaredQuery: c?.undeclaredQuery ?? null,
     };
   };
+
+  const mergeCrossSource = async (item: ParsedCatalogItem): Promise<boolean> => {
+    if (!sibling) return false;
+    const found = await db
+      .select({
+        id: x402Endpoints.id,
+        status: x402Endpoints.status,
+        rawAccepts: x402Endpoints.rawAccepts,
+        acceptsBySource: x402Endpoints.acceptsBySource,
+      })
+      .from(x402Endpoints)
+      .where(and(eq(x402Endpoints.resourceKey, item.resourceKey), inArray(x402Endpoints.source, [...SHARED_SOURCES])))
+      .limit(1);
+    const row = found[0];
+    if (!row) return false;
+    const stored = composeAccepts({
+      existingBySource: row.acceptsBySource,
+      existingRaw: row.rawAccepts,
+      incoming: item.rawAccepts,
+      source,
+      sibling,
+      keepSibling: true,
+    });
+    await db
+      .update(x402Endpoints)
+      .set({
+        rawAccepts: stored.rawAccepts,
+        acceptsBySource: stored.acceptsBySource,
+        status: "active",
+        delistedAt: null,
+        lastSeenAt: sql`now()`,
+      })
+      .where(eq(x402Endpoints.id, row.id));
+    if (row.status === "delisted") {
+      sharedRelists.push({
+        resourceKey: item.resourceKey,
+        eventType: "relisted",
+        prevValue: { status: "delisted" },
+        newValue: { status: "active" },
+      });
+    }
+    siblingRows.set(item.resourceKey, { id: row.id, resourceKey: item.resourceKey, status: "active" });
+    return true;
+  };
+
   const upsertChunk = async (chunk: ParsedCatalogItem[]) => {
     await db
       .insert(x402Endpoints)
       .values(
-        chunk.map((item: ParsedCatalogItem) => ({
-          resourceKey: item.resourceKey,
-          resourceUrl: item.resourceUrl,
-          source,
-          method: item.method,
-          network: item.network,
-          payTo: item.payTo,
-          priceAmount: item.priceAmount,
-          priceAsset: item.priceAsset,
-          description: item.description,
-          declaredSchema: item.declaredSchema,
-          declaredInput: item.declaredInput ?? null,
-          qualityCalls30d: item.qualityCalls30d,
-          qualityPayers30d: item.qualityPayers30d,
-          qualityLastCalledAt: item.qualityLastCalledAt,
-          rawAccepts: item.rawAccepts,
-          ...idsOf(item),
-        })),
+        chunk.map((item: ParsedCatalogItem) => {
+          const existing = blobByKey.get(`${source}\0${item.resourceKey}`);
+          const stored = composeAccepts({
+            existingBySource: existing?.acceptsBySource,
+            existingRaw: existing?.rawAccepts,
+            incoming: item.rawAccepts,
+            source,
+            sibling,
+            keepSibling: keepSiblingSlice(item.resourceKey, existing?.acceptsBySource),
+          });
+          return {
+            resourceKey: item.resourceKey,
+            resourceUrl: item.resourceUrl,
+            source,
+            method: item.method,
+            network: item.network,
+            payTo: item.payTo,
+            priceAmount: item.priceAmount,
+            priceAsset: item.priceAsset,
+            description: item.description,
+            declaredSchema: item.declaredSchema,
+            declaredInput: item.declaredInput ?? null,
+            qualityCalls30d: item.qualityCalls30d,
+            qualityPayers30d: item.qualityPayers30d,
+            qualityLastCalledAt: item.qualityLastCalledAt,
+            rawAccepts: stored.rawAccepts,
+            acceptsBySource: stored.acceptsBySource,
+            ...idsOf(item),
+          };
+        }),
       )
       .onConflictDoUpdate({
         target: [x402Endpoints.resourceKey, x402Endpoints.source],
@@ -326,14 +540,13 @@ export async function syncCatalog(
           qualityPayers30d: sql`excluded.quality_payers_30d`,
           qualityLastCalledAt: sql`excluded.quality_last_called_at`,
           rawAccepts: sql`excluded.raw_accepts`,
+          acceptsBySource: sql`excluded.accepts_by_source`,
           canonicalUrl: sql`excluded.canonical_url`,
           resourceId: sql`excluded.resource_id`,
           endpointHash: sql`excluded.endpoint_hash`,
           payeeId: options.keepLearnedPayTo ? sql`coalesce(excluded.payee_id, ${x402Endpoints.payeeId})` : sql`excluded.payee_id`,
           undeclaredQuery: sql`excluded.undeclared_query`,
           lastSeenAt: sql`now()`,
-          // Presence in today's catalog IS the relist evidence; the event row
-          // is written below from the pre-write diff.
           status: sql`'active'`,
           delistedAt: sql`null`,
         },
@@ -346,11 +559,23 @@ export async function syncCatalog(
     try {
       await upsertChunk(chunk);
     } catch {
-      // Row-by-row fallback: isolate what the DB actually refuses.
       for (const item of chunk) {
         try {
           await upsertChunk([item]);
         } catch (rowError) {
+          if (isUniqueViolationError(rowError)) {
+            try {
+              if (await mergeCrossSource(item)) {
+                upserted += 1;
+                continue;
+              }
+            } catch (mergeError) {
+              logServerErrorSafe(
+                "observatory.catalog-sync.row_skipped",
+                new Error(`${item.resourceKey}: ${mergeError instanceof Error ? mergeError.message : String(mergeError)}`),
+              );
+            }
+          }
           skipped++;
           logServerErrorSafe(
             "observatory.catalog-sync.row_skipped",
@@ -361,22 +586,46 @@ export async function syncCatalog(
     }
   }
 
-  // 兄弟が持つ行は accepts を足すだけ。CDP の upsert の set（raw_accepts = excluded）は変えない。
-  const sharedRelists: CatalogDiffEvent[] = [];
-  for (const item of sharedItems) {
+  // 持ち主の最新の完全な取得に無く、この目録が載せている鍵は、持ち主をこちらへ移す。
+  // accepts はこちらのものに置き換える（古い slice を足さない）。
+  for (const item of transferItems) {
     const row = siblingRows.get(item.resourceKey);
     if (!row) continue;
+    const stored = composeAccepts({
+      existingBySource: null,
+      existingRaw: null,
+      incoming: item.rawAccepts,
+      source,
+      sibling,
+      keepSibling: false,
+    });
     try {
       await db
         .update(x402Endpoints)
         .set({
-          rawAccepts: unionAccepts(row.rawAccepts, item.rawAccepts),
+          source,
+          resourceUrl: item.resourceUrl,
+          method: item.method,
+          network: item.network,
+          payTo: item.payTo,
+          priceAmount: item.priceAmount,
+          priceAsset: item.priceAsset,
+          description: item.description,
+          declaredSchema: item.declaredSchema,
+          declaredInput: item.declaredInput ?? null,
+          qualityCalls30d: item.qualityCalls30d,
+          qualityPayers30d: item.qualityPayers30d,
+          qualityLastCalledAt: item.qualityLastCalledAt,
+          rawAccepts: stored.rawAccepts,
+          acceptsBySource: stored.acceptsBySource,
+          ...idsOf(item),
+          lastSeenAt: sql`now()`,
           status: "active",
           delistedAt: null,
-          lastSeenAt: sql`now()`,
         })
         .where(eq(x402Endpoints.id, row.id));
       upserted += 1;
+      idByKey.set(item.resourceKey, row.id);
       if (row.status === "delisted") {
         sharedRelists.push({
           resourceKey: item.resourceKey,
@@ -386,11 +635,106 @@ export async function syncCatalog(
         });
       }
     } catch (rowError) {
+      if (isUniqueViolationError(rowError)) {
+        try {
+          if (await mergeCrossSource(item)) {
+            upserted += 1;
+            continue;
+          }
+        } catch {
+          // fall through to skipped
+        }
+      }
       skipped++;
       logServerErrorSafe(
         "observatory.catalog-sync.row_skipped",
         new Error(`${item.resourceKey}: ${rowError instanceof Error ? rowError.message : String(rowError)}`),
       );
+    }
+  }
+
+  // 兄弟が持つ行は、こちらの slice を置き換えて和を書く。スカラー（pay_to 等）は持ち主のまま。
+  const sharedUpdates: { id: string; rawAccepts: unknown; acceptsBySource: unknown; resourceKey: string; wasDelisted: boolean }[] = [];
+  for (const item of sharedItems) {
+    const row = siblingRows.get(item.resourceKey);
+    if (!row) continue;
+    const existing = blobByKey.get(`${sibling}\0${item.resourceKey}`);
+    const stored = composeAccepts({
+      existingBySource: existing?.acceptsBySource,
+      existingRaw: existing?.rawAccepts,
+      incoming: item.rawAccepts,
+      source,
+      sibling,
+      keepSibling: true,
+    });
+    sharedUpdates.push({
+      id: row.id,
+      rawAccepts: stored.rawAccepts,
+      acceptsBySource: stored.acceptsBySource,
+      resourceKey: item.resourceKey,
+      wasDelisted: row.status === "delisted",
+    });
+  }
+  const applySharedUpdate = async (row: (typeof sharedUpdates)[number]) => {
+    await db
+      .update(x402Endpoints)
+      .set({
+        rawAccepts: row.rawAccepts,
+        acceptsBySource: row.acceptsBySource,
+        status: "active",
+        delistedAt: null,
+        lastSeenAt: sql`now()`,
+      })
+      .where(eq(x402Endpoints.id, row.id));
+    upserted += 1;
+    if (row.wasDelisted) {
+      sharedRelists.push({
+        resourceKey: row.resourceKey,
+        eventType: "relisted",
+        prevValue: { status: "delisted" },
+        newValue: { status: "active" },
+      });
+    }
+  };
+  for (let i = 0; i < sharedUpdates.length; i += SHARED_UPDATE_CHUNK) {
+    const chunk = sharedUpdates.slice(i, i + SHARED_UPDATE_CHUNK);
+    try {
+      const values = sql.join(
+        chunk.map((row) => sql`(${row.id}::uuid, ${JSON.stringify(row.rawAccepts)}::jsonb, ${JSON.stringify(row.acceptsBySource)}::jsonb)`),
+        sql`, `,
+      );
+      await db.execute(sql`
+        UPDATE x402_endpoints AS e
+        SET raw_accepts = v.raw_accepts,
+            accepts_by_source = v.accepts_by_source,
+            status = 'active',
+            delisted_at = NULL,
+            last_seen_at = now()
+        FROM (VALUES ${values}) AS v(id, raw_accepts, accepts_by_source)
+        WHERE e.id = v.id
+      `);
+      upserted += chunk.length;
+      for (const row of chunk) {
+        if (!row.wasDelisted) continue;
+        sharedRelists.push({
+          resourceKey: row.resourceKey,
+          eventType: "relisted",
+          prevValue: { status: "delisted" },
+          newValue: { status: "active" },
+        });
+      }
+    } catch {
+      for (const row of chunk) {
+        try {
+          await applySharedUpdate(row);
+        } catch (rowError) {
+          skipped++;
+          logServerErrorSafe(
+            "observatory.catalog-sync.row_skipped",
+            new Error(`${row.resourceKey}: ${rowError instanceof Error ? rowError.message : String(rowError)}`),
+          );
+        }
+      }
     }
   }
 
@@ -405,12 +749,12 @@ export async function syncCatalog(
         .where(and(eq(x402Endpoints.source, source), inArray(x402Endpoints.resourceKey, chunk)));
     }
   }
-  // 行の持ち主が兄弟のとき、この source の UPDATE は 0 行。兄弟の最新 snapshot が
-  // 完全でその鍵を持たないときだけ、兄弟の行を delist する。
-  if (sibling && siblingListing.latestComplete && delistedKeys.length > 0) {
+  // 不在が証明でき、鍵が兄弟の集合に無いとき、持ち主が兄弟でも行を delist する。
+  // 最新が不完全でも、直前の完全な snapshot との和に無ければ閉じる。
+  if (sibling && siblingListing.absenceProven && delistedKeys.length > 0) {
     const extraKeys = delistedKeys.filter((key) => {
       const row = siblingRows.get(key);
-      return row !== undefined && row.status !== "delisted";
+      return row !== undefined && row.status !== "delisted" && !siblingListing.keys.has(key);
     });
     for (let i = 0; i < extraKeys.length; i += UPSERT_CHUNK) {
       const chunk = extraKeys.slice(i, i + UPSERT_CHUNK);
@@ -422,16 +766,46 @@ export async function syncCatalog(
     }
   }
 
+  // 日次の突き合わせ。両方の不在が証明でき、どちらの集合にも無い active 行を閉じる。
+  // 今日の不完全なページで見た鍵は ownProven.keys に入っているので落とさない。
+  const reconcileEvents: CatalogDiffEvent[] = [];
+  if (sibling && ownProven.absenceProven && siblingListing.absenceProven) {
+    const flippedRaw = await db.execute(sql`
+      UPDATE x402_endpoints
+      SET status = 'delisted', delisted_at = now()
+      WHERE status = 'active'
+        AND source IN (${CATALOG_SOURCE}, ${CIRCLE_DISCOVERY_SOURCE})
+        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...ownProven.keys])}::jsonb)))
+        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...siblingListing.keys])}::jsonb)))
+      RETURNING id, resource_key
+    `);
+    const flipped = (Array.isArray(flippedRaw) ? flippedRaw : ((flippedRaw as unknown as { rows?: unknown[] }).rows ?? [])) as {
+      id: string;
+      resource_key: string;
+    }[];
+    for (const row of flipped) {
+      idByKey.set(row.resource_key, row.id);
+      reconcileEvents.push({
+        resourceKey: row.resource_key,
+        eventType: "delisted",
+        prevValue: { status: "active" },
+        newValue: { status: "delisted" },
+      });
+    }
+  }
+
   // ---- record events (endpointId resolved from pre-write map; new endpoints can't have events) ----
   const eventIdByKey = new Map(idByKey);
-  if (sibling && siblingListing.latestComplete) {
-    for (const [key, row] of siblingRows) if (!eventIdByKey.has(key)) eventIdByKey.set(key, row.id);
+  for (const event of events) {
+    if (event.eventType !== "delisted" || eventIdByKey.has(event.resourceKey)) continue;
+    const row = siblingRows.get(event.resourceKey);
+    if (row) eventIdByKey.set(event.resourceKey, row.id);
   }
-  for (const e of sharedRelists) {
-    const row = siblingRows.get(e.resourceKey);
-    if (row) eventIdByKey.set(e.resourceKey, row.id);
+  for (const event of sharedRelists) {
+    const row = siblingRows.get(event.resourceKey);
+    if (row) eventIdByKey.set(event.resourceKey, row.id);
   }
-  const eventsOut = [...events, ...sharedRelists];
+  const eventsOut = [...events, ...sharedRelists, ...reconcileEvents];
   const eventRows = eventsOut
     .map((e) => {
       const endpointId = eventIdByKey.get(e.resourceKey);
@@ -442,12 +816,28 @@ export async function syncCatalog(
         detectedOn: today,
         prevValue: e.prevValue,
         newValue: e.newValue,
+        resourceKey: e.resourceKey,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
   if (eventRows.length > 0) {
-    await db.insert(x402DelistingEvents).values(eventRows);
+    await db.insert(x402DelistingEvents).values(
+      eventRows.map((row) => ({
+        endpointId: row.endpointId,
+        eventType: row.eventType,
+        detectedOn: row.detectedOn,
+        prevValue: row.prevValue,
+        newValue: row.newValue,
+      })),
+    );
   }
+  // 行に結び付かなかった delist は記録していないので、aux の件数にも出さない。
+  const recordedEvents: CatalogDiffEvent[] = eventRows.map((row) => ({
+    resourceKey: row.resourceKey,
+    eventType: row.eventType,
+    prevValue: row.prevValue,
+    newValue: row.newValue,
+  }));
 
   // ---- snapshot (idempotent per day: refresh on re-run) ----
   await db
@@ -458,6 +848,7 @@ export async function syncCatalog(
       totalCount: result.totalCount,
       fetchedCount: result.fetchedCount,
       resourceKeys: [...currentKeys],
+      complete: result.complete,
     })
     .onConflictDoUpdate({
       target: [x402CatalogSnapshots.snapshotDate, x402CatalogSnapshots.source],
@@ -465,29 +856,35 @@ export async function syncCatalog(
         totalCount: result.totalCount,
         fetchedCount: result.fetchedCount,
         resourceKeys: [...currentKeys],
+        complete: result.complete,
       },
-      // A partial re-run must not replace a full snapshot of the same day (2026-10-06: a manual re-run
-      // fetched 25,000 of 35,028 and overwrote the complete 01:00 snapshot — tomorrow's diff base).
-      // A complete run always writes; a partial one writes only over an earlier partial (or empty) one that read fewer rows.
+      // A partial re-run must not replace a full snapshot of the same day (2026-10-06).
+      // complete=false（page_shape で件数だけ揃う日を含む）は、それより多く読んだ不完全な
+      // snapshot だけを置き換える。complete が NULL の旧行は件数の規則のまま。
       ...(result.complete
         ? {}
         : {
-            setWhere: sql`(${x402CatalogSnapshots.fetchedCount} < ${x402CatalogSnapshots.totalCount} or ${x402CatalogSnapshots.totalCount} = 0) and excluded.fetched_count > ${x402CatalogSnapshots.fetchedCount}`,
+            setWhere: sql`(
+              ${x402CatalogSnapshots.complete} = false
+              OR (
+                ${x402CatalogSnapshots.complete} IS NULL
+                AND (${x402CatalogSnapshots.fetchedCount} < ${x402CatalogSnapshots.totalCount} OR ${x402CatalogSnapshots.totalCount} = 0)
+              )
+            ) AND excluded.fetched_count > ${x402CatalogSnapshots.fetchedCount}`,
           }),
     });
 
-  // ---- resource_id の別名（2026-09-29 監査 7 周目・高）----
-  // 生の URL から id を作る SDK が、表記の揺れで BLOCK をカタログ外と読まないように。新規の掲載と、URL か
-  // resource_id が変わった掲載の別名をここで作る（backfill と同じ writeResourceAliases）。既存の掲載の欠けと
-  // 揺れの規則の変更は scripts/backfill-resource-aliases.ts の再実行で埋まる。別名は補助の索引なので、失敗しても
-  // 同期そのものは止めない（表の無い DB では missingTable が返るだけ）。
+  // ---- resource_id の別名 ----
+  // 持ち主の method だけで作る。共有行を相手の method で別名にすると、どの行の resource_id も指さない。
   try {
     const prevByKey = new Map(knownRows.map((r) => [r.resourceKey, r]));
-    const aliasSources = result.items.flatMap((item) => {
+    const aliasItems = [...ownItems, ...transferItems];
+    const aliasSources = aliasItems.flatMap((item) => {
       const ids = idsOf(item);
-      if (!ids.canonicalUrl) return [];
+      if (!ids.canonicalUrl || !ids.resourceId) return [];
       const prev = prevByKey.get(item.resourceKey);
-      if (prev && prev.resourceUrl === item.resourceUrl && prev.resourceId === ids.resourceId) return [];
+      const transferred = transferItems.includes(item);
+      if (!transferred && prev && prev.resourceUrl === item.resourceUrl && prev.resourceId === ids.resourceId) return [];
       return [{ resource_id: ids.resourceId, method: item.method ?? "GET", resource_url: item.resourceUrl }];
     });
     await writeResourceAliases(db, aliasSources);
@@ -502,6 +899,6 @@ export async function syncCatalog(
     complete: result.complete,
     upserted,
     skipped,
-    events: eventsOut,
+    events: recordedEvents,
   };
 }

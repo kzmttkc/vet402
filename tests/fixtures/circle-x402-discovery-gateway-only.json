@@ -1,0 +1,137 @@
+{
+  "resource": "https://api.aisa.one/apis/v2/agentmail/api-keys",
+  "type": "http",
+  "metadata": {
+    "provider": {
+      "name": "AIsa API",
+      "website": "https://aisa.one",
+      "docsUrl": "https://docs.agentmail.to",
+      "openApiUrl": "https://aisa.one/openapi.yaml",
+      "description": "Email inboxes, threads, and sending for autonomous agents",
+      "category": "INFRASTRUCTURE",
+      "tags": [
+        "x402",
+        "paid-api",
+        "data-apis",
+        "email",
+        "agent-infra",
+        "inbox",
+        "communication",
+        "agentic-markets"
+      ]
+    },
+    "path": "/apis/v2/agentmail/api-keys",
+    "method": "GET",
+    "description": "List Account API Keys",
+    "mimeType": "application/json",
+    "siwx": false,
+    "supportsVanillax402": false,
+    "supportsCircleGateway": true
+  },
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "eip155:1",
+      "asset": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:8453",
+      "asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:43114",
+      "asset": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:42161",
+      "asset": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:10",
+      "asset": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:137",
+      "asset": "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:130",
+      "asset": "0x078d782b760474a361dda0af3839290b0ef57ad6",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    },
+    {
+      "scheme": "exact",
+      "network": "eip155:5042",
+      "asset": "0x3600000000000000000000000000000000000000",
+      "payTo": "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      "amount": "100000",
+      "maxTimeoutSeconds": 604900,
+      "extra": {
+        "name": "GatewayWalletBatched",
+        "version": "1",
+        "verifyingContract": "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee"
+      }
+    }
+  ]
+}

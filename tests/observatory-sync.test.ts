@@ -253,7 +253,8 @@ if (!TEST_DB) {
       shared = await rowsFor(cdpItem.resourceKey);
       assert.equal(shared.length, 1);
       assert.equal(shared[0]?.status, "delisted", "両方の完全な snapshot から消えたら持ち主の行も delist");
-      assert.equal(shared[0]?.source, "cdp_bazaar");
+      // 10/3 の Circle は鍵を載せ、CDP の最新の完全な取得には無い。持ち主は Circle に移ってから delist する。
+      assert.equal(shared[0]?.source, "circle_discovery");
       assert.equal((await rowsFor(gwOnly.resourceKey))[0]?.status, "delisted");
 
       await syncCatalog({ fetchResult: pack([cdpItem]), today: "2026-10-05", source: "cdp_bazaar" });
@@ -299,6 +300,234 @@ if (!TEST_DB) {
       assert.equal(hasGateway(owned[0]?.rawAccepts), true);
       const accepts = owned[0]?.rawAccepts as { network?: string }[];
       assert.equal(accepts.some((a) => a.network === "eip155:8453"), true);
+    });
+
+    const baseAccept = {
+      scheme: "exact",
+      network: "eip155:8453",
+      amount: "1000",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      payTo: "0x1111111111111111111111111111111111111111",
+    };
+    const gwAccept = {
+      scheme: "exact",
+      network: "eip155:5042",
+      amount: "100000",
+      asset: "0x3600000000000000000000000000000000000000",
+      payTo: "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+      maxTimeoutSeconds: 604900,
+      extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000ee" },
+    };
+    const solAccept = {
+      scheme: "exact",
+      network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      amount: "2000",
+      asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      payTo: "EwWqGE4ZFKLofuestmU4LDdK7XM1N4ALgdZccwYugwGd",
+    };
+    const pack = (items: ReturnType<typeof parseCatalogItem>[], opts: { complete?: boolean; total?: number } = {}) => ({
+      items,
+      totalCount: opts.total ?? items.length,
+      fetchedCount: items.length,
+      complete: opts.complete ?? true,
+    });
+    const cdpOf = (resource: string, accepts: unknown[], description = "from cdp") =>
+      parseCatalogItem({
+        resource,
+        description,
+        accepts,
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+      });
+    const circleOf = (resource: string, accepts: unknown[], method = "POST", description = "from circle") =>
+      parseCatalogItem({ resource, metadata: { method, description }, accepts });
+    const rowsFor = async (key: string) => {
+      const rows = await db.select().from(schema.x402Endpoints).where(sql`resource_key = ${key}`);
+      return rows;
+    };
+    const delistCount = async () => {
+      const events = await db.select().from(schema.x402DelistingEvents);
+      return events.filter((e) => e.eventType === "delisted").length;
+    };
+    const SHARED = "https://shared-review.example/v1/item";
+
+    await t.test("持ち主の不完全な取得でも、兄弟の鍵の和に無ければ delist する", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [baseAccept, gwAccept]);
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-11-01", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdpOf("https://other.example/a", [baseAccept])]), today: "2026-11-02", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-11-02", source: "circle_discovery" });
+      let row = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(row?.status, "active");
+      await syncCatalog({
+        fetchResult: pack([cdpOf("https://other.example/a", [baseAccept])], { complete: false, total: 5 }),
+        today: "2026-11-03",
+        source: "cdp_bazaar",
+      });
+      row = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(row?.status, "active", "CDP の欠けた取得だけでは落とさない");
+      const summary = await syncCatalog({
+        fetchResult: pack([circleOf("https://other.example/b", [gwAccept])]),
+        today: "2026-11-03",
+        source: "circle_discovery",
+      });
+      row = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(row?.status, "delisted");
+      assert.equal(summary.events.filter((e) => e.eventType === "delisted").length, 1);
+      await syncCatalog({
+        fetchResult: pack([circleOf("https://other.example/b", [gwAccept])]),
+        today: "2026-11-04",
+        source: "circle_discovery",
+      });
+      assert.equal(await delistCount(), 1, "翌日も事象は増えない");
+    });
+
+    await t.test("同じ日に 2 回走っても delisted の事象は 1 行", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept]);
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-11-10", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-10", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "cdp_bazaar" });
+      const morning = await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "circle_discovery" });
+      assert.equal(morning.events.filter((e) => e.eventType === "delisted").length, 1);
+      const afternoon = await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "cdp_bazaar" });
+      assert.equal(afternoon.events.filter((e) => e.eventType === "delisted").length, 0);
+      assert.equal(await delistCount(), 1);
+    });
+
+    await t.test("持ち主を移し、accepts は積み上がらない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const circle = circleOf(SHARED, [gwAccept], "POST", "from circle");
+      const cdp = cdpOf(SHARED, [baseAccept], "from cdp");
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-11-20", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-20", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([]), today: "2026-11-21", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-21", source: "cdp_bazaar" });
+      const row = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(row?.source, "cdp_bazaar");
+      assert.equal(row?.method, "GET");
+      assert.equal(row?.description, "from cdp");
+      assert.equal(row?.priceAmount, "1000");
+      const accepts = row?.rawAccepts as { extra?: { name?: string }; network?: string }[];
+      assert.ok(Array.isArray(accepts));
+      assert.equal(accepts.some((a) => a.extra?.name === "GatewayWalletBatched"), false);
+      assert.equal(accepts.some((a) => a.network === "eip155:8453"), true);
+      const bySource = row?.acceptsBySource as Record<string, unknown>;
+      assert.equal(bySource.circle_discovery, undefined);
+      assert.ok(Array.isArray(bySource.cdp_bazaar));
+    });
+
+    await t.test("source ごとの accepts は相手の実行で消えず、slice は置き換わる", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept]);
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-25", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-11-25", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-26", source: "cdp_bazaar" });
+      let row = (await rowsFor(cdp.resourceKey))[0];
+      let accepts = row?.rawAccepts as { extra?: { name?: string }; network?: string }[];
+      assert.equal(accepts.some((a) => a.extra?.name === "GatewayWalletBatched"), true, "CDP の実行は Circle の accept を残す");
+      const circleNext = circleOf(SHARED, [solAccept]);
+      await syncCatalog({ fetchResult: pack([circleNext]), today: "2026-11-26", source: "circle_discovery" });
+      row = (await rowsFor(cdp.resourceKey))[0];
+      accepts = row?.rawAccepts as { extra?: { name?: string }; network?: string }[];
+      assert.equal(accepts.some((a) => a.extra?.name === "GatewayWalletBatched"), false);
+      assert.equal(accepts.some((a) => a.network === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"), true);
+      assert.equal(accepts.some((a) => a.network === "eip155:8453"), true);
+      assert.equal(row?.source, "cdp_bazaar");
+    });
+
+    await t.test("両方の不完全な日を挟むと、次の完全な取得の突き合わせで delist する", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept]);
+      const otherCdp = cdpOf("https://keep.example/a", [baseAccept]);
+      const otherCircle = circleOf("https://keep.example/b", [gwAccept]);
+      await syncCatalog({ fetchResult: pack([cdp, otherCdp]), today: "2026-12-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle, otherCircle]), today: "2026-12-01", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([otherCdp], { complete: false, total: 9 }), today: "2026-12-02", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([otherCircle], { complete: false, total: 9 }), today: "2026-12-02", source: "circle_discovery" });
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active");
+      await syncCatalog({ fetchResult: pack([otherCdp]), today: "2026-12-03", source: "cdp_bazaar" });
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active", "Circle の完全な取得がまだ無い");
+      const summary = await syncCatalog({ fetchResult: pack([otherCircle]), today: "2026-12-03", source: "circle_discovery" });
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "delisted");
+      assert.equal(summary.events.filter((e) => e.eventType === "delisted" && e.resourceKey === cdp.resourceKey).length, 1);
+    });
+
+    await t.test("今日の不完全なページで見た鍵は突き合わせで落とさない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept]);
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-12-10", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-12-10", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp], { complete: false, total: 4 }), today: "2026-12-11", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([]), today: "2026-12-11", source: "circle_discovery" });
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active");
+      assert.equal(await delistCount(), 0);
+    });
+
+    await t.test("page_shape の snapshot は件数が揃っても完全にしない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept]);
+      await syncCatalog({ fetchResult: pack([circle], { complete: false, total: 8 }), today: "2026-12-15", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-12-15", source: "cdp_bazaar" });
+      await syncCatalog({
+        fetchResult: pack([circleOf("https://other.example/c", [gwAccept])], { complete: false, total: 1 }),
+        today: "2026-12-16",
+        source: "circle_discovery",
+      });
+      const snaps = await db.select().from(schema.x402CatalogSnapshots).where(sql`source = 'circle_discovery' and snapshot_date = '2026-12-16'`);
+      assert.equal(snaps[0]?.complete, false);
+      assert.equal(snaps[0]?.fetchedCount, snaps[0]?.totalCount);
+      await syncCatalog({ fetchResult: pack([]), today: "2026-12-16", source: "cdp_bazaar" });
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active");
+    });
+
+    await t.test("記録しなかった delist は summary に出さない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-12-20", source: "cdp_bazaar" });
+      await db.execute(sql`DELETE FROM x402_endpoints`);
+      const summary = await syncCatalog({ fetchResult: pack([]), today: "2026-12-21", source: "cdp_bazaar" });
+      assert.equal(summary.events.filter((e) => e.eventType === "delisted").length, 0);
+      assert.equal(await delistCount(), 0);
+    });
+
+    await t.test("別名は持ち主の method だけで作る", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`);
+      const { resourceId } = await import("@/lib/ids/canonical");
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      const circle = circleOf(SHARED, [gwAccept], "POST");
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-12-22", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2026-12-22", source: "circle_discovery" });
+      const postId = resourceId("POST", SHARED);
+      const getId = resourceId("GET", SHARED);
+      assert.notEqual(postId, getId);
+      const aliases = await db.select().from(schema.x402ResourceAliases);
+      assert.equal(aliases.some((a) => a.resourceId === postId || a.aliasId === postId), false);
+      assert.equal(aliases.some((a) => a.resourceId === getId), true);
+    });
+
+    await t.test("CDP と Circle の同じ resource_key は一意で、MPP は別行のまま", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdp = cdpOf(SHARED, [baseAccept]);
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2026-12-25", source: "cdp_bazaar" });
+      await assert.rejects(
+        db.execute(sql`
+          INSERT INTO x402_endpoints (resource_key, resource_url, source, status)
+          VALUES (${cdp.resourceKey}, ${SHARED}, 'circle_discovery', 'active')
+        `),
+      );
+      await db.execute(sql`
+        INSERT INTO x402_endpoints (resource_key, resource_url, source, status)
+        VALUES (${cdp.resourceKey}, ${SHARED}, 'mpp_directory', 'active')
+      `);
+      const rows = await rowsFor(cdp.resourceKey);
+      assert.deepEqual(rows.map((r) => r.source).sort(), ["cdp_bazaar", "mpp_directory"]);
     });
   });
 }

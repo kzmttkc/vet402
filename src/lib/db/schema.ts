@@ -585,6 +585,14 @@ export const x402Endpoints = pgTable(
     qualityLastCalledAt: timestamp("quality_last_called_at", { withTimezone: true }),
     /** Full accepts[] as received — multi-payTo/multi-chain evidence, auditability. */
     rawAccepts: jsonb("raw_accepts"),
+    /**
+     * Accepts kept per listing source (`cdp_bazaar` / `circle_discovery`).
+     * `raw_accepts` is the union of these slices, rewritten on each sync.
+     * A source that still lists the key replaces only its own slice, so the
+     * other catalog's accepts survive that source's run. NULL on rows written
+     * before the column existed.
+     */
+    acceptsBySource: jsonb("accepts_by_source"),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow(),
     /** active | delisted — current catalog presence (history lives in x402_delisting_events). */
@@ -612,6 +620,14 @@ export const x402Endpoints = pgTable(
   },
   (t) => [
     uniqueIndex("x402_endpoints_key_source_unique").on(t.resourceKey, t.source),
+    // CDP と Circle は resource_key で 1 行。MPP は (resource_key, source) のまま別行。
+    // 本番で作る前に重複を確認する（重複があると CREATE INDEX が失敗する）:
+    //   SELECT resource_key, count(*) FROM x402_endpoints
+    //   WHERE source IN ('cdp_bazaar', 'circle_discovery')
+    //   GROUP BY resource_key HAVING count(*) > 1;
+    uniqueIndex("x402_endpoints_shared_resource_key_unique")
+      .on(t.resourceKey)
+      .where(sql`${t.source} in ('cdp_bazaar', 'circle_discovery')`),
     index("x402_endpoints_payto_idx").on(t.payTo),
     index("x402_endpoints_status_idx").on(t.status),
     index("x402_endpoints_resource_id_idx").on(t.resourceId),
@@ -640,9 +656,10 @@ export const x402ResourceAliases = pgTable(
 
 /**
  * Daily catalog snapshot — the raw material the diff is computed FROM, kept
- * so a disputed delisting can be re-derived. fetchedCount < totalCount marks
- * an incomplete fetch: delisting judgement is WITHHELD that day (a fetch gap
- * must never read as "the endpoint vanished" — verify-the-instrument).
+ * so a disputed delisting can be re-derived. `complete = false` withholds
+ * delisting from that fetch. A NULL `complete` (rows from before the column)
+ * falls back to fetchedCount < totalCount. A fetch gap must never read as
+ * "the endpoint vanished" (verify-the-instrument).
  */
 export const x402CatalogSnapshots = pgTable(
   "x402_catalog_snapshots",
@@ -653,6 +670,12 @@ export const x402CatalogSnapshots = pgTable(
     source: text("source").notNull().default("cdp_bazaar"),
     totalCount: integer("total_count").notNull(),
     fetchedCount: integer("fetched_count").notNull(),
+    /**
+     * Whether the fetch read every page. NULL is a snapshot from before this
+     * column: completeness falls back to fetched_count >= total_count > 0.
+     * false overrides the counts (a page-shape gap can still have fetched >= total).
+     */
+    complete: boolean("complete"),
     /** All resourceKeys seen that day (set for diffing; full item JSON is NOT kept — it would bloat). */
     resourceKeys: jsonb("resource_keys").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
