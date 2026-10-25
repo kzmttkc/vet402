@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-25 Gateway reconcile reads 2000 rows, flag still off
+
+- **What**: One Gateway pass loads 2000 rows. The native verifier still loads 200. One fifth of the Gateway rows is reserved for purchases already looked up (absent, pending, failed, or a charge still open). An HTTP error or an incomplete transfer page does not add the buyer to buyersBlocked. The failed row stays without nonceLookup. The signature time rule remains the block on a batch that could still contain that authorization. The verify cron stays at `0 14 * * *`.
+- **Why**: The shared limit of 200 filled up before the 75 second read budget. A price under one cent can buy more than 200 rows inside the 2 USD daily cap. Rows already looked up then waited until every unread row was done, so a charge that landed later did not settle. One HTTP 500 from Circle also stopped every batch for the single buyer, including a batch signed earlier than the failed lookup.
+- **Impact**: The lane flag stays off until `OBSERVATORY_ARC_GATEWAY_L1_ENABLED` is the exact string `true`. A batch signed after an unread failed lookup still waits. Pending rows still do not expire. A debit below the row sum still refutes.
+- **Commits**: `7eb007f2` (fix), `931f5f13` (tests).
+
 ## 2026-10-25 Gateway reconcile writes a judged batch, flag still off
 
 - **What**: One Gateway pass may read for 75 seconds inside the verify cron. Writes of rows already judged sit outside that clock. A budget stop ends the pass and does not block the buyer. The next pass continues from the oldest row whose nonce is still unread. An unread authorization blocks a batch only when its signature time, validAfter plus 600 seconds, is at or before the batch block time minus 60 seconds, and a later unread signature does not stop the batch. A debit smaller than the vet402 rows in that batch refutes. A larger debit stays deferred and is counted on the summary. Pending stays deferred after the grace window. Only an absent or failed lookup expires. Two Arc mainnet batch transactions pin the submitBatch decode, and the buyer debit matches the published round total. Stellar counts as signable only for the USDC assets this service pays. Day record bounds are UTC. The anchor script stops when either public address is unset.
