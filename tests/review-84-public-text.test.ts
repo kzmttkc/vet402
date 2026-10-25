@@ -18,7 +18,7 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 const squash = (src: string) => src.replace(/&apos;/g, "'").replace(/\s+/g, " ");
 
 const UNVERIFIED =
-  "unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.";
+  "unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, body_over_cap, for which a 402 came back and the body was not read to the end, and method_not_measured, for which the listing declares PATCH or PUT and no request was sent. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, DELETE, PATCH, or PUT, is measured with GET, and two consecutive failures of that probe can be published as fail. A listing that declares PATCH or PUT is not measured. No request is sent and the result stays unverified.";
 
 test("llms.txt の観測所の文は probed daily を含まず、メソッド・fail・pct・未プローブを実装どおりに書く", () => {
   const llms = read("public/llms.txt");
@@ -335,7 +335,7 @@ test("観測所の pass は宣言メソッドではなく、要旨と同じメ�
 test("State of x402 の method 行は、null が 4 種以外も含むと書く", () => {
   const src = read("src/app/observatory/state/page.tsx");
   assert.equal(src.includes("Catalog entries declaring no HTTP method (probed with GET)"), false);
-  assert.match(src, /No HTTP method, or a method other than GET, POST, HEAD, or DELETE \(the probe uses GET\)/);
+  assert.match(src, /No HTTP method \(the probe uses GET\)/);
 });
 
 test("プレイグラウンドの実行中と結果注は、デモの 1 回を公開台帳に書かない", () => {

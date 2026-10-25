@@ -122,7 +122,7 @@ export function withNotFound(out: ResolveResult): ResolveResult {
   const note =
     `vet402 has no x402 endpoint on record for ${what}. vet402 reads listings from the sources in listing_sources, ` +
     `with syncs that start at the times shown there. There is no application or fee. An endpoint that is not in those sources has not been measured, ` +
-    `and this is not a finding about it. The documentation link explains how a listing gets into the CDP Bazaar and the Circle x402 discovery catalog.`;
+    `and this is not a finding about it. The documentation link explains how a listing gets into the CDP Bazaar and the Circle x402 discovery.`;
   return {
     ...out,
     endpoints: out.endpoints ?? [],

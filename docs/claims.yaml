@@ -671,18 +671,18 @@ claims:
     verified_at: 2026-09-04
   - id: method_the_whole_x402_economy_x402
     surface: src/app/observatory/methodology/page.tsx
-    quote: "the whole x402 economy: discovery surfaces vet402 does not read are outside what we probe"
+    quote: "the whole x402 economy: discovery surfaces vet402 does not read are outside the routes vet402 probes"
     means: "カタログは測定母集団であって x402 経済の全体ではない（明示した限界）。チェーンが byChain に小さい件数で載ることも同じ被覆の限界で、そのチェーンについての所見ではない"
     check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
+    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない。2026-10-26 に we を外し、Circle の主ネットワークと C1 の未測定の上限を同じ節に足した"
+    verified_at: 2026-10-26
   - id: method_unverified_is_not_a_failure
     surface: src/app/observatory/methodology/page.tsx
     quote: "It is not a failure and is never counted as one"
-    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）、method_not_measured（PATCH と PUT は要求を送らない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE/PATCH/PUT 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。PATCH と PUT は測らない。"
     check: null
-    why_unverifiable: "語の定義であって公開 GET の数値ではない。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。4 種以外は src/lib/observatory/catalog-source.ts が null にする。tests/review-84-public-text.test.ts が同じ文を固定する。"
-    verified_at: 2026-10-21
+    why_unverifiable: "語の定義であって公開 GET の数値ではない。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。PATCH と PUT は method_not_measured で要求を出さない。それ以外の未宣言は GET。tests/review-84-public-text.test.ts が同じ文を固定する。"
+    verified_at: 2026-10-26
   - id: obs_daily_measurements_over_the_public
     surface: src/app/observatory/page.tsx
     quote: "Daily measurements over the public x402 catalog: does each endpoint's payment wall"
@@ -1111,11 +1111,11 @@ claims:
   - id: audit_e_method_undeclared_is_not_the_main_cause
     surface: src/app/observatory/page.tsx
     quote: "It is not a failure and is never counted as one"
-    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。未宣言メソッドはその主因ではない。状態頁の methodUndeclared は 100 未満。"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）、method_not_measured（PATCH と PUT は要求を送らない）を名指しする。未宣言メソッドはその主因ではない。状態頁の methodUndeclared は method が NULL の行で、100 未満。"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "methodUndeclared < 100"
-    verified_at: 2026-10-21
+    verified_at: 2026-10-26
   - id: audit_e_l2_vocabulary_has_one_canon
     surface: src/app/observatory/methodology/page.tsx
     quote: "Ledger words and decision words."
@@ -1313,11 +1313,11 @@ claims:
   - id: seo_vocab_unverified_is_never_counted_as_failure
     surface: src/lib/observatory/vocabulary.ts
     quote: "It is not a failure and is never counted as one"
-    means: "unverified は失敗として数えない。中身は未プローブ、公開ゲート未達、path_template、上の 3 つの残り。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
+    means: "unverified は失敗として数えない。中身は未プローブ、公開ゲート未達、path_template、上の 3 つの残り。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）、method_not_measured（PATCH と PUT は要求を送らない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE/PATCH/PUT 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。PATCH と PUT は測らない。"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "publishedUnverified >= 0"
-    verified_at: 2026-09-05
+    verified_at: 2026-10-26
   - id: seo_vocab_settled_is_never_inferred_from_the_seller
     surface: src/lib/observatory/vocabulary.ts
     quote: "it is never inferred from the seller's own claim"
@@ -1661,10 +1661,10 @@ claims:
   - id: method_catalog_refetched_daily_with_reported_total
     surface: src/app/observatory/methodology/page.tsx
     quote: "The public discovery catalog is re-fetched daily, and every fetch is compared with the catalog&apos;s own reported total for that day"
-    means: "カタログの再取得は出どころごと。括弧の 2 回は Bazaar（cron catalog-sync が 0 1 * * * と 0 13 * * *）。MPP directory は 01:30 UTC の 1 回（cron catalog-sync-aux が 30 1 * * *）。Circle x402 discovery も同じ aux の回（01:30 UTC）。新しい cron は足していない。directory から消えた行の delist は次の完全な 01:30 UTC まで来ない。Circle の目録から消えた行も、その目録の次の完全な取得まで delist しない。取得件数とカタログ自身の申告総数は latestSnapshot として公開する。同じ日に完全なスナップショットがあるとき、後の不完全な実行はそれを置き換えない。取得が欠けた日は delisting の判定をしない"
+    means: "カタログの再取得は出どころごと。括弧の 2 回は Bazaar（cron catalog-sync が 0 1 * * * と 0 13 * * *）。MPP directory は 01:30 UTC の 1 回（cron catalog-sync-aux が 30 1 * * *）。Circle x402 discovery も同じ aux の回（01:30 UTC）。新しい cron は足していない。directory から消えた行の delist は次の完全な 01:30 UTC まで来ない。Circle の目録から消えた行も、その目録の次の完全な取得まで delist しない。もう一方の目録がまだ載せている鍵は delist にしない。両方の最新の完全な取得に無い active 行は、前日の差分を逃しても delist する。snapshot の complete 列が false のときは件数が揃っていても不完全。取得件数とカタログ自身の申告総数は latestSnapshot として公開する。同じ日に完全なスナップショットがあるとき、後の不完全な実行はそれを置き換えない。取得が欠けた日は、その取得からは delisting の判定をしない"
     check: null
-    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。Bazaar の 2 回は vercel.json の cron `catalog-sync`（0 1 * * * と 0 13 * * *）、MPP directory と Circle x402 discovery の 1 回は同じ `catalog-sync-aux`（30 1 * * *）。tests/llms-txt-current.test.ts の timesFor が両 path の時刻を Freshness と突き合わせる。取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）。delist は source ごとで、CDP と Circle が同じ resource_key を共有するときは片方の snapshot がまだ載せていれば落とさない（src/lib/observatory/catalog-sync.ts）"
-    verified_at: 2026-09-19
+    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。Bazaar の 2 回は vercel.json の cron `catalog-sync`（0 1 * * * と 0 13 * * *）、MPP directory と Circle x402 discovery の 1 回は同じ `catalog-sync-aux`（30 1 * * *）。tests/llms-txt-current.test.ts の timesFor が両 path の時刻を Freshness と突き合わせる。取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）。共有行は相手の目録が載せているあいだ落とさず、両方の完全な取得に無い行は日次の突き合わせで落とす（src/lib/observatory/catalog-sync.ts、tests/observatory-sync.test.ts）。"
+    verified_at: 2026-10-26
   - id: method_l1_refuses_unless_every_condition_holds
     surface: src/app/observatory/methodology/page.tsx
     quote: "refuse to proceed unless every one of these holds:"
@@ -2112,7 +2112,7 @@ claims:
   - id: terms_unverified_is_not_a_failure
     surface: src/app/legal/terms/page.tsx
     quote: "It is not a failure and is never counted as one"
-    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。"
+    means: "unverified は未プローブ、公開ゲート未達、path_template、上の 3 つの残りであり、失敗として数えない。残りには rate_limited、tls、request_shape、unsafe_target と、method_undeclared（2026-09-02 より前は要求を送っていない）、body_over_cap（402 が返り本文を読み切っていない）、method_not_measured（PATCH と PUT は要求を送らない）を名指しする。メソッド無し、または GET/POST/HEAD/DELETE/PATCH/PUT 以外は GET で測り、そのプローブの連続 2 回失敗は fail として公開され得る。PATCH と PUT は測らない。"
     check: null
-    why_unverifiable: "語の定義であって公開 GET の数値ではない。正典は src/lib/observatory/vocabulary.ts。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。tests/review-84-public-text.test.ts が同じ文を固定する。"
-    verified_at: 2026-10-21
+    why_unverifiable: "語の定義であって公開 GET の数値ではない。正典は src/lib/observatory/vocabulary.ts。プローブは src/lib/observatory/l0-probe.ts。PATCH と PUT は要求を出さない。tests/review-84-public-text.test.ts が同じ文を固定する。"
+    verified_at: 2026-10-26

@@ -167,13 +167,15 @@ export default async function ObservatoryMethodologyPage() {
         </h2>
         <p className="doc-p">
           Every endpoint on this page was discovered through the <strong>CDP x402 Bazaar</strong>,
-          the Circle x402 discovery catalog, or the MPP directory (and equivalent public discovery
-          surfaces). That catalog is the measured population, not
-          the whole x402 economy: discovery surfaces vet402 does not read are outside what we probe
+          the Circle x402 discovery, or the MPP directory (and equivalent public discovery
+          surfaces). Those catalogs are the measured population, not
+          the whole x402 economy: discovery surfaces vet402 does not read are outside the routes vet402 probes
           or purchase. A chain can be absent from <code>byChain</code> for that reason, and it can
           also sit there with a small count because part of its listings reach this catalog and
           part do not. Either way the figure is a coverage limit of this observatory, not a finding
           about that chain. The catalog is an input; the measurements are the record.
+          For a listing read from the Circle x402 discovery, the network vet402 stores is the first accept on a mainnet that vet402 can sign, excluding GatewayWalletBatched. When no such accept exists, the network is Arc if the listing has an Arc GatewayWalletBatched accept. Otherwise the network is the first accept. Listings read from the CDP Bazaar keep the first accept as the stored network.
+          Listings from the Circle x402 discovery can be Base purchase candidates when that stored network is Base. They share the first-purchase quota for a UTC day and the day&apos;s budget with listings from the CDP Bazaar. In the C1 run, listings from the Circle x402 discovery with no probe yet take at most one third of the remaining places, so a listing that already has a probe keeps a place in that run.
         </p>
 
         <h2 className="sec-head">
@@ -183,8 +185,9 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           An L0 probe sends one request to a catalog-listed endpoint, with no payment
           attached. The request uses the HTTP method the catalog entry declares when that
-          method is GET, POST, HEAD, or DELETE. When the entry declares no method, or a
-          method outside that set, the request uses GET. Two failures in a row on that
+          method is GET, POST, HEAD, or DELETE. A declared DELETE is sent as DELETE. When the
+          entry declares PATCH or PUT, no request is sent and the result stays unverified.
+          When the entry declares no method, or any other method, the request uses GET. Two failures in a row on that
           request can be published as fail (section 3). Under the x402 protocol a compliant server answers{" "}
           <code>HTTP 402 Payment Required</code> with an <code>accepts</code> array before
           executing anything, so the probe is free, side-effect free, and observable. We record:
@@ -202,7 +205,7 @@ export default async function ObservatoryMethodologyPage() {
           catalog declaration. <strong>fail</strong> — the probe contradicted that: no 402 (any
           other status), a DNS, timeout or connection failure, a challenge with no payable accept,
           or a challenge whose price or receiving address contradicts the catalog; the specific
-          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.
+          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, body_over_cap, for which a 402 came back and the body was not read to the end, and method_not_measured, for which the listing declares PATCH or PUT and no request was sent. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, DELETE, PATCH, or PUT, is measured with GET, and two consecutive failures of that probe can be published as fail. A listing that declares PATCH or PUT is not measured. No request is sent and the result stays unverified.
         </p>
         {unverified && unverified.total > 0 && (
           <>
@@ -238,8 +241,8 @@ export default async function ObservatoryMethodologyPage() {
               <code>/api/v1/observatory/state</code>. Until 2026-09-04 this section said the usual
               cause was the undeclared method. The four counts above are what the bucket is made of.
               A listing with no declared HTTP method does not have a line of its own in this breakdown. A listing with no
-              declared HTTP method, or a method other than GET, POST, HEAD, or DELETE, is probed
-              with GET. Two failures in a row on that probe can be published as fail.
+              declared HTTP method, or a method other than GET, POST, HEAD, DELETE, PATCH, or PUT, is probed
+              with GET. Two failures in a row on that probe can be published as fail. A listing that declares PATCH or PUT is not measured. No request is sent and the result stays unverified.
             </p>
           </>
         )}
@@ -624,10 +627,11 @@ export default async function ObservatoryMethodologyPage() {
           catalog&apos;s own reported total for that day (01:00 UTC and 13:00 UTC for the Bazaar catalog). Both counts are published as{" "}
           <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A later incomplete run does not replace a complete snapshot of that day. The MPP directory is fetched once a day, at 01:30 UTC.
           A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
-          The Circle x402 discovery catalog is fetched at 01:30 UTC, on the same run. A listing that leaves the Circle x402 discovery catalog is not judged delisted until the next complete fetch of that catalog.
+          The Circle x402 discovery is fetched at 01:30 UTC, on the same run. A listing that leaves the Circle x402 discovery is not judged delisted until the next complete fetch of that catalog.
+          A key that another catalog still lists is not recorded as delisted. A key absent from the latest complete fetch of both catalogs is recorded as delisted even when an earlier day missed it.
           An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
-          <code>delisted</code>, with the before/after values kept on the event. On any day
+          <code>delisted</code>, with the before/after values kept on the event, unless another catalog still lists that key. On any day
           vet402&apos;s own fetch is incomplete (fetched count below the catalog&apos;s reported total), no
           delisting judgements are made. A gap in vet402 data must never read as a disappearance in
           yours. Reappearance is recorded as <code>relisted</code>. A fall in the

@@ -367,7 +367,7 @@ export default async function ObservatoryStatePage() {
               </tr>
               <tr>
                 <td className="text-brand">
-                  No HTTP method, or a method other than GET, POST, HEAD, or DELETE (the probe uses GET)
+                  No HTTP method (the probe uses GET)
                 </td>
                 <td className="num">{stats.methodUndeclared.toLocaleString()}</td>
                 <td className="num">{pct(stats.methodUndeclared, denom)}</td>

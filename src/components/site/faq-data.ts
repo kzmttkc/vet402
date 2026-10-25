@@ -118,9 +118,13 @@ export const FAQS: FaqItem[] = [
       `vet402 also reads the ${CIRCLE.name} (${CIRCLE.url}). The sync of that catalog starts at ${syncTimesText(CIRCLE.sync_times_utc)}. ` +
       `For Tempo, vet402 also reads the MPP directory (${MPP.url}), with a sync that starts at ${syncTimesText(MPP.sync_times_utc)}. ` +
       `There is no application to vet402 and no fee. ` +
-      `The catalog belongs to CDP. Whether a route enters it is decided by CDP's index, not by vet402. ` +
+      `The CDP Bazaar belongs to CDP. Whether a route enters the CDP Bazaar is decided by CDP's index, not by vet402. ` +
       `CDP's docs say a route is indexed after it declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator. ` +
       `A route that does those things can still be left out by CDP. ` +
+      `Circle x402 discovery is Circle's own list. vet402 does not decide which routes it includes. ` +
+      `Circle's docs say a route enters that list after the service is payable (it answers 402 when unpaid), an OpenAPI spec is published, and Circle approves the intake form. ` +
+      `Circle screens the payout wallet and health-checks the route, and a route stays listed while Circle's health check can reach it. ` +
+      `Circle can still leave a route out. Circle's guide to getting listed: https://developers.circle.com/agent-stack/agent-marketplace/get-listed ` +
       `vet402 does not read the PayAI discovery list as listings. ` +
       `How vet402 checks a listed route: the unpaid L0 check of a POST route sends {} as the body. ` +
       `If that unpaid POST gets 400 or 422 with neither a WWW-Authenticate nor a PAYMENT-REQUIRED header, L0 records it as unverified, not as a failure. ` +

@@ -4868,11 +4868,11 @@ components:
             vet402 reads listings from, with the UTC times its syncs start
             (the field was added on 2026-10-21). A CDP Bazaar sync that stops
             early adds the pages it read and not the rest. The Circle x402
-            discovery catalog is read on the same run as the MPP directory.
+            discovery is read on the same run as the MPP directory.
             There is no application or fee.
             `documentation` links to the FAQ section on why an endpoint is
             not listed and how a listing gets into the CDP Bazaar and the
-            Circle x402 discovery catalog.
+            Circle x402 discovery.
           required: [reason, note, next, listing_sources, documentation]
           properties:
             reason: { type: string, enum: [not_in_catalog] }
