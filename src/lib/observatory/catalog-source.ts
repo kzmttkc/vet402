@@ -136,9 +136,15 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
   // any method outside GET, POST, HEAD, and DELETE are stored as null. The
   // probe measures null with GET. Two consecutive failures of that probe can
   // be published as fail.
+  // Circle's catalog has no extensions.bazaar (measured 2026-10-26). Method and
+  // description then live on metadata. The fallback applies only when bazaar is
+  // absent, so a CDP item keeps its bazaar method, including an undeclared one.
+  // metadata.input.body is a JSON schema, not an example body. It is not copied
+  // into bazaar, so declaredInputSummary does not treat it as something to send.
   const bazaar = asRecord(asRecord(rec.extensions)?.bazaar);
   const input = asRecord(asRecord(bazaar?.info)?.input);
-  const rawMethod = asString(input?.method)?.toUpperCase() ?? null;
+  const metadata = asRecord(rec.metadata);
+  const rawMethod = (bazaar ? asString(input?.method) : asString(metadata?.method))?.toUpperCase() ?? null;
   const method = rawMethod && DECLARED_METHODS.has(rawMethod) ? rawMethod : null;
 
   // The JSON Schema has been observed at extensions.bazaar.schema (live) and
@@ -163,7 +169,7 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
     payTo: payToRaw ? (payToRaw.startsWith("0x") ? payToRaw.toLowerCase() : payToRaw) : null,
     priceAmount: asString(first?.amount),
     priceAsset: asString(first?.asset),
-    description: asString(rec.description),
+    description: asString(rec.description) ?? (bazaar ? null : asString(metadata?.description)),
     declaredSchema,
     declaredInput: declaredInputSummary({ resourceUrl, document: rec }),
     qualityCalls30d: asFiniteNumber(quality?.l30DaysTotalCalls),

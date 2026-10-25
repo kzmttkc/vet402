@@ -25,6 +25,7 @@ if (!TEST_DB) {
   const BASE_GW_PAYTO = "0x5555555555555555555555555555555555555555";
   const BASE_ONLY_PAYTO = "0x6666666666666666666666666666666666666666";
   const GW_URL = "https://gw-only.example/api";
+  const CIRCLE_GW_URL = "https://circle-gw-only.example/api";
   const NATIVE_URL = "https://native-arc.example/api";
   const DUAL_URL = "https://dual-arc.example/api";
   const BASE_GW_URL = "https://base-gw.example/api";
@@ -91,6 +92,7 @@ if (!TEST_DB) {
     });
     const CATALOG: Record<string, unknown[]> = {
       [GW_URL]: [gw(GW_PAYTO)],
+      [CIRCLE_GW_URL]: [gw(GW_PAYTO)],
       [NATIVE_URL]: [native(NATIVE_PAYTO)],
       [DUAL_URL]: [native(DUAL_PAYTO), gw(DUAL_PAYTO)],
       [BASE_GW_URL]: [base(BASE_PAYTO), gw(BASE_GW_PAYTO)],
@@ -134,7 +136,7 @@ if (!TEST_DB) {
       return { seen, fetchImpl };
     };
 
-    async function seed(urls: string[]) {
+    async function seed(urls: string[], source?: string) {
       await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`);
       const items = urls.map((resource) => parseCatalogItem({
         resource,
@@ -142,7 +144,11 @@ if (!TEST_DB) {
         extensions: { bazaar: { info: { input: { method: "GET" } } } },
         quality: { l30DaysTotalCalls: 100, l30DaysUniquePayers: 10 },
       }));
-      await syncCatalog({ fetchResult: { items, totalCount: items.length, fetchedCount: items.length, complete: true }, today: "2026-10-25" });
+      await syncCatalog({
+        fetchResult: { items, totalCount: items.length, fetchedCount: items.length, complete: true },
+        today: "2026-10-25",
+        ...(source ? { source } : {}),
+      });
       await runL0ProbeBatch({
         limit: 10,
         concurrency: 2,
@@ -232,6 +238,29 @@ if (!TEST_DB) {
       assert.equal(rows[0]?.gw?.value, "1000");
       assert.equal(rows[0]?.gw?.to?.toLowerCase(), GW_PAYTO);
       assert.equal(rows[0]?.spent_units, "1000");
+    });
+
+    await t.test("Circle 由来の Gateway だけの出品は旗 on で払い、旗 off ではリクエストが 0", async () => {
+      await seed([CIRCLE_GW_URL], "circle_discovery");
+      const raw = await db.execute(sql`SELECT source FROM x402_endpoints WHERE resource_url = ${CIRCLE_GW_URL}`);
+      const got = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { source: string }[];
+      assert.equal(got[0]?.source, "circle_discovery");
+      delete process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED;
+      let w = wall();
+      await run(w.fetchImpl, async () => 5_000_000n);
+      assert.equal(w.seen.filter((s) => s.url === CIRCLE_GW_URL).length, 0);
+      assert.deepEqual(await ledger(CIRCLE_GW_URL), []);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      w = wall();
+      await run(w.fetchImpl, async () => 5_000_000n);
+      const paid = w.seen.filter((s) => s.paid);
+      assert.equal(paid.length, 1);
+      assert.equal((paid[0]?.accepted?.extra as { name?: string } | undefined)?.name, "GatewayWalletBatched");
+      const rows = await ledger(CIRCLE_GW_URL);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]?.status, "settle_claimed");
+      assert.equal(rows[0]?.rail, "true");
+      assert.equal(rows[0]?.network, ARC);
     });
 
     await t.test("ネイティブの accept は今の Arc レーンのまま。両方ある出品もネイティブ", async () => {

@@ -166,8 +166,9 @@ export default async function ObservatoryMethodologyPage() {
           <span>Where the catalog comes from</span>
         </h2>
         <p className="doc-p">
-          Every endpoint on this page was discovered through the <strong>CDP x402 Bazaar</strong>{" "}
-          (and equivalent public discovery surfaces). That catalog is the measured population, not
+          Every endpoint on this page was discovered through the <strong>CDP x402 Bazaar</strong>,
+          the Circle x402 discovery catalog, or the MPP directory (and equivalent public discovery
+          surfaces). That catalog is the measured population, not
           the whole x402 economy: discovery surfaces vet402 does not read are outside what we probe
           or purchase. A chain can be absent from <code>byChain</code> for that reason, and it can
           also sit there with a small count because part of its listings reach this catalog and
@@ -623,6 +624,7 @@ export default async function ObservatoryMethodologyPage() {
           catalog&apos;s own reported total for that day (01:00 UTC and 13:00 UTC for the Bazaar catalog). Both counts are published as{" "}
           <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A later incomplete run does not replace a complete snapshot of that day. The MPP directory is fetched once a day, at 01:30 UTC.
           A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
+          The Circle x402 discovery catalog is fetched at 01:30 UTC, on the same run. A listing that leaves the Circle x402 discovery catalog is not judged delisted until the next complete fetch of that catalog.
           An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
           <code>delisted</code>, with the before/after values kept on the event. On any day

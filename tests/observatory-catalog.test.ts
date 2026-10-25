@@ -142,6 +142,21 @@ test("parseCatalogItem reads the declared schema from extensions.bazaar.schema",
   assert.ok(parsed.declaredSchema);
 });
 
+test("fetchFullCatalog の既定は CDP の URL に limit=100 のまま。pageLimit は丸めない", async () => {
+  const calls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    calls.push(url);
+    return new Response(JSON.stringify({ items: [], pagination: { total: 0 } }), { status: 200 });
+  };
+  await fetchFullCatalog({ fetchImpl, sleepMs: 0 });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!, /api\.cdp\.coinbase\.com/);
+  assert.match(calls[0]!, /limit=100/);
+  calls.length = 0;
+  await fetchFullCatalog({ fetchImpl, pageLimit: 1000, sleepMs: 0, baseUrl: "https://payai.example/resources" });
+  assert.match(calls[0]!, /limit=1000/);
+});
+
 // ---- fetchFullCatalog (paging, backoff, honest partial reporting) ----------
 
 function makePagedFetch(pages: Record<number, unknown>, opts?: { failOffsets?: number[] }) {

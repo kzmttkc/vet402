@@ -18,6 +18,7 @@ import { getDailyMetricsCoverage, getDailyMetricsHistory, type DailyMetricsRow }
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { getAnchors } from "@/lib/observatory/anchors";
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
+import { CIRCLE_DISCOVERY_SOURCE } from "@/lib/observatory/listing-sources";
 import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
 import { WideColumn } from "@/components/site/WideColumn";
 import { publicChainLabel } from "@/lib/observatory/chains";
@@ -52,6 +53,7 @@ const pct = formatPct1;
 function catalogSourceLabel(source: string): string {
   if (source === CATALOG_SOURCE) return "Bazaar catalog";
   if (source === MPP_DIRECTORY_SOURCE) return "MPP directory";
+  if (source === CIRCLE_DISCOVERY_SOURCE) return "Circle x402 discovery";
   return source;
 }
 

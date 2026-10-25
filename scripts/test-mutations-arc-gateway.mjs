@@ -660,6 +660,14 @@ const MUTATIONS = [
       buyersBlocked.add(buyer); /* MUTANT */
       continue;`,
   },
+  {
+    id: "G76",
+    what: "Gateway の候補を cdp_bazaar だけにする",
+    rule: "旗 on の候補 SQL は source で絞らない。Circle 由来の Gateway だけの出品も入る",
+    file: GATEWAY,
+    find: "return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()})`);",
+    replace: "return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()}) AND e.source = 'cdp_bazaar'`); /* MUTANT */",
+  },
 ];
 
 const NO_DB = process.argv.includes("--no-db");

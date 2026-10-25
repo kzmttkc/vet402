@@ -16,11 +16,19 @@
 // 支払いのモジュールを引かない。CATALOG_URL は catalog-source.ts（軽い）から取り、
 // MPP の URL はここが持って mpp-directory.ts が読む。MPP_DIRECTORY_SOURCE は
 // mpp-payer.ts（viem を引く）にあるので文字列で持ち、テストで一致を確かめる。
+// Circle の URL もここが持つ。circle-discovery.ts が読む（逆にすると faq が
+// 同期モジュールを引き、DB が LP に入る）。
 // ============================================================
 import { CATALOG_SOURCE, CATALOG_URL } from "./catalog-source";
 
 /** Tempo の MPP directory（mpp-directory.ts の既定の取得先）。 */
 export const MPP_DIRECTORY_PUBLIC_URL = "https://mpp.dev/api/services";
+
+/** Circle の x402 discovery。x402_endpoints.source に入る値。 */
+export const CIRCLE_DISCOVERY_SOURCE = "circle_discovery";
+
+/** Circle の公開目録。limit の上限は 200（circle-discovery.ts）。 */
+export const CIRCLE_DISCOVERY_URL = "https://api.circle.com/v2/x402/discovery/resources";
 
 export type ListingSource = {
   /** x402_endpoints.source に入る値。 */
@@ -47,12 +55,21 @@ export const LISTING_SOURCES: readonly ListingSource[] = [
     protocol: "mpp",
     sync_times_utc: ["01:30"],
   },
+  {
+    source: CIRCLE_DISCOVERY_SOURCE,
+    name: "Circle x402 discovery",
+    url: CIRCLE_DISCOVERY_URL,
+    protocol: "x402",
+    // 新しい cron は足さない。既存の aux（01:30 UTC）の中で MPP の後に取る。
+    sync_times_utc: ["01:30"],
+  },
 ];
 
 /** 取り込みの cron の経路。テストが vercel.json と突き合わせる。 */
 export const LISTING_SYNC_CRON_PATHS: Record<string, string> = {
   cdp_bazaar: "/api/cron/catalog-sync",
   mpp_directory: "/api/cron/catalog-sync-aux",
+  circle_discovery: "/api/cron/catalog-sync-aux",
 };
 
 /** /faq の節の id。resolver の documentation はここを指す。 */

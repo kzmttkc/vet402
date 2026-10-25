@@ -172,5 +172,133 @@ if (!TEST_DB) {
       await syncCatalog({ fetchResult: fetchResultOf([], { complete: false, total: 0 }), today: "2026-08-21" });
       assert.equal((await keysOf("2026-08-21")).n, 2, "an empty re-run does not wipe a partial snapshot");
     });
+
+    await t.test("CDP と Circle の同じ resource は 1 行。片方から消えても active が残る", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const baseAccept = {
+        scheme: "exact",
+        network: "eip155:8453",
+        amount: "1000",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        payTo: "0x1111111111111111111111111111111111111111",
+      };
+      const gwAccept = {
+        scheme: "exact",
+        network: "eip155:5042",
+        amount: "100000",
+        asset: "0x3600000000000000000000000000000000000000",
+        payTo: "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+        maxTimeoutSeconds: 604900,
+        extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x77777777Dcc4d5A8B6E418Fd04D8997ef11000ee" },
+      };
+      const cdpItem = parseCatalogItem({
+        resource: "https://api.seller.example/v1/item",
+        description: "from cdp",
+        accepts: [baseAccept],
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+      });
+      const circleItem = parseCatalogItem({
+        resource: "https://API.Seller.example/v1/item/",
+        metadata: { method: "POST", description: "from circle" },
+        accepts: [baseAccept, gwAccept],
+      });
+      const gwOnly = parseCatalogItem({
+        resource: "https://gw-only.example/only",
+        metadata: { method: "GET", description: "gateway only" },
+        accepts: [gwAccept],
+      });
+      const other = (n: number) => parseCatalogItem({
+        resource: `https://other${n}.example/api`,
+        accepts: [baseAccept],
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+      });
+      assert.equal(cdpItem.resourceKey, circleItem.resourceKey);
+      const pack = (items: ReturnType<typeof parseCatalogItem>[], opts: { complete?: boolean; total?: number } = {}) => ({
+        items,
+        totalCount: opts.total ?? items.length,
+        fetchedCount: items.length,
+        complete: opts.complete ?? true,
+      });
+      const rowsFor = async (key: string) => {
+        const rows = await db.select().from(schema.x402Endpoints).where(sql`${schema.x402Endpoints.resourceKey} = ${key}`);
+        return rows;
+      };
+      const hasGateway = (raw: unknown) =>
+        Array.isArray(raw) && raw.some((a) => (a as { extra?: { name?: string }; network?: string }).extra?.name === "GatewayWalletBatched" && (a as { network?: string }).network === "eip155:5042");
+
+      await syncCatalog({ fetchResult: pack([cdpItem]), today: "2026-10-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circleItem, gwOnly]), today: "2026-10-01", source: "circle_discovery" });
+      let shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared.length, 1);
+      assert.equal(shared[0]?.status, "active");
+      assert.equal(shared[0]?.source, "cdp_bazaar");
+      assert.equal(hasGateway(shared[0]?.rawAccepts), true);
+      const only = await rowsFor(gwOnly.resourceKey);
+      assert.equal(only.length, 1);
+      assert.equal(only[0]?.source, "circle_discovery");
+      assert.equal(only[0]?.status, "active");
+
+      await syncCatalog({ fetchResult: pack([other(1)]), today: "2026-10-02", source: "cdp_bazaar" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared[0]?.status, "active", "Circle の完全な snapshot がまだ載せているので active");
+
+      await syncCatalog({ fetchResult: pack([other(2)], { complete: false, total: 2 }), today: "2026-10-02", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([other(1)]), today: "2026-10-03", source: "cdp_bazaar" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared[0]?.status, "active", "Circle の不完全な取得は直前の完全な snapshot の鍵を不在にしない");
+      assert.equal((await rowsFor(gwOnly.resourceKey))[0]?.status, "active");
+
+      await syncCatalog({ fetchResult: pack([circleItem, gwOnly]), today: "2026-10-03", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([other(3)]), today: "2026-10-04", source: "circle_discovery" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared.length, 1);
+      assert.equal(shared[0]?.status, "delisted", "両方の完全な snapshot から消えたら持ち主の行も delist");
+      assert.equal(shared[0]?.source, "cdp_bazaar");
+      assert.equal((await rowsFor(gwOnly.resourceKey))[0]?.status, "delisted");
+
+      await syncCatalog({ fetchResult: pack([cdpItem]), today: "2026-10-05", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circleItem]), today: "2026-10-05", source: "circle_discovery" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared.length, 1);
+      assert.equal(shared[0]?.status, "active");
+      assert.equal(shared[0]?.source, "cdp_bazaar");
+      assert.equal(hasGateway(shared[0]?.rawAccepts), true);
+
+      await syncCatalog({ fetchResult: pack([other(3)]), today: "2026-10-06", source: "circle_discovery" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.equal(shared[0]?.status, "active", "CDP がまだ載せているので Circle から消えても active");
+
+      const mppItem = parseCatalogItem({
+        resource: "https://api.seller.example/v1/item",
+        description: "mpp",
+        accepts: [baseAccept],
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+      });
+      await syncCatalog({ fetchResult: pack([mppItem]), today: "2026-10-06", source: "mpp_directory" });
+      shared = await rowsFor(cdpItem.resourceKey);
+      assert.deepEqual(shared.map((r) => r.source).sort(), ["cdp_bazaar", "mpp_directory"]);
+
+      const first = parseCatalogItem({
+        resource: "https://first-circle.example/only",
+        metadata: { method: "GET", description: "circle first" },
+        accepts: [gwAccept],
+      });
+      const later = parseCatalogItem({
+        resource: "https://FIRST-CIRCLE.example/only/",
+        description: "cdp later",
+        accepts: [baseAccept],
+        extensions: { bazaar: { info: { input: { method: "GET" } } } },
+      });
+      assert.equal(first.resourceKey, later.resourceKey);
+      await syncCatalog({ fetchResult: pack([first]), today: "2026-10-07", source: "circle_discovery" });
+      await syncCatalog({ fetchResult: pack([later]), today: "2026-10-07", source: "cdp_bazaar" });
+      const owned = await rowsFor(first.resourceKey);
+      assert.equal(owned.length, 1);
+      assert.equal(owned[0]?.source, "circle_discovery");
+      assert.equal(owned[0]?.status, "active");
+      assert.equal(hasGateway(owned[0]?.rawAccepts), true);
+      const accepts = owned[0]?.rawAccepts as { network?: string }[];
+      assert.equal(accepts.some((a) => a.network === "eip155:8453"), true);
+    });
   });
 }

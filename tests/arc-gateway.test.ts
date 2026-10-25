@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sql } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
 import { encodeAbiParameters, keccak256, toBytes, type Address, type Hex } from "viem";
 
@@ -683,7 +684,7 @@ test("同じブロックの別の動きでは refute しない", () => {
 test("旗 off の候補 SQL は Gateway の句を足さない。Base で払える出品は Gateway で選ばない", () => {
   withEnv("OBSERVATORY_ARC_GATEWAY_L1_ENABLED", undefined, () => {
     assert.equal(JSON.stringify(gatewayPrimaryExclusionSql()).includes("GatewayWalletBatched"), false);
-    assert.equal(JSON.stringify(gatewayCandidateInclusionSql()).includes("GatewayWalletBatched"), false);
+    assert.equal(JSON.stringify(gatewayCandidateInclusionSql()), JSON.stringify(sql`AND false`));
   });
   withEnv("OBSERVATORY_ARC_GATEWAY_L1_ENABLED", "true", () => {
     const exclusion = JSON.stringify(gatewayPrimaryExclusionSql());
@@ -692,6 +693,7 @@ test("旗 off の候補 SQL は Gateway の句を足さない。Base で払え�
     assert.match(exclusion, /eip155:8453/);
     assert.match(inclusion, /GatewayWalletBatched/);
     assert.match(inclusion, /eip155:8453/);
+    assert.equal(/\bsource\b/.test(inclusion), false);
   });
   const base = {
     scheme: "exact",

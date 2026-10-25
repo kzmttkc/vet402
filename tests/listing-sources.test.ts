@@ -14,6 +14,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CIRCLE_DISCOVERY_SOURCE,
+  CIRCLE_DISCOVERY_URL,
   LISTING_SOURCES,
   LISTING_SYNC_CRON_PATHS,
   NOT_LISTED_DOC_URL,
@@ -56,6 +58,7 @@ test("cron の経路は、その出どころの取り込みを呼ぶ", () => {
   const expected: Record<string, RegExp> = {
     cdp_bazaar: /await syncCatalog\(\)/,
     mpp_directory: /await syncMppDirectory\(\)/,
+    circle_discovery: /await syncCircleDiscovery\(\)/,
   };
   for (const src of LISTING_SOURCES) {
     const route = readFileSync(join(ROOT, "src/app", LISTING_SYNC_CRON_PATHS[src.source], "route.ts"), "utf8");
@@ -74,7 +77,20 @@ test("出どころの URL と source は取り込みのコードの定数と一�
   const mpp = LISTING_SOURCES.find((s) => s.source === MPP_DIRECTORY_SOURCE);
   assert.ok(mpp);
   assert.equal(mpp.url, MPP_DIRECTORY_URL_DEFAULT);
-  assert.deepEqual(LISTING_SOURCES.map((s) => s.source).sort(), [CATALOG_SOURCE, MPP_DIRECTORY_SOURCE].sort());
+  const circle = LISTING_SOURCES.find((s) => s.source === CIRCLE_DISCOVERY_SOURCE);
+  assert.ok(circle);
+  assert.equal(circle.name, "Circle x402 discovery");
+  assert.equal(circle.protocol, "x402");
+  assert.equal(circle.url, CIRCLE_DISCOVERY_URL);
+  assert.equal(circle.url, "https://api.circle.com/v2/x402/discovery/resources");
+  assert.deepEqual(circle.sync_times_utc, ["01:30"]);
+  const circleSrc = readFileSync(join(ROOT, "src/lib/observatory/circle-discovery.ts"), "utf8");
+  assert.match(circleSrc, /syncCatalog\(/);
+  assert.equal(circleSrc.includes("keepLearnedPayTo"), false);
+  assert.deepEqual(
+    LISTING_SOURCES.map((s) => s.source).sort(),
+    [CATALOG_SOURCE, CIRCLE_DISCOVERY_SOURCE, MPP_DIRECTORY_SOURCE].sort(),
+  );
 });
 
 test("syncTimesText は時刻を英文で並べる", () => {
@@ -130,6 +146,7 @@ test("FAQ の節は出どころ・時刻・条件・POST の扱いを書く（�
   assert.match(a, /no application to vet402 and no fee/);
   assert.match(a, /declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator/);
   assert.match(a, /can still be left out by CDP/);
+  assert.match(a, /Circle x402 discovery/);
   assert.match(a, /The syncs of that catalog start at 01:00 and 13:00 UTC/);
   assert.match(a, /A sync that stops early adds the pages it read and not the rest/);
   assert.match(a, /decided by CDP's index, not by vet402/);

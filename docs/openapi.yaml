@@ -2851,7 +2851,7 @@ paths:
                     type: array
                     description: >-
                       The latest snapshot of each discovery catalog vet402 reads
-                      (cdp_bazaar, mpp_directory), sorted by source. fetchedCount below
+                      (cdp_bazaar, circle_discovery, mpp_directory), sorted by source. fetchedCount below
                       totalCount marks an incomplete fetch of THAT catalog alone.
                     items:
                       type: object
@@ -4867,10 +4867,12 @@ components:
             links to the API reference. `listing_sources` names each source
             vet402 reads listings from, with the UTC times its syncs start
             (the field was added on 2026-10-21). A CDP Bazaar sync that stops
-            early adds the pages it read and not the rest. There is no
-            application or fee.
+            early adds the pages it read and not the rest. The Circle x402
+            discovery catalog is read on the same run as the MPP directory.
+            There is no application or fee.
             `documentation` links to the FAQ section on why an endpoint is
-            not listed and how a listing gets into the CDP Bazaar.
+            not listed and how a listing gets into the CDP Bazaar and the
+            Circle x402 discovery catalog.
           required: [reason, note, next, listing_sources, documentation]
           properties:
             reason: { type: string, enum: [not_in_catalog] }
@@ -4884,7 +4886,7 @@ components:
                 properties:
                   source:
                     type: string
-                    description: Source id, for example `cdp_bazaar` or `mpp_directory`.
+                    description: Source id, for example `cdp_bazaar`, `circle_discovery`, or `mpp_directory`.
                   name: { type: string }
                   url: { type: string, format: uri }
                   protocol: { type: string, enum: [x402, mpp] }

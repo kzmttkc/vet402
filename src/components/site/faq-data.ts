@@ -25,6 +25,7 @@ export type FaqItem = { question: string; answer: string; id?: string };
 // 読み手は英語が母語でない売り手を想定し、短い文と日常語で書く。we/our/us・セミコロン・ダッシュを使わない。
 const BAZAAR = listingSource("cdp_bazaar");
 const MPP = listingSource("mpp_directory");
+const CIRCLE = listingSource("circle_discovery");
 
 export const FAQS: FaqItem[] = [
   {
@@ -111,9 +112,10 @@ export const FAQS: FaqItem[] = [
     id: NOT_LISTED_FAQ_ID,
     question: "Why is my endpoint not listed?",
     answer:
-      `vet402 lists an x402 endpoint when the endpoint is in the ${BAZAAR.name}, which is the one source of x402 listings vet402 reads (${BAZAAR.url}). ` +
+      `vet402 lists an x402 endpoint when the endpoint is in the ${BAZAAR.name} (${BAZAAR.url}). ` +
       `The syncs of that catalog start at ${syncTimesText(BAZAAR.sync_times_utc)}. A sync reads the catalog page by page. A sync that stops early adds the pages it read and not the rest. ` +
       `So your route appears on vet402 after a sync that reads the page with your route. ` +
+      `vet402 also reads the ${CIRCLE.name} (${CIRCLE.url}). The sync of that catalog starts at ${syncTimesText(CIRCLE.sync_times_utc)}. ` +
       `For Tempo, vet402 also reads the MPP directory (${MPP.url}), with a sync that starts at ${syncTimesText(MPP.sync_times_utc)}. ` +
       `There is no application to vet402 and no fee. ` +
       `The catalog belongs to CDP. Whether a route enters it is decided by CDP's index, not by vet402. ` +

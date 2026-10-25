@@ -130,7 +130,7 @@ export default async function ObservatoryPage({
                   Bazaar catalog snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
                   <span
-                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. The register also lists endpoints from the MPP directory, which is fetched separately; /observatory/state prints each catalog's own as-of line. See section 2.`}
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. The register also lists endpoints from the MPP directory and the Circle x402 discovery catalog, which are fetched separately. /observatory/state prints each catalog's own as-of line. See section 2.`}
                   >
                     · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
                     {overview.latestSnapshot.totalCount.toLocaleString()}
