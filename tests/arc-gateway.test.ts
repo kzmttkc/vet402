@@ -36,15 +36,19 @@ import {
 import { buildGatewayDayRecords, gatewayLeafV1, sortedMerkleRoot } from "@/lib/observatory/arc-gateway-root";
 import {
   encodeSubmitBatchCalldata,
+  GATEWAY_BATCH_CLOCK_SKEW_SECONDS,
   GATEWAY_RECONCILE_BUDGET_MS,
+  GATEWAY_VALID_AFTER_LEAD_SECONDS,
   gatewayAuthorizationRecovers,
   gatewayBuyerDebit,
   gatewayReadBudgetMs,
+  gatewaySignatureTimeSec,
   interpretGatewayTransfers,
   judgeGatewayBatch,
   planGatewayReconcile,
   readGatewayAuth,
   resolveGatewayDebit,
+  unreadAuthorizationCanEnterBatch,
   type GatewayAuth,
   type GatewayClaimRow,
 } from "@/lib/observatory/arc-gateway-verify";
@@ -497,6 +501,57 @@ test("購入元の履歴が 100 件でも、nonce の請求と自社の行の合
   });
   assert.equal(waiting[0]?.action, "defer");
   assert.equal(waiting[0] && "reason" in waiting[0] ? waiting[0].reason : "", "gateway_batch_unresolved");
+});
+
+test("T_B より前に署名した未照会はバッチを止め、後に署名した未照会は止めない", async () => {
+  assert.equal(GATEWAY_VALID_AFTER_LEAD_SECONDS, 600);
+  assert.equal(gatewaySignatureTimeSec("1000"), 1600n);
+  assert.equal(gatewaySignatureTimeSec(null), null);
+  assert.equal(gatewaySignatureTimeSec("10.5"), null);
+  const block = 2_000_000_000n;
+  const planFor = (signature: bigint) =>
+    planGatewayReconcile({
+      rows: [{ id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() }],
+      verifySignature: async () => true,
+      readDebit: async () => 1000n,
+      readBatchTime: async () => block,
+      loadBatch: async () => ({
+        rows: [],
+        unresolved: 0,
+        unread: { earliestValidAfter: (signature - 600n).toString(), unreadable: 0 },
+      }),
+      lookupNonce: async () => ({ ok: true, body: charged() }),
+      nowSec: 1_700_000_000,
+    });
+  const blocked = await planFor(block - 10_000n);
+  assert.equal(blocked[0]?.action, "defer");
+  assert.equal(blocked[0] && "reason" in blocked[0] ? blocked[0].reason : "", "gateway_batch_unresolved");
+  const open = await planFor(block + 10n);
+  assert.equal(open[0]?.action, "settle");
+  const onMargin = await planFor(block - 60n);
+  assert.equal(onMargin[0]?.action, "defer");
+  const pastMargin = await planFor(block - 59n);
+  assert.equal(pastMargin[0]?.action, "settle");
+  const unreadable = await planGatewayReconcile({
+    rows: [{ id: "row-1", status: "settle_claimed", payer: BUYER, circleGateway: auth() }],
+    verifySignature: async () => true,
+    readDebit: async () => 1000n,
+    readBatchTime: async () => block,
+    loadBatch: async () => ({ rows: [], unresolved: 0, unread: { earliestValidAfter: null, unreadable: 1 } }),
+    lookupNonce: async () => ({ ok: true, body: charged() }),
+    nowSec: 1_700_000_000,
+  });
+  assert.equal(unreadable[0]?.action, "defer");
+  assert.equal(unreadAuthorizationCanEnterBatch(null, block), true);
+  assert.equal(unreadAuthorizationCanEnterBatch(block + 10n, null), true);
+});
+
+test("署名時刻とブロック時刻の余裕は境界で分かれる", () => {
+  assert.equal(GATEWAY_BATCH_CLOCK_SKEW_SECONDS, 60);
+  const block = 2_000_000_000n;
+  assert.equal(unreadAuthorizationCanEnterBatch(block - 60n, block), true);
+  assert.equal(unreadAuthorizationCanEnterBatch(block - 59n, block), false);
+  assert.equal(unreadAuthorizationCanEnterBatch(block, block), false);
 });
 
 test("長い timeout の accept には署名しない。署名後の窓が上限を超えたら出さない", async () => {

@@ -606,6 +606,30 @@ const MUTATIONS = [
     find: "OR o->>'asset' = '${STELLAR_USDC_SAC}'",
     replace: "OR o->>'asset' = 'XLM' /* MUTANT */",
   },
+  {
+    id: "G70",
+    what: "署名時刻とブロック時刻の比較を逆にする",
+    rule: "ブロック時刻より後に署名した未照会はバッチを止めない",
+    file: VERIFY,
+    find: "return signatureTimeSec <= blockTimeSec - BigInt(GATEWAY_BATCH_CLOCK_SKEW_SECONDS);",
+    replace: "return signatureTimeSec >= blockTimeSec - BigInt(GATEWAY_BATCH_CLOCK_SKEW_SECONDS); /* MUTANT */",
+  },
+  {
+    id: "G71",
+    what: "署名時刻とブロック時刻の余裕を 0 にする",
+    rule: "比較の余裕は 60 秒",
+    file: VERIFY,
+    find: "export const GATEWAY_BATCH_CLOCK_SKEW_SECONDS = 60;",
+    replace: "export const GATEWAY_BATCH_CLOCK_SKEW_SECONDS = 0; /* MUTANT */",
+  },
+  {
+    id: "G72",
+    what: "未照会が 1 件でもあればバッチを止める",
+    rule: "ブロック時刻より後に署名した未照会はバッチを止めない",
+    file: VERIFY,
+    find: "unresolvedCount = unreadAuthorizationCanEnterBatch(signatureTime, blockTime) ? 1 : 0;",
+    replace: "unresolvedCount = 1; /* MUTANT */",
+  },
 ];
 
 const NO_DB = process.argv.includes("--no-db");

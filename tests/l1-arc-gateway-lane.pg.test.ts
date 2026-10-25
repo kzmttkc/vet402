@@ -837,6 +837,105 @@ if (!TEST_DB) {
       }
     });
 
+    await t.test("購入元が 1 つの 2000 行でも、遅い Gateway API で settled は毎回増え、ネイティブ照合も走る", async () => {
+      await seed([BASE_URL]);
+      const id = await endpointId();
+      const buyer = BUYER;
+      await db.execute(sql`
+        INSERT INTO x402_l1_purchases (
+          endpoint_id, status, network, asset, pay_to, payer, amount_units, spent_units, attempted_at, raw_response_meta
+        )
+        SELECT
+          ${id}::uuid,
+          'settle_claimed',
+          ${ARC},
+          ${ARC_USDC},
+          ${GW_PAYTO},
+          ${buyer},
+          '1000',
+          '1000',
+          timestamptz '2026-01-01 00:00:00+00' + (gs * interval '1 second'),
+          jsonb_build_object(
+            'circleGatewayRail', 'true',
+            'circleGateway', jsonb_build_object(
+              'from', ${buyer}::text,
+              'to', ${GW_PAYTO}::text,
+              'value', '1000',
+              'validAfter', (1700000000 + gs * 1000)::text,
+              'validBefore', '9999999999',
+              'nonce', '0x' || lpad(to_hex(gs), 64, '0'),
+              'signature', '0x' || repeat('55', 65),
+              'verifyingContract', ${ARC_GATEWAY_WALLET}::text
+            )
+          )
+        FROM generate_series(0, 1999) AS gs
+      `);
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: id,
+        status: "settle_claimed",
+        network: BASE,
+        asset: BASE_USDC,
+        payTo: BASE_ONLY_PAYTO,
+        payer: buyer,
+        amountUnits: "1000",
+        spentUnits: "1000",
+        txHash: `0x${"ce".repeat(32)}`,
+      });
+      const buyers = rowsOf(await db.execute(sql`
+        SELECT count(DISTINCT lower(raw_response_meta->'circleGateway'->>'from'))::int AS n
+        FROM x402_l1_purchases
+        WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      `))[0];
+      assert.equal(Number(buyers?.n), 1);
+      const { runSettlementVerification } = await import("@/lib/observatory/settlement-verifier");
+      let seenSettled = 0;
+      for (let run = 0; run < 3; run += 1) {
+        let calls = 0;
+        let nativeRan = false;
+        const summary = await runSettlementVerification({
+          budgetMs: 25_000,
+          deps: {
+            verifySignature: async () => true,
+            readGatewayDebit: async () => 1000n,
+            readGatewayBatchTime: async (tx) => {
+              const gs = BigInt(tx);
+              return 1_700_000_000n + gs * 1000n + 600n + 120n;
+            },
+            gatewayFetch: (async (input: unknown) => {
+              calls += 1;
+              if (calls > 2) await new Promise((resolve) => setTimeout(resolve, 2_500));
+              const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input);
+              const nonce = new URL(url).searchParams.get("nonce") ?? "0x0";
+              return new Response(JSON.stringify({
+                transfers: [{ nonce, status: "confirmed", txHash: nonce, from: buyer, amount: "1000" }],
+              }), { status: 200 });
+            }) as typeof fetch,
+            verify: async () => {
+              nativeRan = true;
+              return { ok: false, reason: "rpc_unavailable" };
+            },
+          },
+        });
+        assert.equal(nativeRan, true);
+        assert.ok(summary.verified > 0);
+        const counts = rowsOf(await db.execute(sql`
+          SELECT
+            count(*) FILTER (WHERE status = 'settled' AND settlement_verified IS TRUE)::int AS settled,
+            count(*) FILTER (
+              WHERE settlement_verified IS NULL
+                AND raw_response_meta->>'circleGatewayRail' = 'true'
+                AND coalesce(raw_response_meta->'circleGateway'->>'nonceLookup', '') = ''
+            )::int AS unread
+          FROM x402_l1_purchases
+        `))[0];
+        const settled = Number(counts?.settled);
+        const unread = Number(counts?.unread);
+        assert.ok(settled > seenSettled);
+        assert.ok(unread > 1500);
+        seenSettled = settled;
+      }
+    });
+
     await t.test("減額が行より大きい照合は summary に残り、status は倒さない", async () => {
       await seed([BASE_URL]);
       const id = await endpointId();
