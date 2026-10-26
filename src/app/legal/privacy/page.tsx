@@ -36,7 +36,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 22, 2026</span>
+              Revision: <span className="text-signal">October 26, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -406,6 +406,16 @@ export default async function PrivacyPage() {
               payments that listed sellers receive. Those reads carry vet402&apos;s payer address, transaction hashes
               and the payout addresses of listed sellers. Their responses include the addresses of other payers to
               those sellers. These are already public on Arbitrum One. No visitor data is sent to it.
+            </li>
+            {/* 2026-10-26: Avalanche C-Chain の購入レーン。AVALANCHE_RPC_URL は公開 RPC（api.avax.network）。
+                購入元の残高・決済の照合・遅延回収・売り手の受取先あてのネイティブ USDC の索引で読む。 */}
+            <li>
+              <strong>Avalanche public C-Chain RPC</strong> (<code>api.avax.network</code>). Read by
+              vet402&apos;s servers on Avalanche C-Chain for vet402&apos;s payer balance, for whether a payment
+              authorization vet402 signed has been used, for the payments vet402 recovers, and for the index of USDC
+              payments that listed sellers receive. Those reads carry vet402&apos;s payer address, transaction hashes
+              and the payout addresses of listed sellers. Their responses include the addresses of other payers to
+              those sellers. These are already public on Avalanche C-Chain. No visitor data is sent to it.
             </li>
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change
