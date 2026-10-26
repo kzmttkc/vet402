@@ -43,6 +43,9 @@ const HALTED: L1BatchSummary = {
   censusCandidates: 7,
   retestCandidates: 3,
   censusRemaining: 612,
+  laneSkippedForTime: 4,
+  setupMs: 61_234,
+  attemptsByNetwork: { "eip155:8453": 2 },
 };
 
 test("publicL1Summary は haltReason を落とし、計測の数字はそのまま通す", () => {
@@ -62,6 +65,13 @@ test("publicL1Summary は census の 2 つ（censusCandidates・censusRemaining�
   assert.equal("censusRemaining" in out, false);
   assert.equal("retestCandidates" in out, false);
   assert.equal("sellerCapped" in out, false, "売り手ごとの上限の内訳は公開口へ出さない（2026-09-29）");
+});
+
+test("publicL1Summary は持ち時間の計器（laneSkippedForTime・setupMs・attemptsByNetwork）を公開口へ出さない（2026-10-27）", () => {
+  const out = publicL1Summary(HALTED) as Record<string, unknown>;
+  assert.equal("laneSkippedForTime" in out, false);
+  assert.equal("setupMs" in out, false);
+  assert.equal("attemptsByNetwork" in out, false);
 });
 
 test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在しない", async () => {

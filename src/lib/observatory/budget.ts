@@ -254,6 +254,30 @@ export function laneFloorPerRun(): number {
 }
 
 /**
+ * レーン枠が 1 回の実行の持ち時間に占めてよい割合（2026-10-27）。
+ *
+ * 本番の実測（2026-10-27・読み取り）: レーン枠の合計は 10/20 の 27 件から 45 件に増え（Arbitrum・Celo の
+ * ホスト分散・Avalanche）、遅いレーン（Stellar 10〜12 秒/件、BNB・XRPL・Avalanche ~12 秒/件）が先頭で
+ * 持ち時間 210 秒を使い切る。Base の試行は 1 日 170〜250 件から 10/26 は 55 件に落ち、10/26 02:00 と
+ * 17:30 UTC の実行では Base が 0 件だった。そこで、使った時間がこの割合を超えたあとのレーン候補
+ * （candidate.laneChain !== null）は買わずに飛ばし、残りを Base の主候補に回す（l1-runner）。並びは変えない。
+ *
+ * 環境変数 L1_LANE_TIME_SHARE（0〜1 の十進表記）。空・範囲外・数字でない値は既定へ倒す。
+ */
+export const LANE_TIME_SHARE_DEFAULT = 0.5;
+
+export function laneTimeShare(): number {
+  const raw = process.env.L1_LANE_TIME_SHARE;
+  if (raw === undefined) return LANE_TIME_SHARE_DEFAULT;
+  const trimmed = raw.trim();
+  // 十進表記だけを受け付ける（"1e-1"・"0x1"・"-0.1"・"50%" は既定へ）。
+  if (!/^(\d+(\.\d+)?|\.\d+)$/.test(trimmed)) return LANE_TIME_SHARE_DEFAULT;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0 || n > 1) return LANE_TIME_SHARE_DEFAULT;
+  return n;
+}
+
+/**
  * 売り手の census（全員 1 回ずつ）レーン（2026-09-28）。
  *
  * Base の公開カタログの売り手（ホスト）のうち、L1 の購入行がまだ 1 件も無いホストを、そのホストの

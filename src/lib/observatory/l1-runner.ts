@@ -41,7 +41,7 @@ import { redactForLog, redactedError } from "./redact";
 import { createDeadline } from "@/lib/util/deadline";
 import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, domainDailyCapUnits, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 // census の枠（2026-09-29）。別の import 行に分けてある（同じ行を触る並行ブランチとの衝突を避ける）。
-import { censusFirstPurchaseQuota, censusMinPerRun } from "./budget";
+import { censusFirstPurchaseQuota, censusMinPerRun, laneTimeShare } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
@@ -220,6 +220,20 @@ export type L1BatchSummary = {
    * 旗が無い日と、読めなかった日は null（0 と混ぜない）。
    */
   censusRemaining: number | null;
+  /**
+   * 使った時間が持ち時間の L1_LANE_TIME_SHARE（budget.ts laneTimeShare・既定 0.5）を超えたあとで、
+   * 買わずに飛ばしたレーン候補（candidate.laneChain !== null・Gateway の pinned を含む）の数（2026-10-27）。
+   * 402 も取りに行かず、行も書かない。skipped にも含まれる。主ネットワークがそのチェーンの主候補は数えない。
+   */
+  laneSkippedForTime: number;
+  /**
+   * 実行の開始から候補ループに入るまでのミリ秒（2026-10-27）。鍵・停止スイッチ・台帳・レーンの別枠・
+   * 候補 SQL（主・レーン枠・census / retest）の合計。ループに入る前に返った実行（旗 off・停止など）は null。
+   * 10/26 12:35Z のデプロイ後に最初の購入まで 19〜20 秒から 60 秒へ延びた原因を切り分けるための計器。
+   */
+  setupMs: number | null;
+  /** このバッチで試行（kind === "attempted"）した件数を、署名した accept の network（CAIP-2）ごとに（2026-10-27）。 */
+  attemptsByNetwork: Record<string, number>;
 };
 
 /**
@@ -238,7 +252,12 @@ export type L1BatchSummary = {
 // census の 2 つ（2026-09-28）は公開口へ出さない: 公開口は 1 件指定の playground で census を使わないし、
 // 「まだ試していない売り手の数」は内部の進み具合であって、その 1 件の計測の事実ではない。
 // sellerCapped（2026-09-29 監査 5 周目）も出さない: 売り手ごとの上限で見送った件数は運用の内訳で、その 1 件の計測の事実ではない。
-export type PublicL1BatchSummary = Omit<L1BatchSummary, "haltReason" | "censusCandidates" | "censusRemaining" | "retestCandidates" | "sellerCapped">;
+// laneSkippedForTime・setupMs・attemptsByNetwork（2026-10-27）も出さない: 持ち時間の配分と準備の所要時間は運用の計器で、
+// その 1 件の計測の事実ではない（公開口は 1 件指定なのでレーン枠も census も使わない）。
+export type PublicL1BatchSummary = Omit<
+  L1BatchSummary,
+  "haltReason" | "censusCandidates" | "censusRemaining" | "retestCandidates" | "sellerCapped" | "laneSkippedForTime" | "setupMs" | "attemptsByNetwork"
+>;
 
 export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
   return {
@@ -1417,8 +1436,15 @@ export async function runL1Batch(
     getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
     /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
     createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
+    /**
+     * Test seam: レーン枠の時間の上限（L1_LANE_TIME_SHARE）と setupMs が読む時計。既定は Date.now。
+     * デッドライン（createDeadline）は差し替えない——maxDuration を守る判定は従来どおり壁時計で決める。
+     */
+    now?: () => number;
   } = {},
 ): Promise<L1BatchSummary> {
+  const now = options.now ?? Date.now;
+  const runStartedAt = now();
   // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
   // public Bazaar catalog. The production default refuses any target that is —
   // or redirects to — a non-public address, so this runner cannot be pointed
@@ -1460,6 +1486,9 @@ export async function runL1Batch(
     censusCandidates: 0,
     retestCandidates: 0,
     censusRemaining: null,
+    laneSkippedForTime: 0,
+    setupMs: null,
+    attemptsByNetwork: {},
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -2157,6 +2186,11 @@ export async function runL1Batch(
   const cappedHosts = new Set<string>();
   const cappedDomains = new Set<string>();
 
+  // レーン枠の時間の上限（2026-10-27・budget.ts laneTimeShare）。使った時間がこれを超えたら、残りのレーン候補は
+  // 買わずに飛ばして、持ち時間を Base の主候補に回す。並びは変えない（時間で飛ばすだけ）。
+  const laneTimeLimitMs = batchBudgetMs * laneTimeShare();
+  summary.setupMs = now() - runStartedAt;
+
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
     // flight are never interrupted — the whole point is that a signed
@@ -2167,6 +2201,13 @@ export async function runL1Batch(
       summary.stoppedForDeadline = true;
       summary.notAttempted = candidates.length - index;
       break;
+    }
+    // レーン枠から来た候補（Gateway の pinned を含む）だけ。主ネットワークがそのチェーンの主候補（laneChain が null）は
+    // 対象外。402 も取りに行かず、行も書かない（予約・別枠・署名の関門には届かない）。
+    if (candidate.laneChain !== null && now() - runStartedAt > laneTimeLimitMs) {
+      summary.skipped++;
+      summary.laneSkippedForTime++;
+      continue;
     }
     // XRPL の候補 = 主ネットワークが XRPL の行と、XRPL のレーン枠から来た行（Base 先頭・XRPL 2 番目）。
     // 1 バッチ 1 件のガードは両方に掛かる: 署名した後は行を書かずに飛ばす（Base でも買わない——買うと
@@ -2298,6 +2339,8 @@ export async function runL1Batch(
       summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
       if (outcome.kind === "attempted") {
         summary.attempted++;
+        const attemptNetwork = outcome.network ?? "unknown";
+        summary.attemptsByNetwork[attemptNetwork] = (summary.attemptsByNetwork[attemptNetwork] ?? 0) + 1;
         if (outcome.settled) summary.settled++;
         else if (outcome.status === "delivered_no_receipt") summary.deliveredNoReceipt++;
         else summary.settleFailed++;
