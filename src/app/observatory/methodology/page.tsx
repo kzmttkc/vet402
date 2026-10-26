@@ -992,33 +992,58 @@ export default async function ObservatoryMethodologyPage() {
           Checking a Circle Gateway batch as the buyer
         </h3>
         <p className="doc-p">
-          Circle Gateway settles many x402 payments in one batch transaction. A buyer does not
-          receive a separate transaction for each payment. Settling in a batch is a tradeoff of
-          this design. vet402 runs this check on its own Gateway purchases. A buyer can follow
-          the same three steps.
+          Circle Gateway settles many x402 payments in one batch transaction, which keeps the
+          onchain cost of each payment low. The tradeoff is that a buyer does not get a separate
+          transaction for each payment. vet402 runs the check below on its own Gateway purchases,
+          and a buyer can follow the same steps.
         </p>
         <p className="doc-p">
-          First, keep the nonce of the payment authorization the buyer signed. Second, ask the
-          Circle Gateway API which batch transaction charged that nonce. The read is{" "}
-          <code>GET https://gateway-api.circle.com/v1/x402/transfers?network=eip155:5042&amp;nonce=</code>{" "}
-          plus the nonce, and it does not need an API key. A transfer whose status is confirmed
-          or completed names the batch transaction in <code>txHash</code>. Third, read that
-          transaction on Arc. The <code>submitBatch</code> calldata carries a signed balance
-          change for each depositor. The negative change for the buyer is the debit. Compare
-          that debit with the sum of the buyer&apos;s authorizations that this batch charged.
+          First, keep the nonce of each payment authorization the buyer signs. The nonce is{" "}
+          <code>authorization.nonce</code> in the payment payload. The Circle batching client
+          passes that payload to <code>afterPaymentCreation</code> hooks. The{" "}
+          <code>transaction</code> field in the x402 settlement response is the Gateway transfer
+          id, and the Arc hash comes from the next step.
         </p>
         <p className="doc-p">
-          vet402 calls the batch settled when the debit equals that sum. A smaller debit is
-          refuted, because the batch names a charge the wallet did not take. A larger debit
-          stays deferred, because the extra amount may be an authorization of the same buyer
-          that this check has not read yet. A debit that cannot be read stays deferred.
+          Second, ask the Circle Gateway API which batch transaction charged each nonce. For Arc
+          mainnet (<code>eip155:5042</code>) the read is{" "}
+          <code>GET https://gateway-api.circle.com/v1/x402/transfers?network=eip155:5042&amp;nonce=&lt;nonce&gt;</code>.
+          On 2026-10-26 this read answered without an API key. A transfer whose status is{" "}
+          <code>confirmed</code> or <code>completed</code> names the batch transaction in{" "}
+          <code>txHash</code>. <code>received</code> and <code>batched</code> are earlier states,
+          and <code>failed</code> means the transfer did not settle. Group the nonces by{" "}
+          <code>txHash</code>. The sum for a batch adds the <code>value</code> of each
+          authorization whose transfer names that batch.
         </p>
         <p className="doc-p">
-          Signature time is <code>validAfter</code> plus 600 seconds. The batch client stores{" "}
-          <code>validAfter</code> as the signature second minus 600. An authorization signed
-          after the batch block time is not in that batch. The check allows 60 seconds of clock
-          margin. A signature time later than the block time minus 60 seconds is too late for
-          that batch.
+          Third, read that transaction on Arc. Check that it succeeded and that it was sent to
+          GatewayWallet <code>0x77777777dcc4d5a8b6e418fd04d8997ef11000ee</code>. vet402 decodes the
+          calldata as <code>submitBatch(bytes, bytes)</code>, and the first argument as{" "}
+          <code>((address depositor, int256 value)[], bytes32, uint32, address token, address wallet)</code>.
+          This layout comes from vet402 decoding public transactions. The token is Arc USDC{" "}
+          <code>0x3600000000000000000000000000000000000000</code>. The negative int256 balance
+          change for the buyer is the amount the batch asked for. If the receipt has an{" "}
+          <code>InsufficientBalance</code> event from GatewayWallet for the buyer and USDC, the
+          amount actually taken is <code>available</code> plus <code>withdrawing</code> from that
+          event, and that amount is the debit. Otherwise the requested amount is the debit. This
+          check assumes the buyer is not also paid in the same batch.
+        </p>
+        <p className="doc-p">
+          vet402 calls the batch settled when the debit equals the sum. A smaller debit is
+          refuted, because the Gateway API reports a charge that the batch did not take in full.
+          A short buyer balance at settlement is one cause, and GatewayWallet records it in an{" "}
+          <code>InsufficientBalance</code> event. A larger debit stays deferred, because the extra
+          amount may be an authorization of the same buyer that this check has not read yet. A
+          debit that cannot be read stays deferred.
+        </p>
+        <p className="doc-p">
+          The signature time rule matters for an authorization whose Gateway record has not been
+          read yet. vet402 holds back settled while such an authorization could sit in the batch.
+          Signature time is <code>validAfter</code> plus 600 seconds, because the Circle batching
+          client signs with <code>validAfter</code> set to the current second minus 600. vet402
+          treats an authorization as outside a batch when its signature time is later than the
+          block time minus 60 seconds. The debit comparison still applies, so an authorization
+          that did enter the batch makes the debit larger and the batch stays deferred.
         </p>
         <p className="doc-p">
           Two public batch transactions on Arc are the worked examples, both for buyer{" "}
@@ -1031,7 +1056,8 @@ export default async function ObservatoryMethodologyPage() {
           >
             <code>0x3a78bad401267d8f0914878db7b15e81a27b44637330f619eefef863209d6616</code>
           </a>{" "}
-          debits that buyer 4.119 USDC across 50 rows.{" "}
+          debits that buyer 4.119 USDC for 50 authorizations. The calldata holds a single entry
+          for the buyer, and its value is negative 4119000 in 6-decimal units.{" "}
           <a
             href="https://explorer.arc.io/tx/0x6ae70bf1ac146895b1d39342cbea49bb82037768e2b04dbc4109c2105ffc791c"
             className="underline"
@@ -1040,7 +1066,8 @@ export default async function ObservatoryMethodologyPage() {
           >
             <code>0x6ae70bf1ac146895b1d39342cbea49bb82037768e2b04dbc4109c2105ffc791c</code>
           </a>{" "}
-          debits that buyer 3.214 USDC across 40 rows.
+          debits that buyer 3.214 USDC for 40 authorizations. The calldata holds a single entry
+          for the buyer, and its value is negative 3214000 in 6-decimal units.
         </p>
         <p className="doc-p">
           On the seller side, one batch mixes this buyer with other buyers. A seller credit in

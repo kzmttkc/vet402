@@ -375,6 +375,8 @@ test("方法論の Gateway バッチ照合は、fixture の tx・行数・額と
     .replace(/<[^>]+>/g, " ")
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/\{" "\}/g, " ")
     .replace(/\s+/g, " ");
   assert.doesNotMatch(plain, /\b(we|our|us)\b/i);
@@ -383,20 +385,20 @@ test("方法論の Gateway バッチ照合は、fixture の tx・行数・額と
   assert.doesNotMatch(plain, /\bKite\b|\bBlockRun\b/i);
   assert.doesNotMatch(plain, /, not\b/);
   assert.doesNotMatch(plain, /Circle recommends|\bofficial\b/i);
-  assert.match(plain, /Settling in a batch is a tradeoff of this design/);
-  assert.match(plain, /vet402 calls the batch settled when the debit equals that sum/);
-  assert.match(plain, /A smaller debit is refuted, because the batch names a charge the wallet did not take/);
+  assert.match(plain, /The tradeoff is that a buyer does not get a separate transaction for each payment/);
+  assert.match(plain, /InsufficientBalance event from GatewayWallet for the buyer and USDC, the amount actually taken is available plus withdrawing/);
+  assert.match(plain, /vet402 calls the batch settled when the debit equals the sum/);
+  assert.match(plain, /A smaller debit is refuted, because the Gateway API reports a charge that the batch did not take in full/);
   assert.match(plain, /A larger debit stays deferred, because the extra amount may be an authorization of the same buyer that this check has not read yet/);
-  assert.match(plain, /An authorization signed after the batch block time is not in that batch/);
+  assert.match(plain, /treats an authorization as outside a batch when its signature time is later than the block time minus/);
   assert.match(plain, /A seller credit in that batch is a total across buyers/);
   const verify = read("src/lib/observatory/arc-gateway-verify.ts");
   const lead = verify.match(/GATEWAY_VALID_AFTER_LEAD_SECONDS = (\d+)/);
   const skew = verify.match(/GATEWAY_BATCH_CLOCK_SKEW_SECONDS = (\d+)/);
   assert.ok(lead && skew);
   assert.match(plain, new RegExp(`validAfter plus ${lead[1]} seconds`));
-  assert.match(plain, new RegExp(`as the signature second minus ${lead[1]}`));
-  assert.match(plain, new RegExp(`${skew[1]} seconds of clock margin`));
-  assert.match(plain, new RegExp(`block time minus ${skew[1]} seconds`));
+  assert.match(plain, new RegExp(`set to the current second minus ${lead[1]}`));
+    assert.match(plain, new RegExp(`block time minus ${skew[1]} seconds`));
   const files = ["tests/fixtures/arc-gateway-batch-r2.json", "tests/fixtures/arc-gateway-batch-r3.json"];
   assert.equal(files.length, 2);
   for (const file of files) {
@@ -408,6 +410,7 @@ test("方法論の Gateway バッチ照合は、fixture の tx・行数・額と
     assert.match(sec, new RegExp(fixture.txHash, "i"));
     assert.match(sec, new RegExp(`https://explorer\\.arc\\.io/tx/${fixture.txHash}`, "i"));
     assert.ok(sec.includes(fixture.buyer));
-    assert.match(plain, new RegExp(`${usdc} USDC across ${fixture.publishedRows} rows`));
+    assert.match(plain, new RegExp(`${usdc} USDC for ${fixture.publishedRows} authorizations`));
+    assert.match(plain, new RegExp(`negative ${atomic} in 6-decimal units`));
   }
 });
