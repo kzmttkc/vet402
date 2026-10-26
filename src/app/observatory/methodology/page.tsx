@@ -1000,7 +1000,7 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           First, keep the nonce of each payment authorization the buyer signs. The nonce is{" "}
           <code>authorization.nonce</code> in the payment payload. The Circle batching client
-          passes that payload to <code>afterPaymentCreation</code> hooks. The{" "}
+          passes that payload to hooks registered with <code>onAfterPaymentCreation</code>. The{" "}
           <code>transaction</code> field in the x402 settlement response is the Gateway transfer
           id, and the Arc hash comes from the next step.
         </p>
@@ -1025,7 +1025,10 @@ export default async function ObservatoryMethodologyPage() {
           change for the buyer is the amount the batch asked for. If the receipt has an{" "}
           <code>InsufficientBalance</code> event from GatewayWallet for the buyer and USDC, the
           amount actually taken is <code>available</code> plus <code>withdrawing</code> from that
-          event, and that amount is the debit. Otherwise the requested amount is the debit. This
+          event, and that amount is the debit. The event is{" "}
+          <code>InsufficientBalance(address token, address depositor, uint256 value, uint256 available, uint256 withdrawing)</code>,
+          with <code>token</code> and <code>depositor</code> indexed. Otherwise the requested amount
+          is the debit. This
           check assumes the buyer is not also paid in the same batch.
         </p>
         <p className="doc-p">
