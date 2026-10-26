@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-27 Lane candidates get at most half of an L1 run, so Base candidates are reached again
+
+- **What**: In `runL1Batch`, a lane candidate (`candidate.laneChain !== null`, including the pinned Gateway candidate) is skipped once the run has used more than `L1_LANE_TIME_SHARE` of its 210 s budget. The default is 0.5. A value outside 0 to 1, or one that is not a plain decimal, falls back to 0.5. A skipped candidate gets no 402 request and no row. The summary gains `laneSkippedForTime` (also counted in `skipped`), `setupMs` (run start to the candidate loop, null when the run returns before it) and `attemptsByNetwork` (attempted purchases per signed network). The public demo summary does not carry the three new fields.
+- **Why**: Lane floor candidates sit at the head of every run. They grew from 27 on 2026-10-20 to 45 (Arbitrum, Celo host spread, Avalanche), and the slow lanes (Stellar 10 to 12 s each, BNB, XRPL and Avalanche about 12 s each) used the whole budget. Base attempts fell from 170 to 250 a day to 90 on 10/24 and 55 on 10/26. The 10/26 02:00 and 17:30 UTC runs made 0 Base attempts. Since the 10/26 12:35Z deploy, the first purchase starts about 60 s into a run instead of 19 to 20 s. `setupMs` is there to find where that time goes.
+- **Impact**: The order (lane floor, priority hosts, retest and census, then Base) is unchanged, and so are the signing gates, budgets, caps and reservations. Candidates whose primary network is a lane chain (`laneChain` null) are not affected. Lanes may buy fewer listings per run on slow days. Set `L1_LANE_TIME_SHARE=1` to turn the limit off in practice.
+- **Commits**: this entry.
+
 ## 2026-10-27 Unprobed Circle discovery rows are probed before unprobed CDP rows
 
 - **What**: In the C1 L0 order, unprobed `circle_discovery` rows within the cap (`floor(restLimit / 3)`) now come before other unprobed rows (CDP Bazaar, MPP directory, operator benchmark). Rows over the cap still sit behind probed rows. The cap is unchanged.
