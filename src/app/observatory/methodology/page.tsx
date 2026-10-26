@@ -988,6 +988,65 @@ export default async function ObservatoryMethodologyPage() {
           is not a finding about the seller.
         </p>
 
+        <h3 className="doc-p font-semibold" id="gateway-batch">
+          Checking a Circle Gateway batch as the buyer
+        </h3>
+        <p className="doc-p">
+          Circle Gateway settles many x402 payments in one batch transaction. A buyer does not
+          receive a separate transaction for each payment. Settling in a batch is a tradeoff of
+          this design. vet402 runs this check on its own Gateway purchases. A buyer can follow
+          the same three steps.
+        </p>
+        <p className="doc-p">
+          First, keep the nonce of the payment authorization the buyer signed. Second, ask the
+          Circle Gateway API which batch transaction charged that nonce. The read is{" "}
+          <code>GET https://gateway-api.circle.com/v1/x402/transfers?network=eip155:5042&amp;nonce=</code>{" "}
+          plus the nonce, and it does not need an API key. A transfer whose status is confirmed
+          or completed names the batch transaction in <code>txHash</code>. Third, read that
+          transaction on Arc. The <code>submitBatch</code> calldata carries a signed balance
+          change for each depositor. The negative change for the buyer is the debit. Compare
+          that debit with the sum of the buyer&apos;s authorizations that this batch charged.
+        </p>
+        <p className="doc-p">
+          vet402 calls the batch settled when the debit equals that sum. A smaller debit is
+          refuted, because the batch names a charge the wallet did not take. A larger debit
+          stays deferred, because the extra amount may be an authorization of the same buyer
+          that this check has not read yet. A debit that cannot be read stays deferred.
+        </p>
+        <p className="doc-p">
+          Signature time is <code>validAfter</code> plus 600 seconds. The batch client stores{" "}
+          <code>validAfter</code> as the signature second minus 600. An authorization signed
+          after the batch block time is not in that batch. The check allows 60 seconds of clock
+          margin. A signature time later than the block time minus 60 seconds is too late for
+          that batch.
+        </p>
+        <p className="doc-p">
+          Two public batch transactions on Arc are the worked examples, both for buyer{" "}
+          <code>0xa65c4F0Ab6f61537D22a8E95b940E8bD634394fA</code>.{" "}
+          <a
+            href="https://explorer.arc.io/tx/0x3a78bad401267d8f0914878db7b15e81a27b44637330f619eefef863209d6616"
+            className="underline"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <code>0x3a78bad401267d8f0914878db7b15e81a27b44637330f619eefef863209d6616</code>
+          </a>{" "}
+          debits that buyer 4.119 USDC across 50 rows.{" "}
+          <a
+            href="https://explorer.arc.io/tx/0x6ae70bf1ac146895b1d39342cbea49bb82037768e2b04dbc4109c2105ffc791c"
+            className="underline"
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            <code>0x6ae70bf1ac146895b1d39342cbea49bb82037768e2b04dbc4109c2105ffc791c</code>
+          </a>{" "}
+          debits that buyer 3.214 USDC across 40 rows.
+        </p>
+        <p className="doc-p">
+          On the seller side, one batch mixes this buyer with other buyers. A seller credit in
+          that batch is a total across buyers.
+        </p>
+
         <h2 className="sec-head">
           <span className="sec-no">7.</span>
           <span>What L2 measures</span>

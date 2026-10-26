@@ -364,3 +364,50 @@ test("未宣言メソッドが主因ではない、の検査は状態の methodU
   assert.equal(block.includes("check: null"), false);
   assert.equal(block.includes("到達失敗"), false);
 });
+
+test("方法論の Gateway バッチ照合は、fixture の tx・行数・額と署名時刻の定数を節に固定する", () => {
+  const src = read("src/app/observatory/methodology/page.tsx");
+  const start = src.indexOf('id="gateway-batch"');
+  const end = src.indexOf("<h2", start);
+  assert.ok(start > 0 && end > start);
+  const sec = src.slice(start, end);
+  const plain = sec
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\{" "\}/g, " ")
+    .replace(/\s+/g, " ");
+  assert.doesNotMatch(plain, /\b(we|our|us)\b/i);
+  assert.doesNotMatch(plain, /;/);
+  assert.doesNotMatch(sec, /—|–|--/);
+  assert.doesNotMatch(plain, /\bKite\b|\bBlockRun\b/i);
+  assert.doesNotMatch(plain, /, not\b/);
+  assert.doesNotMatch(plain, /Circle recommends|\bofficial\b/i);
+  assert.match(plain, /Settling in a batch is a tradeoff of this design/);
+  assert.match(plain, /vet402 calls the batch settled when the debit equals that sum/);
+  assert.match(plain, /A smaller debit is refuted, because the batch names a charge the wallet did not take/);
+  assert.match(plain, /A larger debit stays deferred, because the extra amount may be an authorization of the same buyer that this check has not read yet/);
+  assert.match(plain, /An authorization signed after the batch block time is not in that batch/);
+  assert.match(plain, /A seller credit in that batch is a total across buyers/);
+  const verify = read("src/lib/observatory/arc-gateway-verify.ts");
+  const lead = verify.match(/GATEWAY_VALID_AFTER_LEAD_SECONDS = (\d+)/);
+  const skew = verify.match(/GATEWAY_BATCH_CLOCK_SKEW_SECONDS = (\d+)/);
+  assert.ok(lead && skew);
+  assert.match(plain, new RegExp(`validAfter plus ${lead[1]} seconds`));
+  assert.match(plain, new RegExp(`as the signature second minus ${lead[1]}`));
+  assert.match(plain, new RegExp(`${skew[1]} seconds of clock margin`));
+  assert.match(plain, new RegExp(`block time minus ${skew[1]} seconds`));
+  const files = ["tests/fixtures/arc-gateway-batch-r2.json", "tests/fixtures/arc-gateway-batch-r3.json"];
+  assert.equal(files.length, 2);
+  for (const file of files) {
+    const fixture = JSON.parse(read(file)) as { txHash: string; buyer: string; expectedDebit: string; publishedRows: number };
+    const atomic = BigInt(fixture.expectedDebit);
+    const whole = atomic / 1_000_000n;
+    const frac = (atomic % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+    const usdc = `${whole}.${frac}`;
+    assert.match(sec, new RegExp(fixture.txHash, "i"));
+    assert.match(sec, new RegExp(`https://explorer\\.arc\\.io/tx/${fixture.txHash}`, "i"));
+    assert.ok(sec.includes(fixture.buyer));
+    assert.match(plain, new RegExp(`${usdc} USDC across ${fixture.publishedRows} rows`));
+  }
+});

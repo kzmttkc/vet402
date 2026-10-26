@@ -2144,3 +2144,39 @@ claims:
     check: null
     why_unverifiable: "Circle の掲載手順は vet402 の公開 GET が返す値ではない。一次情報は上の URL。FAQ の要約は src/components/site/faq-data.ts の NOT_LISTED の回答。"
     verified_at: 2026-10-26
+  # --- 2026-10-26 Gateway の一括決済を買い手として照合する（方法論 #gateway-batch）---
+  - id: methodology_gateway_buyer_debit_matches_the_sum
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "vet402 calls the batch settled when the debit equals that sum."
+    means: "Circle Gateway の一括決済は、submitBatch の calldata にある購入元の負の減額を、そのバッチで請求された自分の許可の合計と比べる。一致で settled。少なければ refuted（バッチが名指しした請求を財布が取っていない）。多ければ deferred（まだ読んでいない自分の許可が減額に入っている可能性がある）。読めなければ deferred。署名時刻は validAfter に 600 秒を足した値。バッチのブロック時刻より後に署名した許可はそのバッチに入らない。時計の余裕は 60 秒で、ブロック時刻から 60 秒を引いた時刻より後の署名はそのバッチに入らない。"
+    check: null
+    why_unverifiable: "判定の規則で、公開 GET の 1 値に path op literal で当てられない。正典は src/lib/observatory/arc-gateway-verify.ts の judgeGatewayBatch と gatewayBuyerDebit と gatewaySignatureTimeSec。tests/arc-gateway.test.ts が減額と判定を、tests/review-84-public-text.test.ts が方法論の節の文言と 600 秒・60 秒をその定数に固定する。"
+    verified_at: 2026-10-26
+  - id: methodology_gateway_smaller_debit_is_refuted
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A smaller debit is refuted, because the batch names a charge the wallet did not take."
+    means: "購入元の負の減額が、そのバッチに入った自分の許可の合計より小さいときは refute。バッチが名指しした請求を財布が取っていない。"
+    check: null
+    why_unverifiable: "判定の規則。src/lib/observatory/arc-gateway-verify.ts の judgeGatewayBatch が debit < rowSum を refute にする。tests/arc-gateway.test.ts がこの分岐を固定する。"
+    verified_at: 2026-10-26
+  - id: methodology_gateway_larger_debit_stays_deferred
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A larger debit stays deferred, because the extra amount may be an authorization of the same buyer that this check has not read yet."
+    means: "減額が合計より大きいときは deferred。まだ読んでいない自分の許可が減額に入っている可能性があるので、refute にしない。"
+    check: null
+    why_unverifiable: "判定の規則。src/lib/observatory/arc-gateway-verify.ts の judgeGatewayBatch が debit > rowSum を defer にする。tests/arc-gateway.test.ts がこの分岐を固定する。"
+    verified_at: 2026-10-26
+  - id: methodology_gateway_batch_signed_after_the_block_stays_out
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "An authorization signed after the batch block time is not in that batch."
+    means: "署名時刻は validAfter に 600 秒を足した値。その時刻がバッチのブロック時刻より後の許可は、そのバッチに入らない。余裕は 60 秒で、ブロック時刻から 60 秒を引いた時刻より後の未読の許可は、そのバッチを止めない。"
+    check: null
+    why_unverifiable: "署名時刻の規則。src/lib/observatory/arc-gateway-verify.ts の GATEWAY_VALID_AFTER_LEAD_SECONDS と GATEWAY_BATCH_CLOCK_SKEW_SECONDS と unreadAuthorizationCanEnterBatch。tests/review-84-public-text.test.ts が方法論の 600 秒と 60 秒をその定数に固定する。"
+    verified_at: 2026-10-26
+  - id: methodology_gateway_batch_examples_match_the_fixtures
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "4.119 USDC across 50 rows"
+    means: "公開の実物 tx は 2 件。0x3a78bad401267d8f0914878db7b15e81a27b44637330f619eefef863209d6616 が 50 行・4.119 USDC、0x6ae70bf1ac146895b1d39342cbea49bb82037768e2b04dbc4109c2105ffc791c が 40 行・3.214 USDC。USDC は 6 桁。fixture の expectedDebit は 4119000 と 3214000、publishedRows は 50 と 40。"
+    check: null
+    why_unverifiable: "静的な文で、カナリアの式（JSON の path op literal）で当てられない。tests/fixtures/arc-gateway-batch-r2.json と tests/fixtures/arc-gateway-batch-r3.json が実物の tx と期待値。tests/review-84-public-text.test.ts が方法論の節の tx・行数・額・エクスプローラの URL をその fixture から描いて当てる。tests/arc-gateway.test.ts が calldata の購入元の減額を expectedDebit に当てる。"
+    verified_at: 2026-10-26

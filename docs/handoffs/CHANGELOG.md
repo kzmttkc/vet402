@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-26 Buyer check for a Circle Gateway batch, on the methodology page
+
+- **What**: The methodology page has a section, Checking a Circle Gateway batch as the buyer (`#gateway-batch`). It states the three buyer steps (signed nonce, the Circle Gateway API, the negative debit in `submitBatch` calldata), the settle / refute / defer rule, and the signature time rule (`validAfter` plus 600 seconds, 60 seconds of clock margin). Two public Arc transactions are the examples (50 rows, 4.119 USDC and 40 rows, 3.214 USDC). The arc-delivery-receipts README points at the same section. Seller names and per-seller delivery rates stay out of both.
+- **Why**: Other Arc developers can run the check vet402 already ran on real batch transactions. Batch settlement has no separate transaction for each payment. The page calls that a tradeoff of the design.
+- **Impact**: Docs and the claims registry. No payment, no flag change, no schema change.
+- **Commits**: this entry.
+
 ## 2026-10-26 Incomplete fetches do not delist, and PATCH stays measured with GET
 
 - **What**: Two sentences in the entry below are withdrawn. An incomplete fetch of the CDP Bazaar or of Circle x402 discovery does not run the delist reconcile. The other catalog lists a key when its latest snapshot is complete and contains the key. When that snapshot is incomplete and an earlier complete snapshot exists, the listed set is every snapshot from that complete day forward. A key added by a partial fetch after the last complete snapshot stays listed when a later partial fetch does not read its page. When ownership of a shared row moves and the method changes, the previous `resource_id` is written to `x402_resource_aliases`, and `getResource` resolves the old id to the new row. `quality_calls_30d`, `quality_payers_30d`, `quality_last_called_at`, and `declared_input` stay when the incoming catalog has no value. A Circle item with no bazaar declaration counts as no `declared_input` value. PATCH and PUT are stored with method null and measured with GET, as they were before this lane. Measuring a declared PATCH or PUT without changing the published `resource_id` is left for later. The FAQ payable clause also says the service serves the resource when paid, matching Circle's get-listed page read on 2026-10-26.
