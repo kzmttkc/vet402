@@ -158,7 +158,10 @@ if (!TEST_DB) {
     // 絞り込みだけを掛けたとき、落とすべき行（大文字・配列でない・別チェーンだけ）が落ちていること。
     const pre = async (chain: "avalanche" | "celo" | "arc_gateway", networkLike: string) => {
       const raw = await db.execute(sql`SELECT e.resource_key FROM x402_endpoints e WHERE true ${laneNetworkPrefilterSql({ chain, networkLike })} ORDER BY 1`);
-      return ((Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { resource_key: string }[]).map((r) => r.resource_key);
+      // 並びは JS で決める。SQL の ORDER BY は照合順序（CI の en_US と手元の C）で '-' と '.' の順が変わる。
+      return ((Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { resource_key: string }[])
+        .map((r) => r.resource_key)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     };
     const avax = await pre("avalanche", "eip155:43114");
     assert.ok(avax.includes("avalanche-second-0.example/s"));
@@ -170,6 +173,6 @@ if (!TEST_DB) {
     const gw = await pre("arc_gateway", "%");
     // arc-second-bad は Gateway の accept（scheme exact・eip155:5042・GatewayWalletBatched）を 2 番目に持つ行。絞り込みは
     // 弱い条件なので残し、出品の条件（existsGateway の資産・version・verifyingContract）が後で落とす。綴り違い（arc）は落ちる。
-    assert.deepEqual(gw, ["arc-second-bad.example/s", "gw-base.example/g", "gw-only-numver.example/g", "gw-only.example/g"]);
+    assert.deepEqual(gw, ["arc-second-bad.example/s", "gw-base.example/g", "gw-only-numver.example/g", "gw-only.example/g"].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
   });
 }
