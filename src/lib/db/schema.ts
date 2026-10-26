@@ -1427,13 +1427,10 @@ export const tokyoMutationLog = pgTable("tokyo_mutation_log", {
  * 数えるのは Authorization ヘッダが空で、200 を返した呼び出しだけ）。
  * 鍵なしの呼び出しは api_usage に残らず、Vercel のログにも User-Agent が出ないため、他に数える場所が無い。
  *
- * 持つのは (UTC 日, client, ルート名, チェーン, 件数)。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない
+ * 持つのは (UTC 日, client, ルート名, 件数) だけ。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない
  * （client は clientUsageLabel が選んだ名前で、UA の文字列は捨てる）。
- * chain は判定が答えた出品の主ネットワーク（CAIP-2）。resolve と、チェーンが分からない行は空文字。
- * 呼び手の粒度（日・client・ルート）は変えない。chain は同じ行をチェーン別に分ける列。
  * 誰の呼び出しかを結び付ける材料が無いので保持期限は置かない。
- * SQL: scripts/sql/2026-10-07-client-usage-daily.sql（作成）と
- * scripts/sql/2026-10-26-decision-usage-chain.sql（chain と主キー）。
+ * SQL: scripts/sql/2026-10-07-client-usage-daily.sql
  */
 export const clientUsageDaily = pgTable(
   "client_usage_daily",
@@ -1445,16 +1442,16 @@ export const clientUsageDaily = pgTable(
     /** resolve | decision */
     route: text("route").notNull(),
     count: bigint("count", { mode: "number" }).notNull(),
-    /** 出品の主ネットワーク（CAIP-2）。resolve と不明は空文字。 */
-    chain: text("chain").notNull().default(""),
   },
-  (t) => [primaryKey({ columns: [t.day, t.client, t.route, t.chain] })],
+  (t) => [primaryKey({ columns: [t.day, t.client, t.route] })],
 );
 
 /**
  * decision_usage_daily — 鍵ありの判定 API が 200 で答えた件数。日・鍵・チェーン。
  * api_usage の課金・上限とは別の表（あちらは触らない）。鍵を消しても残るよう外部キーは置かない。
- * 公開するときは鍵 id を出さず、番号（key-1）と owner_relation だけにする。
+ * 公開するときは鍵 id を出さない。区分ごとの本数と、3 本以上の区分だけ件数。
+ * relation_snapshot は、アカウントや鍵を消すときにその時点の区分を残す。生きている鍵は NULL のまま、
+ * 公開の区分は api_keys.owner_relation を読む（docs/operations/account-deletion.md）。
  * SQL: scripts/sql/2026-10-26-decision-usage-chain.sql
  */
 export const decisionUsageDaily = pgTable(
@@ -1464,9 +1461,15 @@ export const decisionUsageDaily = pgTable(
     apiKeyId: uuid("api_key_id").notNull(),
     chain: text("chain").notNull(),
     count: bigint("count", { mode: "number" }).notNull(),
+    /** 鍵を消した時点の owner_relation。生きている鍵の行は NULL。 */
+    relationSnapshot: text("relation_snapshot"),
   },
   (t) => [
-    primaryKey({ columns: [t.day, t.apiKeyId, t.chain] }),
+    primaryKey({ name: "decision_usage_daily_pk", columns: [t.day, t.apiKeyId, t.chain] }),
     index("decision_usage_daily_chain_day_idx").on(t.chain, t.day),
+    check(
+      "decision_usage_daily_relation_snapshot_check",
+      sql`${t.relationSnapshot} IS NULL OR ${t.relationSnapshot} IN ('self', 'related', 'external')`,
+    ),
   ],
 );

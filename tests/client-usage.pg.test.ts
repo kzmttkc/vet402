@@ -168,7 +168,7 @@ if (!TEST_DB) {
         const cols = rows(
           await db.execute(sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'client_usage_daily' ORDER BY ordinal_position`),
         ).map((r) => r.column_name);
-        assert.deepEqual(cols, ["day", "client", "route", "count", "chain"]);
+        assert.deepEqual(cols, ["day", "client", "route", "count"]);
       });
 
       await t.test("鍵つきの decision は数えない（誤った鍵の 401 も数えない）", async () => {

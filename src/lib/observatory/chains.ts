@@ -332,7 +332,11 @@ const NETWORK_FILTER_SPELLINGS: readonly string[] = [
   "tempo",
 ];
 
-function canonicalNetworkId(raw: string): string {
+/**
+ * 絞り込みと判定の件数で同じ鎖を同じ綴りにする。
+ * `celo` は `eip155:42220`。`base` などは toCaip2。未知の文字列は trim したまま。
+ */
+export function canonicalNetworkId(raw: string): string {
   const trimmed = raw.trim();
   const alias = FILTER_ALIAS_TO_CANONICAL[trimmed.toLowerCase()];
   if (alias) return alias;

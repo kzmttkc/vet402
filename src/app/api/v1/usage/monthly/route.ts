@@ -9,7 +9,8 @@ import {
 } from "@/lib/api/decision-usage";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
-// 判定 API の月次件数。鍵・メール・名前は返さない。数字は decision_usage_daily と client_usage_daily から読む。
+// 判定 API の月次件数。鍵ありを区分の合計だけ返す。鍵・メール・名前は返さない。
+// 鍵なしはチェーンごとに数えないので、ここには出さない。数字は decision_usage_daily から読む。
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {

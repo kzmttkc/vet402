@@ -555,6 +555,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/docs/api/page.tsx": 56,
   "src/app/impact/page.tsx": 8, // 2026-09-29: 「Rewriting any past row breaks every later root」を実装に合わせて外した
   "src/app/leaderboard/page.tsx": 5,
+  // 2026-10-26: 床は 8 のまま。月次表の新しい文（3 本未満、鍵なしはチェーンごとに数えない）に断定語は無い。
   "src/app/legal/privacy/page.tsx": 8,
   "src/app/legal/terms/page.tsx": 14,
   // 2026-09-20: 41 -> 42. The "Who named the transaction" paragraph added one detected sentence ("only when that row is its single candidate").

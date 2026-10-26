@@ -227,12 +227,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
     if (idemHash) await saveIdempotentResponse(idemHash, result, IDEMPOTENCY_TTL_MS);
     // 2026-10-07 / 10-11: 鍵なしの呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
-    // 応答は変わらない）。2026-10-26: 答えた出品の主ネットワーク（CAIP-2）も同じ行に足す。
-    // 鍵ありは api_usage の課金を変えず、decision_usage_daily に鍵・日・チェーンで足す。
+    // 応答は変わらない）。チェーンは足さない。調べた URL やクエリは保存しない、という約束のまま。
+    // 2026-10-26: 鍵ありだけ、api_usage の課金を変えず、decision_usage_daily に鍵・日・チェーンで足す。
+    // チェーンは canonicalNetworkId（celo は eip155:42220）。
     // 枠を戻す早期 return（400/404/503・replay）では数えない——戻した枠の分だけ書き込みを増やせるため（独立レビュー・高）。
-    const usageChain = usageChainOf(loaded.network);
-    if (caller.kind === "keyless") recordClientUsage(request.headers, "decision", usageChain);
-    else recordDecisionUsage(caller.ctx.apiKeyId, usageChain);
+    if (caller.kind === "keyless") recordClientUsage(request.headers, "decision");
+    else recordDecisionUsage(caller.ctx.apiKeyId, usageChainOf(loaded.network));
     const res = finish(caller, NextResponse.json(withCallerPolicy(result)));
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;

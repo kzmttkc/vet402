@@ -562,17 +562,24 @@ claims:
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
     verified_at: 2026-09-04
-  - id: privacy_monthly_table_key_appears_only_as_label
+  - id: privacy_monthly_table_relation_under_3_hides_calls
     surface: src/app/legal/privacy/page.tsx
-    quote: "A key appears only as a label such as"
-    means: "公開の月次表（/usage/monthly と /api/v1/usage/monthly）で、鍵は key-N の番号と運用者が付けた区分でしか出ない"
+    quote: "A relation with fewer than 3 keys shows"
+    means: "公開の月次表（/usage/monthly と /api/v1/usage/monthly）は鍵ありの判定を区分ごとの本数と件数の合計だけで出し、3本未満の区分は本数を <3 とし件数を出さない。鍵なしの呼び出しはチェーンごとに数えないので、この表には出さない"
     check: null
-    why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ないことを固定する"
+    why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ず、3本未満で件数が欠けることを固定する"
     verified_at: 2026-10-26
-  - id: privacy_monthly_table_never_shows_key_email_name
+  - id: privacy_monthly_table_omits_keyless_chain_counts
     surface: src/app/legal/privacy/page.tsx
-    quote: "The table never shows the key, the email address or the name."
-    means: "公開の月次表は鍵そのもの・メール・名前を出さない"
+    quote: "Calls made without a key are not counted per chain"
+    means: "鍵なしの呼び出しはチェーンごとに数えない。公開の月次表に鍵なしの節は無い。client_usage_daily に chain 列は無い"
+    check: null
+    why_unverifiable: "保存しないことの約束。tests/client-usage.pg.test.ts が client_usage_daily の列を day / client / route / count に固定し、tests/decision-usage.pg.test.ts が公開 JSON に keyless が無いことと、network が celo の出品への鍵あり判定が eip155:42220 に数えることを固定する"
+    verified_at: 2026-10-26
+  - id: privacy_monthly_table_leaves_out_key_email_name
+    surface: src/app/legal/privacy/page.tsx
+    quote: "The table leaves out the key, the email address, and the name."
+    means: "公開の月次表は鍵そのもの・メール・名前・鍵ごとの行を出さない"
     check: null
     why_unverifiable: "出力の形の約束。tests/decision-usage.pg.test.ts が固定する"
     verified_at: 2026-10-26

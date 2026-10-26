@@ -3465,22 +3465,24 @@ paths:
     get:
       operationId: getMonthlyDecisionUsage
       tags: [Usage]
-      summary: Decision call counts for one chain and one UTC month
+      summary: Decision call counts for one published chain and one UTC month
       description: |
-        Counts of decision API answers for one chain and one UTC month.
-        Figures come from the usage tables. A keyed row is a number such as
-        key-1 plus a relation an operator sets by hand. A keyless row is the
-        caller class stored with the count. The response leaves out the key,
-        the email address, and the name. Key-less. 60 requests per minute.
-        `chain` is a CAIP-2 network id such as `eip155:42220`. A known slug
-        such as `base` is read as its CAIP-2 id. `month` is `YYYY-MM` in UTC.
+        Counts of decision API answers made with a key, for one published chain
+        and one UTC month. Figures come from keyed decision rows. Answers are
+        summed by relation. A relation with fewer than 3 keys shows <3 and leaves
+        the call count out. Calls made without a key are not counted per chain.
+        The response leaves out the key, the email address, and the name.
+        Key-less. 60 requests per minute.
+        `chain` must be a published network id. `eip155:42220` is published.
+        A slug that names that same network, such as `celo`, is accepted.
+        `month` is `YYYY-MM` in UTC.
       security: []
       parameters:
         - in: query
           name: chain
           required: true
           schema: { type: string, maxLength: 200 }
-          description: CAIP-2 network id, for example eip155:42220.
+          description: Published network id. eip155:42220 is published.
         - in: query
           name: month
           required: true
@@ -3493,33 +3495,30 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [chain, month, keyed, keyless, external_calls]
+                required: [chain, month, relations]
                 properties:
                   chain: { type: string }
                   month: { type: string, example: "2026-10" }
-                  external_calls: { type: integer }
-                  keyed:
+                  relations:
                     type: array
                     items:
                       type: object
-                      required: [label, owner_relation, calls]
+                      required: [owner_relation, keys]
                       properties:
-                        label: { type: string, example: key-1 }
                         owner_relation: { type: string, nullable: true, enum: [self, related, external] }
-                        calls: { type: integer }
-                  keyless:
-                    type: array
-                    items:
-                      type: object
-                      required: [client, calls]
-                      properties:
-                        client: { type: string }
-                        calls: { type: integer }
+                        keys:
+                          oneOf:
+                            - { type: integer, minimum: 3 }
+                            - { type: string, enum: ["<3"] }
+                        calls:
+                          type: integer
+                          description: Present when keys is an integer. Absent when keys is <3.
         "400":
           description: |
             `chain_required` when `chain` is missing. `chain_invalid` when
-            `chain` is not a CAIP-2 network id. `month_required` when `month`
-            is missing. `month_invalid` when `month` is not YYYY-MM.
+            `chain` is not a CAIP-2 network id. `chain_unlisted` when `chain`
+            is not on the published list. `month_required` when `month` is
+            missing. `month_invalid` when `month` is not YYYY-MM.
           content:
             application/json:
               schema:
@@ -5462,6 +5461,7 @@ components:
             # 2026-10-26: /api/v1/usage/monthly query checks.
             - chain_required
             - chain_invalid
+            - chain_unlisted
             - month_required
             - month_invalid
         details:

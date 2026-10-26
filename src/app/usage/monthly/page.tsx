@@ -4,6 +4,7 @@ import {
   loadMonthlyDecisionUsage,
   monthlyUsageErrorMessage,
   parseMonthlyUsageQuery,
+  PUBLIC_USAGE_CHAINS,
   USAGE_MONTHLY_EMPTY_MESSAGE,
   USAGE_MONTHLY_UNAVAILABLE_MESSAGE,
   type MonthlyDecisionUsage,
@@ -14,8 +15,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = pageMetadata({
   title: "Decision call counts",
   description:
-    "Counts of decision API answers for one chain and one UTC month. Figures come from the usage tables. A key appears as a number such as key-1. The page leaves out the key, the email address, and the name.",
+    "Counts of decision API answers made with a key, for one published chain and one UTC month. Answers are summed by relation. A relation with fewer than 3 keys shows <3 and leaves the call count out. Calls made without a key are not counted per chain. The page leaves out the key, the email address, and the name.",
   path: "/usage/monthly",
+  noindex: true,
 });
 
 function one(value: string | string[] | undefined): string {
@@ -65,24 +67,20 @@ function CountTable({
 }
 
 function Figures({ data }: { data: MonthlyDecisionUsage }) {
-  const empty = data.keyed.length === 0 && data.keyless.length === 0;
+  const empty = data.relations.length === 0;
   return (
     <>
       {empty ? <p>{USAGE_MONTHLY_EMPTY_MESSAGE}</p> : null}
-      <p>
-        External relation calls: {data.external_calls}
-      </p>
-      <h2>Keyed calls</h2>
+      <h2>Calls by relation</h2>
+      <p>A relation with fewer than 3 keys shows &lt;3 and leaves the call count off this page.</p>
       <CountTable
-        label="Keyed decision calls"
-        headers={["Label", "Relation", "Calls"]}
-        rows={data.keyed.map((row) => [row.label, row.owner_relation ?? "unclassified", String(row.calls)])}
-      />
-      <h2>Keyless calls</h2>
-      <CountTable
-        label="Keyless decision calls"
-        headers={["Client", "Calls"]}
-        rows={data.keyless.map((row) => [row.client, String(row.calls)])}
+        label="Decision calls by relation"
+        headers={["Relation", "Keys", "Calls"]}
+        rows={data.relations.map((row) => [
+          row.owner_relation ?? "unclassified",
+          row.keys === "<3" ? "<3" : String(row.keys),
+          row.keys === "<3" ? "withheld" : String(row.calls),
+        ])}
       />
       <p>
         <a href={`/api/v1/usage/monthly?chain=${encodeURIComponent(data.chain)}&month=${encodeURIComponent(data.month)}`}>
@@ -118,8 +116,10 @@ export default async function UsageMonthlyPage({
       <article className="sheet">
         <h1 className="doc-title mt-8">Decision call counts</h1>
         <p className="doc-p">
-          This page lists decision API answers for the chain and UTC month in the query. Keyed calls use a stable number.
-          Keyless calls use the caller class stored with the count. Relation is a label an operator sets by hand.
+          This page sums decision API answers made with a key, for one published chain and one UTC month. Answers are
+          grouped by relation. A relation with fewer than 3 keys shows &lt;3 and leaves the call count off this page.
+          Calls made without a key are not counted per chain. Relation is a label an operator sets by hand. Published
+          chains: {PUBLIC_USAGE_CHAINS.join(", ")}.
         </p>
         <form method="get" action="/usage/monthly" className="doc-p">
           <label>
