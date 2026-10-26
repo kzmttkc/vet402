@@ -9,6 +9,7 @@
  *
  * 中身は /faq が持っていたものと1文字も変えていない。
  */
+import { WHAT_IS_X402_LEAD } from "@/components/site/x402-answers";
 import {
   CDP_GET_DISCOVERED_URL,
   listingSource,
@@ -30,8 +31,7 @@ const CIRCLE = listingSource("circle_discovery");
 export const FAQS: FaqItem[] = [
   {
     question: "What is x402?",
-    answer:
-      "x402 is a machine-payment protocol built on the HTTP 402 \"Payment Required\" status code. An API returns 402 with payment terms, the caller (often an AI agent) pays on-chain, and retries the request with proof of payment attached. There's no account, no invoice, and no human approving the transaction — which is what makes it fast for agent-to-agent commerce, and also what makes it blind: the provider sees the payment only after it has already settled.",
+    answer: WHAT_IS_X402_LEAD.join(" "),
   },
   {
     question: "What is ERC-8004?",

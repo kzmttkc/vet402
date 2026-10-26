@@ -12,6 +12,7 @@ import { settlementSourceSql } from "@/lib/observatory/settlement-source";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { csvCell } from "@/lib/util/csv-write";
 import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
+import { withNoindex } from "@/lib/api/public-read-robots";
 
 /**
  * GET /api/v1/observatory/export.csv?days=90 — 購入台帳のCSVエクスポート
@@ -69,7 +70,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-export:${ip}`, RL_LIMIT, RL_WINDOW_MS);
-  const perCaller = ipRateLimitHeaders(limited);
+  const perCaller = withNoindex(ipRateLimitHeaders(limited));
   if (!limited.allowed) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }

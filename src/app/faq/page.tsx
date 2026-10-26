@@ -12,7 +12,7 @@ import { WHAT_IS_X402_LEAD } from "@/components/site/x402-answers";
 import TrackView from "@/components/site/TrackView";
 
 export const metadata: Metadata = pageMetadata({
-  title: "x402 payments for AI agents: questions and answers",
+  title: "Questions and answers on x402 payments",
   description:
     "x402 is an HTTP 402 payment protocol for AI agents. Answers on how a caller pays, often in USDC, and how vet402 measures delivery.",
   path: "/faq",
@@ -73,7 +73,7 @@ export default async function FaqPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-8">Questions about x402 payments for AI agents</h1>
+        <h1 className="doc-title mt-8">Questions about x402 payments</h1>
         <p className="mx-auto mt-4 max-w-[62ch] text-center text-brand">
           {WHAT_IS_X402_LEAD[0]} {WHAT_IS_X402_LEAD[1]} The same answers are expanded in{" "}
           <Link href="/blog/what-is-x402" className="doc-link">
@@ -89,7 +89,7 @@ export default async function FaqPage() {
           </Link>
           , and{" "}
           <Link href="/x402/chains" className="doc-link">
-            x402 payments by chain
+            x402 and MPP payments by chain
           </Link>
           .
         </p>

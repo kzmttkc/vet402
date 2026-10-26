@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS } from "@/lib/api/keyless-limits";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { resolve } from "@/lib/resolve/lookup";
 import { ACCEPTED_QUERY_FORMS, classifyQuery, explainInvalidQuery } from "@/lib/resolve/classify";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function GET(request: NextRequest) {
-  const gate = await publicRateLimit(request, "resolve", 60);
+  const gate = await publicRateLimit(request, "resolve", RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS);
   if (!gate.ok) return gate.response;
   const q = request.nextUrl.searchParams.get("q");
   // 2026-09-29 再監査（DX）: 400 の本文に原因（message）と直した q（suggestion）を載せる。

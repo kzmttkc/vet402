@@ -24,7 +24,9 @@ function fmt(n: number): string {
 }
 
 function rowFor(chain: string, rows: L1ChainStats[]): L1ChainStats | undefined {
-  return rows.find((r) => r.label === chain || publicChainLabel(r.chain) === chain);
+  return rows.find(
+    (r) => r.chain === chain || r.label === chain || publicChainLabel(r.chain) === chain || publicChainLabel(r.chain) === publicChainLabel(chain),
+  );
 }
 
 export default async function ChainsHubPage() {
@@ -43,8 +45,10 @@ export default async function ChainsHubPage() {
     { name: "Home", path: "/" },
     { name: "By chain", path: PAGE.path },
   ]);
-  const known = new Set(GUIDE_CHAINS.map((c) => c.chain));
-  const extra = readable ? rows.filter((r) => r.settled > 0 && !known.has(r.label) && !known.has(publicChainLabel(r.chain))) : [];
+  const known = new Set(GUIDE_CHAINS.flatMap((c) => [c.chain, c.publicName]));
+  const extra = readable
+    ? rows.filter((r) => r.settled > 0 && !known.has(r.chain) && !known.has(r.label) && !known.has(publicChainLabel(r.chain)))
+    : [];
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
@@ -96,7 +100,7 @@ export default async function ChainsHubPage() {
             return (
               <li key={c.slug} className="border-t border-hair pt-3">
                 <Link href={`/x402/chains/${c.slug}`} className="doc-link text-[1.0625rem]">
-                  {c.chain}
+                  {c.headline}
                 </Link>
                 <p className="doc-p mt-1">
                   {c.lead[0]} {c.lead[1]}

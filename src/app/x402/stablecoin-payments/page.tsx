@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { STABLECOIN_PAYMENTS, GUIDE_UPDATED } from "@/components/site/x402-answers";
+import { STABLECOIN_PAYMENTS, GUIDE_UPDATED, stablecoinAssetSentence } from "@/components/site/x402-answers";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
@@ -62,9 +62,7 @@ export default async function StablecoinPaymentsPage() {
           facilitator submits it on chain. vet402 records the asset it paid on each purchase.
         </p>
         <p className="doc-p">
-          On Base, Solana, Arc, and Celo the pinned asset is USDC. On Tempo, where the rail is MPP, the pinned asset is
-          USDC.e. On XRPL the pinned asset is RLUSD. On BNB Chain the pinned asset is USD1. Stellar rows that vet402
-          re-reads use USDC. The same list is in the{" "}
+          {stablecoinAssetSentence()} The same list is in the{" "}
           <Link href="/faq" className="doc-link">
             FAQ
           </Link>{" "}
@@ -105,7 +103,7 @@ export default async function StablecoinPaymentsPage() {
             <span key={c.slug}>
               {i > 0 ? ", " : ""}
               <Link href={`/x402/chains/${c.slug}`} className="doc-link">
-                {c.chain}
+                {c.publicName}
               </Link>
             </span>
           ))}

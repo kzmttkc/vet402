@@ -5,6 +5,7 @@ import { L0_EXPORT_COLUMN_NOTES, L0_EXPORT_COLUMNS, readL0Export } from "@/lib/o
 import { csvLines } from "@/lib/util/csv-write";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
+import { withNoindex } from "@/lib/api/public-read-robots";
 
 /**
  * GET /api/v1/observatory/l0/export.csv — 出品ごとの最新の L0 公開判定（2026-09-29 監査 5 周目・データ記者の立場）。
@@ -22,7 +23,7 @@ export const maxDuration = 30;
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-l0-export:${ip}`, RL_LIMIT, RL_WINDOW_MS);
-  const perCaller = ipRateLimitHeaders(limited);
+  const perCaller = withNoindex(ipRateLimitHeaders(limited));
   if (!limited.allowed) {
     const status = limited.unavailable ? 503 : 429;
     return NextResponse.json({ error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" }, { status, headers: perCaller });

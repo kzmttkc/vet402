@@ -97,7 +97,7 @@ export default async function ObservatoryMethodologyPage() {
     headline: "Methodology for x402 payment measurements",
     description: METHOD_BLURB,
     url: `${SITE_URL}/observatory/methodology`,
-    dateModified: "2026-09-04",
+    dateModified: "2026-10-26",
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },
     publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },
     inLanguage: "en",
@@ -149,7 +149,7 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p mt-4">
           Chain pages for the purchase lanes are at{" "}
           <Link href="/x402/chains" className="doc-link">
-            x402 payments by chain
+            x402 and MPP payments by chain
           </Link>
           .
         </p>
@@ -1203,10 +1203,12 @@ export default async function ObservatoryMethodologyPage() {
           <span>Reuse and citation</span>
         </h2>
         <p className="doc-p">
-          The measurements on these pages — the aggregate JSON at{" "}
+          The measurements on these pages, including the aggregate JSON at{" "}
           <code>/api/v1/observatory/state</code>, the daily series at{" "}
-          <code>/api/v1/observatory/history</code>, and the purchase ledger at{" "}
-          <code>/api/v1/observatory/export.csv</code> — are published under{" "}
+          <code>/api/v1/observatory/history</code>, the purchase ledger at{" "}
+          <code>/api/v1/observatory/export.csv</code>, the L0 export at{" "}
+          <code>/api/v1/observatory/l0/export.csv</code>, the sellers export at{" "}
+          <code>/api/v1/sellers/export.csv</code>, and the figures rendered on <code>/impact</code>, are published under{" "}
           <a
             href="https://creativecommons.org/licenses/by/4.0/"
             className="underline"

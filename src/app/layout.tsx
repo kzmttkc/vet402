@@ -47,9 +47,9 @@ const fragmentMono = localFont({
 
 // 2026-09-28 SEO 監査: 67 字で検索結果の表題（60 字前後）から切れていた。意味を保って 56 字へ。
 // 頁の H1（src/app/page.tsx）と manifest の name は長い正式名のまま。
-const SITE_TITLE = "vet402: verify x402 payments for AI agents";
+const SITE_TITLE = "vet402 — Independent Verification of x402 Agent Payments";
 const SITE_DESCRIPTION =
-  "vet402 buys from x402 endpoints and publishes whether the paid call was delivered, before an AI agent pays in USDC.";
+  "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.";
 
 /* 方向性の契約。ソースで読める位置に置いてある。
    これを崩す変更（SaaS 標準のカード羅列・グラデ・影・kicker への退行）は、

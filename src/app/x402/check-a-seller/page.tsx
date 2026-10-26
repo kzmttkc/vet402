@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
+import { KEYLESS_READ_STOP, keylessDecisionPerMinute } from "@/lib/api/keyless-limits";
 import { CHECK_SELLER, GUIDE_UPDATED } from "@/components/site/x402-answers";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
@@ -58,8 +59,9 @@ export default async function CheckSellerPage() {
         </h2>
         <p className="doc-p">
           <code>GET /api/v1/resources/{"{resourceId}"}/decision</code> returns the L0, L1, and L2 facts for that
-          resource, with an ALLOW, WARN, or BLOCK recommendation. The route answers with no API key, at 10 requests a
-          minute per IP. Shapes, reason codes, and <code>verified_terms</code> are in the{" "}
+          resource, with an ALLOW, WARN, or BLOCK recommendation. While keyless reads are on, the route answers with no
+          API key, at {keylessDecisionPerMinute()} requests a minute per IP. {KEYLESS_READ_STOP} Shapes, reason codes,
+          and <code>verified_terms</code> are in the{" "}
           <Link href="/docs/api" className="doc-link">
             API reference
           </Link>
@@ -95,7 +97,7 @@ export default async function CheckSellerPage() {
           <code>verified_terms</code> carries <code>pay_to</code>, <code>asset</code>, <code>amount</code>,{" "}
           <code>network</code>, and <code>scheme</code> from the last purchase whose delivery vet402 confirmed. Compare
           those fields with the 402 in hand. A higher amount, or a different recipient, asset, network, or scheme, is a
-          different offer from the one that was delivered.
+          different offer from the one that was delivered. On XRPL, verified_terms is null.
         </p>
         <p className="doc-p">
           The recommendation records past purchases. vet402 does not insure a payment, hold customer funds, or refund

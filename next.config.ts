@@ -92,6 +92,8 @@ const nextConfig: NextConfig = {
       // 別ページに昇格する予定は無いので 308（permanent）。/agent も 404 だが、
       // 旧 URL として何を指していたかが不明なので行き先を推測して足さない。
       { source: "/docs", destination: "/docs/api", permanent: true },
+      // /x402 自体は頁が無い。ハブは /x402/chains。昇格の予定は無いので 308。
+      { source: "/x402", destination: "/x402/chains", permanent: true },
       // 2026-08-19: note.com's link auto-embed (and its explicit "埋め込み"
       // insert command) silently fails to build a card for any URL with a
       // query string — verified by hand in the Sen note.com editor and

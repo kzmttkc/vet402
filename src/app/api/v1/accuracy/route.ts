@@ -11,6 +11,7 @@ import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
 import { computeL0Accuracy, fetchL0AccuracyInput, fetchSloSnapshot } from "@/lib/scoring/l0-accuracy";
 import { getCoverageWeekly } from "@/lib/observatory/coverage-report";
 import { SITE_URL } from "@/lib/site-url";
+import { withNoindex } from "@/lib/api/public-read-robots";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
@@ -128,8 +129,8 @@ export async function GET(request: NextRequest) {
   // from the shared CDN cache: `perCaller` (Remaining/Reset/Retry-After) goes
   // only on responses the CDN does not share, `shared` carries the ceiling,
   // which is true for everyone. See sharedCacheRateLimitHeaders.
-  const perCallerRlHeaders = ipRateLimitHeaders(limited);
-  const rlHeaders = sharedCacheRateLimitHeaders(limited);
+  const perCallerRlHeaders = withNoindex(ipRateLimitHeaders(limited));
+  const rlHeaders = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
     // 2026-08-06: full RateLimit-* header set, consistent with the other
     // key-less public paths.

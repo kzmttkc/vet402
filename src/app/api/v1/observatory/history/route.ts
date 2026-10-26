@@ -10,6 +10,7 @@ import {
   getDailyMetricsHistory,
   metricsRollupLookbackDays,
 } from "@/lib/observatory/metrics-rollup";
+import { withNoindex } from "@/lib/api/public-read-robots";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
@@ -17,7 +18,9 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  *
  * /observatory/state の履歴チャートと同じリーダー（getDailyMetricsHistory）
  * を読む——ページとAPIが食い違えない構造は state と同じ。日×チェーンの
- * L0/L1集計で、language は数と分母のみ。days は 1..366 に飽和。
+ * L0/L1集計で、language は数と分母のみ。days は 10 進の整数だけ（`30.0`・`1e2` は 400）。
+ * 1..366 の外と先頭の 0 は正規の値へ 308 で送る（export.csv と同じ。キャッシュのキーを増やさない）。
+ * 無指定は 30 のまま、リダイレクトしない。DB を読む前に正規化する。
  */
 
 const RL_LIMIT = 30;
@@ -29,16 +32,21 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-history:${ip}`, RL_LIMIT, RL_WINDOW_MS);
-  const perCaller = ipRateLimitHeaders(limited);
-  const shared = sharedCacheRateLimitHeaders(limited);
+  const perCaller = withNoindex(ipRateLimitHeaders(limited));
+  const shared = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }
 
   const daysParam = request.nextUrl.searchParams.get("days");
-  const days = daysParam === null ? 30 : Number(daysParam);
-  if (!Number.isFinite(days)) {
+  if (daysParam !== null && !/^[0-9]{1,9}$/.test(daysParam)) {
     return NextResponse.json({ error: "invalid_days" }, { status: 400, headers: perCaller });
+  }
+  const days = daysParam === null ? 30 : Math.min(Math.max(Number(daysParam), 1), 366);
+  if (daysParam !== null && daysParam !== String(days)) {
+    const canonical = new URL(request.nextUrl.toString());
+    canonical.search = `?days=${days}`;
+    return NextResponse.redirect(canonical, { status: 308, headers: perCaller });
   }
 
   try {
@@ -47,7 +55,6 @@ export async function GET(request: NextRequest) {
       getDailyMetricsCoverage(),
     ]);
     const window = metricsRollupLookbackDays();
-    const span = Math.min(Math.max(Math.trunc(days) || 0, 1), 366);
     const retrievedAt = new Date().toISOString();
     return NextResponse.json(
       {
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
         license: "CC-BY-4.0",
         licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
         retrievedAt,
-        cite: `KIZUNA Creation. vet402 observatory. Dataset, retrieved ${retrievedAt}. https://vet402.com/api/v1/observatory/history?days=${span}`,
+        cite: `KIZUNA Creation. vet402 observatory. Dataset, retrieved ${retrievedAt}. https://vet402.com/api/v1/observatory/history?days=${days}`,
       },
       {
         headers: {

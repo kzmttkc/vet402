@@ -36,7 +36,7 @@ import { publicChainLabel } from "@/lib/observatory/chains";
 export const metadata: Metadata = pageMetadata({
   title: "State of x402 payments by chain",
   description:
-    "Headline numbers over the full public x402 catalog: how many endpoints answer a valid 402 challenge, how many were delisted, how much is machine-verifiable. Purchase counts by chain sit beside them.",
+    "Headline numbers for the public x402 catalog: valid 402 answers, delistings, and how much is machine-verifiable, with purchase counts by chain.",
   path: "/observatory/state",
 });
 
@@ -271,9 +271,9 @@ export default async function ObservatoryStatePage() {
 
         <h1 className="doc-title mt-8">State of x402</h1>
         <p className="doc-p mt-4">
-          Purchase counts by chain for x402 agent payments are listed at{" "}
+          Purchase counts by chain are listed at{" "}
           <Link href="/x402/chains" className="doc-link">
-            x402 payments by chain
+            x402 and MPP payments by chain
           </Link>
           . The L0 rows behind section 1 are in{" "}
           <Link href="/api/v1/observatory/l0/export.csv" className="doc-link">

@@ -40,11 +40,17 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
   const rows = stats?.l1.byChain ?? [];
   const readable = rows.length > 0;
   const row = readable
-    ? rows.find((r) => r.label === chain.chain || publicChainLabel(r.chain) === chain.chain)
+    ? rows.find(
+        (r) =>
+          r.chain === chain.chain ||
+          r.label === chain.chain ||
+          r.label === chain.publicName ||
+          publicChainLabel(r.chain) === chain.publicName,
+      )
     : undefined;
   const path = `/x402/chains/${chain.slug}`;
   const article = articleJsonLd({
-    headline: chain.chain,
+    headline: chain.headline,
     description: chain.description,
     path,
     datePublished: GUIDE_UPDATED,
@@ -53,7 +59,7 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
     { name: "By chain", path: "/x402/chains" },
-    { name: chain.chain, path },
+    { name: chain.publicName, path },
   ]);
 
   return (
@@ -78,14 +84,14 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
             <span>vet402</span>
             <span>
               <Link href="/x402/chains" className="underline">
-                All chains
+                Measured chains
               </Link>
             </span>
             <span>{GUIDE_UPDATED}</span>
           </div>
         </div>
 
-        <h1 className="doc-title mt-8">{chain.chain}</h1>
+        <h1 className="doc-title mt-8">{chain.headline}</h1>
         <p className="doc-p">{chain.lead[0]}</p>
         <p className="doc-p">{chain.lead[1]}</p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
@@ -97,12 +103,12 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
         {!readable ? (
           <p className="doc-p">The ledger could not be read for this rendering, so no counts are shown.</p>
         ) : !row ? (
-          <p className="doc-p">This read has no L1 row for {chain.chain}.</p>
+          <p className="doc-p">This read has no L1 row for {chain.publicName}.</p>
         ) : (
           <>
             <p className="doc-p">
               Delivered counts settled purchases whose paid request answered 2xx. The row is <code>l1.byChain</code> for{" "}
-              {chain.chain}.
+              {chain.publicName}. CAIP-2 {chain.caip2}.
             </p>
             <dl className="mt-4 grid gap-4 sm:grid-cols-3">
               <div className="border-t border-brand-deep pt-3">
@@ -129,6 +135,14 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
 
         <h2 className="sec-head">
           <span className="sec-no">2.</span>
+          <span>How a purchase is tied to its settlement</span>
+        </h2>
+        <p className="doc-p">
+          CAIP-2 <code>{chain.caip2}</code>. {chain.tie} {chain.reread}
+        </p>
+
+        <h2 className="sec-head">
+          <span className="sec-no">3.</span>
           <span>Where to read on</span>
         </h2>
         <p className="doc-p">

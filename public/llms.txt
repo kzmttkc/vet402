@@ -22,9 +22,9 @@ Check an x402 seller before paying by reading the purchases vet402 has made from
 
 https://vet402.com/x402/check-a-seller
 
-### Which chains does vet402 measure for x402 payments?
+### Which chains does vet402 measure for x402 and MPP payments?
 
-vet402 publishes purchase results per chain from the same ledger as the observatory. A count appears when that ledger read has a row for the chain. An empty read shows no counts.
+vet402 measures Base (USDC over x402), Solana (USDC over x402), Tempo (USDC.e over MPP, the Machine Payments Protocol), XRPL (RLUSD over x402), Arc (USDC over x402), Celo (USDC over x402), Stellar (USDC over x402), Arbitrum One (USDC over x402), and BNB Chain (USD1 over x402). A count appears when that ledger read has a row for the chain. An empty read shows no counts.
 
 https://vet402.com/x402/chains
 https://vet402.com/x402/chains/base
@@ -33,6 +33,9 @@ https://vet402.com/x402/chains/tempo
 https://vet402.com/x402/chains/xrpl
 https://vet402.com/x402/chains/arc
 https://vet402.com/x402/chains/celo
+https://vet402.com/x402/chains/stellar
+https://vet402.com/x402/chains/arbitrum-one
+https://vet402.com/x402/chains/bnb-chain
 
 x402 settles payments finally and irreversibly, and proof of payment exists on-chain — but proof of delivery does not exist anywhere. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value: it measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
 
@@ -125,7 +128,7 @@ The older score endpoints below need the same key. They return the transitional 
 
 ## Open data — no key, and quotable
 
-Three endpoints need no authentication and are published under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/): reuse, redistribute, chart or republish them, commercially or not, provided the source is named. The code is MIT; the data licence is separate and is in LICENSE-DATA in the repository.
+The reads below need no authentication and are published under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). That licence covers /api/v1/observatory/state, /api/v1/observatory/history, /api/v1/observatory/export.csv, /api/v1/observatory/l0/export.csv, /api/v1/sellers/export.csv, and the figures rendered on /impact. Reuse, redistribute, chart or republish them, commercially or otherwise, provided the source is named. The code is MIT. The data licence is separate and is in LICENSE-DATA in the repository.
 
 - `GET /api/v1/observatory/state` — the aggregate snapshot. Carries `license`, `licenseUrl`, `retrievedAt` and `cite` in the body. Top-level totals include testnets; `byChain` is mainnet-only (`byChainScope`), so `sum(byChain)` can be below `totalEndpoints`. `publishedPass` counts endpoints on record whose latest L0 probe passed, including endpoints no longer listed, so it can exceed `activeEndpoints`; `publishedPassActive` is the part still listed, and `publishedPassActiveProbeOlderThan7d` the part of that last probed more than 7 days ago. `l1.endpointsSettled` (endpoints with a settled row, listed or not) is `l1.endpointsSettledSellerReceipt` (at least one transaction the seller named in its receipt) plus `l1.endpointsSettledIndexOnly` (every settled transaction found by vet402's own settlements index; no seller receipt).
 - `GET /api/v1/observatory/history` — the daily series per chain.

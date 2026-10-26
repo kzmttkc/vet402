@@ -10,6 +10,7 @@ import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
+import { KEYLESS_READ_STOP, keylessDecisionPerMinute, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
 import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
@@ -25,8 +26,7 @@ const SELLER_FIX_LABEL: Record<SellerCanFix, string> = { yes: "Yes", partly: "Pa
 // default（LP と同じ長い表題）をそのまま名乗っていた。template "%s | vet402"
 // が効くので、ここは接尾辞なしの固有名だけを書く。
 // 2026-08-14: openGraph/twitter/canonical を pageMetadata で個別化。
-const API_BLURB =
-  "Decision API for x402 agent payments. /decision and /resolve need no key (10 and 60 requests a minute per IP). Score, webhook, and attest endpoints take a Bearer key.";
+const API_BLURB = `Decision API for x402 agent payments. ${keylessRatesSentence()}`;
 
 export const metadata: Metadata = pageMetadata({
   title: "Decision API for x402 agent payments",
@@ -672,7 +672,6 @@ export default async function ApiDocsPage() {
   const webApi = webApiJsonLd({
     name: "vet402 Decision API",
     description: API_BLURB,
-    documentationPath: "/docs/api",
   });
 
   return (
@@ -749,9 +748,7 @@ export default async function ApiDocsPage() {
             折れていた。URL は 1 つの要素のまま折り返さない（375px 幅でも 1 行に収まる長さ）。 */}
         {/* 2026-09-29.3（監査 6 周目）: 冒頭が「Bearer API key」で、鍵なしで答える判定と resolve が鍵必須に読めた。 */}
         <p className="text-brand">
-          <code className="text-brand-deep">/decision</code> and{" "}
-          <code className="text-brand-deep">/resolve</code> need no key (10 and 60 requests a minute per
-          IP). The score, webhook and attest endpoints take an API key in{" "}
+          {keylessRatesSentence()} {KEYLESS_READ_STOP} The score, webhook and attest endpoints take an API key in{" "}
           <code className="text-brand-deep">Authorization: Bearer</code>. Base URL:{" "}
           <code className="whitespace-nowrap text-brand-deep">{`${SITE_URL}/api/v1`}</code>
         </p>
@@ -822,8 +819,8 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
               the reason-code table
             </a>
             ) and the L0&ndash;L2 facts behind them. Without a key,{" "}
-            <code className="text-brand-deep">/decision</code> answers 10 requests per minute per IP
-            and <code className="text-brand-deep">/resolve</code> 60; past that you get 429{" "}
+            <code className="text-brand-deep">/decision</code> answers {keylessDecisionPerMinute()} requests per minute per IP
+            and <code className="text-brand-deep">/resolve</code> {keylessResolvePerMinute()}. Past that you get 429{" "}
             <code>rate_limited</code> with a <code>Retry-After</code> under 60 seconds. A URL that
             is not in the catalog comes back from <code>/resolve</code> with no{" "}
             <code>resource</code> (and, when nothing on its host is on record either, an empty{" "}

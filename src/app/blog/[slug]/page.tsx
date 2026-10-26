@@ -117,7 +117,7 @@ export default async function BlogPostPage({
         <p className="doc-p mt-8">
           Related reading:{" "}
           <Link href="/faq" className="doc-link">
-            questions about x402 payments for AI agents
+            questions about x402 payments
           </Link>
           ,{" "}
           <Link href="/x402/stablecoin-payments" className="doc-link">
@@ -129,7 +129,7 @@ export default async function BlogPostPage({
           </Link>
           , and{" "}
           <Link href="/x402/chains" className="doc-link">
-            x402 payments by chain
+            x402 and MPP payments by chain
           </Link>
           .
         </p>

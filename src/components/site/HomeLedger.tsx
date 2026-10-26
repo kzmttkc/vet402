@@ -37,12 +37,10 @@ export type HomeLedger = {
 };
 
 /**
- * Settlement asset per public chain name. The lanes come from supported-chains-data.ts. Stellar,
- * BNB Chain, and Arbitrum One have no lane row there, so their asset words are taken from the
- * methodology sentence in src/lib/observatory/vocabulary.ts ("USDC on Base, Arc, Celo, Solana and
- * Stellar", "USD1 on BNB Chain"). tests/home-ledger.test.ts pins both sources. A chain named in
- * neither prints "not named". The lookup goes through publicChainLabel, so a join key such as
- * BSC resolves to the same asset as BNB Chain.
+ * Settlement asset per public chain name. Lane rows in supported-chains-data.ts win, including
+ * when the join key (stellar:pubnet, BSC, Arbitrum) differs from the public name. The methodology
+ * sentence in src/lib/observatory/vocabulary.ts stays as a fallback for a name the lanes do not
+ * list. tests/home-ledger.test.ts pins both sources. A chain named in neither prints "not named".
  */
 const ASSET_FROM_METHODOLOGY: Record<string, string> = {
   Stellar: "USDC",
@@ -54,7 +52,9 @@ export const NO_ASSET = "not named";
 export function settlementAssetOf(label: string): string {
   const name = publicChainLabel(label);
   for (const row of SUPPORTED_CHAINS) {
-    if (row.kind === "lane" && (row.chain === name || row.chain === label)) return row.asset;
+    if (row.kind === "lane" && (row.chain === name || row.chain === label || publicChainLabel(row.chain) === name)) {
+      return row.asset;
+    }
   }
   return ASSET_FROM_METHODOLOGY[name] ?? ASSET_FROM_METHODOLOGY[label] ?? NO_ASSET;
 }

@@ -38,7 +38,7 @@ export function GET() {
 
   const body = `# vet402 — full source for language models
 
-> Independent verification of the x402 agent-payment economy. This file is generated from the same FAQ and blog modules the HTML pages use. For the index of live endpoints, cite ${SITE_URL}/llms.txt. For current measurements, cite ${SITE_URL}/observatory and ${SITE_URL}/observatory/methodology — do not invent rates that are not on those pages. x402 is an HTTP 402 payment protocol for AI agents.
+> Independent verification of the x402 agent-payment economy. This file is generated from the same FAQ and blog modules the HTML pages use. For the index of live endpoints, cite ${SITE_URL}/llms.txt. For current measurements, cite ${SITE_URL}/observatory and ${SITE_URL}/observatory/methodology. Quote a rate that those pages publish. x402 is an HTTP 402 payment protocol for AI agents.
 
 The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in August 2026.
 

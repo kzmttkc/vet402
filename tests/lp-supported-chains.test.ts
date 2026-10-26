@@ -32,10 +32,21 @@ import { chainLabel, toCaip2 } from "@/lib/observatory/chains";
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 const lanes = SUPPORTED_CHAINS.filter((c): c is LaneChain => c.kind === "lane");
 
-test("the section lists the seven chains, in order", () => {
+test("the section lists the lanes and the Robinhood Chain row, in order", () => {
   assert.deepEqual(
     SUPPORTED_CHAINS.map((c) => c.chain),
-    ["Base", "Solana", "Tempo", "XRPL", "Arc", "Celo", "Robinhood Chain (4663, mainnet)"],
+    [
+      "Base",
+      "Solana",
+      "Tempo",
+      "XRPL",
+      "Arc",
+      "Celo",
+      "stellar:pubnet",
+      "Arbitrum",
+      "BSC",
+      "Robinhood Chain (4663, mainnet)",
+    ],
   );
 });
 
@@ -47,6 +58,9 @@ test("every lane name is the chainLabel() of its mainnet id — the join key int
     XRPL: "xrpl:0",
     Arc: "eip155:5042",
     Celo: "eip155:42220",
+    "stellar:pubnet": "stellar:pubnet",
+    Arbitrum: "eip155:42161",
+    BSC: "eip155:56",
   };
   for (const lane of lanes) {
     assert.ok(ids[lane.chain], `no mainnet id pinned for ${lane.chain}`);

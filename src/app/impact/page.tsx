@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, citeAs, webPageJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { formatUsdcUnits } from "@/lib/util/usd";
@@ -49,30 +49,11 @@ export default async function ImpactPage() {
   const latestAnchor = anchors[0] ?? null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const retrievedOn = drawnAt.slice(0, 10);
-  const dataset = datasetJsonLd({
-    name: "vet402 impact figures",
-    citeName: "impact figures",
-    description:
-      "Public x402 payment measurements: coverage, purchases with evidence, and a hash-chained ledger.",
+  const webPage = webPageJsonLd({
+    name: "Impact",
+    description: IMPACT_DESCRIPTION,
     path: "/impact",
-    citeUrl: `${SITE_URL}/api/v1/observatory/state`,
-    retrievedAt: retrievedOn,
-    measurementTechnique:
-      "Figures on this page are read from the public observatory state and the purchase export.",
-    variableMeasured: ["endpoint coverage", "purchase attempts", "settled purchases", "delivered purchases"],
-    keywords: ["x402", "agent payments", "USDC"],
-    distribution: [
-      {
-        name: "Aggregate snapshot (JSON)",
-        encodingFormat: "application/json",
-        contentUrl: `${SITE_URL}/api/v1/observatory/state`,
-      },
-      {
-        name: "L1 purchase ledger (CSV)",
-        encodingFormat: "text/csv",
-        contentUrl: `${SITE_URL}/api/v1/observatory/export.csv`,
-      },
-    ],
+    isBasedOn: `${SITE_URL}/observatory/state`,
   });
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -87,7 +68,7 @@ export default async function ImpactPage() {
           type="application/ld+json"
           nonce={nonce}
           suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: safeJsonLd(dataset) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
         />
         <script
           type="application/ld+json"
@@ -119,13 +100,11 @@ export default async function ImpactPage() {
         <p className="mx-auto mt-3 max-w-[62ch] text-center text-brand">
           x402 agent payment measurements, each figure linked to its API. Chain counts are on{" "}
           <Link href="/x402/chains" className="doc-link">
-            x402 payments by chain
+            x402 and MPP payments by chain
           </Link>
           .
         </p>
-        <p className="doc-p">
-          {`KIZUNA Creation. vet402 impact figures. Dataset, retrieved ${retrievedOn}. ${SITE_URL}/api/v1/observatory/state`}
-        </p>
+        <p className="doc-p">{citeAs("observatory", `${SITE_URL}/api/v1/observatory/state`, retrievedOn)}</p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">

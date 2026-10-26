@@ -3,8 +3,10 @@ vet402 observatory data — Creative Commons Attribution 4.0 International (CC B
 WHAT THIS COVERS
   The measurements published by vet402: the aggregate snapshot at
   /api/v1/observatory/state, the daily series at /api/v1/observatory/history,
-  the L1 purchase ledger at /api/v1/observatory/export.csv, and the same facts
-  as rendered on the public observatory pages.
+  the L1 purchase ledger at /api/v1/observatory/export.csv, the L0 export at
+  /api/v1/observatory/l0/export.csv, the sellers export at
+  /api/v1/sellers/export.csv, the figures rendered on /impact, and the same
+  facts as rendered on the public observatory pages.
 
   It does not cover the source code in this repository, which is MIT (see
   LICENSE), and it does not cover third-party content that the catalog merely

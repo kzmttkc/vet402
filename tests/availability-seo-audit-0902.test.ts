@@ -44,10 +44,16 @@ test("pageMetadata は openGraph.images と twitter.images を既定で継承す
   assert.deepEqual(tw?.images, [`${SITE_URL}/opengraph-image.png`]);
 });
 
-test("og:image:alt はファイル規約の alt テキストと同じ文", () => {
+test("og:image:alt は pageMetadata では決まりに合う文で、ファイル規約は凍結面のために残す", () => {
   const meta = pageMetadata({ title: "T", description: "D", path: "/faq" });
   const images = (meta.openGraph as { images: Array<{ alt?: string }> }).images;
-  assert.equal(images[0].alt, read("src/app/opengraph-image.alt.txt").trim());
+  const alt = images[0].alt ?? "";
+  assert.equal(alt, read("src/lib/seo.ts").match(/export const OG_IMAGE_ALT =\n  "([^"]+)"/)?.[1]);
+  assert.equal(/\b(we|our|us)\b/i.test(alt), false);
+  assert.equal(/[;—–]/.test(alt), false);
+  const fileAlt = read("src/app/opengraph-image.alt.txt").trim();
+  assert.notEqual(alt, fileAlt);
+  assert.ok(fileAlt.includes("We buy. We settle."));
 });
 
 // ------------------------------------------------------------------

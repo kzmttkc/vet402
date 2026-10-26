@@ -48,13 +48,13 @@ export function HomeIntro({
             <Link href="/x402/stablecoin-payments" className="doc-link">
               x402 payments for AI agents
             </Link>
-            , including USDC where that is the pinned asset.{" "}
+            , including USDC where that is the pinned asset. Check a seller before paying on{" "}
             <Link href="/x402/check-a-seller" className="doc-link">
-              Check a seller before paying
+              its own page
             </Link>
-            .{" "}
+            . Counts for each chain are on{" "}
             <Link href="/x402/chains" className="doc-link">
-              Counts by chain
+              the chain pages
             </Link>
             .
           </p>

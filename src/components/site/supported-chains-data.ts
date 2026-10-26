@@ -107,9 +107,12 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   // buying since 2026-10-11 and /api/v1/observatory/state already counts it (42 settled on
   // 10-15), but this list was hand-written and never got the row. The count comes from the ledger.
   { kind: "lane", chain: "Celo", asset: "USDC", rail: "x402", state: "settled_on_record" },
-  // 2026-10-22: the Arbitrum One lane (eip155:42161, native Circle USDC,
-  // OBSERVATORY_ARBITRUM_L1_ENABLED) is built and off by default. It is not listed here
-  // until the first settled purchase (same withdrawal as Celo in 31de09d3).
+  // 2026-10-26: the public state read shows settled purchases on Stellar, Arbitrum One, and BNB Chain.
+  // Join keys stay chainLabel() values (stellar:pubnet is not in KNOWN, so the label is the CAIP-2 id).
+  // Public names come from publicChainLabel. The payer flags can be off by default and the ledger can still hold rows.
+  { kind: "lane", chain: "stellar:pubnet", asset: "USDC", rail: "x402", state: "settled_on_record" },
+  { kind: "lane", chain: "Arbitrum", asset: "USDC", rail: "x402", state: "settled_on_record" },
+  { kind: "lane", chain: "BSC", asset: "USD1", rail: "x402", state: "settled_on_record" },
   // Robinhood Chain: the wording is fixed by agreement with the RWA session (2026-09-28,
   // English only). The agreement as handed over in Japanese (the delegation brief's summary,
   // not a verbatim quote of the RWA session's message):

@@ -8,6 +8,7 @@ import {
 import { getChainScope, getCoverageShare, getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
+import { withNoindex } from "@/lib/api/public-read-robots";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
@@ -33,8 +34,8 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-state:${ip}`, RL_LIMIT, RL_WINDOW_MS);
-  const perCaller = ipRateLimitHeaders(limited);
-  const shared = sharedCacheRateLimitHeaders(limited);
+  const perCaller = withNoindex(ipRateLimitHeaders(limited));
+  const shared = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }

@@ -1,4 +1,4 @@
-import { WHAT_IS_X402_LEAD } from "@/components/site/x402-answers";
+import { WHAT_IS_X402_SEO } from "@/components/site/x402-answers";
 
 export type BlogPost = {
   slug: string;
@@ -29,7 +29,7 @@ export const BLOG_POSTS: BlogPost[] = [
     description:
       "What is x402? It's the machine-payment protocol that finally gave HTTP 402 Payment Required something to do — letting an AI agent pay for an API call in a single request. Here's how it works, where it stands today, and the one thing it deliberately doesn't tell you.",
     seoTitle: "What is x402? HTTP 402 payments for AI agents",
-    seoDescription: WHAT_IS_X402_LEAD.join(" "),
+    seoDescription: WHAT_IS_X402_SEO,
     publishedAt: "2026-08-13",
     updatedAt: "2026-09-29",
     editorsNote:

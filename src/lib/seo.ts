@@ -26,10 +26,21 @@ import { SUPPORT_EMAIL } from "@/lib/support";
 
 export const TWITTER_SITE = "@vet402_com";
 
-/** src/app/opengraph-image.png（1200×630）。alt は opengraph-image.alt.txt と同文。 */
+/**
+ * src/app/opengraph-image.png（1200×630）。
+ * ファイル規約の opengraph-image.alt.txt は、openGraph を自分で持たない
+ * /rwa と /tokyo が受け継ぐ。そのファイルは変えない。
+ * /ethonline は pageMetadata を通る凍結面なので、alt は origin/main の文のまま。
+ */
 export const OG_IMAGE_PATH = "/opengraph-image.png";
-export const OG_IMAGE_ALT =
+
+/** /ethonline の og:image:alt。origin/main と同じ文。 */
+export const ETHONLINE_OG_IMAGE_ALT =
   "vet402 — Independent Verification of the x402 Agent-Payment Economy. We buy. We settle. We publish the measurements.";
+
+/** 凍結面以外の pageMetadata の og:image:alt。we・ダッシュを使わない。 */
+export const OG_IMAGE_ALT =
+  "vet402. Independent verification of x402 agent payments. Paid is on chain. Delivered is not.";
 
 export const ORG_SAME_AS = [
   "https://x.com/vet402_com",
@@ -62,11 +73,16 @@ export function organizationJsonLd(description: string) {
 }
 
 type PageMetaInput = {
-  /** 接尾辞 " | vet402" を含まない素のページ名。<title> は layout の template が付ける。 */
+  /**
+   * 接尾辞 " | vet402" を含まない素のページ名。<title> は layout の template が付ける。
+   * path が "/" のときは absolute にし、template で二重にしない。
+   */
   title: string;
   description: string;
   /** 先頭スラッシュ付きの絶対パス（例 "/faq"）。ルートは "/"。 */
   path: string;
+  /** この頁の og:image:alt。省くと、/ethonline は凍結の文、それ以外は OG_IMAGE_ALT。 */
+  imageAlt?: string;
   /** OpenGraph の type。既定は "website"、記事は "article"。 */
   ogType?: "website" | "article";
   publishedTime?: string;
@@ -103,10 +119,12 @@ export function pageMetadata({
   publishedTime,
   modifiedTime,
   noindex = false,
+  imageAlt,
 }: PageMetaInput): Metadata {
   const url = path === "/" ? SITE_URL : `${SITE_URL}${path}`;
+  const alt = imageAlt ?? (path === "/ethonline" ? ETHONLINE_OG_IMAGE_ALT : OG_IMAGE_ALT);
   return {
-    title,
+    title: path === "/" ? { absolute: title } : title,
     description,
     ...(noindex ? { robots: { index: false, follow: true } } : {}),
     alternates: {
@@ -122,7 +140,7 @@ export function pageMetadata({
       type: ogType,
       siteName: "vet402",
       locale: "en_US",
-      images: [{ url: `${SITE_URL}${OG_IMAGE_PATH}`, width: 1200, height: 630, alt: OG_IMAGE_ALT }],
+      images: [{ url: `${SITE_URL}${OG_IMAGE_PATH}`, width: 1200, height: 630, alt }],
       ...(ogType === "article" && publishedTime
         ? { publishedTime, modifiedTime: modifiedTime ?? publishedTime }
         : {}),
@@ -207,7 +225,7 @@ type DatasetInput = {
   retrievedAt?: string;
 };
 
-export function webPageJsonLd(input: { name: string; description: string; path: string }) {
+export function webPageJsonLd(input: { name: string; description: string; path: string; isBasedOn?: string }) {
   const url = input.path === "/" ? SITE_URL : `${SITE_URL}${input.path}`;
   return {
     "@context": "https://schema.org",
@@ -218,18 +236,19 @@ export function webPageJsonLd(input: { name: string; description: string; path: 
     isPartOf: { "@type": "WebSite" as const, name: "vet402", url: SITE_URL },
     inLanguage: "en",
     publisher: publisherOrg(),
+    ...(input.isBasedOn ? { isBasedOn: input.isBasedOn } : {}),
   };
 }
 
-/** docs/api の機械可読な API 記述。頁の冒頭（鍵の要否）と矛盾しない文だけを渡す。 */
-export function webApiJsonLd(input: { name: string; description: string; documentationPath: string }) {
+/** docs/api の機械可読な API 記述。url は人間の参照頁、documentation は OpenAPI。 */
+export function webApiJsonLd(input: { name: string; description: string }) {
   return {
     "@context": "https://schema.org",
     "@type": "WebAPI" as const,
     name: input.name,
     description: input.description,
-    url: `${SITE_URL}/api/v1`,
-    documentation: `${SITE_URL}${input.documentationPath}`,
+    url: `${SITE_URL}/docs/api`,
+    documentation: `${SITE_URL}/openapi.yaml`,
     provider: publisherOrg(),
     termsOfService: `${SITE_URL}/legal/terms`,
     inLanguage: "en",

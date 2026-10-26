@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeApiRequest, refundRateLimitUnits, withRateLimitHeaders, type AuthorizedContext } from "@/lib/api/guard";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { refundIpRateLimit } from "@/lib/api/ip-rate-limit";
+import { DECISION_KEYLESS_LIMIT, DECISION_KEYLESS_WINDOW_MS } from "@/lib/api/keyless-limits";
 import { isDecisionKeylessReadEnabled } from "@/lib/config/env";
 import { getIdempotentResponse, idempotencyKeyHash, saveIdempotentResponse } from "@/lib/api/idempotency";
 import { lookupManualList } from "@/lib/db/customer-lists";
@@ -13,6 +14,8 @@ import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 import { recordClientUsage } from "@/lib/api/client-usage";
+
+export { DECISION_KEYLESS_LIMIT };
 
 // §9.1: GET /api/v1/resources/{resource_id}/decision?role=payer|payee&caller_dialect=v1|v2
 //   role=payer  「このURLは今、宣言どおり届くか」→ 売り手事実 + 判定
@@ -53,8 +56,6 @@ export const maxDuration = 30;
 type RouteContext = { params: Promise<{ resourceId: string }> };
 
 const IDEMPOTENCY_TTL_MS = 10 * 60_000;
-export const DECISION_KEYLESS_LIMIT = 10;
-const DECISION_KEYLESS_WINDOW_MS = 60_000;
 
 /** 鍵あり（月次枠）か鍵なし（IP 枠）かで、返金と応答ヘッダの付け方が変わる。 */
 type Caller =

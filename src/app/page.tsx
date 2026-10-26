@@ -9,7 +9,7 @@ import { X402_DEFINITION } from "@/components/site/faq-data";
 import { BILLING_PLANS, isStripeConfigured } from "@/lib/billing/plans";
 import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
-import { organizationJsonLd, publisherOrg } from "@/lib/seo";
+import { organizationJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { formatPct1 } from "@/lib/util/pct";
 import { buildMonth } from "@/lib/build-month";
@@ -25,6 +25,13 @@ import { WideColumn } from "@/components/site/WideColumn";
 import { getHomeExampleCached } from "@/lib/observatory/home-example";
 import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
+
+export const metadata = pageMetadata({
+  title: "vet402: verify x402 payments for AI agents",
+  description:
+    "vet402 buys from x402 endpoints and publishes whether the paid call was delivered, before an AI agent pays. Settlement assets include USDC.",
+  path: "/",
+});
 
 /**
  * The front page is the memo.

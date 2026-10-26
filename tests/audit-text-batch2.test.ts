@@ -127,7 +127,7 @@ test("A-14 fills cite from the response clock and marks the last history day unf
   assert.match(historyRoute, /retrieved \$\{retrievedAt\}/);
   assert.match(historyRoute, /license: "CC-BY-4\.0"/);
   assert.match(historyRoute, /licenseUrl: "https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/"/);
-  assert.match(historyRoute, /history\?days=\$\{span\}/);
+  assert.match(historyRoute, /history\?days=\$\{days\}/);
   const page = read("src/app/observatory/state/page.tsx");
   assert.match(page, /retrieved \$\{stats\.readAt\}/);
   assert.match(page, /retrievedAt: stats\.readAt/);
