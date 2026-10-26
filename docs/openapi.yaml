@@ -3465,17 +3465,21 @@ paths:
     get:
       operationId: getMonthlyDecisionUsage
       tags: [Usage]
-      summary: Decision call counts for one published chain and one UTC month
+      summary: Decision call counts for one published chain and one closed UTC month
       description: |
         Counts of decision API answers made with a key, for one published chain
-        and one UTC month. Figures come from keyed decision rows. Answers are
-        summed by relation. A relation with fewer than 3 keys shows <3 and leaves
-        the call count out. Calls made without a key are not counted per chain.
+        and one closed UTC month. Figures come from keyed decision rows. The first
+        read after 00:00 UTC on the 3rd day of the next month stores the figures,
+        and later reads return that stored copy. Answers are summed by relation.
+        A labeled relation shows the number of owners. Fewer than 3 owners shows
+        <3 and leaves the call count out. An unclassified relation leaves the call
+        count out. Calls made without a key are not counted per chain.
         The response leaves out the key, the email address, and the name.
         Key-less. 60 requests per minute.
         `chain` must be a published network id. `eip155:42220` is published.
         A slug that names that same network, such as `celo`, is accepted.
-        `month` is `YYYY-MM` in UTC.
+        An `eip155:` prefix is read in lower case, so `EIP155:42220` is `eip155:42220`.
+        `month` is `YYYY-MM` in UTC, from 2026 through 2100.
       security: []
       parameters:
         - in: query
@@ -3486,11 +3490,11 @@ paths:
         - in: query
           name: month
           required: true
-          schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$" }
-          description: UTC month as YYYY-MM.
+          schema: { type: string, pattern: "^(202[6-9]|20[3-9][0-9]|2100)-(0[1-9]|1[0-2])$" }
+          description: Closed UTC month as YYYY-MM, from 2026 through 2100.
       responses:
         "200":
-          description: Counts for that chain and UTC month. Arrays are empty when the tables have no matching rows.
+          description: Counts for that chain and closed UTC month. Arrays are empty when the tables have no matching rows.
           content:
             application/json:
               schema:
@@ -3498,27 +3502,33 @@ paths:
                 required: [chain, month, relations]
                 properties:
                   chain: { type: string }
-                  month: { type: string, example: "2026-10" }
+                  month: { type: string, example: "2026-09" }
                   relations:
                     type: array
                     items:
                       type: object
-                      required: [owner_relation, keys]
+                      required: [owner_relation, owners]
                       properties:
                         owner_relation: { type: string, nullable: true, enum: [self, related, external] }
-                        keys:
+                        owners:
                           oneOf:
                             - { type: integer, minimum: 3 }
                             - { type: string, enum: ["<3"] }
+                          description: Number of owners. Fewer than 3 owners is the string <3.
                         calls:
                           type: integer
-                          description: Present when keys is an integer. Absent when keys is <3.
+                          description: >
+                            Present for self, related, and external when owners is an integer.
+                            Absent when owners is <3. Absent for an unclassified relation.
         "400":
           description: |
             `chain_required` when `chain` is missing. `chain_invalid` when
             `chain` is not a CAIP-2 network id. `chain_unlisted` when `chain`
             is not on the published list. `month_required` when `month` is
-            missing. `month_invalid` when `month` is not YYYY-MM.
+            missing. `month_invalid` when `month` is not YYYY-MM in 2026 through
+            2100. `month_not_closed` when `month` is the current UTC month or a
+            later month. `month_not_published_yet` when `month` has closed and
+            the read is before 00:00 UTC on the 3rd day of the next month.
           content:
             application/json:
               schema:
@@ -5464,6 +5474,8 @@ components:
             - chain_unlisted
             - month_required
             - month_invalid
+            - month_not_closed
+            - month_not_published_yet
         details:
           type: object
           description: Present for `invalid_request` — Zod validation error detail (flattened).

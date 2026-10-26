@@ -29,6 +29,8 @@ if (!TEST_DB) {
     const { GET: decisionGET } = await import("@/app/api/v1/resources/[resourceId]/decision/route");
     const { GET: resolveGET } = await import("@/app/api/v1/resolve/route");
     const { GET: usageGET } = await import("@/app/api/v1/usage/monthly/route");
+    const { loadMonthlyDecisionUsage, parseMonthlyUsageQuery, monthlyPublicationError, MonthlyUsageRejected, recordDecisionUsage } =
+      await import("@/lib/api/decision-usage");
     const pageMod = await import("@/app/usage/monthly/page");
     const { NextRequest } = await import("next/server");
     const { sql } = await import("drizzle-orm");
@@ -40,6 +42,24 @@ if (!TEST_DB) {
     execFileSync("psql", [TEST_DB, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], { stdio: "pipe" });
     execFileSync("psql", [TEST_DB, "-v", "ON_ERROR_STOP=1", "-f", sqlFile], { stdio: "pipe" });
     assert.ok(readFileSync(sqlFile, "utf8").includes("decision_usage_daily"));
+    const checks = rows(
+      await db.execute(sql`
+        SELECT conname FROM pg_constraint
+        WHERE conrelid IN ('api_keys'::regclass, 'decision_usage_daily'::regclass, 'decision_usage_monthly_published'::regclass)
+          AND contype = 'c'
+          AND conname IN (
+            'api_keys_owner_relation_check',
+            'decision_usage_daily_relation_snapshot_check',
+            'decision_usage_monthly_published_relation_check'
+          )
+        ORDER BY conname
+      `),
+    ).map((row) => row.conname);
+    assert.deepEqual(checks, [
+      "api_keys_owner_relation_check",
+      "decision_usage_daily_relation_snapshot_check",
+      "decision_usage_monthly_published_relation_check",
+    ]);
     const cols = rows(
       await db.execute(
         sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'client_usage_daily' ORDER BY ordinal_position`,
@@ -79,7 +99,7 @@ if (!TEST_DB) {
     const BASE_URL = "https://usage-base.example/api";
     const celoAccepts = [{ amount: "1000", asset: "0x" + "ce".repeat(20), network: "eip155:42220", payTo: "0x" + "11".repeat(20) }];
     const baseAccepts = [{ amount: "1000", asset: "0x" + "ab".repeat(20), network: "eip155:8453", payTo: "0x" + "22".repeat(20) }];
-    await db.execute(sql`TRUNCATE client_usage_daily, decision_usage_daily, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`);
+    await db.execute(sql`TRUNCATE client_usage_daily, decision_usage_daily, decision_usage_monthly_published, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`);
     await syncCatalog({
       fetchResult: {
         items: [
@@ -125,9 +145,12 @@ if (!TEST_DB) {
       return { status: res.status, body: await res.json(), text: "" };
     };
 
-    const account = rows(await db.execute(sql`INSERT INTO accounts (email) VALUES (${SECRET_EMAIL}) RETURNING id::text AS id`))[0];
+    const externalAccounts = [];
     const externalKeys = [];
     for (let i = 0; i < 3; i += 1) {
+      const email = i === 0 ? SECRET_EMAIL : `usage-secret-${i}@example.com`;
+      const account = rows(await db.execute(sql`INSERT INTO accounts (email) VALUES (${email}) RETURNING id::text AS id`))[0];
+      externalAccounts.push(account);
       const key = await createApiKey({ name: SECRET_NAME, userId: String(account.id) });
       await db.execute(sql`UPDATE api_keys SET owner_relation = 'external' WHERE id = ${key.id}::uuid`);
       externalKeys.push(key);
@@ -147,6 +170,12 @@ if (!TEST_DB) {
     assert.equal((await decision(String(base.resource_id))).status, 200);
     assert.equal((await decision(String(celo.resource_id), {}, `role=payee&payer=${payerRaw}`)).status, 200);
     assert.equal((await decision("not-a-resource")).status, 400);
+    await drain();
+    assert.equal(
+      rows(await db.execute(sql`SELECT count(*)::int AS n FROM decision_usage_daily`))[0]?.n,
+      0,
+      "keyless calls write no decision_usage_daily rows",
+    );
     for (const key of externalKeys) {
       assert.equal(
         (await decision(String(celo.resource_id), { authorization: `Bearer ${key.key}` })).status,
@@ -202,10 +231,58 @@ if (!TEST_DB) {
     const billed = rows(await db.execute(sql`SELECT coalesce(sum(count), 0)::int AS n FROM api_usage WHERE api_key_id = ${external.id}::uuid`));
     assert.ok(Number(billed[0]?.n) >= 1);
 
-    const month = new Date().toISOString().slice(0, 7);
-    type RelationRow = { owner_relation: string | null; keys: number | "<3"; calls?: number };
+    function shiftMonth(year: number, monthIndex: number, delta: number) {
+      const index = year * 12 + (monthIndex - 1) + delta;
+      return { year: Math.floor(index / 12), month: (index % 12) + 1 };
+    }
+    function padMonth(year: number, monthIndex: number) {
+      return `${String(year).padStart(4, "0")}-${String(monthIndex).padStart(2, "0")}`;
+    }
+    function readyUsageMonths(clock: Date, count: number): string[] {
+      const found: string[] = [];
+      let year = clock.getUTCFullYear();
+      let monthIndex = clock.getUTCMonth() + 1;
+      for (let i = 0; i < 48 && found.length < count; i += 1) {
+        const prev = shiftMonth(year, monthIndex, -1);
+        year = prev.year;
+        monthIndex = prev.month;
+        if (year < 2026) break;
+        const label = padMonth(year, monthIndex);
+        const parsed = parseMonthlyUsageQuery("eip155:42220", label);
+        if (parsed.ok && monthlyPublicationError(parsed, clock) === null) found.push(label);
+      }
+      if (found.length < count) throw new Error(`need ${count} publishable months, found ${found.join(",") || "none"}`);
+      return found;
+    }
+    const clock = new Date();
+    const ready = readyUsageMonths(clock, 7);
+    const month = ready[0]!;
+    const emptyMonth = ready[1]!;
+    const current = clock.toISOString().slice(0, 7);
+    type RelationRow = { owner_relation: string | null; owners: number | "<3"; calls?: number };
     const loadUsage = async (query: string) =>
       usageGET(new NextRequest(`http://localhost/api/v1/usage/monthly${query}`, { headers: { "x-forwarded-for": nextIp() } }));
+    await db.execute(sql`UPDATE decision_usage_daily SET day = ${`${month}-15`}::date`);
+    const open = await loadUsage(`?chain=eip155:42220&month=${current}`);
+    assert.equal(open.status, 400);
+    assert.equal((await open.json()).error, "month_not_closed");
+    assert.equal(
+      rows(await db.execute(sql`SELECT count(*)::int AS n FROM decision_usage_monthly_published WHERE month = ${`${current}-01`}::date`))[0]?.n,
+      0,
+    );
+    const future = await loadUsage("?chain=eip155:42220&month=2099-01");
+    assert.equal(future.status, 400);
+    assert.equal((await future.json()).error, "month_not_closed");
+    for (const bad of ["0050-01", "0000-01", "1999-01"]) {
+      const rejected = await loadUsage(`?chain=eip155:42220&month=${bad}`);
+      assert.equal(rejected.status, 400, bad);
+      assert.equal((await rejected.json()).error, "month_invalid", bad);
+    }
+    const empty = await loadUsage(`?chain=eip155:42220&month=${emptyMonth}`);
+    const emptyBody = await empty.json();
+    assert.equal(empty.status, 200);
+    assert.deepEqual(emptyBody.relations, []);
+    assert.equal("keyless" in emptyBody, false);
     const usageRes = await loadUsage(`?chain=eip155:42220&month=${month}`);
     assert.equal(usageRes.status, 200);
     const body = (await usageRes.json()) as { chain: string; month: string; relations: RelationRow[] };
@@ -214,10 +291,10 @@ if (!TEST_DB) {
     assert.equal("keyless" in body, false);
     assert.deepEqual(
       body.relations.find((row) => row.owner_relation === "external"),
-      { owner_relation: "external", keys: 3, calls: 3 },
+      { owner_relation: "external", owners: 3, calls: 3 },
     );
     const selfRow = body.relations.find((row) => row.owner_relation === "self");
-    assert.deepEqual(selfRow, { owner_relation: "self", keys: "<3" });
+    assert.deepEqual(selfRow, { owner_relation: "self", owners: "<3" });
     assert.equal(selfRow !== undefined && "calls" in selfRow, false);
     const dumped = JSON.stringify(body);
     const secrets = [
@@ -227,6 +304,8 @@ if (!TEST_DB) {
       baseOnly.key,
       baseOnly.id,
       SECRET_EMAIL,
+      "usage-secret-1@example.com",
+      "usage-secret-2@example.com",
       SECRET_NAME,
     ];
     for (const secret of secrets) assert.equal(dumped.includes(secret), false, secret.slice(0, 8));
@@ -237,12 +316,47 @@ if (!TEST_DB) {
     assert.equal((await unlisted.json()).error, "chain_unlisted");
     const alias = await loadUsage(`?chain=celo&month=${month}`);
     assert.equal(alias.status, 200);
-    assert.equal((await alias.json()).chain, "eip155:42220");
-    const empty = await loadUsage("?chain=eip155:42220&month=1999-01");
-    const emptyBody = await empty.json();
-    assert.equal(empty.status, 200);
-    assert.deepEqual(emptyBody.relations, []);
-    assert.equal("keyless" in emptyBody, false);
+    const aliasBody = (await alias.json()) as { chain: string; relations: RelationRow[] };
+    assert.equal(aliasBody.chain, "eip155:42220");
+    assert.deepEqual(aliasBody.relations, body.relations);
+    const prefixed = await loadUsage(`?chain=EIP155:42220&month=${month}`);
+    assert.equal(prefixed.status, 200);
+    const prefixedBody = (await prefixed.json()) as { chain: string; relations: RelationRow[] };
+    assert.equal(prefixedBody.chain, "eip155:42220");
+    assert.deepEqual(prefixedBody.relations, body.relations);
+
+    const publishedBefore = rows(
+      await db.execute(sql`
+        SELECT relation, owners::int AS owners, calls::int AS calls, published_at::text AS published_at
+        FROM decision_usage_monthly_published
+        WHERE month = ${`${month}-01`}::date AND chain = 'eip155:42220'
+        ORDER BY relation
+      `),
+    );
+    assert.equal(publishedBefore.find((row) => row.relation === "external")?.owners, 3);
+    assert.equal(publishedBefore.find((row) => row.relation === "external")?.calls, 3);
+    for (const key of externalKeys) {
+      await db.execute(sql`UPDATE api_keys SET owner_relation = 'related' WHERE id = ${key.id}::uuid`);
+    }
+    const shifted = await loadUsage(`?chain=eip155:42220&month=${month}`);
+    const shiftedBody = (await shifted.json()) as { relations: RelationRow[] };
+    assert.deepEqual(
+      shiftedBody.relations.find((row) => row.owner_relation === "external"),
+      { owner_relation: "external", owners: 3, calls: 3 },
+    );
+    assert.equal(shiftedBody.relations.some((row) => row.owner_relation === "related"), false);
+    const publishedAfter = rows(
+      await db.execute(sql`
+        SELECT relation, owners::int AS owners, calls::int AS calls, published_at::text AS published_at
+        FROM decision_usage_monthly_published
+        WHERE month = ${`${month}-01`}::date AND chain = 'eip155:42220'
+        ORDER BY relation
+      `),
+    );
+    assert.deepEqual(publishedAfter, publishedBefore);
+    for (const key of externalKeys) {
+      await db.execute(sql`UPDATE api_keys SET owner_relation = 'external' WHERE id = ${key.id}::uuid`);
+    }
 
     const element = await pageMod.default({ searchParams: Promise.resolve({ chain: "eip155:42220", month }) });
     const html = renderToStaticMarkup(element);
@@ -252,8 +366,12 @@ if (!TEST_DB) {
     assert.match(html, />external</);
     assert.doesNotMatch(html, /Keyless calls/);
     assert.doesNotMatch(html, /key-\d+/);
-    assert.doesNotMatch(html, /SECRET-OWNER-NAME|usage-secret@example\.com/);
+    assert.doesNotMatch(html, /SECRET-OWNER-NAME|usage-secret/);
+    assert.match(html, /Owners/);
     for (const secret of secrets) assert.equal(html.includes(secret), false);
+    const closedPage = await pageMod.default({ searchParams: Promise.resolve({ chain: "eip155:42220", month: current }) });
+    const closedHtml = renderToStaticMarkup(closedPage);
+    assert.match(closedHtml, /month is still open/);
 
     const doc = readFileSync(join(process.cwd(), "docs/operations/account-deletion.md"), "utf8");
     const fence = (heading: string) => {
@@ -266,7 +384,9 @@ if (!TEST_DB) {
     const runOps = (script: string) => {
       execFileSync("psql", [TEST_DB, "-v", "ON_ERROR_STOP=1"], { input: script, stdio: ["pipe", "pipe", "pipe"] });
     };
-    runOps(fence("## アカウント").replaceAll("__ACCOUNT_ID__", String(account.id)));
+    for (const account of externalAccounts) {
+      runOps(fence("## アカウント").replaceAll("__ACCOUNT_ID__", String(account.id)));
+    }
     const detached = rows(
       await db.execute(
         sql`SELECT api_key_id::text AS id, relation_snapshot, count::int AS count
@@ -293,15 +413,171 @@ if (!TEST_DB) {
     const afterBody = (await afterDelete.json()) as { relations: RelationRow[] };
     assert.deepEqual(
       afterBody.relations.find((row) => row.owner_relation === "external"),
-      { owner_relation: "external", keys: 3, calls: 3 },
+      { owner_relation: "external", owners: 3, calls: 3 },
     );
     const selfAfter = afterBody.relations.find((row) => row.owner_relation === "self");
-    assert.deepEqual(selfAfter, { owner_relation: "self", keys: "<3" });
+    assert.deepEqual(selfAfter, { owner_relation: "self", owners: "<3" });
     assert.equal(afterBody.relations.some((row) => row.owner_relation === null), false);
+
+    const insertDaily = async (apiKeyId: string, label: string, count: number) => {
+      await db.execute(sql`
+        INSERT INTO decision_usage_daily (day, api_key_id, chain, count)
+        VALUES (${`${label}-10`}::date, ${apiKeyId}::uuid, 'eip155:42220', ${count})
+      `);
+    };
+
+    await t.test("one owner with three keys stays under 3 and hides calls", async () => {
+      const label = ready[2]!;
+      const owner = rows(
+        await db.execute(sql`INSERT INTO accounts (email) VALUES ('usage-h1@example.com') RETURNING id::text AS id`),
+      )[0];
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const key = await createApiKey({ name: "h1-owner", userId: String(owner?.id) });
+        ids.push(key.id);
+        await db.execute(sql`UPDATE api_keys SET owner_relation = 'external' WHERE id = ${key.id}::uuid`);
+        await insertDaily(key.id, label, 4);
+      }
+      const res = await loadUsage(`?chain=eip155:42220&month=${label}`);
+      assert.equal(res.status, 200);
+      const published = (await res.json()) as { relations: RelationRow[] };
+      assert.deepEqual(published.relations, [{ owner_relation: "external", owners: "<3" }]);
+      const stored = rows(
+        await db.execute(sql`
+          SELECT owners::int AS owners, calls::int AS calls
+          FROM decision_usage_monthly_published
+          WHERE month = ${`${label}-01`}::date AND chain = 'eip155:42220' AND relation = 'external'
+        `),
+      );
+      assert.deepEqual(stored, [{ owners: 1, calls: 12 }]);
+      for (const id of ids) {
+        await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${id}::uuid`);
+        await db.execute(sql`DELETE FROM api_keys WHERE id = ${id}::uuid`);
+      }
+      await db.execute(sql`DELETE FROM accounts WHERE id = ${String(owner?.id)}::uuid`);
+    });
+
+    await t.test("unclassified shows <3 without calls, and hides calls at 3 owners", async () => {
+      const small = ready[3]!;
+      const large = ready[4]!;
+      const smallOwner = rows(
+        await db.execute(sql`INSERT INTO accounts (email) VALUES ('usage-unclass-small@example.com') RETURNING id::text AS id`),
+      )[0];
+      const smallKey = await createApiKey({ name: "unclass-small", userId: String(smallOwner?.id) });
+      await insertDaily(smallKey.id, small, 7);
+      const smallRes = await loadUsage(`?chain=eip155:42220&month=${small}`);
+      assert.equal(smallRes.status, 200);
+      const smallBody = (await smallRes.json()) as { relations: RelationRow[] };
+      assert.deepEqual(smallBody.relations, [{ owner_relation: null, owners: "<3" }]);
+      assert.equal("calls" in (smallBody.relations[0] ?? {}), false);
+
+      const largeIds: string[] = [];
+      const largeAccounts: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const owner = rows(
+          await db.execute(
+            sql`INSERT INTO accounts (email) VALUES (${`usage-unclass-${i}@example.com`}) RETURNING id::text AS id`,
+          ),
+        )[0];
+        largeAccounts.push(String(owner?.id));
+        const key = await createApiKey({ name: "unclass-large", userId: String(owner?.id) });
+        largeIds.push(key.id);
+        await insertDaily(key.id, large, 2);
+      }
+      const largeRes = await loadUsage(`?chain=eip155:42220&month=${large}`);
+      assert.equal(largeRes.status, 200);
+      const largeBody = (await largeRes.json()) as { relations: RelationRow[] };
+      assert.deepEqual(largeBody.relations, [{ owner_relation: null, owners: 3 }]);
+      assert.equal("calls" in (largeBody.relations[0] ?? {}), false);
+      const storedCalls = rows(
+        await db.execute(sql`
+          SELECT calls::int AS calls FROM decision_usage_monthly_published
+          WHERE month = ${`${large}-01`}::date AND chain = 'eip155:42220' AND relation = 'unclassified'
+        `),
+      );
+      assert.equal(storedCalls[0]?.calls, 6);
+
+      await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${smallKey.id}::uuid`);
+      await db.execute(sql`DELETE FROM api_keys WHERE id = ${smallKey.id}::uuid`);
+      await db.execute(sql`DELETE FROM accounts WHERE id = ${String(smallOwner?.id)}::uuid`);
+      for (const id of largeIds) {
+        await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${id}::uuid`);
+        await db.execute(sql`DELETE FROM api_keys WHERE id = ${id}::uuid`);
+      }
+      for (const id of largeAccounts) await db.execute(sql`DELETE FROM accounts WHERE id = ${id}::uuid`);
+    });
+
+    await t.test("EIP155 prefix is stored and queried as eip155", async () => {
+      const label = ready[5]!;
+      const key = await createApiKey({ name: "prefix-case" });
+      recordDecisionUsage(key.id, "EIP155:42220", new Date(`${label}-15T12:00:00.000Z`));
+      await drain();
+      const stored = rows(
+        await db.execute(sql`SELECT chain FROM decision_usage_daily WHERE api_key_id = ${key.id}::uuid`),
+      );
+      assert.deepEqual(stored, [{ chain: "eip155:42220" }]);
+      const res = await loadUsage(`?chain=EIP155:42220&month=${label}`);
+      assert.equal(res.status, 200);
+      assert.equal(((await res.json()) as { chain: string }).chain, "eip155:42220");
+      await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${key.id}::uuid`);
+      await db.execute(sql`DELETE FROM api_keys WHERE id = ${key.id}::uuid`);
+    });
+
+    await t.test("a deleted account with three keys still counts as one owner", async () => {
+      const label = ready[6]!;
+      const owner = rows(
+        await db.execute(sql`INSERT INTO accounts (email) VALUES ('usage-detached@example.com') RETURNING id::text AS id`),
+      )[0];
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const key = await createApiKey({ name: "detached", userId: String(owner?.id) });
+        ids.push(key.id);
+        await db.execute(sql`UPDATE api_keys SET owner_relation = 'external' WHERE id = ${key.id}::uuid`);
+        await insertDaily(key.id, label, 3);
+      }
+      runOps(fence("## アカウント").replaceAll("__ACCOUNT_ID__", String(owner?.id)));
+      const res = await loadUsage(`?chain=eip155:42220&month=${label}`);
+      assert.equal(res.status, 200);
+      const published = (await res.json()) as { relations: RelationRow[] };
+      assert.deepEqual(published.relations.find((row) => row.owner_relation === "external"), {
+        owner_relation: "external",
+        owners: "<3",
+      });
+      const owners = rows(
+        await db.execute(
+          sql`SELECT count(DISTINCT owner_snapshot)::int AS n, count(*) FILTER (WHERE owner_snapshot IS NULL)::int AS missing,
+                     count(*) FILTER (WHERE owner_snapshot = ${String(owner?.id)}::uuid)::int AS linked
+              FROM decision_usage_daily WHERE day >= ${label + "-01"}::date AND day < (${label + "-01"}::date + interval '1 month')`,
+        ),
+      )[0];
+      assert.deepEqual(owners, { n: 1, missing: 0, linked: 0 });
+      for (const id of ids) {
+        await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${id}::uuid`);
+        await db.execute(sql`DELETE FROM api_keys WHERE id = ${id}::uuid`);
+      }
+      await db.execute(sql`DELETE FROM accounts WHERE id = ${String(owner?.id)}::uuid`);
+    });
+
+    await t.test("a closed month before the 3rd day writes nothing", async () => {
+      const parsed = parseMonthlyUsageQuery("eip155:42220", "2099-11");
+      assert.equal(parsed.ok, true);
+      if (!parsed.ok) return;
+      await assert.rejects(
+        () => loadMonthlyDecisionUsage(parsed, new Date("2099-12-02T00:00:00.000Z")),
+        (error: unknown) => error instanceof MonthlyUsageRejected && error.code === "month_not_published_yet",
+      );
+      assert.equal(
+        rows(await db.execute(sql`SELECT count(*)::int AS n FROM decision_usage_monthly_published WHERE month = '2099-11-01'::date`))[0]?.n,
+        0,
+      );
+    });
 
     await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${baseOnly.id}::uuid`);
     await db.execute(sql`DELETE FROM decision_usage_daily`);
+    await db.execute(sql`DELETE FROM decision_usage_monthly_published`);
     await db.execute(sql`DELETE FROM api_keys WHERE id = ${baseOnly.id}::uuid`);
-    await db.execute(sql`DELETE FROM accounts WHERE id = ${account.id}::uuid`);
+    for (const account of externalAccounts) {
+      await db.execute(sql`DELETE FROM accounts WHERE id = ${String(account.id)}::uuid`);
+    }
   });
 }

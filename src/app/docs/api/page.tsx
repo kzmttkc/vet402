@@ -605,8 +605,8 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/usage/monthly",
-    note: "Decision call counts made with a key, for one published chain and one UTC month. Figures come from keyed decision rows. Answers are summed by relation. A relation with fewer than 3 keys shows <3 and leaves the call count out. Calls made without a key are not counted per chain. The response leaves out the key, the email address, and the name. chain eip155:42220 is published. month is YYYY-MM. Key-less. 60 requests per minute per IP.",
-    response: `HTTP 200. chain, month, relations. HTTP 400 when chain or month is missing, unreadable, or outside the published list. HTTP 503 when the usage tables could not be read.`,
+    note: "Decision call counts made with a key, for one published chain and one closed UTC month. Figures come from keyed decision rows and are stored on the first read after 00:00 UTC on the 3rd day of the next month. Answers are summed by relation. A labeled relation shows the number of owners. Fewer than 3 owners shows <3 and leaves the call count out. An unclassified relation leaves the call count out. Calls made without a key are not counted per chain. The response leaves out the key, the email address, and the name. chain eip155:42220 is published. month is YYYY-MM from 2026 through 2100. Key-less. 60 requests per minute per IP.",
+    response: `HTTP 200. chain, month, relations. HTTP 400 when chain or month is missing, unreadable, outside 2026 through 2100, still open, or not yet at the 3rd day of the next month. HTTP 503 when the usage tables could not be read.`,
   },
   {
     method: "GET",

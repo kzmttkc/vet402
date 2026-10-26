@@ -1449,7 +1449,7 @@ export const clientUsageDaily = pgTable(
 /**
  * decision_usage_daily — 鍵ありの判定 API が 200 で答えた件数。日・鍵・チェーン。
  * api_usage の課金・上限とは別の表（あちらは触らない）。鍵を消しても残るよう外部キーは置かない。
- * 公開するときは鍵 id を出さない。区分ごとの本数と、3 本以上の区分だけ件数。
+ * 公開するときは鍵 id を出さない。公開値は decision_usage_monthly_published に一度固定する。
  * relation_snapshot は、アカウントや鍵を消すときにその時点の区分を残す。生きている鍵は NULL のまま、
  * 公開の区分は api_keys.owner_relation を読む（docs/operations/account-deletion.md）。
  * SQL: scripts/sql/2026-10-26-decision-usage-chain.sql
@@ -1463,6 +1463,8 @@ export const decisionUsageDaily = pgTable(
     count: bigint("count", { mode: "number" }).notNull(),
     /** 鍵を消した時点の owner_relation。生きている鍵の行は NULL。 */
     relationSnapshot: text("relation_snapshot"),
+    /** 鍵を消したあとの持ち主。鍵 1 本だけ消したときは user_id、アカウントを消したときはそのアカウントだけの新しい uuid。 */
+    ownerSnapshot: uuid("owner_snapshot"),
   },
   (t) => [
     primaryKey({ name: "decision_usage_daily_pk", columns: [t.day, t.apiKeyId, t.chain] }),
@@ -1470,6 +1472,35 @@ export const decisionUsageDaily = pgTable(
     check(
       "decision_usage_daily_relation_snapshot_check",
       sql`${t.relationSnapshot} IS NULL OR ${t.relationSnapshot} IN ('self', 'related', 'external')`,
+    ),
+  ],
+);
+
+/**
+ * decision_usage_monthly_published — 締まった月の公開値を、最初の読み取りで固定する。
+ * 翌月 3 日 00:00 UTC 以降にアプリが INSERT … ON CONFLICT DO NOTHING する。以後はこの表だけを読む。
+ * relation は self / related / external / unclassified。owners は持ち主の人数。calls は件数。
+ * 公開の応答は、3 人未満と未分類の件数をこの表の外で落とす。
+ * SQL: scripts/sql/2026-10-26-decision-usage-chain.sql
+ */
+export const decisionUsageMonthlyPublished = pgTable(
+  "decision_usage_monthly_published",
+  {
+    month: date("month", { mode: "string" }).notNull(),
+    chain: text("chain").notNull(),
+    relation: text("relation").notNull(),
+    owners: integer("owners").notNull(),
+    calls: bigint("calls", { mode: "number" }).notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: "decision_usage_monthly_published_pk",
+      columns: [t.month, t.chain, t.relation],
+    }),
+    check(
+      "decision_usage_monthly_published_relation_check",
+      sql`${t.relation} IN ('self', 'related', 'external', 'unclassified')`,
     ),
   ],
 );

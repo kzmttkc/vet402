@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { stripComments } from "@/lib/claims/extract";
 import {
+  monthlyPublicationError,
   monthlyUsageErrorMessage,
   parseMonthlyUsageQuery,
   PUBLIC_USAGE_CHAINS,
@@ -14,6 +15,8 @@ import {
   USAGE_MONTHLY_EMPTY_MESSAGE,
   USAGE_MONTHLY_MONTH_INVALID_MESSAGE,
   USAGE_MONTHLY_MONTH_MESSAGE,
+  USAGE_MONTHLY_MONTH_NOT_CLOSED_MESSAGE,
+  USAGE_MONTHLY_MONTH_NOT_PUBLISHED_YET_MESSAGE,
   USAGE_MONTHLY_UNAVAILABLE_MESSAGE,
 } from "@/lib/api/decision-usage";
 
@@ -41,6 +44,8 @@ test("usageChainOf は CAIP-2 を残し、celo を eip155:42220 に寄せ、空�
   assert.equal(usageChainOf("celo"), "eip155:42220");
   assert.equal(usageChainOf("Celo"), "eip155:42220");
   assert.equal(usageChainOf("eip155:42220"), "eip155:42220");
+  assert.equal(usageChainOf("EIP155:42220"), "eip155:42220");
+  assert.equal(usageChainOf("Eip155:42220"), "eip155:42220");
   const algorand = "algorand:wGHE2Pwdvd7S12BL5FaOP20EGYesN73ktiC1qzkkit8=";
   assert.equal(usageChainOf(algorand), algorand);
   const long = `eip155:${"a".repeat(300)}`;
@@ -64,10 +69,47 @@ test("月次クエリは公開一覧のチェーンと UTC の月を受け、一
   assert.equal(parseMonthlyUsageQuery("eip155:42220", null).ok, false);
   assert.equal(parseMonthlyUsageQuery("eip155:42220", "2026-13").ok, false);
   assert.equal(parseMonthlyUsageQuery("eip155 42220", "2026-10").ok, false);
+  const prefixed = parseMonthlyUsageQuery("EIP155:42220", "2026-09");
+  assert.equal(prefixed.ok && prefixed.chain, "eip155:42220");
+  for (const month of ["0050-01", "0000-01", "2025-12", "2101-01"]) {
+    const parsed = parseMonthlyUsageQuery("eip155:42220", month);
+    assert.equal(parsed.ok, false, month);
+    if (!parsed.ok) assert.equal(parsed.error, "month_invalid", month);
+  }
+  const last = parseMonthlyUsageQuery("eip155:42220", "2100-12");
+  assert.deepEqual(last, { ok: true, chain: "eip155:42220", month: "2100-12", start: "2100-12-01", end: "2101-01-01" });
   assert.equal(monthlyUsageErrorMessage("chain_required"), USAGE_MONTHLY_CHAIN_MESSAGE);
   assert.equal(monthlyUsageErrorMessage("chain_unlisted"), USAGE_MONTHLY_CHAIN_UNLISTED_MESSAGE);
   assert.equal(monthlyUsageErrorMessage("month_invalid"), USAGE_MONTHLY_MONTH_INVALID_MESSAGE);
+  assert.equal(monthlyUsageErrorMessage("month_not_closed"), USAGE_MONTHLY_MONTH_NOT_CLOSED_MESSAGE);
+  assert.equal(monthlyUsageErrorMessage("month_not_published_yet"), USAGE_MONTHLY_MONTH_NOT_PUBLISHED_YET_MESSAGE);
   assert.deepEqual([...PUBLIC_USAGE_CHAINS], ["eip155:42220"]);
+});
+
+test("締まった月は翌月 3 日 00:00 UTC から公開でき、今月と未来は month_not_closed", () => {
+  const sept = parseMonthlyUsageQuery("eip155:42220", "2026-09");
+  assert.equal(sept.ok, true);
+  if (!sept.ok) return;
+  assert.equal(monthlyPublicationError(sept, new Date("2026-10-02T23:59:59.000Z")), "month_not_published_yet");
+  assert.equal(monthlyPublicationError(sept, new Date("2026-10-03T00:00:00.000Z")), null);
+  const oct = parseMonthlyUsageQuery("eip155:42220", "2026-10");
+  assert.equal(oct.ok, true);
+  if (!oct.ok) return;
+  assert.equal(monthlyPublicationError(oct, new Date("2026-10-01T00:00:00.000Z")), "month_not_closed");
+  assert.equal(monthlyPublicationError(oct, new Date("2026-10-26T00:00:00.000Z")), "month_not_closed");
+  const nov = parseMonthlyUsageQuery("eip155:42220", "2026-11");
+  assert.equal(nov.ok, true);
+  if (!nov.ok) return;
+  assert.equal(monthlyPublicationError(nov, new Date("2026-10-26T00:00:00.000Z")), "month_not_closed");
+  const dec = parseMonthlyUsageQuery("eip155:42220", "2026-12");
+  assert.equal(dec.ok, true);
+  if (!dec.ok) return;
+  assert.equal(monthlyPublicationError(dec, new Date("2027-01-02T00:00:00.000Z")), "month_not_published_yet");
+  assert.equal(monthlyPublicationError(dec, new Date("2027-01-03T00:00:00.000Z")), null);
+  const aug = parseMonthlyUsageQuery("eip155:42220", "2026-08");
+  assert.equal(aug.ok, true);
+  if (!aug.ok) return;
+  assert.equal(monthlyPublicationError(aug, new Date("2026-10-02T00:00:00.000Z")), null);
 });
 
 test("公開の月次ページと JSON の文に、禁じ手の言い回しが無い", () => {
@@ -77,6 +119,8 @@ test("公開の月次ページと JSON の文に、禁じ手の言い回しが�
     USAGE_MONTHLY_CHAIN_UNLISTED_MESSAGE,
     USAGE_MONTHLY_MONTH_MESSAGE,
     USAGE_MONTHLY_MONTH_INVALID_MESSAGE,
+    USAGE_MONTHLY_MONTH_NOT_CLOSED_MESSAGE,
+    USAGE_MONTHLY_MONTH_NOT_PUBLISHED_YET_MESSAGE,
     USAGE_MONTHLY_EMPTY_MESSAGE,
     USAGE_MONTHLY_UNAVAILABLE_MESSAGE,
   ].join("\n");
@@ -98,8 +142,15 @@ test("本番 SQL は 1 本で足すだけ。client_usage_daily は変えない",
   assert.match(sqlText, /SET LOCAL lock_timeout = '3s'/);
   assert.match(sqlText, /COMMIT;/);
   assert.match(sqlText, /CREATE TABLE IF NOT EXISTS decision_usage_daily/);
+  assert.match(sqlText, /CREATE TABLE IF NOT EXISTS decision_usage_monthly_published/);
+  assert.match(sqlText, /pg_constraint/);
   assert.match(sqlText, /owner_relation/);
+  assert.doesNotMatch(sqlText, /DROP CONSTRAINT IF EXISTS api_keys_owner_relation_check/);
+  assert.doesNotMatch(sqlText, /DROP CONSTRAINT IF EXISTS decision_usage_daily_relation_snapshot_check/);
   assert.doesNotMatch(sqlText, /ALTER TABLE client_usage_daily/);
+  const usageSrc = readFileSync("src/lib/api/decision-usage.ts", "utf8");
+  assert.match(usageSrc, /ON CONFLICT \(month, chain, relation\) DO NOTHING/);
+  assert.match(usageSrc, /COALESCE\(k\.user_id, d\.owner_snapshot, k\.id, d\.api_key_id\)/);
   assert.doesNotMatch(sqlText, /CONCURRENTLY/);
   assert.doesNotMatch(sqlText, /PRIMARY KEY USING INDEX/);
   assert.doesNotMatch(sqlText, /本番には流さない/);
@@ -120,16 +171,23 @@ test("公開の月次ページは noindex で、ポリシーは鍵なしを元�
   assert.doesNotMatch(privacy, /A resolve row stores an empty chain/);
   assert.doesNotMatch(privacy, /Decision answers made without a key stay/);
   assert.match(privacy, /Calls made without a key are not counted per chain, so this table does not list them/);
-  assert.match(privacy, /A relation with fewer than 3 keys shows/);
+  assert.match(privacy, /A labeled relation with fewer than 3 owners shows/);
+  assert.match(privacy, /An unclassified relation shows the number of owners and leaves the call count out/);
+  assert.match(privacy, /The first read at or after 00:00 UTC on the 3rd day of the next month stores the figures/);
   assert.match(privacy, /The table leaves out the key, the email address, and the name/);
+  assert.match(privacy, /replaces the key id on these rows with a new random id/);
+  assert.match(privacy, /relation_snapshot/);
+  assert.match(privacy, /keeps the original key id and stays for the period the law requires for billing records/);
   assert.match(
     privacy,
-    /Deleting an account keeps the keyed decision counts as numbers and drops the link between those counts and the account/,
+    /a row whose key id was replaced with a new random id at account deletion still holds that count/,
   );
+  assert.doesNotMatch(privacy, /A relation with fewer than 3 keys shows/);
+  assert.doesNotMatch(privacy, /drops the link between those counts and the account/);
   const added = [
     privacy.match(/<strong>Keyed decision counts<\/strong>[\s\S]*?<\/li>/)?.[0] ?? "",
     privacy.match(/<strong>Public monthly table<\/strong>[\s\S]*?<\/li>/)?.[0] ?? "",
-    "Keyed decision counts are kept without an expiry date. Each row is a count for one key, one UTC day and one chain, and holds no email address and no name.",
+    privacy.match(/Keyed decision counts are kept without an expiry date[\s\S]*?<\/p>/)?.[0] ?? "",
   ].join("\n");
   assert.match(privacy, /Keyed decision counts are kept without an expiry date/);
   assert.doesNotMatch(added, /\b(we|our|us)\b/i);
@@ -141,5 +199,9 @@ test("公開の月次ページは noindex で、ポリシーは鍵なしを元�
   const openapi = readFileSync("docs/openapi.yaml", "utf8");
   for (const chain of PUBLIC_USAGE_CHAINS) assert.ok(openapi.includes(chain), chain);
   assert.match(openapi, /chain_unlisted/);
+  assert.match(openapi, /month_not_closed/);
+  assert.match(openapi, /month_not_published_yet/);
+  assert.match(openapi, /owners/);
+  assert.doesNotMatch(openapi, /required: \[owner_relation, keys\]/);
   assert.doesNotMatch(openapi, /keyless:/);
 });

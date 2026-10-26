@@ -564,10 +564,24 @@ claims:
     verified_at: 2026-09-04
   - id: privacy_monthly_table_relation_under_3_hides_calls
     surface: src/app/legal/privacy/page.tsx
-    quote: "A relation with fewer than 3 keys shows"
-    means: "公開の月次表（/usage/monthly と /api/v1/usage/monthly）は鍵ありの判定を区分ごとの本数と件数の合計だけで出し、3本未満の区分は本数を <3 とし件数を出さない。鍵なしの呼び出しはチェーンごとに数えないので、この表には出さない"
+    quote: "A labeled relation with fewer than 3 owners shows"
+    means: "公開の月次表は、分類済みの区分（self / related / external）を持ち主の人数と件数で出す。3 人未満は人数を <3 とし、件数は出さない"
     check: null
-    why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ず、3本未満で件数が欠けることを固定する"
+    why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ず、持ち主 3 人未満で件数が欠けることを固定する"
+    verified_at: 2026-10-26
+  - id: privacy_monthly_table_freezes_a_closed_month
+    surface: src/app/legal/privacy/page.tsx
+    quote: "The first read at or after 00:00 UTC on the 3rd day of the next month stores the figures"
+    means: "公開の月次表は締まった月だけを、翌月 3 日 00:00 UTC 以降の最初の読み取りで一度固定する。今月と未来の月は出さない。固定のあとの区分の付け替えでは公開値は動かない"
+    check: null
+    why_unverifiable: "出力の形と固定の約束。tests/decision-usage.pg.test.ts が今月の 400、固定後の付け替え、締まって 3 日より前の 400 を固定する"
+    verified_at: 2026-10-26
+  - id: privacy_monthly_table_unclassified_omits_calls
+    surface: src/app/legal/privacy/page.tsx
+    quote: "An unclassified relation shows the number of owners and leaves the call count out."
+    means: "未分類は件数を出さない。3 人未満なら人数は <3。鍵を作れば入れる区分なので、件数の合計は出さない"
+    check: null
+    why_unverifiable: "出力の形の約束。tests/decision-usage.pg.test.ts が未分類の <3 と、3 人以上でも件数が無いことを固定する"
     verified_at: 2026-10-26
   - id: privacy_monthly_table_omits_keyless_chain_counts
     surface: src/app/legal/privacy/page.tsx
@@ -575,6 +589,13 @@ claims:
     means: "鍵なしの呼び出しはチェーンごとに数えない。公開の月次表に鍵なしの節は無い。client_usage_daily に chain 列は無い"
     check: null
     why_unverifiable: "保存しないことの約束。tests/client-usage.pg.test.ts が client_usage_daily の列を day / client / route / count に固定し、tests/decision-usage.pg.test.ts が公開 JSON に keyless が無いことと、network が celo の出品への鍵あり判定が eip155:42220 に数えることを固定する"
+    verified_at: 2026-10-26
+  - id: privacy_deleted_account_counts_as_one_owner
+    surface: src/app/legal/privacy/page.tsx
+    quote: "so the account still counts as one owner"
+    means: "アカウントを消すと、そのアカウントの decision_usage_daily の行は鍵 id が新しい uuid に替わり、owner_snapshot は 1 つの新しい uuid にそろう。公開の人数は 1 のまま"
+    check: null
+    why_unverifiable: "削除は運用者の手作業（docs/operations/account-deletion.md）。tests/decision-usage.pg.test.ts の a deleted account with three keys still counts as one owner が、その手順の SQL を流して owner_snapshot が 1 つで、アカウントの id が残らないことを固定する"
     verified_at: 2026-10-26
   - id: privacy_monthly_table_leaves_out_key_email_name
     surface: src/app/legal/privacy/page.tsx

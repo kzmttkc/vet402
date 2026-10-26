@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 import {
   loadMonthlyDecisionUsage,
+  MonthlyUsageRejected,
+  monthlyPublicationError,
   monthlyUsageErrorMessage,
   parseMonthlyUsageQuery,
   PUBLIC_USAGE_CHAINS,
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = pageMetadata({
   title: "Decision call counts",
   description:
-    "Counts of decision API answers made with a key, for one published chain and one UTC month. Answers are summed by relation. A relation with fewer than 3 keys shows <3 and leaves the call count out. Calls made without a key are not counted per chain. The page leaves out the key, the email address, and the name.",
+    "Counts of decision API answers made with a key, for one published chain and one closed UTC month. The figures are stored on the first read after 00:00 UTC on the 3rd day of the next month. Answers are summed by relation. A labeled relation shows the number of owners. Fewer than 3 owners shows <3 and leaves the call count out. An unclassified relation leaves the call count out. Calls made without a key are not counted per chain. The page leaves out the key, the email address, and the name.",
   path: "/usage/monthly",
   noindex: true,
 });
@@ -72,14 +74,17 @@ function Figures({ data }: { data: MonthlyDecisionUsage }) {
     <>
       {empty ? <p>{USAGE_MONTHLY_EMPTY_MESSAGE}</p> : null}
       <h2>Calls by relation</h2>
-      <p>A relation with fewer than 3 keys shows &lt;3 and leaves the call count off this page.</p>
+      <p>
+        A labeled relation with fewer than 3 owners shows &lt;3 and leaves the call count off this page. An unclassified
+        relation leaves the call count off this page.
+      </p>
       <CountTable
         label="Decision calls by relation"
-        headers={["Relation", "Keys", "Calls"]}
+        headers={["Relation", "Owners", "Calls"]}
         rows={data.relations.map((row) => [
           row.owner_relation ?? "unclassified",
-          row.keys === "<3" ? "<3" : String(row.keys),
-          row.keys === "<3" ? "withheld" : String(row.calls),
+          row.owners === "<3" ? "<3" : String(row.owners),
+          row.calls === undefined ? "withheld" : String(row.calls),
         ])}
       />
       <p>
@@ -104,10 +109,18 @@ export default async function UsageMonthlyPage({
   let data: MonthlyDecisionUsage | null = null;
   let failure: string | null = null;
   if (parsed?.ok) {
-    try {
-      data = await loadMonthlyDecisionUsage(parsed);
-    } catch {
-      failure = USAGE_MONTHLY_UNAVAILABLE_MESSAGE;
+    const publication = monthlyPublicationError(parsed);
+    if (publication) {
+      failure = monthlyUsageErrorMessage(publication);
+    } else {
+      try {
+        data = await loadMonthlyDecisionUsage(parsed);
+      } catch (error) {
+        failure =
+          error instanceof MonthlyUsageRejected
+            ? monthlyUsageErrorMessage(error.code)
+            : USAGE_MONTHLY_UNAVAILABLE_MESSAGE;
+      }
     }
   }
 
@@ -116,10 +129,12 @@ export default async function UsageMonthlyPage({
       <article className="sheet">
         <h1 className="doc-title mt-8">Decision call counts</h1>
         <p className="doc-p">
-          This page sums decision API answers made with a key, for one published chain and one UTC month. Answers are
-          grouped by relation. A relation with fewer than 3 keys shows &lt;3 and leaves the call count off this page.
-          Calls made without a key are not counted per chain. Relation is a label an operator sets by hand. Published
-          chains: {PUBLIC_USAGE_CHAINS.join(", ")}.
+          This page sums decision API answers made with a key, for one published chain and one closed UTC month. The
+          figures are stored on the first read after 00:00 UTC on the 3rd day of the next month, and later reads return
+          that stored copy. Answers are grouped by relation. A labeled relation shows the number of owners and the
+          number of calls. Fewer than 3 owners shows &lt;3 and leaves the call count off this page. An unclassified
+          relation leaves the call count off this page. Calls made without a key are not counted per chain. Relation is
+          a label an operator sets by hand. Published chains: {PUBLIC_USAGE_CHAINS.join(", ")}.
         </p>
         <form method="get" action="/usage/monthly" className="doc-p">
           <label>

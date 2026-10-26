@@ -140,30 +140,39 @@ export default async function PrivacyPage() {
               page, only to pick that name. We do not store the User-Agent text, the IP address, the
               URL or query being looked up, or any API key with these counts
             </li>
-            {/* 2026-10-26 Takeshi 承認（「最適解ですすめて」）: 鍵ありの判定だけを鍵・日・チェーンで数える。
-                鍵なしにチェーンは足さない（調べた URL やクエリは保存しない、という約束のまま）。
-                公開は区分の合計だけ。3 本未満は件数を出さない。削除後も件数は残り、アカウントへのつながりは消える。 */}
+            {/* 2026-10-26 Takeshi 承認。レビュー: 公開は持ち主の人数。締まった月だけを、
+                翌月 3 日 00:00 UTC 以降の最初の読み取りで固定する。削除すると鍵 id は新しい
+                uuid に替わり、relation_snapshot と日ごとの件数は残る。api_usage は課金の記録として残る。 */}
             <li>
               <strong>Keyed decision counts</strong> (<code>decision_usage_daily</code>): for decision
               answers made with an API key, a count per key, per UTC day and per chain of the listing
               looked up. The row holds no email address and no name, and it is kept apart from the
               usage meter for billing. An operator may label a key by hand as <code>self</code>,{" "}
               <code>related</code> or <code>external</code> (<code>api_keys.owner_relation</code>) to
-              tell calls by vet402 and people close to it from calls by others. Deleting an account keeps
-              the keyed decision counts as numbers and drops the link between those counts and the account.
+              tell calls by vet402 and people close to it from calls by others. Deleting an account
+              replaces the key id on these rows with a new random id, and all rows of that account
+              share one new random owner id, so the account still counts as one owner. The relation
+              label stored at deletion (<code>relation_snapshot</code>) and the count for each UTC day
+              remain. The
+              billing count in <code>api_usage</code> keeps the original key id and stays for the
+              period the law requires for billing records.
             </li>
             <li>
               <strong>Public monthly table</strong> (
               <a className="doc-link" href="/usage/monthly">
                 /usage/monthly
               </a>
-              , <code>/api/v1/usage/monthly</code>): for one chain on the published list and one UTC
-              month, decision answers made with a key are summed by relation. The relations are{" "}
-              <code>self</code>, <code>related</code>, <code>external</code>, and unclassified. Each
-              relation shows the number of keys and the number of calls. A relation with fewer than 3
-              keys shows {"<3"} and leaves the call count out. Calls made without a key are not counted
-              per chain, so this table does not list them. The table leaves out the key, the email
-              address, and the name.
+              , <code>/api/v1/usage/monthly</code>): for one chain on the published list, decision
+              answers made with a key are summed by relation for a UTC month after that month has
+              closed. The first read at or after 00:00 UTC on the 3rd day of the next month stores
+              the figures, and later reads return that stored copy. The relations are{" "}
+              <code>self</code>, <code>related</code>, <code>external</code>, and unclassified. A
+              labeled relation shows the number of owners and the number of calls. A labeled relation
+              with fewer than 3 owners shows {"<3"} and leaves the call count out. An unclassified
+              relation shows the number of owners and leaves the call count out. Fewer than 3
+              unclassified owners shows {"<3"}. Calls made without a key are not counted per chain, so
+              this table does not list them. The table leaves out the key, the email address, and the
+              name.
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
@@ -289,8 +298,9 @@ export default async function PrivacyPage() {
           <p>
             Key-less API call counts are kept without an expiry date. Each row is a count for one
             day, client name and API route, and holds nothing that identifies who made the calls.
-            Keyed decision counts are kept without an expiry date. Each row is a count for one key,
-            one UTC day and one chain, and holds no email address and no name.
+            Keyed decision counts are kept without an expiry date. Each row is a count for one key
+            id, one UTC day and one chain, and a row whose key id was replaced with a new random id
+            at account deletion still holds that count. The row holds no email address and no name.
           </p>
         </section>
 
