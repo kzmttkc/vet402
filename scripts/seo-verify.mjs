@@ -24,7 +24,7 @@ const EXPECT = {
   "/faq": ["FAQPage", "BreadcrumbList"],
   "/docs/api": ["WebAPI", "BreadcrumbList", "TechArticle"],
   "/observatory/state": ["Dataset", "BreadcrumbList"],
-  "/impact": ["Dataset", "BreadcrumbList"],
+  "/impact": ["WebPage", "BreadcrumbList"],
   "/blog/what-is-x402": ["BlogPosting", "BreadcrumbList"],
   "/x402/stablecoin-payments": ["Article", "BreadcrumbList"],
   "/x402/check-a-seller": ["Article", "BreadcrumbList"],
