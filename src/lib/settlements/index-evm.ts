@@ -10,6 +10,7 @@
 // 載せない（chain/arc.ts 参照）ので、クライアントは行の makeClient で組む。
 // Celo（eip155:42220・2026-10-10）は CELO_RPC_URL が入れば有効（Arc と同じ作り・chain/celo.ts）。
 // Arbitrum One（eip155:42161・2026-10-22）は ARBITRUM_RPC_URL が入れば有効（Celo と同じ作り・chain/arbitrum.ts）。
+// Avalanche C-Chain（eip155:43114・2026-10-26）は AVALANCHE_RPC_URL が入れば有効（Arbitrum と同じ作り・chain/avalanche.ts）。
 // BNB Chain（eip155:56・2026-10-19）は BNB_RPC_URL が入れば有効。トークンは USD1（18 桁）。
 // 索引に書く額は 6 桁（10^12 で割る）。割り切れない額は行にしない。公開 RPC へは倒れない。
 // ============================================================
@@ -21,6 +22,7 @@ import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
 import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS, getArbitrumPublicClient } from "@/lib/chain/arbitrum";
+import { AVALANCHE_CAIP2, AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS, getAvalanchePublicClient } from "@/lib/chain/avalanche";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } from "@/lib/chain/celo";
 import { bnbLedgerUnits } from "@/lib/observatory/x402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -170,6 +172,36 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     blocksPerDay: 310_500n,
     makeClient: () => getArbitrumPublicClient("batch"),
   },
+  // Avalanche C-Chain（2026-10-26 Avalanche レーン）。数字は 2026-10-26T10:42:23.389Z に
+  // https://api.avax.network/ext/bc/C/rpc で測った値（再導出しない）:
+  //  - eth_chainId 0xa86a = 43114。ヘッド 98596954 の時刻 2026-10-26T10:42:25.000Z。
+  //    172,800 ブロック前との時刻差 167,543 秒 → 969.578 ms/ブロック。
+  //    1 日 = round(86400 * 172800 / 167543) = 89,111 ブロック。
+  //  - eth_getLogs は 2026-10-26T10:43:41.960Z（ヘッド 98597030）に測った。包含 100 ブロックは答え、
+  //    101 ブロックは -32602「block range too large: ... maximum of 100 blocks」で断る。
+  //    宛先で絞っても上限は上がらない。getLogsChunked は区切り幅を渡されないと既定 2,000 で刻むので、
+  //    この subWindow 自体を 100 ブロック（包含）にし、1 回の問い合わせが上限を超えないようにする。
+  //  - 1 回の走査は 2 日ぶん（178,222 ブロック）。区切りごとにチェックポイントを保存する。
+  //    100 ブロック窓は 1 日で約 891 回になるので、予算が尽きれば partial のまま次回へ続く（Base の subWindow と同じ理由）。
+  //  - 初回の遡りは 3 日（267,333 ブロック）。Arbitrum と同じ理由: 7 日だと公開 RPC の 100 ブロック窓では初回だけで数千チャンクになる。
+  //  - 確定待ち 64 ブロック（≈ 62 秒 at 969.578 ms）。Celo / Arc の 64 秒に壁時計を合わせる。
+  //    Arbitrum の 256 は 278 ms ブロックで同じ壁時計にするための数で、ここには写さない。
+  //  - AVALANCHE_RPC_URL が無ければ skipped（`AVALANCHE_RPC_URL_unset`）。公開 RPC へ無言で倒れない。
+  //  - 受取先は Avalanche を主ネットワークにする出品の pay_to だけ。2026-10-26 の実測ではその行は 0 件。
+  //    Base が先頭の出品の Avalanche の accept の受取先は、この索引に入らない。
+  //    遅れて決済された購入は recover-late.ts の Avalanche のチェーン直読み（nonce で決める）が持つ。
+  {
+    caip2: AVALANCHE_CAIP2,
+    chainId: AVALANCHE_CHAIN_ID,
+    usdc: AVALANCHE_USDC_ADDRESS,
+    rpcEnv: "AVALANCHE_RPC_URL",
+    initialLookbackBlocks: 89_111n * 3n,
+    maxBlocksPerRun: 89_111n * 2n,
+    subWindowBlocks: 100n,
+    confirmations: 64n,
+    blocksPerDay: 89_111n,
+    makeClient: () => getAvalanchePublicClient("batch"),
+  },
   // BNB Chain mainnet（2026-10-19・BNB レーン）。走査の数字は Celo と同じ値を置く。
   // ブロック間隔は 2026-10-19 に測っていない（再導出しない）。1 秒ブロックとしての 86,400/日は、
   // viem の bsc.blockTime（750ms）より遅めの見積もりで、1 回の走査（2 日ぶん）は日次の増加より広い。
@@ -270,7 +302,7 @@ export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
 /**
  * 索引の行に書く額。BNB の USD1 だけ 18 桁 → 6 桁（{@link bnbLedgerUnits}）。
  * 正でない、または 10^12 で割り切れない額は null（行にしない。丸めない）。
- * 他のチェーンはログの額をそのまま返す（Base・Arc・Celo の USDC は既に 6 桁）。
+ * 他のチェーンはログの額をそのまま返す（Base・Arc・Celo・Arbitrum・Avalanche の USDC は既に 6 桁）。
  */
 export function evmIndexLedgerAmount(chainId: number, value: bigint): bigint | null {
   if (chainId !== BNB_CHAIN_ID) return value;

@@ -132,8 +132,8 @@ export function toCaip2(network: unknown): string | null {
  * public sentences use this function and no other list of names.
  *
  * Named chains: Base, Solana, Tempo, XRPL, Celo, Arc, Stellar, BNB Chain,
- * Arbitrum One. Any other id falls through to `chainLabel()` so an unknown
- * chain is not given a name it does not have.
+ * Arbitrum One, Avalanche C-Chain. Any other id falls through to `chainLabel()`
+ * so an unknown chain is not given a name it does not have.
  */
 const PUBLIC_CHAIN_LABELS: Record<string, string> = {
   Base: "Base",
@@ -168,6 +168,10 @@ const PUBLIC_CHAIN_LABELS: Record<string, string> = {
   "eip155:42161": "Arbitrum One",
   arbitrum: "Arbitrum One",
   "Arbitrum One": "Arbitrum One",
+  Avalanche: "Avalanche C-Chain",
+  "eip155:43114": "Avalanche C-Chain",
+  avalanche: "Avalanche C-Chain",
+  "Avalanche C-Chain": "Avalanche C-Chain",
 };
 
 /** Canonical CAIP-2 for each public name. One id per chain, not the alias that happened to arrive first. */
@@ -181,6 +185,7 @@ const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
   Stellar: "stellar:pubnet",
   "BNB Chain": "eip155:56",
   "Arbitrum One": "eip155:42161",
+  "Avalanche C-Chain": "eip155:43114",
 };
 
 /** Public name. Accepts a CAIP-2 id, a legacy slug, or a `chainLabel()` key such as `BSC`. */
@@ -275,6 +280,9 @@ const EVM_EXPLORERS: Record<string, string> = {
   // 2026-10-22 Arbitrum レーン。mainnet（eip155:42161）だけ——ラベル "Arbitrum Sepolia" はここに無いので
   // テストネットの tx にはリンクを作らない（Celo と同じ: 壊れたリンクより「—」）。
   Arbitrum: "https://arbiscan.io/tx/",
+  // 2026-10-26 Avalanche レーン。mainnet（eip155:43114）だけ。ラベル "Avalanche Fuji" はここに無いので
+  // テストネットの tx にはリンクを作らない（Arbitrum と同じ: 壊れたリンクより「—」）。
+  Avalanche: "https://snowtrace.io/tx/",
 };
 
 /**

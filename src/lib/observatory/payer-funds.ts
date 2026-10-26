@@ -25,11 +25,14 @@
 //     ガスの BNB は見ない（EIP-3009 は facilitator が出す）。
 //     Arbitrum One（2026-10-22）も同じ EOA・ネイティブ USDC（0xaf88…5831）を Arbitrum の RPC で読む。
 //     ガスの ETH は見ない（EIP-3009 は facilitator が出す）。USDC.e は読まない。
+//     Avalanche C-Chain（2026-10-26）も同じ EOA・ネイティブ USDC（0xB97E…8a6E）を Avalanche の RPC で読む。
+//     ガスの AVAX は見ない（EIP-3009 は facilitator が出す）。USDC.e は読まない。
 // ============================================================
 import { SOLANA_USDC_MINT } from "./sol402-payer";
-import { ARC_USDC, ARBITRUM_USDC, BASE_USDC, BNB_LEDGER_SCALE, BNB_USD1, CELO_USDC } from "./x402-payer";
+import { ARC_USDC, ARBITRUM_USDC, AVALANCHE_USDC, BASE_USDC, BNB_LEDGER_SCALE, BNB_USD1, CELO_USDC } from "./x402-payer";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { getArbitrumPublicClient } from "@/lib/chain/arbitrum";
+import { getAvalanchePublicClient } from "@/lib/chain/avalanche";
 import { getBnbPublicClient } from "@/lib/chain/bnb";
 import { getCeloPublicClient } from "@/lib/chain/celo";
 import { readTempoUsdcBalance } from "./mpp-payer";
@@ -44,8 +47,9 @@ import { redactForLog } from "./redact";
  * 切り捨てる。trustline が無い・未承認・読めないは throw（署名しない側）。公開 Horizon へは倒れない。
  * "bnb"（2026-10-19）: 同じ EOA の USD1（18 桁）を 6 桁へ切り捨てる。読めなければ throw（署名しない側）。
  * "arbitrum"（2026-10-22）: 同じ EOA のネイティブ USDC。読めなければ throw（署名しない側）。
+ * "avalanche"（2026-10-26）: 同じ EOA のネイティブ USDC。読めなければ throw（署名しない側）。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway" | "avalanche";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -121,6 +125,7 @@ const ERC20_BALANCE_OF_ABI = [
  * Celo は CELO_RPC_URL、未設定なら公開 RPC https://forno.celo.org（2026-10-10・chain/celo.ts・Arc と同じ扱い）。
  * BNB は BNB_RPC_URL、未設定なら公開 RPC https://bsc-dataseed.bnbchain.org（2026-10-19・chain/bnb.ts）。
  * Arbitrum は ARBITRUM_RPC_URL、未設定なら公開 RPC https://arb1.arbitrum.io/rpc（2026-10-22・chain/arbitrum.ts・Celo と同じ扱い）。
+ * Avalanche は AVALANCHE_RPC_URL、未設定なら公開 RPC https://api.avax.network/ext/bc/C/rpc（2026-10-26・chain/avalanche.ts・Arbitrum と同じ扱い）。
  * 読むのは USD1 の balanceOf だけ。18 桁を 6 桁へ切り捨てて返す。ネイティブの BNB は読まない。
  * Stellar は STELLAR_HORIZON_URL。未設定は throw（公開 Horizon へ無言で倒れない）。
  * どのチェーンも、読めなければ throw → 呼び手は署名しない側へ倒す。
@@ -174,6 +179,15 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
     const client = getArbitrumPublicClient("live");
     return await client.readContract({
       address: ARBITRUM_USDC as `0x${string}`,
+      abi: ERC20_BALANCE_OF_ABI,
+      functionName: "balanceOf",
+      args: [owner as `0x${string}`],
+    });
+  }
+  if (chain === "avalanche") {
+    const client = getAvalanchePublicClient("live");
+    return await client.readContract({
+      address: AVALANCHE_USDC as `0x${string}`,
       abi: ERC20_BALANCE_OF_ABI,
       functionName: "balanceOf",
       args: [owner as `0x${string}`],

@@ -98,13 +98,19 @@
 // 行ごとの窓・応答なしを先に読む順は変えない。トークンはネイティブ USDC。RPC は ARBITRUM_RPC_URL 必須
 // （公開 RPC へ黙って倒れない）。ブロック間隔は 2026-10-22 実測 278.25 ms。窓の見積もりは 0.28 秒で、ブロックの実時刻で直す。
 // 1 行の窓（≈ 6,900 ブロック）は 2,000 ブロックずつ読む（公開 RPC の eth_getLogs 上限）。
+//
+// 2026-10-26（Avalanche レーン）: 同じ形の直読みを eip155:43114 にも通す。Celo のレーンの選び方・nonce の束縛・
+// 行ごとの窓・応答なしを先に読む順は変えない。トークンはネイティブ USDC。RPC は AVALANCHE_RPC_URL 必須
+// （公開 RPC へ黙って倒れない）。ブロック間隔は 2026-10-26 実測 969.578 ms。窓の見積もりは 0.97 秒で、ブロックの実時刻で直す。
+// 1 行の窓（≈ 1,980 ブロック）は 100 ブロックずつ読む（公開 RPC の eth_getLogs 上限。101 は断る）。
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { arbitrum, base, bsc, celo } from "viem/chains";
+import { arbitrum, avalanche, base, bsc, celo } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
+import { AVALANCHE_CAIP2, AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanche";
 import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
 import { evmIndexLedgerAmount } from "@/lib/settlements/index-evm";
@@ -205,6 +211,11 @@ export const BNB_CHAIN_READ_BUDGET_MS = 30_000;
  * （名目の合計は 300 秒を超える。BNB のあとに走り、残りが無ければこの回は読まない）。
  */
 export const ARBITRUM_CHAIN_READ_BUDGET_MS = 30_000;
+/**
+ * Avalanche のレーンの持ち時間（2026-10-26）。Celo と同じ 30 秒を別枠で持つ。cron の締切（deadlineAt）で頭打ちにする
+ * （名目の合計は 300 秒を超える。Arbitrum のあとに走り、残りが無ければこの回は読まない）。
+ */
+export const AVALANCHE_CHAIN_READ_BUDGET_MS = 30_000;
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -236,6 +247,12 @@ export type LateSettlementSummary = {
   chainRowsReadArbitrum?: number;
   /** Arbitrum のレーンで、この回は読めなかった行の数（行は変えていない）。 */
   chainRowsUnreadArbitrum?: number;
+  /** recoveredFromChain のうち Avalanche のレーンで貼った数（2026-10-26・nonce で持ち主を決めた行だけ）。 */
+  recoveredFromChainAvalanche?: number;
+  /** chainRowsRead のうち Avalanche のレーンで読んだ行の数。 */
+  chainRowsReadAvalanche?: number;
+  /** Avalanche のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadAvalanche?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -256,6 +273,8 @@ export async function recoverLateSettlements(
     bnbChainReadBudgetMs?: number;
     /** Arbitrum のレーンの持ち時間（ms）。 */
     arbitrumChainReadBudgetMs?: number;
+    /** Avalanche のレーンの持ち時間（ms）。 */
+    avalancheChainReadBudgetMs?: number;
     /**
      * 呼び手の締切（epoch ms）。Celo のレーンの持ち時間を「締切までの残り」で頭打ちにする（cron が 300 秒を越えない）。
      * Base のレーンには掛けない（従来どおり）。
@@ -419,7 +438,24 @@ export async function recoverLateSettlements(
           options.readNonces,
         )
       : { linked: [], read: 0, unread: 0 };
-  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked, ...arbitrumChain.linked];
+  // 2026-10-26: Avalanche のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
+  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo / BNB / Arbitrum の段が先に使う）。
+  const avalancheChain =
+    options.readTransfers && options.readNonces
+      ? await linkFromChain(
+          db,
+          AVALANCHE_CHAIN_READ_LANE,
+          options.readTransfers,
+          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
+          Math.min(
+            options.avalancheChainReadBudgetMs ?? AVALANCHE_CHAIN_READ_BUDGET_MS,
+            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
+          ),
+          errors,
+          options.readNonces,
+        )
+      : { linked: [], read: 0, unread: 0 };
+  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked, ...arbitrumChain.linked, ...avalancheChain.linked];
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
 
@@ -429,7 +465,7 @@ export async function recoverLateSettlements(
     recoveredBySet: bySet.length,
     recoveredFromChain: fromChain.length,
     promotedNamedTx: promoted.length,
-    chainRowsRead: chain.read + celoChain.read + bnbChain.read + arbitrumChain.read,
+    chainRowsRead: chain.read + celoChain.read + bnbChain.read + arbitrumChain.read + avalancheChain.read,
     recoveredFromChainCelo: celoChain.linked.length,
     chainRowsReadCelo: celoChain.read,
     chainRowsUnreadCelo: celoChain.unread,
@@ -439,6 +475,9 @@ export async function recoverLateSettlements(
     recoveredFromChainArbitrum: arbitrumChain.linked.length,
     chainRowsReadArbitrum: arbitrumChain.read,
     chainRowsUnreadArbitrum: arbitrumChain.unread,
+    recoveredFromChainAvalanche: avalancheChain.linked.length,
+    chainRowsReadAvalanche: avalancheChain.read,
+    chainRowsUnreadAvalanche: avalancheChain.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -821,7 +860,7 @@ const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
  * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
  */
 type ChainReadLane = {
-  key: "base" | "celo" | "bnb" | "arbitrum";
+  key: "base" | "celo" | "bnb" | "arbitrum" | "avalanche";
   networks: readonly string[];
   nonceBound: boolean;
   noAnswerFirst: boolean;
@@ -831,8 +870,9 @@ const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWOR
 const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 const ARBITRUM_CHAIN_READ_LANE: ChainReadLane = { key: "arbitrum", networks: [ARBITRUM_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
+const AVALANCHE_CHAIN_READ_LANE: ChainReadLane = { key: "avalanche", networks: [AVALANCHE_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 /** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
-export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE, ARBITRUM_CHAIN_READ_LANE];
+export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE, ARBITRUM_CHAIN_READ_LANE, AVALANCHE_CHAIN_READ_LANE];
 
 /**
  * 索引に候補の無い行について、チェーンの Transfer（from = 行の payer・to = 行の pay_to）を直接読んで貼る。
@@ -1539,17 +1579,119 @@ function boundedArbitrumClient(timeoutMs: number | undefined): ArbitrumTransferC
 }
 
 /**
- * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19、Arbitrum は 2026-10-22）:
- * Celo の行は Celo、BNB の行は BNB、Arbitrum の行は Arbitrum、それ以外は Base
+ * Avalanche のブロック間隔（秒）。2026-10-26T10:42:23.389Z 実測（https://api.avax.network/ext/bc/C/rpc）:
+ * ヘッド 98596954 と 172,800 ブロック前の時刻差 167,543 秒 → 969.578 ms。0.97 で見積もり、ブロックの実時刻で直す。
+ */
+const AVALANCHE_BLOCK_SECONDS = 0.97;
+/**
+ * Avalanche の eth_getLogs を 1 回で問う包含ブロック数。2026-10-26T10:43:41.960Z 実測（ヘッド 98597030）:
+ * 包含 100 ブロックは答え、101 ブロックは -32602「maximum of 100 blocks」で断る。絞り込みでも上限は上がらない。
+ * 1 行の窓（2 分前〜30 分後 ≈ 1,920 秒 / 0.97 ≈ 1,980 ブロック + 余裕）は 100 ブロックずつに割る。
+ */
+export const AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS = 100n;
+const AVALANCHE_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+// 余裕は見積もりの許容（30 秒 ≈ 31 ブロック）より広く取る。Arbitrum の「余裕は許容より広く」と同じ規則。
+const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 40n;
+
+type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
+/**
+ * Avalanche のネイティブ USDC（0xB97E…8a6E）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-26・linkFromChain の Avalanche のレーン）。
+ * 規則は makeArbitrumTransferReader と同じ。トークンはネイティブ USDC だけ（USDC.e は読まない）。
+ * Avalanche 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
+ *   - AVALANCHE_RPC_URL が無い（公開 RPC へ黙って倒れない。決済の再読・索引と同じ規律）
+ *   - RPC が chainId 43114 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
+ *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
+ *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
+ * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
+ */
+export function makeAvalancheTransferReader(client?: AvalancheTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== AVALANCHE_CAIP2) return null;
+    const c = client ?? boundedAvalancheClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== AVALANCHE_CHAIN_ID) return null;
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    const locate = async (t: Date): Promise<bigint> => {
+      let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (AVALANCHE_BLOCK_SECONDS * 1000))));
+      for (let i = 0; i < 3; i++) {
+        expired();
+        if (n < 0n) n = 0n;
+        if (n > head.number) n = head.number;
+        const block = await c.getBlock({ blockNumber: n });
+        const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
+        if (Math.abs(driftSeconds) <= AVALANCHE_BLOCK_LOCATE_TOLERANCE_SECONDS) return n;
+        if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
+        n -= BigInt(Math.trunc(driftSeconds / AVALANCHE_BLOCK_SECONDS));
+      }
+      throw new Error("could not locate the Avalanche block for the window");
+    };
+    const [fromAt, toAt] = await Promise.all([locate(from), locate(to)]);
+    const first = fromAt - AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty Avalanche block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: AVALANCHE_USDC_ADDRESS,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") {
+          throw new Error("an Avalanche transfer log came back without a block, a hash or a value");
+        }
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: l.args.value.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** AVALANCHE_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。AVALANCHE_RPC_URL が無ければ null（公開 RPC を使わない）。 */
+function boundedAvalancheClient(timeoutMs: number | undefined): AvalancheTransferClient | null {
+  const url = process.env.AVALANCHE_RPC_URL?.trim();
+  if (!url) return null;
+  return createPublicClient({
+    chain: avalanche as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as AvalancheTransferClient;
+}
+
+/**
+ * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19、Arbitrum は 2026-10-22、Avalanche は 2026-10-26）:
+ * Celo の行は Celo、BNB の行は BNB、Arbitrum の行は Arbitrum、Avalanche の行は Avalanche、それ以外は Base
  * （Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
  */
 export function makeChainTransferReader(
-  readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader; arbitrum?: TransferReader } = {},
+  readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader; arbitrum?: TransferReader; avalanche?: TransferReader } = {},
 ): TransferReader {
   const baseReader = readers.base ?? makeBaseTransferReader();
   const celoReader = readers.celo ?? makeCeloTransferReader();
   const bnbReader = readers.bnb ?? makeBnbTransferReader();
   const arbitrumReader = readers.arbitrum ?? makeArbitrumTransferReader();
+  const avalancheReader = readers.avalanche ?? makeAvalancheTransferReader();
   return (q) =>
     q.network === CELO_CAIP2
       ? celoReader(q)
@@ -1557,5 +1699,7 @@ export function makeChainTransferReader(
         ? bnbReader(q)
         : q.network === ARBITRUM_CAIP2
           ? arbitrumReader(q)
-          : baseReader(q);
+          : q.network === AVALANCHE_CAIP2
+            ? avalancheReader(q)
+            : baseReader(q);
 }

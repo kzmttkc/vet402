@@ -113,6 +113,8 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
   { kind: "lane", chain: "stellar:pubnet", asset: "USDC", rail: "x402", state: "settled_on_record" },
   { kind: "lane", chain: "Arbitrum", asset: "USDC", rail: "x402", state: "settled_on_record" },
   { kind: "lane", chain: "BSC", asset: "USD1", rail: "x402", state: "settled_on_record" },
+  // Avalanche C-Chain (eip155:43114, native USDC, OBSERVATORY_AVALANCHE_L1_ENABLED) is built and off by default.
+  // It is not listed here until the first settled purchase. A row here would open an x402 guide page.
   // Robinhood Chain: the wording is fixed by agreement with the RWA session (2026-09-28,
   // English only). The agreement as handed over in Japanese (the delegation brief's summary,
   // not a verbatim quote of the RWA session's message):

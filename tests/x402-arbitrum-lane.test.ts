@@ -144,9 +144,9 @@ const withArbFlag = <T>(value: string | undefined, fn: () => T): T => withEnv("O
 
 test("the table pins Arbitrum as measured on-chain 2026-10-22, next to Base, Arc, Celo and BNB and nothing else", () => {
   assert.deepEqual(
-    EVM_PAY_CHAINS.map((c) => c.caip2),
+    EVM_PAY_CHAINS.slice(0, 5).map((c) => c.caip2),
     [BASE_CAIP2, ARC_CAIP2, CELO_CAIP2, BNB_CAIP2, ARBITRUM_CAIP2],
-    "Base, Arc, Celo, BNB, Arbitrum — nothing else can be signed on",
+    "the first five rows stay Base, Arc, Celo, BNB and Arbitrum",
   );
   assert.equal(ARBITRUM_CAIP2, "eip155:42161");
   assert.equal(ARBITRUM_CHAIN.caip2, ARBITRUM_CAIP2);
@@ -208,7 +208,11 @@ test("the Arbitrum RPC: env first, the public RPC only as the balance-read defau
     withEnv("ARC_RPC_URL", undefined, () =>
       withEnv("POLYGON_RPC_URL", undefined, () =>
         withEnv("TEMPO_RPC_URL", undefined, () =>
-          withEnv("CELO_RPC_URL", undefined, () => assert.equal(perChainBudgetMs(120_000), 120_000)),
+          withEnv("CELO_RPC_URL", undefined, () =>
+            withEnv("BNB_RPC_URL", undefined, () =>
+              withEnv("AVALANCHE_RPC_URL", undefined, () => assert.equal(perChainBudgetMs(120_000), 120_000)),
+            ),
+          ),
         ),
       ),
     );

@@ -157,6 +157,8 @@ test("asset words are taken from supported-chains-data.ts and the methodology se
   assert.equal(settlementAssetOf("Stellar"), "USDC");
   assert.equal(settlementAssetOf("BSC"), "USD1");
   assert.equal(settlementAssetOf("Arbitrum"), "USDC");
+  assert.equal(settlementAssetOf("Avalanche"), "USDC");
+  assert.equal(settlementAssetOf("Avalanche C-Chain"), "USDC");
   assert.equal(settlementAssetOf("Polygon"), NO_ASSET);
 });
 

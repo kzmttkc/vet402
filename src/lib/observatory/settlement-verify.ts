@@ -34,8 +34,9 @@ import { getPublicClient } from "@/lib/chain/client";
 import { getArcPublicClient } from "@/lib/chain/arc";
 import { getBnbPublicClient, getBnbVerifyClient } from "@/lib/chain/bnb";
 import { getArbitrumPublicClient } from "@/lib/chain/arbitrum";
+import { getAvalanchePublicClient } from "@/lib/chain/avalanche";
 import { getCeloPublicClient } from "@/lib/chain/celo";
-import { ARBITRUM_CHAIN, BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
+import { ARBITRUM_CHAIN, AVALANCHE_CHAIN, BNB_CHAIN_ID, BNB_LEDGER_SCALE, evmChainFor, type EvmPayChain } from "./x402-payer";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 // 2026-09-19（横断監査 W4）: detail は DB に残る。RPC の URL（鍵入りの形がある）を伏せてから書く。
 import { redactForLog } from "./redact";
@@ -76,7 +77,9 @@ export const AUTHORIZATION_USED_TOPIC = keccak256(toBytes("AuthorizationUsed(add
  * BNB_VERIFY_RPC_URL（無ければ BNB_RPC_URL・どちらも無ければ null。chain/bnb.ts の bnbVerifyRpcUrl）。
  * Arbitrum One（2026-10-22）も Arc / Celo と同じ: **ARBITRUM_RPC_URL 必須**。無ければ null（未確認のまま置く）。
  * Base の client へ落とさない——落とすと Arbitrum の行をいつも wrong_chain（計器の故障）として鳴らし、そのバッチの
- * Arbitrum の行を全部飛ばす。表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
+ * Arbitrum の行を全部飛ばす。
+ * Avalanche C-Chain（2026-10-26）も同じ: **AVALANCHE_RPC_URL 必須**。無ければ null。Base の client へ落とさない。
+ * 表に無い EVM は照合器が無い＝ chain_not_yet_verifiable のまま置く。
  */
 function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
   if (chain.chainId === 5042) {
@@ -93,6 +96,10 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
     if (!process.env.ARBITRUM_RPC_URL?.trim()) return null;
     return getArbitrumPublicClient("live");
   }
+  if (chain.chainId === AVALANCHE_CHAIN.chainId) {
+    if (!process.env.AVALANCHE_RPC_URL?.trim()) return null;
+    return getAvalanchePublicClient("live");
+  }
   return getPublicClient();
 }
 
@@ -101,6 +108,7 @@ function rpcEnvOf(chain: EvmPayChain): string {
   if (chain.chainId === 42220) return "CELO_RPC_URL";
   if (chain.chainId === BNB_CHAIN_ID) return "BNB_VERIFY_RPC_URL_and_BNB_RPC_URL";
   if (chain.chainId === ARBITRUM_CHAIN.chainId) return "ARBITRUM_RPC_URL";
+  if (chain.chainId === AVALANCHE_CHAIN.chainId) return "AVALANCHE_RPC_URL";
   return "ARC_RPC_URL";
 }
 
@@ -172,7 +180,7 @@ export type AuthorizationStateClient = Pick<ReturnType<typeof getPublicClient>, 
  * 我々が署名した EIP-3009 の認可が、チェーンで使われたか（USDC の authorizationState(payer, nonce)）。
  * 2026-09-29 独立レビュー（CRITICAL）: 売り手の名指した tx を「見つからない」と確定する前に、お金が動いていないことを
  * チェーンで確かめる材料。true＝使われた（どこかの tx で決済された）、false＝使われていない、null＝読めない・対象外
- * （Base / Arc / Celo / BNB 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
+ * （Base / Arc / Celo / BNB / Arbitrum / Avalanche 以外・nonce や payer の形が違う・RPC の失敗・チェーン ID の食い違い）。null は「確かめられない」なので、
  * 呼び手は確定しない側に倒す。
  */
 export async function readAuthorizationState(
@@ -191,6 +199,8 @@ export async function readAuthorizationState(
   else if (chain.chainId === BNB_CHAIN_ID) client = process.env.BNB_RPC_URL?.trim() ? getBnbPublicClient("live") : null;
   // Arbitrum（2026-10-22）: Celo と同じく env 必須。無ければ null＝「確かめられない」。
   else if (chain.chainId === ARBITRUM_CHAIN.chainId) client = process.env.ARBITRUM_RPC_URL?.trim() ? getArbitrumPublicClient("live") : null;
+  // Avalanche（2026-10-26）: Arbitrum と同じく env 必須。無ければ null＝「確かめられない」。
+  else if (chain.chainId === AVALANCHE_CHAIN.chainId) client = process.env.AVALANCHE_RPC_URL?.trim() ? getAvalanchePublicClient("live") : null;
   else client = getPublicClient();
   if (!client) return null;
   try {

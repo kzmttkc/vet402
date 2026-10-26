@@ -93,6 +93,14 @@ export const ARBITRUM_DAILY_CAP_USD_DEFAULT = 2;
 export const ARC_GATEWAY_DAILY_CAP_USD_DEFAULT = 2;
 
 /**
+ * Avalanche C-Chain の別枠（2026-10-26・Avalanche レーン）。Celo / Arbitrum と同じ理由・同じ $2
+ * （全チェーン共有の $25 の内側）。環境変数 L1_AVALANCHE_DAILY_CAP_USD で変えられる（0 で Avalanche を止める）。
+ * レーンそのものは OBSERVATORY_AVALANCHE_L1_ENABLED が正確に "true" かつ AVALANCHE_RPC_URL があるときだけ動く。
+ * 別枠はスイッチではない。
+ */
+export const AVALANCHE_DAILY_CAP_USD_DEFAULT = 2;
+
+/**
  * 1 人の売り手が 1 UTC 日に受け取れる上限（2026-09-29 監査 5 周目・高・お金）。**受取先（payTo）ごと**と
  * **ホスト（ポート無視・小文字＝census の売り手の単位）ごと**に、別々に数える。全チェーン共有の $25 の内側。
  *
@@ -145,7 +153,7 @@ export function domainDailyCapUnits(): bigint {
 }
 
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
-export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway";
+export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway" | "avalanche";
 
 /**
  * チェーン別の別枠の表。`networkLike` は x402_l1_purchases.network に対する SQL の LIKE
@@ -170,6 +178,8 @@ export const CHAIN_DAILY_CAPS: Record<CappedChain, { env: string; defaultUsd: nu
   // どの network にも一致しない番兵。支出の数え方は chainCapNetworkSql（印で eip155:5042 を分ける）。
   // LIKE のワイルドカードは置かない。cappedChainFor はこの名前を返さない。
   arc_gateway: { env: "L1_ARC_GATEWAY_DAILY_CAP_USD", defaultUsd: ARC_GATEWAY_DAILY_CAP_USD_DEFAULT, networkLike: "circle-gateway:5042" },
+  // 完全一致（ワイルドカード無し）。Fuji（eip155:43113）を巻き込まない。
+  avalanche: { env: "L1_AVALANCHE_DAILY_CAP_USD", defaultUsd: AVALANCHE_DAILY_CAP_USD_DEFAULT, networkLike: "eip155:43114" },
 };
 
 /** その network が別枠を持つチェーンなら、その名前。持たなければ null。 */
@@ -182,6 +192,7 @@ export function cappedChainFor(network: string): CappedChain | null {
   if (network === "stellar:pubnet") return "stellar";
   if (network === "eip155:56") return "bnb";
   if (network === "eip155:42161") return "arbitrum";
+  if (network === "eip155:43114") return "avalanche";
   return null;
 }
 

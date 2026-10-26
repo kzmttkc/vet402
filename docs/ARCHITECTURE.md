@@ -149,6 +149,21 @@ flowchart LR
   (`L1_ARBITRUM_DAILY_CAP_USD`) inside the shared $25. The on-chain re-read
   and the settlement index need `ARBITRUM_RPC_URL`. Late recovery is the same
   nonce-bound chain read as Celo.
+- **Avalanche C-Chain (EVM)**: a sixth row of the same pinned table (chain id 43114,
+  native Circle USDC `0xB97E…8a6E`, EIP-712 domain "USD Coin"/"2", measured by
+  RPC on 2026-10-26 against `https://api.avax.network/ext/bc/C/rpc` and checked
+  against the token's own `DOMAIN_SEPARATOR()`
+  `0xbbea200329a938bc3438984a49cb0732e66d66d7bd59c127abacc1710e77f7b3`).
+  Same EOA as Base, funded with Avalanche USDC separately; no AVAX is needed.
+  Bridged USDC.e is never signed for. An accept whose `extra.name` is
+  `GatewayWalletBatched` is refused. Off by default
+  (`OBSERVATORY_AVALANCHE_L1_ENABLED` and `AVALANCHE_RPC_URL`); while off,
+  Avalanche candidates are excluded in SQL and no row is written. Its own
+  $2/day cap (`L1_AVALANCHE_DAILY_CAP_USD`) inside the shared $25. The on-chain
+  re-read and the settlement index need `AVALANCHE_RPC_URL`. Late recovery is
+  the same nonce-bound chain read as Arbitrum. One run takes at most two
+  listings from the same host, and a host with no paid Avalanche attempt yet
+  is tried before a host that has already been tried.
 - **Solana**: `sol402-payer.ts` — the `exact` scheme per
   `scheme_exact_svm.md`: a partially-signed versioned transaction
   (ComputeBudget → TransferChecked → Memo) with the facilitator as sponsored

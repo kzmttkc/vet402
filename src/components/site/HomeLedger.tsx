@@ -46,6 +46,7 @@ const ASSET_FROM_METHODOLOGY: Record<string, string> = {
   Stellar: "USDC",
   "BNB Chain": "USD1",
   "Arbitrum One": "USDC",
+  "Avalanche C-Chain": "USDC",
 };
 export const NO_ASSET = "not named";
 

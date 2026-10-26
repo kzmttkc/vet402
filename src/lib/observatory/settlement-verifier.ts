@@ -60,7 +60,7 @@ export { SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS };
 // （EVM_PAY_CHAINS）から決まるので、表に足した時点で期限の対象になる。この SELECT の範囲も同じ集合に揃える
 // （Base / Arc と同じ条件: 別々の日に「無い」・nonce の認可が未使用・確定の直前の読み直し。
 // Celo の USDC と BNB の USD1 にも authorizationState がある）。
-const EXPIRY_NETWORKS: readonly string[] = ["eip155:8453", "base", "eip155:5042", "eip155:42220", "eip155:56", "eip155:42161"];
+const EXPIRY_NETWORKS: readonly string[] = ["eip155:8453", "base", "eip155:5042", "eip155:42220", "eip155:56", "eip155:42161", "eip155:43114"];
 
 /** 期限の対象になるチェーンか（Base / Arc / Celo / BNB＝払い手の表の EVM だけ・Tempo・Solana・XRPL は当面外す）。 */
 export function sellerNamedTxExpiryChain(network: string | null): boolean {

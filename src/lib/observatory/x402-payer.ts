@@ -21,6 +21,9 @@
 // 2026-10-22 (Arbitrum lane): Arbitrum One (eip155:42161) is the fifth row, off by
 // default (OBSERVATORY_ARBITRUM_L1_ENABLED). Native Circle USDC only. Nothing about
 // the Base, Arc, Celo or BNB rows changed.
+// 2026-10-26 (Avalanche lane): Avalanche C-Chain (eip155:43114) is the sixth row, off by
+// default (OBSERVATORY_AVALANCHE_L1_ENABLED). Native USDC only. Nothing about the
+// Base, Arc, Celo, BNB or Arbitrum rows changed.
 //
 // Spec grounding (fetched 2026-08-14, coinbase/x402):
 //  - specs/schemes/exact/scheme_exact_evm.md — EIP-3009 payload:
@@ -164,6 +167,42 @@ export const ARBITRUM_USDC_DOMAIN_SEPARATOR = "0x08d11903f8419e68b1b8721bcbe2e9f
 export const ARBITRUM_USDC_E = "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8";
 
 /**
+ * Avalanche C-Chain. Measured 2026-10-26T10:42:23.389Z by RPC against
+ * https://api.avax.network/ext/bc/C/rpc — not re-derived here, and NOT taken from the
+ * facilitator's /supported document:
+ *   eth_chainId 0xa86a = 43114
+ *   USDC 0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E / decimals() 6
+ *   name() "USD Coin" / version() "2"  ← like Base, not Celo/Arc's "USDC"
+ *   DOMAIN_SEPARATOR() 0xbbea200329a938bc3438984a49cb0732e66d66d7bd59c127abacc1710e77f7b3
+ *     — equal to the EIP-712 domain hash of { "USD Coin", "2", 43114, the USDC address }
+ *     computed locally (AVALANCHE_USDC_DOMAIN_SEPARATOR below; tests/x402-avalanche-lane.test.ts
+ *     recomputes it from the pinned row, so a wrong pin fails a test, not a payment).
+ *   authorizationState(address,bytes32) present → EIP-3009 is available.
+ *   TRANSFER_WITH_AUTHORIZATION_TYPEHASH 0x7c7c6cdb67a18743f49ec6fa9b35f50d52ed05cbed4cc592e13b44501c1a2267
+ *   Head block 98596954 at 2026-10-26T10:42:25.000Z. 172,800 blocks earlier differed by 167,543 seconds
+ *   (969.578 ms/block). blocks/day = round(86400 * 172800 / 167543) = 89111.
+ *   eth_getLogs on 2026-10-26T10:43:41.960Z (head 98597030): an inclusive range of 100 blocks is answered,
+ *   101 blocks is refused (-32602, "maximum of 100 blocks"). A payee filter does not raise that cap.
+ * Only native USDC is pinned. Bridged USDC.e (0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664)
+ * is not in the table, so an accept that names it is never signed. EURC
+ * (0xC891EB4cbdEFf6e073e859e987815Ed1505c2ACD) is not in the table either.
+ * An accept whose extra.name is "GatewayWalletBatched" is a Circle Gateway domain and is refused
+ * (hasCanonicalUsdcDomain). The lane SQL also drops that name so it does not fill the floor.
+ * The payer is the same EOA as Base and is funded with Avalanche USDC separately
+ * (payer-funds.ts reads it per chain). The buyer needs no AVAX: the facilitator
+ * submits the transfer. Duplicated in src/lib/chain/avalanche.ts on purpose (same
+ * reason as BASE_USDC).
+ */
+export const AVALANCHE_CAIP2 = "eip155:43114";
+export const AVALANCHE_USDC = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E";
+export const AVALANCHE_USDC_EIP712_NAME = "USD Coin";
+export const AVALANCHE_USDC_EIP712_VERSION = "2";
+/** What the token itself returns from DOMAIN_SEPARATOR() (eth_call, 2026-10-26T10:42:23.389Z). A measurement, not an input to signing. */
+export const AVALANCHE_USDC_DOMAIN_SEPARATOR = "0xbbea200329a938bc3438984a49cb0732e66d66d7bd59c127abacc1710e77f7b3";
+/** Bridged USDC.e. Not pinned. tests/x402-avalanche-lane.test.ts refuses an accept that names it. */
+export const AVALANCHE_USDC_E = "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664";
+
+/**
  * 18-digit USD1 base units → ledger units (6 digits), or null when the amount
  * cannot be booked exactly (not positive, or not divisible by {@link BNB_LEDGER_SCALE}).
  * Null is unbuildable: the caller refuses before a reservation. No rounding.
@@ -265,8 +304,21 @@ export const ARBITRUM_CHAIN: EvmPayChain = {
   flagEnv: "OBSERVATORY_ARBITRUM_L1_ENABLED",
 };
 
+export const AVALANCHE_CHAIN: EvmPayChain = {
+  caip2: AVALANCHE_CAIP2,
+  chainId: 43114,
+  usdc: AVALANCHE_USDC,
+  eip712Name: AVALANCHE_USDC_EIP712_NAME,
+  eip712Version: AVALANCHE_USDC_EIP712_VERSION,
+  label: chainLabel(AVALANCHE_CAIP2),
+  // No v1 slug in the money path. A v1 accept that names the chain "avalanche" is not
+  // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
+  v1Slug: null,
+  flagEnv: "OBSERVATORY_AVALANCHE_L1_ENABLED",
+};
+
 /** The whole pinned table. Order is irrelevant; nothing outside it can be signed on. */
-export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN, BNB_CHAIN, ARBITRUM_CHAIN];
+export const EVM_PAY_CHAINS: readonly EvmPayChain[] = [BASE_CHAIN, ARC_CHAIN, CELO_CHAIN, BNB_CHAIN, ARBITRUM_CHAIN, AVALANCHE_CHAIN];
 
 export function isArcL1Enabled(): boolean {
   return process.env.OBSERVATORY_ARC_L1_ENABLED === "true";
@@ -285,6 +337,11 @@ export function isBnbL1Enabled(): boolean {
 /** Arbitrum lane switch (2026-10-22). Off unless the env is exactly "true" — same discipline as Celo. */
 export function isArbitrumL1Enabled(): boolean {
   return process.env.OBSERVATORY_ARBITRUM_L1_ENABLED === "true";
+}
+
+/** Avalanche lane switch (2026-10-26). Off unless the env is exactly "true" — same discipline as Arbitrum. */
+export function isAvalancheL1Enabled(): boolean {
+  return process.env.OBSERVATORY_AVALANCHE_L1_ENABLED === "true";
 }
 
 /** Base is always on; a flagged chain only when its env is exactly "true" (same discipline as OBSERVATORY_L1_ENABLED). */
@@ -901,7 +958,8 @@ function isSignableEvmAccept(accept: ChallengeAccept): boolean {
  * seller: chainId and verifyingContract were always pinned, and since
  * 2026-08-22 name/version are too (measured on-chain, not assumed — Base
  * "USD Coin"/"2", Arc "USDC"/"2", Celo "USDC"/"2",
- * BNB USD1 "World Liberty Financial USD"/"1", Arbitrum "USD Coin"/"2").
+ * BNB USD1 "World Liberty Financial USD"/"1", Arbitrum "USD Coin"/"2",
+ * Avalanche "USD Coin"/"2").
  *
  * selectAccept already refuses any accept whose chain is unknown or disabled or
  * whose `extra` contradicts the pin, so the guards below are belt-and-braces for

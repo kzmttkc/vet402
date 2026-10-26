@@ -9,7 +9,7 @@ import {
   celoLaneUsesHostSpread,
 } from "@/lib/observatory/l1-runner";
 
-const OTHER_LANES = ["solana", "arc", "arc_gateway", "tempo", "xrpl", "bnb", "arbitrum", "stellar", "base"] as const;
+const OTHER_LANES = ["solana", "arc", "arc_gateway", "tempo", "xrpl", "bnb", "arbitrum", "avalanche", "stellar", "base"] as const;
 
 test("Celo のホスト幅は celo レーンだけに掛かり、試行 status は PAID_ATTEMPT_STATUSES と同じ", () => {
   assert.equal(CELO_LANE_MAX_LISTINGS_PER_HOST, 2);

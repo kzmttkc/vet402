@@ -22,6 +22,7 @@ const NAMED = [
   { chain: "stellar:pubnet", label: "Stellar", network: "stellar:pubnet" },
   { chain: "BSC", label: "BNB Chain", network: "eip155:56" },
   { chain: "Arbitrum", label: "Arbitrum One", network: "eip155:42161" },
+  { chain: "Avalanche", label: "Avalanche C-Chain", network: "eip155:43114" },
 ] as const;
 
 test("publicChainLabel is the one public name and chainLabel stays the join key", () => {
@@ -34,6 +35,11 @@ test("publicChainLabel is the one public name and chainLabel stays the join key"
   assert.equal(publicChainLabel("stellar:pubnet"), "Stellar");
   assert.equal(publicChainLabel("eip155:42161"), "Arbitrum One");
   assert.equal(publicChainLabel("Arbitrum"), "Arbitrum One");
+  assert.equal(chainLabel("eip155:43114"), "Avalanche");
+  assert.equal(publicChainLabel("eip155:43114"), "Avalanche C-Chain");
+  assert.equal(publicChainLabel("Avalanche"), "Avalanche C-Chain");
+  assert.equal(publicChainLabel("avalanche"), "Avalanche C-Chain");
+  assert.equal(publicChainLabel("eip155:43113"), "Avalanche Fuji");
   assert.equal(publicChainLabel("eip155:8453"), "Base");
   assert.equal(publicChainLabel("base"), "Base");
   assert.equal(publicChainLabel("eip155:999999"), "eip155:999999", "an unknown id is not renamed");

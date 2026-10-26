@@ -13,6 +13,7 @@ import {
   ARC_DAILY_CAP_USD_DEFAULT,
   ARC_GATEWAY_DAILY_CAP_USD_DEFAULT,
   ARBITRUM_DAILY_CAP_USD_DEFAULT,
+  AVALANCHE_DAILY_CAP_USD_DEFAULT,
   BNB_DAILY_CAP_USD_DEFAULT,
   CELO_DAILY_CAP_USD_DEFAULT,
   CHAIN_DAILY_CAPS,
@@ -195,6 +196,43 @@ test("Arc Gateway の既定は $2。0 は Gateway を止める。壊れた値は
     withEnv("L1_ARC_DAILY_CAP_USD", undefined, () => {
       assert.equal(chainDailyCapUnits("arc_gateway"), 0n);
       assert.equal(chainDailyCapUnits("arc"), 2_000_000n);
+    });
+  });
+});
+
+test("Avalanche の別枠は eip155:43114 だけ。既定は $2。Fuji と他レーンの既定は動かない", () => {
+  assert.equal(cappedChainFor("eip155:43114"), "avalanche");
+  assert.equal(cappedChainFor("eip155:43113"), null, "Fuji");
+  assert.equal(cappedChainFor("eip155:431140"), null);
+  assert.equal(cappedChainFor("avalanche"), null);
+  assert.equal(CHAIN_DAILY_CAPS.avalanche.env, "L1_AVALANCHE_DAILY_CAP_USD");
+  assert.equal(CHAIN_DAILY_CAPS.avalanche.networkLike, "eip155:43114");
+  assert.ok(!/[%_]/.test(CHAIN_DAILY_CAPS.avalanche.networkLike));
+  assert.equal(AVALANCHE_DAILY_CAP_USD_DEFAULT, 2);
+  assert.equal(AVALANCHE_DAILY_CAP_USD_DEFAULT, CELO_DAILY_CAP_USD_DEFAULT);
+  assert.equal(AVALANCHE_DAILY_CAP_USD_DEFAULT, ARBITRUM_DAILY_CAP_USD_DEFAULT);
+  assert.deepEqual(Object.keys(CHAIN_DAILY_CAPS), [
+    "solana", "arc", "tempo", "xrpl", "celo", "stellar", "bnb", "arbitrum", "arc_gateway", "avalanche",
+  ]);
+  assert.equal(CHAIN_DAILY_CAPS.solana.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.arc.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.tempo.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.xrpl.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.celo.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.stellar.defaultUsd, 0.5);
+  assert.equal(CHAIN_DAILY_CAPS.bnb.defaultUsd, 0.5);
+  assert.equal(CHAIN_DAILY_CAPS.arbitrum.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.arc_gateway.defaultUsd, 2);
+  assert.equal(CHAIN_DAILY_CAPS.avalanche.defaultUsd, 2);
+  withEnv("L1_AVALANCHE_DAILY_CAP_USD", undefined, () => assert.equal(chainDailyCapUnits("avalanche"), 2_000_000n));
+  withEnv("L1_AVALANCHE_DAILY_CAP_USD", "0", () => assert.equal(chainDailyCapUnits("avalanche"), 0n));
+  withEnv("L1_AVALANCHE_DAILY_CAP_USD", "0", () => {
+    withEnv("L1_ARBITRUM_DAILY_CAP_USD", undefined, () => {
+      withEnv("L1_CELO_DAILY_CAP_USD", undefined, () => {
+        assert.equal(chainDailyCapUnits("avalanche"), 0n);
+        assert.equal(chainDailyCapUnits("arbitrum"), 2_000_000n);
+        assert.equal(chainDailyCapUnits("celo"), 2_000_000n);
+      });
     });
   });
 });

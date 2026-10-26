@@ -50,6 +50,8 @@ import {
   ARC_CHAIN,
   ARBITRUM_CAIP2,
   ARBITRUM_CHAIN,
+  AVALANCHE_CAIP2,
+  AVALANCHE_CHAIN,
   BASE_CAIP2,
   BASE_USDC,
   BNB_CAIP2,
@@ -64,6 +66,7 @@ import {
   evmChainFor,
   isArcL1Enabled,
   isArbitrumL1Enabled,
+  isAvalancheL1Enabled,
   isBnbL1Enabled,
   isCeloL1Enabled,
   parseChallenge,
@@ -322,6 +325,13 @@ type Candidate = {
    */
   arbitrumDeclaredPayTos: string[];
   /**
+   * Avalanche（2026-10-26）で同じもの: カタログの raw_accepts が宣言した eip155:43114 の accept のうち、
+   * 署名の関門と同じ述語（declaredPayTosFor(AVALANCHE_CHAIN, …)）を通ったものの payTo。ネイティブ USDC だけ。
+   * extra.name が GatewayWalletBatched の accept は通らない。レーンとして優先された Avalanche の accept の
+   * payTo は、この集合と照合する。先頭（Base）の pay_to とは比べない。
+   */
+  avalancheDeclaredPayTos: string[];
+  /**
    * カタログの Arc accept のうち、GatewayWalletBatched（ピンしたウォレット）の payTo。
    * Gateway レーンはこの集合と照合する。ネイティブ USDC の宣言は arcDeclaredPayTos のまま。
    */
@@ -366,6 +376,8 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
   bnb: BNB_CAIP2,
   // Arbitrum（2026-10-22）: 同じ EVM の署名経路・同じ EOA。ネイティブ USDC の eip3009 だけ。
   arbitrum: ARBITRUM_CAIP2,
+  // Avalanche（2026-10-26）: 同じ EVM の署名経路・同じ EOA。ネイティブ USDC の eip3009 だけ。
+  avalanche: AVALANCHE_CAIP2,
   // Stellar（2026-10-18・段4）: 主ネットワークが pubnet の行は isStellar が先に selectStellarAccept へ入る。
   // preferNetworks はその選択より前には届かない。2 番目以降（Base 先頭）は XRPL と同じく
   // stellarLanePreferred のときだけ、壁の stellar:pubnet を selectStellarAccept で選ぶ。
@@ -397,7 +409,10 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // （下の LANE_SECONDARY_ACCEPT_FILTER）。permit2・USDT だけの行は枠に載せない。
 // Arbitrum（2026-10-22）: 実測で eip155:42161 の accept は CDP Bazaar 28,000 件中 5,890 件・331 ホスト（2026-10-21）。
 // Celo と同じく secondary を枠に入れる。署名するのはネイティブ USDC だけ。USDC.e だけの行は selectAccept が断る。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true, arc_gateway: false };
+// Avalanche（2026-10-26）: 実測で eip155:43114 のネイティブ USDC（name "USD Coin"）は 902 件・23 ホスト。
+// 先頭が Avalanche の行は 0 件。全部 2 番目以降なので secondary を枠に入れる。
+// extra.name が GatewayWalletBatched の accept（1,670 件・9 ホスト）は Circle Gateway の別経路なので外す。
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true, avalanche: true, arc_gateway: false };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -414,6 +429,10 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
   // Arbitrum（2026-10-22 審査）: ネイティブ USDC で、eip3009（または方式の記載なし）だけ。USDC.e・permit2 だけの行を
   // 枠に載せても selectAccept が断って Base で買われるだけで、枠を埋める（BNB で直した型と同じ）。
   arbitrum: sql`AND lower(a->>'asset') = ${ARBITRUM_CHAIN.usdc.toLowerCase()} AND coalesce(a->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009'`,
+  // Avalanche（2026-10-26）: ネイティブ USDC で、eip3009（または方式の記載なし）だけ。USDC.e・EURC・permit2 だけの行は
+  // 枠に載せない。extra.name が GatewayWalletBatched の accept は Circle Gateway の別経路なので、同じ資産アドレスでも外す
+  // （載せると枠を埋め、署名の関門 hasCanonicalUsdcDomain が断って Base で買われるだけになる）。
+  avalanche: sql`AND lower(a->>'asset') = ${AVALANCHE_CHAIN.usdc.toLowerCase()} AND coalesce(a->'extra'->>'assetTransferMethod', 'eip3009') = 'eip3009' AND coalesce(a->'extra'->>'name','') <> 'GatewayWalletBatched'`,
   // Arc: GatewayWalletBatched はネイティブ枠に入れない（BNB と同じ型）。旗 off のとき
   // Gateway だけの行が no_eligible_accept で枠を埋め、旗 on のとき Base で買える行が
   // Arc の枠に入って「Arc の購入がまだ無い」のまま戻ってくるのを止める。
@@ -508,6 +527,82 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
              ranked.celo_ord_calls DESC NULLS LAST,
              ranked.celo_ord_last ASC NULLS FIRST,
              ranked.celo_ord_seen ASC NULLS LAST,
+             ranked.id ASC
+    LIMIT ${limit}
+  `;
+}
+
+/**
+ * Avalanche レーンで、1 回の取得が同じホストから取る出品の上限。
+ * Celo と同じ理由（JS の LANE_FLOOR_MAX_PER_HOST は LIMIT の後なので、出品の多い 1 ホストが窓を埋める）。
+ * Avalanche だけ、LIMIT の前に同じ上限を掛ける。Celo の SQL 文は変えない。
+ */
+export const AVALANCHE_LANE_MAX_LISTINGS_PER_HOST = 2;
+
+/** Avalanche レーンの取得だけ、ホストの幅を広げる包みを掛ける。census と他レーンは掛けない。 */
+export function avalancheLaneUsesHostSpread(lane: { chain: string } | undefined, census: boolean): boolean {
+  return lane?.chain === "avalanche" && !census;
+}
+
+/**
+ * Avalanche レーンの候補を、ホストあたり AVALANCHE_LANE_MAX_LISTINGS_PER_HOST 件に絞ってから
+ * ホストの Avalanche 試行数の少ない順、次に直近 7 日の未入金試行の少ない順に並べる。
+ * 試行（paid）は network が eip155:43114 の CELO_HOST_ATTEMPT_STATUSES だけ。
+ * 未入金の数えはネットワークで絞らない（Celo と同じ。支払いの前に終わった試行はどの network でも後ろへ回す）。
+ * まだ試していないホストが先。同点は内側の並びのまま。
+ */
+function avalancheDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
+  const statuses = sql.join(
+    CELO_HOST_ATTEMPT_STATUSES.map((st) => sql`${st}`),
+    sql`, `,
+  );
+  return sql`
+    SELECT ranked.* FROM (
+      SELECT c.*, row_number() OVER (
+        PARTITION BY c.avax_host
+        ORDER BY c.avax_ord_tier DESC,
+                 c.avax_ord_unbought DESC,
+                 c.avax_ord_priority DESC,
+                 c.avax_ord_payers DESC NULLS LAST,
+                 c.avax_ord_calls DESC NULLS LAST,
+                 c.avax_ord_last ASC NULLS FIRST,
+                 c.avax_ord_seen ASC NULLS LAST,
+                 c.id ASC
+      ) AS avax_host_rn
+      FROM (
+        SELECT base.*,
+               ${censusHostSql(sql`base.resource_key`)} AS avax_host,
+               coalesce(tries.n, 0)::int AS avax_host_attempts,
+               coalesce(unpaid.n, 0)::int AS avax_host_unpaid_7d
+        FROM (${inner}) base
+        LEFT JOIN (
+          SELECT ${censusHostSql(sql`he.resource_key`)} AS host, count(*)::int AS n
+          FROM x402_l1_purchases att
+          JOIN x402_endpoints he ON he.id = att.endpoint_id
+          WHERE att.network = ${AVALANCHE_CAIP2}
+            AND att.status IN (${statuses})
+          GROUP BY 1
+        ) tries ON tries.host = ${censusHostSql(sql`base.resource_key`)}
+        LEFT JOIN (
+          SELECT ${censusHostSql(sql`ue.resource_key`)} AS host, count(*)::int AS n
+          FROM x402_l1_purchases un
+          JOIN x402_endpoints ue ON ue.id = un.endpoint_id
+          WHERE un.attempted_at >= now() - interval '7 days'
+            AND un.status NOT IN (${statuses})
+          GROUP BY 1
+        ) unpaid ON unpaid.host = ${censusHostSql(sql`base.resource_key`)}
+      ) c
+    ) ranked
+    WHERE ranked.avax_host_rn <= ${AVALANCHE_LANE_MAX_LISTINGS_PER_HOST}
+    ORDER BY ranked.avax_host_attempts ASC,
+             ranked.avax_host_unpaid_7d ASC,
+             ranked.avax_ord_tier DESC,
+             ranked.avax_ord_unbought DESC,
+             ranked.avax_ord_priority DESC,
+             ranked.avax_ord_payers DESC NULLS LAST,
+             ranked.avax_ord_calls DESC NULLS LAST,
+             ranked.avax_ord_last ASC NULLS FIRST,
+             ranked.avax_ord_seen ASC NULLS LAST,
              ranked.id ASC
     LIMIT ${limit}
   `;
@@ -1477,6 +1572,9 @@ export async function runL1Batch(
     // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + ARBITRUM_RPC_URL（BNB と同じ。
     // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる。2026-10-22 審査）。
     { chain: "arbitrum", ready: isArbitrumL1Enabled() && !!process.env.ARBITRUM_RPC_URL?.trim() },
+    // Avalanche（2026-10-26）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + AVALANCHE_RPC_URL（Arbitrum と同じ。
+    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる）。
+    { chain: "avalanche", ready: isAvalancheL1Enabled() && !!process.env.AVALANCHE_RPC_URL?.trim() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
   ];
@@ -1585,8 +1683,9 @@ export async function runL1Batch(
     extraWhere: SQL = gatewayPrimaryExclusionSql(),
     exclusions: SQL[] = laneExclusions,
   ) => {
-    // Celo だけ、ORDER BY / LIMIT を外してホスト幅の包みに渡す。他レーンの並びの文は下のまま。
+    // Celo と Avalanche だけ、ORDER BY / LIMIT を外してホスト幅の包みに渡す。他レーンの並びの文は下のまま。
     const celoLane = celoLaneUsesHostSpread(lane, census !== undefined);
+    const avalancheLane = avalancheLaneUsesHostSpread(lane, census !== undefined);
     const query = sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
@@ -1626,6 +1725,10 @@ export async function runL1Batch(
            (SELECT coalesce(jsonb_agg(aa), '[]'::jsonb)
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) aa
               WHERE aa->>'network' = ${ARBITRUM_CAIP2}) AS arbitrum_declared_accepts,
+           -- Avalanche の lane accept（2026-10-26）: Arbitrum と同じ取り方。どの payTo を宣言と数えるかは declaredPayTosFor。
+           (SELECT coalesce(jsonb_agg(ava), '[]'::jsonb)
+              FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) ava
+              WHERE ava->>'network' = ${AVALANCHE_CAIP2}) AS avalanche_declared_accepts,
            -- Stellar の secondary accept（2026-10-18・段4）: カタログが宣言した stellar:pubnet の USDC accept の payTo。
            -- asset は枠の LANE_SECONDARY_ACCEPT_FILTER と同じ完全一致。照合の述語は selectStellarAccept。
            (SELECT coalesce(array_agg(DISTINCT sa->>'payTo'), '{}'::text[])
@@ -1653,7 +1756,16 @@ export async function runL1Batch(
            e.quality_calls_30d AS celo_ord_calls,
            (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS celo_ord_last,
            e.first_seen_at AS celo_ord_seen`
-               : sql``
+               : avalancheLane
+                 ? sql`, e.resource_key,
+           (${l1TierWhere(daily)}) AS avax_ord_tier,
+           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS avax_ord_unbought,
+           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS avax_ord_priority,
+           e.quality_payers_30d AS avax_ord_payers,
+           e.quality_calls_30d AS avax_ord_calls,
+           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS avax_ord_last,
+           e.first_seen_at AS avax_ord_seen`
+                 : sql``
            }
     FROM x402_endpoints e
     JOIN LATERAL (
@@ -1696,7 +1808,7 @@ export async function runL1Batch(
       ${sql.join(exclusions, sql` `)}
       ${
         // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行（従来どおり・
-        // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc・XRPL・Celo・Stellar・BNB）だけは raw_accepts のいずれかの
+        // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc・XRPL・Celo・Stellar・BNB・Arbitrum・Avalanche）だけは raw_accepts のいずれかの
         // accept が一致する行（exa.ai: Base 先頭・Arc 2 番目）も入れる。この secondary の枝にだけ
         // 「そのチェーンで settled / settle_claimed の行がまだ無い・非決済が 1 度も出ていない」を
         // 掛ける（レビュー W1・C4: Solana/Tempo/XRPL の枠の意味は従来のまま）。
@@ -1821,7 +1933,7 @@ export async function runL1Batch(
     -- 8.1%。C2 の次は「一度も買っていない in-cap endpoint」を優先し、証拠の裾野を広げる
     -- （上限は全て据え置き: 1 件 $1・日次 $25・原子的予約・cooldown）。
     ${
-      census || celoLane
+      census || celoLane || avalancheLane
         ? sql``
         : sql`ORDER BY (${l1TierWhere(daily)}) DESC,
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
@@ -1837,6 +1949,7 @@ export async function runL1Batch(
     LIMIT ${lane?.limit ?? limit}`
     }
   `;
+    if (avalancheLane && lane) return avalancheDiversifiedCandidatesSql(query, lane.limit);
     return celoLane && lane ? celoDiversifiedCandidatesSql(query, lane.limit) : query;
   };
   /**
@@ -2001,6 +2114,9 @@ export async function runL1Batch(
   // Arbitrum（2026-10-22）: Celo の celoLaneUnavailable と同じ型。未入金のあと、以後の arbitrum の優先を閉じ、
   // Base 先頭のその候補は優先なしで 1 回だけ買い直す。主ネットワークが eip155:42161 の行はやり直さない。
   let arbitrumLaneUnavailable = false;
+  // Avalanche（2026-10-26）: Arbitrum の arbitrumLaneUnavailable と同じ型。未入金のあと、以後の avalanche の優先を閉じ、
+  // Base 先頭のその候補は優先なしで 1 回だけ買い直す。主ネットワークが eip155:43114 の行はやり直さない。
+  let avalancheLaneUnavailable = false;
   // Circle Gateway（2026-10-25）: 残高が足りない／読めないと分かったら、そのバッチの Gateway 優先を閉じる。
   // Gateway しか受けない出品はやり直さない（selectAccept が別の accept を見つけるときだけ 1 回買い直す）。
   let arcGatewayLaneUnavailable = false;
@@ -2120,6 +2236,7 @@ export async function runL1Batch(
         !(candidate.laneChain === "stellar" && stellarLaneUnavailable) &&
         !(candidate.laneChain === "bnb" && bnbLaneUnavailable) &&
         !(candidate.laneChain === "arbitrum" && arbitrumLaneUnavailable) &&
+        !(candidate.laneChain === "avalanche" && avalancheLaneUnavailable) &&
         !candidate.settledNetworks.includes(laneNetwork) &&
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
@@ -2147,6 +2264,13 @@ export async function runL1Batch(
       if (outcome.kind === "payer_unfunded" && outcome.payerChain === "arbitrum") {
         arbitrumLaneUnavailable = true;
         if (preferNetworks.includes(ARBITRUM_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
+      }
+      // Avalanche の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Avalanche レーンの優先を閉じる。
+      // いまの候補が「Avalanche を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す。Avalanche が主ネットワークの
+      // 候補はやり直さない。残高の読み取りはバッチ内でキャッシュ済みなので RPC は増えない。
+      if (outcome.kind === "payer_unfunded" && outcome.payerChain === "avalanche") {
+        avalancheLaneUnavailable = true;
+        if (preferNetworks.includes(AVALANCHE_CAIP2)) outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
       }
       // Stellar の未入金は、優先を閉じてから Base 先頭の候補だけ 1 回買い直す。
       // 主ネットワークが pubnet の行は stellarLanePreferred が偽なので買い直さない。
@@ -2263,6 +2387,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     celoDeclaredPayTos: declaredPayTosFor(CELO_CHAIN, r.celo_declared_accepts),
     bnbDeclaredPayTos: declaredPayTosFor(BNB_CHAIN, r.bnb_declared_accepts),
     arbitrumDeclaredPayTos: declaredPayTosFor(ARBITRUM_CHAIN, r.arbitrum_declared_accepts),
+    avalancheDeclaredPayTos: declaredPayTosFor(AVALANCHE_CHAIN, r.avalanche_declared_accepts),
     stellarDeclaredPayTos: parseTextArray(r.stellar_declared_pay_tos),
     gatewayDeclaredPayTos: gatewayDeclaredPayTosFor(r.arc_declared_accepts),
     laneChain: null,
@@ -2919,7 +3044,7 @@ async function purchaseOne(input: {
           preferNetworks,
           // 優先された別チェーン（Arc・Celo）の accept の payTo は、カタログがそのチェーンについて宣言した集合と照合する
           // （2026-09-19）。優先していない accept（Base）の照合先は従来どおり candidate.payTo。
-          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos },
+          declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos, [AVALANCHE_CAIP2]: candidate.avalancheDeclaredPayTos },
         });
   if (gatewayPick?.accept) isArcGateway = true;
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
@@ -2990,7 +3115,9 @@ async function purchaseOne(input: {
           ? BNB_CHAIN.usdc
           : accept.network === ARBITRUM_CAIP2
             ? ARBITRUM_CHAIN.usdc
-            : accept.asset;
+            : accept.network === AVALANCHE_CAIP2
+              ? AVALANCHE_CHAIN.usdc
+              : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
@@ -3110,7 +3237,7 @@ async function purchaseOne(input: {
   // Celo（2026-10-10）も同じ: 同じ EOA だが Celo の USDC は別。ここで "celo" に分けないと、Celo の accept に署名する前に
   // **Base の残高**を見てしまう（Celo が空でも署名し、売り手の 402 を settle_failed として記録する——Issue #29 と同じ事故）。
   const evmPayChainId = evmChainFor(accept.network)?.chainId;
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : "base";
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : evmPayChainId === 43114 ? "avalanche" : "base";
   const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : account.address;
   if (isArcGateway) {
     let available: bigint | null = null;
@@ -3125,7 +3252,7 @@ async function purchaseOne(input: {
         declaredPayTo: candidate.payTo,
         declaredNetwork: candidate.network,
         preferNetworks: [],
-        declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos },
+        declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos, [AVALANCHE_CAIP2]: candidate.avalancheDeclaredPayTos },
       });
       onPayerUnfunded("arc_gateway", {
         reason: available === null ? "unreadable" : "insufficient",
