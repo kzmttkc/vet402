@@ -234,6 +234,13 @@ export type L1BatchSummary = {
   setupMs: number | null;
   /** このバッチで試行（kind === "attempted"）した件数を、署名した accept の network（CAIP-2）ごとに（2026-10-27）。 */
   attemptsByNetwork: Record<string, number>;
+  /**
+   * 主候補の SQL（targetsSql の主の取得）のミリ秒（2026-10-27）。ループに入る前に返った実行は null。
+   * setupMs の内訳: 準備のどの問い合わせが重いかを本番の summary から切り分ける。
+   */
+  primaryFetchMs: number | null;
+  /** レーン枠の取得のミリ秒をレーンごとに（2026-10-27・並べて走らせる）。問い合わせなかったレーンは載せない。 */
+  laneFetchMs: Record<string, number>;
 };
 
 /**
@@ -254,9 +261,19 @@ export type L1BatchSummary = {
 // sellerCapped（2026-09-29 監査 5 周目）も出さない: 売り手ごとの上限で見送った件数は運用の内訳で、その 1 件の計測の事実ではない。
 // laneSkippedForTime・setupMs・attemptsByNetwork（2026-10-27）も出さない: 持ち時間の配分と準備の所要時間は運用の計器で、
 // その 1 件の計測の事実ではない（公開口は 1 件指定なのでレーン枠も census も使わない）。
+// primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
-  "haltReason" | "censusCandidates" | "censusRemaining" | "retestCandidates" | "sellerCapped" | "laneSkippedForTime" | "setupMs" | "attemptsByNetwork"
+  | "haltReason"
+  | "censusCandidates"
+  | "censusRemaining"
+  | "retestCandidates"
+  | "sellerCapped"
+  | "laneSkippedForTime"
+  | "setupMs"
+  | "attemptsByNetwork"
+  | "primaryFetchMs"
+  | "laneFetchMs"
 >;
 
 export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
@@ -457,6 +474,32 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
   // Arc の枠に入って「Arc の購入がまだ無い」のまま戻ってくるのを止める。
   arc: sql`AND coalesce(a->'extra'->>'name','') <> 'GatewayWalletBatched'`,
 };
+
+/**
+ * レーン枠の取得に足す前置きの絞り込み（2026-10-27）。
+ *
+ * 本番の読み取り（EXPLAIN ANALYZE・2026-10-27）: secondary の枝を持つレーン（Arc・XRPL・Celo・BNB・Arbitrum・
+ * Avalanche・Stellar）と Gateway の取得は、active の約 7.7 万行すべてで raw_accepts を jsonb_array_elements に
+ * 展開してから捨てていた（1 本 0.5〜1.2 秒。secondary の無い Solana・Tempo は同じ走査で 0.07 秒）。
+ *
+ * ここで足すのは、下のレーンの条件（主ネットワークの一致、または raw_accepts のいずれかの要素の network の一致）から
+ * そのまま導ける**弱い**条件だけ: 「主ネットワークが一致する、または raw_accepts がその network の要素を含む（@>）」。
+ * レーンの条件は 1 文字も変えずに残すので、選ぶ行と並びは変わらない（tests/l1-lane-prefilter.pg.test.ts）。
+ * 包含（@>）は展開せずに比べるので、ほとんどの行はここで安く落ちる。
+ *
+ * networkLike にワイルドカード（% _ \\）がある取得（Solana の `solana:%`）は、LIKE と @> の完全一致が同じ意味に
+ * ならないので足さない（secondary の枝も持たない）。Gateway（`%`）だけは出品の条件の側から導く（下）。
+ */
+export function laneNetworkPrefilterSql(lane: { chain: CappedChain; networkLike: string }): SQL {
+  // Gateway の取得（networkLike は "%"）: 出品の条件は gatewayCandidateInclusionSql の existsGateway（scheme exact・
+  // network eip155:5042・extra.name GatewayWalletBatched ほか）。そのうち文字列の完全一致の 3 つだけを包含で前に置く
+  // （version は数でも '1' になるので入れない）。existsGateway が真なら必ず真。
+  if (lane.chain === "arc_gateway") {
+    return sql`AND e.raw_accepts @> ${JSON.stringify([{ scheme: "exact", network: ARC_CAIP2, extra: { name: "GatewayWalletBatched" } }])}::jsonb`;
+  }
+  if (!LANE_SECONDARY_ACCEPTS[lane.chain] || /[%_\\]/.test(lane.networkLike)) return sql``;
+  return sql`AND (e.network LIKE ${lane.networkLike} OR e.raw_accepts @> ${JSON.stringify([{ network: lane.networkLike }])}::jsonb)`;
+}
 
 /**
  * Celo レーンで、1 回の取得が同じホストから取る出品の上限。
@@ -1414,10 +1457,16 @@ export type L1TargetsSqlContext = {
   laneExclusions: SQL[];
   firstPurchasesSelectable: boolean;
   censusFirstSelectable: boolean;
+  /**
+   * Test seam（2026-10-27）: false でレーン枠の前置きの絞り込み（laneNetworkPrefilterSql）を外す。DB 試験が
+   * 「足しても選ぶ行と並びが同じ」を、足す前の文と並べて確かめるためだけに使う。本番の呼び手は渡さない（既定 true）。
+   */
+  lanePrefilter?: boolean;
 };
 
 export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
   const { limit, onlyEndpointId, laneExclusions, firstPurchasesSelectable, censusFirstSelectable } = ctx;
+  const lanePrefilter = ctx.lanePrefilter !== false;
   const selfExclusion = sql`AND ${operatorExclusionPredicate("e")}`;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
@@ -1554,6 +1603,7 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
       AND ${notPathTemplateSql()}
       ${onlyEndpointId ? sql`AND e.id = ${onlyEndpointId}::uuid` : sql``}
       ${sql.join(exclusions, sql` `)}
+      ${lane && lanePrefilter ? laneNetworkPrefilterSql(lane) : sql``}
       ${
         // レーン枠（2026-09-17・laneFloorCandidates）。主ネットワークが一致する行（従来どおり・
         // 全レーン）に加え、LANE_SECONDARY_ACCEPTS のレーン（Arc・XRPL・Celo・Stellar・BNB・Arbitrum・Avalanche）だけは raw_accepts のいずれかの
@@ -1804,6 +1854,8 @@ export async function runL1Batch(
     laneSkippedForTime: 0,
     setupMs: null,
     attemptsByNetwork: {},
+    primaryFetchMs: null,
+    laneFetchMs: {},
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -2021,10 +2073,12 @@ export async function runL1Batch(
     firstPurchasesSelectable,
     censusFirstSelectable,
   });
+  const primaryStartedAt = now();
   const rawTargets = await withDailyFallback(
     async () => await db.execute(targetsSql(true, undefined, undefined, undefined, primaryExtra)),
     async () => await db.execute(targetsSql(false, undefined, undefined, undefined, primaryExtra)),
   );
+  summary.primaryFetchMs = now() - primaryStartedAt;
   const targetList = (Array.isArray(rawTargets)
     ? rawTargets
     : (rawTargets as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
@@ -2053,6 +2107,7 @@ export async function runL1Batch(
   //     （onlyEndpointId）では枠を使わない。
   const laneHead = await laneFloorCandidates({
     lanes,
+    now,
     floor: onlyEndpointId ? 0 : laneFloorPerRun(),
     fetchLane: async (chain, laneLimit) => {
       // Gateway は共有の枠 SQL を使わない。networkLike を "%" にするのは、初回購入の EXISTS を
@@ -2075,6 +2130,7 @@ export async function runL1Batch(
   });
   summary.laneFloor = laneHead.counts;
   summary.laneFloorHostCapped = laneHead.hostCapped;
+  summary.laneFetchMs = laneHead.fetchMs;
   // 3.6 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）。L1 の購入行がまだ無い Base のホストを、
   //     そのホストで払う額（price_amount）がいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠と優先ホストの
   //     **後ろ**・主候補の残りの**前**に置く
@@ -2482,6 +2538,8 @@ function parseTextArray(v: unknown): string[] {
  *    laneExclusions が同じ WHERE で外すので 0 行になる（行は書かない・従来どおり除外）。
  *  - 1 レーンの問い合わせが失敗しても、バッチは止めない（枠は並びの補助であって金の関門では
  *    ない）。ログに残して 0 件として続ける。
+ *  - 問い合わせは全レーンを並べて走らせ（2026-10-27）、組み立て（重複排除・ホスト上限・件数）は従来どおりレーンの順に行う。
+ *    返す並び（head）は、各レーンの 1 件目を順に → 2 件目を順に → …（interleaveLanes・2026-10-27）。
  *  - 購入の可否はここでは決めない。返した候補は主候補と同じく purchaseOne を通り、デッドライン・
  *    別枠・残高・原子的予約の関門をそのまま受ける。
  *  - 同じホストはレーンの枠の中で最大 `maxPerHost` 件（既定 LANE_FLOOR_MAX_PER_HOST = 2・2026-09-18）。
@@ -2504,26 +2562,52 @@ export async function laneFloorCandidates(input: {
   fetchLane: (chain: CappedChain, limit: number) => Promise<unknown>;
   /** 同じホストの上限（テスト用に差し替え可）。 */
   maxPerHost?: number;
-}): Promise<{ head: Candidate[]; counts: Partial<Record<CappedChain, number>>; hostCapped: Partial<Record<CappedChain, number>> }> {
+  /** レーンごとの取得時間（fetchMs）を測る時計。既定は Date.now（runL1Batch は自分の now を渡す）。 */
+  now?: () => number;
+}): Promise<{
+  head: Candidate[];
+  counts: Partial<Record<CappedChain, number>>;
+  hostCapped: Partial<Record<CappedChain, number>>;
+  /** 問い合わせたレーンごとの取得のミリ秒（2026-10-27）。問い合わせなかったレーン（旗 off・枠 0）は載せない。 */
+  fetchMs: Partial<Record<CappedChain, number>>;
+}> {
   const maxPerHost = input.maxPerHost ?? LANE_FLOOR_MAX_PER_HOST;
+  const now = input.now ?? Date.now;
   const hostCapped: Partial<Record<CappedChain, number>> = {};
-  const head: Candidate[] = [];
   const counts: Partial<Record<CappedChain, number>> = {};
+  const fetchMs: Partial<Record<CappedChain, number>> = {};
   const seen = new Set<string>();
-  for (const lane of input.lanes) {
+  // 取得だけを並べて走らせる（2026-10-27）。本番の実測（読み取り）では、準備の中でレーンの取得を 1 本ずつ順に
+  // 待っていた（レーン 10 本・1 本 0.1〜1.2 秒）。組み立て（seen・ホスト上限・counts）は全部そろってから、
+  // 今までと同じレーンの順に行うので、どの候補を選ぶかは変わらない。
+  const fetched = await Promise.all(
+    input.lanes.map(async (lane): Promise<{ rows: Record<string, unknown>[] } | { error: unknown } | null> => {
+      if (!lane.ready || input.floor <= 0) return null;
+      const started = now();
+      try {
+        const raw = await input.fetchLane(lane.chain, Math.min(input.floor * LANE_FLOOR_OVERSAMPLE, LANE_FLOOR_FETCH_MAX));
+        return { rows: (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[] };
+      } catch (error) {
+        return { error };
+      } finally {
+        fetchMs[lane.chain] = now() - started;
+      }
+    }),
+  );
+  const perLane: Candidate[][] = [];
+  for (const [index, lane] of input.lanes.entries()) {
     counts[lane.chain] = 0;
     hostCapped[lane.chain] = 0;
-    if (!lane.ready || input.floor <= 0) continue;
-    let rows: Record<string, unknown>[] = [];
-    try {
-      const raw = await input.fetchLane(lane.chain, Math.min(input.floor * LANE_FLOOR_OVERSAMPLE, LANE_FLOOR_FETCH_MAX));
-      rows = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
-    } catch (error) {
-      if (!isMissingSchemaError(error)) logServerErrorSafe(`observatory.l1.lane_floor_${lane.chain}`, redactedError(error));
+    const got = fetched[index];
+    if (got === null) continue;
+    if ("error" in got) {
+      // 1 レーンの問い合わせが失敗しても、バッチは止めない。ログに残して 0 件として続ける（従来どおり）。
+      if (!isMissingSchemaError(got.error)) logServerErrorSafe(`observatory.l1.lane_floor_${lane.chain}`, redactedError(got.error));
       continue;
     }
+    const picked: Candidate[] = [];
     const perHost = new Map<string, number>();
-    for (const row of rows) {
+    for (const row of got.rows) {
       if ((counts[lane.chain] ?? 0) >= input.floor) break;
       const candidate = { ...rowToCandidate(row), laneChain: lane.chain };
       if (seen.has(candidate.id)) continue;
@@ -2535,11 +2619,26 @@ export async function laneFloorCandidates(input: {
       }
       perHost.set(host, used + 1);
       seen.add(candidate.id);
-      head.push(candidate);
+      picked.push(candidate);
       counts[lane.chain] = (counts[lane.chain] ?? 0) + 1;
     }
+    perLane.push(picked);
   }
-  return { head, counts, hostCapped };
+  return { head: interleaveLanes(perLane), counts, hostCapped, fetchMs };
+}
+
+/**
+ * レーン枠の並び（2026-10-27）: 各レーンの 1 件目をレーンの順に、次に各レーンの 2 件目を…と交互に並べる。
+ * 以前は「solana の 5 件 → arc の 5 件 → …」とレーンごとにまとめていたので、時間の上限（L1_LANE_TIME_SHARE）で
+ * 後ろが切られると、後ろのレーン（Avalanche・Stellar）は 1 件も試せなかった。レーンの中の並びは変えない。
+ */
+export function interleaveLanes<T>(perLane: readonly (readonly T[])[]): T[] {
+  const out: T[] = [];
+  const depth = perLane.reduce((m, list) => Math.max(m, list.length), 0);
+  for (let i = 0; i < depth; i++) {
+    for (const list of perLane) if (i < list.length) out.push(list[i]);
+  }
+  return out;
 }
 
 /**

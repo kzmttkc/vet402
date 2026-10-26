@@ -46,6 +46,8 @@ const HALTED: L1BatchSummary = {
   laneSkippedForTime: 4,
   setupMs: 61_234,
   attemptsByNetwork: { "eip155:8453": 2 },
+  primaryFetchMs: 7_732,
+  laneFetchMs: { solana: 1_320, avalanche: 1_568 },
 };
 
 test("publicL1Summary は haltReason を落とし、計測の数字はそのまま通す", () => {
@@ -72,6 +74,14 @@ test("publicL1Summary は持ち時間の計器（laneSkippedForTime・setupMs・
   assert.equal("laneSkippedForTime" in out, false);
   assert.equal("setupMs" in out, false);
   assert.equal("attemptsByNetwork" in out, false);
+});
+
+test("publicL1Summary は準備の内訳の計器（primaryFetchMs・laneFetchMs）を公開口へ出さない（2026-10-27）", () => {
+  const out = publicL1Summary(HALTED) as Record<string, unknown>;
+  assert.equal("primaryFetchMs" in out, false);
+  assert.equal("laneFetchMs" in out, false);
+  assert.equal(JSON.stringify(out).includes("7732"), false);
+  assert.equal(JSON.stringify(out).includes("avalanche"), false);
 });
 
 test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在しない", async () => {

@@ -56,7 +56,8 @@ test("a lane with a single host yields at most two candidates; the cap is per la
     },
   });
   assert.deepEqual(limits, [LANE_FLOOR_FETCH_MAX, LANE_FLOOR_FETCH_MAX]);
-  assert.deepEqual(head.map((c) => c.id), ["t0", "t1", "a0", "a1"]);
+  // 2026-10-27: レーン枠は交互に並べる（各レーンの 1 件目 → 各レーンの 2 件目）。レーンの中の並びは保つ。
+  assert.deepEqual(head.map((c) => c.id), ["t0", "a0", "t1", "a1"]);
   assert.deepEqual(counts, { tempo: 2, arc: 2, solana: 0 });
   assert.deepEqual(hostCapped, { tempo: 4, arc: 1, solana: 0 });
 });

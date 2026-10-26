@@ -198,6 +198,10 @@ if (!TEST_DB) {
       assert.equal(summary.laneSkippedForTime, 0);
       assert.equal(summary.attempted, 13);
       assert.equal(summary.setupMs, 0, "差し替えた時計が止まっていれば準備は 0 ms");
+      // 準備の内訳（2026-10-27）: 主候補の取得とレーンごとの取得。時計が止まっていれば 0。問い合わせたレーンだけ載る。
+      assert.equal(summary.primaryFetchMs, 0);
+      assert.equal(summary.laneFetchMs.solana, 0);
+      assert.ok(Object.values(summary.laneFetchMs).every((v) => v === 0));
       assert.deepEqual(summary.attemptsByNetwork, { [SOL_CAIP2]: 3, [BASE_CAIP2]: 10 });
       assert.deepEqual(await rowsByNetwork(), { [SOL_CAIP2]: 3, [BASE_CAIP2]: 10 });
     });
@@ -239,6 +243,7 @@ if (!TEST_DB) {
       assert.equal(summary.laneSkippedForTime, SOL_COUNT);
       assert.equal(summary.laneFloor.solana, SOL_COUNT, "レーン枠の候補は並びに入ったまま（時間で飛ばしただけ）");
       assert.equal(summary.setupMs, 106_000);
+      assert.equal(summary.primaryFetchMs, 0, "開始の後の時計は止まっている（主候補の取得の前後は同じ時刻）");
       assert.deepEqual(summary.attemptsByNetwork, { [BASE_CAIP2]: 10 });
       assert.deepEqual(await rowsByNetwork(), { [BASE_CAIP2]: 10 });
     });
