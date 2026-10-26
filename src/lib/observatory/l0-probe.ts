@@ -28,9 +28,6 @@ import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
 import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-payer";
 import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
-
-/** PATCH と PUT は宣言を保存するが要求は出さない。 */
-export const METHOD_NOT_MEASURED_REASON = "method_not_measured";
 import { MPP_DIRECTORY_SOURCE, TEMPO_MAINNET_CAIP2, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
 
 /**
@@ -288,21 +285,6 @@ export async function probeEndpoint(
       latencyMs: null,
       failReason: PATH_TEMPLATE_REASON,
       rawResponseMeta: { error: PATH_TEMPLATE_REASON, client: UA, method, ...(options.recheck ? { route: "recheck_same_egress" } : {}) },
-    };
-  }
-  if (method === "PATCH" || method === "PUT") {
-    return {
-      method,
-      verdict: "unverified",
-      dialect: null,
-      httpStatus: null,
-      has402Challenge: null,
-      acceptsValid: null,
-      priceConsistent: null,
-      metadataConsistent: null,
-      latencyMs: null,
-      failReason: METHOD_NOT_MEASURED_REASON,
-      rawResponseMeta: { error: METHOD_NOT_MEASURED_REASON, client: UA, method, ...(options.recheck ? { route: "recheck_same_egress" } : {}) },
     };
   }
 

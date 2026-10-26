@@ -129,7 +129,7 @@ test("Circle の実物は Gateway だけの出品を Arc に、Base の exact �
     metadata: { method: "PATCH" },
     accepts: [{ scheme: "exact", network: "eip155:8453", amount: "1", asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", payTo: "0x1111111111111111111111111111111111111111" }],
   });
-  assert.equal(patch.method, "PATCH");
+  assert.equal(patch.method, null, "PATCH は保存せず、GET で測る");
   const bazaar = parseCatalogItem({
     resource: "https://bazaar.example/v1/item",
     accepts: [

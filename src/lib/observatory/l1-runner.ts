@@ -1647,8 +1647,6 @@ export async function runL1Batch(
       -- （purchaseOne の isL1PurchasableListing と同じ条件）。平文 http の 402 は経路上で payTo を差し替えられる。
       AND e.pay_to IS NOT NULL AND e.pay_to <> ''
       AND lower(e.resource_url) LIKE 'https://%'
-      -- PATCH と PUT は宣言どおりに測らない（L0 も要求を出さない）。NULL は GET のまま。
-      AND coalesce(upper(e.method), 'GET') NOT IN ('PATCH', 'PUT')
       -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
       -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
       ${sellerCapExclusionSql()}
@@ -2537,10 +2535,6 @@ async function purchaseOne(input: {
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
   const method = (candidate.method ?? "GET").toUpperCase();
-  // PATCH と PUT は候補 SQL でも外している。署名の入口でも払わない。行は書かない。
-  if (method === "PATCH" || method === "PUT") {
-    return { kind: "skipped", settled: false, spent: 0n };
-  }
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
   // 旗 OFF では Stellar として扱わない。origin/main と同じく EVM の selectAccept へ落とす

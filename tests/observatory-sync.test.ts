@@ -512,6 +512,96 @@ if (!TEST_DB) {
       assert.equal(aliases.some((a) => a.resourceId === getId), true);
     });
 
+    await t.test("自分の取得が不完全な日は、完全な取得の後に入った鍵を delist しない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const kept = cdpOf("https://kept.example/a", [baseAccept]);
+      const fresh = cdpOf("https://fresh-partial.example/k", [baseAccept]);
+      const circleOther = circleOf("https://circle-other.example/b", [gwAccept]);
+      await syncCatalog({ fetchResult: pack([kept]), today: "2027-01-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circleOther]), today: "2027-01-01", source: "circle_discovery" });
+      await syncCatalog({
+        fetchResult: pack([kept, fresh], { complete: false, total: 9 }),
+        today: "2027-01-02",
+        source: "cdp_bazaar",
+      });
+      assert.equal((await rowsFor(fresh.resourceKey))[0]?.status, "active");
+      await syncCatalog({
+        fetchResult: pack([kept], { complete: false, total: 9 }),
+        today: "2027-01-03",
+        source: "cdp_bazaar",
+      });
+      const row = (await rowsFor(fresh.resourceKey))[0];
+      assert.equal(row?.status, "active", "3 日目の部分取得は K のページを読んでいないだけで delist しない");
+      assert.equal(
+        (await db.select().from(schema.x402DelistingEvents)).filter((e) => e.eventType === "delisted" && e.endpointId === row?.id).length,
+        0,
+      );
+      const day4 = await syncCatalog({ fetchResult: pack([kept, fresh]), today: "2027-01-04", source: "cdp_bazaar" });
+      assert.equal((await rowsFor(fresh.resourceKey))[0]?.status, "active");
+      assert.equal(day4.events.filter((e) => e.resourceKey === fresh.resourceKey && e.eventType === "relisted").length, 0);
+    });
+
+    await t.test("兄弟の不完全な取得は、最新の完全な取得以降の鍵を不在にしない", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
+      const cdpKept = cdpOf("https://cdp-kept.example/a", [baseAccept]);
+      const circleKept = circleOf("https://circle-kept.example/b", [gwAccept]);
+      const fresh = circleOf("https://circle-fresh.example/k", [gwAccept]);
+      await syncCatalog({ fetchResult: pack([cdpKept]), today: "2027-02-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circleKept]), today: "2027-02-01", source: "circle_discovery" });
+      await syncCatalog({
+        fetchResult: pack([circleKept, fresh], { complete: false, total: 9 }),
+        today: "2027-02-02",
+        source: "circle_discovery",
+      });
+      await syncCatalog({
+        fetchResult: pack([circleKept], { complete: false, total: 9 }),
+        today: "2027-02-03",
+        source: "circle_discovery",
+      });
+      const summary = await syncCatalog({ fetchResult: pack([cdpKept]), today: "2027-02-03", source: "cdp_bazaar" });
+      assert.equal((await rowsFor(fresh.resourceKey))[0]?.status, "active");
+      assert.equal(summary.events.filter((e) => e.resourceKey === fresh.resourceKey && e.eventType === "delisted").length, 0);
+    });
+
+    await t.test("持ち主の移動で resource_id が変わっても古い id が新しい行に解決され、空の quality と declared_input は残る", async () => {
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`);
+      const { resourceId } = await import("@/lib/ids/canonical");
+      const { getResource } = await import("@/lib/resolve/lookup");
+      const url = "https://owner-move.example/v1/item";
+      const cdp = parseCatalogItem({
+        resource: url,
+        description: "from cdp",
+        accepts: [baseAccept],
+        quality: { l30DaysTotalCalls: 42, l30DaysUniquePayers: 7, lastCalledAt: "2026-11-01T00:00:00.000Z" },
+        extensions: { bazaar: { info: { input: { method: "GET", queryParams: { q: "1" }, body: { a: 1 } } } } },
+      });
+      const circle = circleOf(url, [gwAccept], "POST", "from circle");
+      assert.equal(circle.qualityCalls30d, null);
+      assert.equal(circle.declaredInput?.query, "empty");
+      assert.equal(circle.declaredInput?.body, "empty");
+      await syncCatalog({ fetchResult: pack([cdp]), today: "2027-03-01", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2027-03-01", source: "circle_discovery" });
+      const before = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(before?.source, "cdp_bazaar");
+      assert.equal(before?.qualityCalls30d, 42);
+      const oldId = resourceId("GET", url);
+      const newId = resourceId("POST", url);
+      assert.equal(before?.resourceId, oldId);
+      assert.notEqual(oldId, newId);
+      await syncCatalog({ fetchResult: pack([cdpOf("https://other-move.example/a", [baseAccept])]), today: "2027-03-02", source: "cdp_bazaar" });
+      await syncCatalog({ fetchResult: pack([circle]), today: "2027-03-02", source: "circle_discovery" });
+      const after = (await rowsFor(cdp.resourceKey))[0];
+      assert.equal(after?.source, "circle_discovery");
+      assert.equal(after?.method, "POST");
+      assert.equal(after?.resourceId, newId);
+      assert.equal(after?.qualityCalls30d, 42);
+      assert.equal(after?.qualityPayers30d, 7);
+      assert.deepEqual(after?.declaredInput, before?.declaredInput);
+      const resolved = await getResource(oldId);
+      assert.equal(resolved?.resource_id, newId);
+      assert.equal(resolved?.observatory_id, after?.id);
+    });
+
     await t.test("CDP と Circle の同じ resource_key は一意で、MPP は別行のまま", async () => {
       await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events`);
       const cdp = cdpOf(SHARED, [baseAccept]);

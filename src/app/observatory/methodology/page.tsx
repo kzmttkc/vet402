@@ -185,9 +185,8 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           An L0 probe sends one request to a catalog-listed endpoint, with no payment
           attached. The request uses the HTTP method the catalog entry declares when that
-          method is GET, POST, HEAD, or DELETE. A declared DELETE is sent as DELETE. When the
-          entry declares PATCH or PUT, no request is sent and the result stays unverified.
-          When the entry declares no method, or any other method, the request uses GET. Two failures in a row on that
+          method is GET, POST, HEAD, or DELETE. When the entry declares no method, or a
+          method outside that set, the request uses GET. Two failures in a row on that
           request can be published as fail (section 3). Under the x402 protocol a compliant server answers{" "}
           <code>HTTP 402 Payment Required</code> with an <code>accepts</code> array before
           executing anything, so the probe is free, side-effect free, and observable. We record:
@@ -205,7 +204,7 @@ export default async function ObservatoryMethodologyPage() {
           catalog declaration. <strong>fail</strong> — the probe contradicted that: no 402 (any
           other status), a DNS, timeout or connection failure, a challenge with no payable accept,
           or a challenge whose price or receiving address contradicts the catalog; the specific
-          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, body_over_cap, for which a 402 came back and the body was not read to the end, and method_not_measured, for which the listing declares PATCH or PUT and no request was sent. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, DELETE, PATCH, or PUT, is measured with GET, and two consecutive failures of that probe can be published as fail. A listing that declares PATCH or PUT is not measured. No request is sent and the result stays unverified.
+          reason code is always recorded, and each code is defined in the table below. <strong>unverified</strong>. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.
         </p>
         {unverified && unverified.total > 0 && (
           <>
@@ -241,8 +240,8 @@ export default async function ObservatoryMethodologyPage() {
               <code>/api/v1/observatory/state</code>. Until 2026-09-04 this section said the usual
               cause was the undeclared method. The four counts above are what the bucket is made of.
               A listing with no declared HTTP method does not have a line of its own in this breakdown. A listing with no
-              declared HTTP method, or a method other than GET, POST, HEAD, DELETE, PATCH, or PUT, is probed
-              with GET. Two failures in a row on that probe can be published as fail. A listing that declares PATCH or PUT is not measured. No request is sent and the result stays unverified.
+              declared HTTP method, or a method other than GET, POST, HEAD, or DELETE, is probed
+              with GET. Two failures in a row on that probe can be published as fail.
             </p>
           </>
         )}
@@ -628,7 +627,7 @@ export default async function ObservatoryMethodologyPage() {
           <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A later incomplete run does not replace a complete snapshot of that day. The MPP directory is fetched once a day, at 01:30 UTC.
           A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
           The Circle x402 discovery is fetched at 01:30 UTC, on the same run. A listing that leaves the Circle x402 discovery is not judged delisted until the next complete fetch of that catalog.
-          A key that another catalog still lists is not recorded as delisted. A key absent from the latest complete fetch of both catalogs is recorded as delisted even when an earlier day missed it.
+          A key that another catalog still lists is not recorded as delisted. An incomplete fetch counts the keys in that fetch and the keys in each fetch since the previous complete fetch. A key absent from both catalogs on that reading is recorded as delisted even when an earlier day missed it.
           An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
           <code>delisted</code>, with the before/after values kept on the event, unless another catalog still lists that key. On any day

@@ -28,12 +28,8 @@ export const CATALOG_URL =
 
 export const CATALOG_SOURCE = "cdp_bazaar";
 
-/**
- * Methods stored as declared. GET, POST, HEAD, and DELETE are sent as declared.
- * PATCH and PUT are stored and not sent (the probe stays unverified). Anything
- * else is stored as null and measured with GET.
- */
-const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE", "PATCH", "PUT"]);
+/** Methods the catalog can declare and the prober will honor. Anything else = undeclared. */
+const DECLARED_METHODS = new Set(["GET", "POST", "HEAD", "DELETE"]);
 /** Circle Gateway batch wallet. Not a chain vet402 signs as a native accept. */
 const GATEWAY_ACCEPT_NAME = "GatewayWalletBatched";
 const ARC_CAIP2 = "eip155:5042";
@@ -168,9 +164,9 @@ export function parseCatalogItem(item: unknown): ParsedCatalogItem {
   const resourceUrl = asString(rec.resource) ?? "";
 
   // Declared method: extensions.bazaar.info.input.method. A missing method and
-  // any method outside GET, POST, HEAD, DELETE, PATCH, and PUT are stored as
-  // null. The probe measures null with GET. PATCH and PUT are stored and not
-  // sent. Two consecutive failures of a GET probe can be published as fail.
+  // any method outside GET, POST, HEAD, and DELETE are stored as null. The
+  // probe measures null with GET. Two consecutive failures of that GET probe
+  // can be published as fail.
   // Circle's catalog has no extensions.bazaar (measured 2026-10-26). Method and
   // description then live on metadata. The fallback applies only when bazaar is
   // absent, so a CDP item keeps its bazaar method, including an undeclared one.

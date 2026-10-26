@@ -122,7 +122,7 @@ export const FAQS: FaqItem[] = [
       `CDP's docs say a route is indexed after it declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator. ` +
       `A route that does those things can still be left out by CDP. ` +
       `Circle x402 discovery is Circle's own list. vet402 does not decide which routes it includes. ` +
-      `Circle's docs say a route enters that list after the service is payable (it answers 402 when unpaid), an OpenAPI spec is published, and Circle approves the intake form. ` +
+      `Circle's docs say a route enters that list after the service is payable (it answers 402 when unpaid and serves the resource when paid), an OpenAPI spec is published, and Circle approves the intake form. ` +
       `Circle screens the payout wallet and health-checks the route, and a route stays listed while Circle's health check can reach it. ` +
       `Circle can still leave a route out. Circle's guide to getting listed: https://developers.circle.com/agent-stack/agent-marketplace/get-listed ` +
       `vet402 does not read the PayAI discovery list as listings. ` +

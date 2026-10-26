@@ -11,7 +11,7 @@
 // /observatory/e/[id] の理由の 1 行が作られる。l0-probe.ts が返す理由語と 1 対 1
 // （tests/l0-reasons.test.ts が突き合わせる）。
 // ============================================================
-import { BODY_OVER_CAP_REASON, L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON, L0_LEGACY_BODY_CAP_BYTES, METHOD_NOT_MEASURED_REASON, REQUEST_SHAPE_REASON } from "./l0-probe";
+import { BODY_OVER_CAP_REASON, L0_BODY_CAP_BYTES, L0_BODY_CAP_RAISED_ON, L0_LEGACY_BODY_CAP_BYTES, REQUEST_SHAPE_REASON } from "./l0-probe";
 import { PATH_TEMPLATE_REASON } from "./path-template";
 
 export type L0ReasonCode = {
@@ -76,11 +76,6 @@ export const L0_REASON_CODES: readonly L0ReasonCode[] = [
     code: "method_undeclared",
     verdict: "unverified",
     meaning: "Before 2026-09-02 a listing without an HTTP method was not probed; since then it is probed with GET.",
-  },
-  {
-    code: METHOD_NOT_MEASURED_REASON,
-    verdict: "unverified",
-    meaning: "The listing declares PATCH or PUT, so no request was sent.",
   },
 ];
 

@@ -11,23 +11,25 @@
 //
 // CDP Bazaar and Circle share one row per resource_key. The first writer
 // owns `source`. Accepts are stored per source and unioned into raw_accepts.
-// A delist of a shared row requires the other catalog's absence to be proven
-// (a complete snapshot, or an incomplete one unioned with the previous
-// complete snapshot). A daily reconcile delists an active shared-source row
-// that is absent from both proven sets, so a missed one-day diff still closes.
+// A delist of a shared row requires the other catalog's absence to be proven.
+// A complete snapshot proves that snapshot's keys. An incomplete snapshot
+// proves the union of every snapshot since the previous complete one. The
+// daily reconcile runs only when this run's own fetch is complete, and then
+// delists an active shared-source row absent from both proven sets.
 // MPP stays a separate row.
 //
 // No scoring/chain imports. Writers here are trusted-cron-only — nothing in
 // this module is reachable from a request handler that accepts user input.
 // ============================================================
 import { canonicalUrl, endpointHash, payeeId, resourceId } from "@/lib/ids/canonical";
-import { and, eq, inArray, lt, desc, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, desc, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isUniqueViolationError } from "@/lib/db/pg-errors";
 import {
   x402CatalogSnapshots,
   x402DelistingEvents,
   x402Endpoints,
+  x402ResourceAliases,
 } from "@/lib/db/schema";
 import {
   CATALOG_SOURCE,
@@ -182,6 +184,12 @@ function hasSiblingSlice(bySource: unknown, sibling: string): boolean {
 
 type SiblingListing = { keys: Set<string>; latestComplete: boolean; absenceProven: boolean };
 
+/**
+ * 兄弟の「載っている」集合。最新が完全ならその鍵だけ。不完全なら、直前の完全な
+ * snapshot 以降のすべての snapshot の鍵（その完全な日を含む）。途中の部分取得で
+ * 入った鍵を、後の部分取得が読まなかっただけで不在にしない。完全な snapshot が
+ * 一度も無ければ不在は証明できない。
+ */
 async function loadSiblingListing(db: Db, sibling: string): Promise<SiblingListing> {
   const latest = await db
     .select({
@@ -200,39 +208,25 @@ async function loadSiblingListing(db: Db, sibling: string): Promise<SiblingListi
   const latestKeys = keysOf(row.resourceKeys);
   if (snapshotRowComplete(row)) return { keys: latestKeys, latestComplete: true, absenceProven: true };
   const prevComplete = await db
-    .select({ resourceKeys: x402CatalogSnapshots.resourceKeys })
+    .select({ snapshotDate: x402CatalogSnapshots.snapshotDate })
     .from(x402CatalogSnapshots)
     .where(and(eq(x402CatalogSnapshots.source, sibling), lt(x402CatalogSnapshots.snapshotDate, row.snapshotDate), COMPLETE_SNAPSHOT_SQL))
     .orderBy(desc(x402CatalogSnapshots.snapshotDate))
     .limit(1);
-  const keys = new Set(latestKeys);
-  if (prevComplete.length > 0) for (const key of keysOf(prevComplete[0].resourceKeys)) keys.add(key);
-  // 直前の完全な snapshot が無い不完全な取得は、読んでいないページを不在にしない。
-  return { keys, latestComplete: false, absenceProven: prevComplete.length > 0 };
-}
-
-/**
- * この実行の「載っている」集合。完全なら今回の鍵だけ。不完全なら今回の鍵と、
- * 直近の完全な snapshot（今日の早い完全な実行を含む）の和。完全な snapshot が
- * 一度も無ければ不在は証明できない。
- */
-async function loadOwnProven(
-  db: Db,
-  source: string,
-  currentKeys: Set<string>,
-  currentComplete: boolean,
-): Promise<{ keys: Set<string>; absenceProven: boolean }> {
-  if (currentComplete) return { keys: new Set(currentKeys), absenceProven: true };
-  const prev = await db
+  if (prevComplete.length === 0) return { keys: latestKeys, latestComplete: false, absenceProven: false };
+  const since = await db
     .select({ resourceKeys: x402CatalogSnapshots.resourceKeys })
     .from(x402CatalogSnapshots)
-    .where(and(eq(x402CatalogSnapshots.source, source), COMPLETE_SNAPSHOT_SQL))
-    .orderBy(desc(x402CatalogSnapshots.snapshotDate))
-    .limit(1);
-  if (prev.length === 0) return { keys: new Set(currentKeys), absenceProven: false };
-  const keys = new Set(currentKeys);
-  for (const key of keysOf(prev[0].resourceKeys)) keys.add(key);
-  return { keys, absenceProven: true };
+    .where(and(eq(x402CatalogSnapshots.source, sibling), gte(x402CatalogSnapshots.snapshotDate, prevComplete[0].snapshotDate)));
+  const keys = new Set<string>();
+  for (const snap of since) for (const key of keysOf(snap.resourceKeys)) keys.add(key);
+  return { keys, latestComplete: false, absenceProven: true };
+}
+
+/** この目録が宣言を持たないとき、移動先の declared_input は古い値のままにする。 */
+function declaredInputForMove(incoming: ParsedCatalogItem["declaredInput"], prior: unknown): unknown {
+  if (incoming && (incoming.query !== "empty" || incoming.body !== "empty")) return incoming;
+  return prior ?? null;
 }
 
 type SiblingIdentity = { id: string; resourceKey: string; status: string };
@@ -352,7 +346,6 @@ export async function syncCatalog(
 
   const sibling = sharedSibling(source);
   const siblingListing = sibling ? await loadSiblingListing(db, sibling) : { keys: new Set<string>(), latestComplete: false, absenceProven: false };
-  const ownProven = sibling ? await loadOwnProven(db, source, currentKeys, result.complete) : { keys: currentKeys, absenceProven: result.complete };
   const siblingRows = new Map<string, SiblingIdentity>();
   if (sibling) {
     // Circle 側は行が少ないので id・鍵・status だけ全部読む。accepts は今回触る鍵だけ。
@@ -588,9 +581,42 @@ export async function syncCatalog(
 
   // 持ち主の最新の完全な取得に無く、この目録が載せている鍵は、持ち主をこちらへ移す。
   // accepts はこちらのものに置き換える（古い slice を足さない）。
+  // quality と declared_input は、この目録に値が無いとき古い値を残す。
+  // method が変わって resource_id が変わるときは、移動の前の id を別名にする。
+  const priorById = new Map<
+    string,
+    {
+      resourceId: string | null;
+      qualityCalls30d: number | null;
+      qualityPayers30d: number | null;
+      qualityLastCalledAt: Date | null;
+      declaredInput: unknown;
+    }
+  >();
+  const transferIds = transferItems.flatMap((item) => {
+    const id = siblingRows.get(item.resourceKey)?.id;
+    return id ? [id] : [];
+  });
+  for (let i = 0; i < transferIds.length; i += UPSERT_CHUNK) {
+    const chunk = transferIds.slice(i, i + UPSERT_CHUNK);
+    const priors = await db
+      .select({
+        id: x402Endpoints.id,
+        resourceId: x402Endpoints.resourceId,
+        qualityCalls30d: x402Endpoints.qualityCalls30d,
+        qualityPayers30d: x402Endpoints.qualityPayers30d,
+        qualityLastCalledAt: x402Endpoints.qualityLastCalledAt,
+        declaredInput: x402Endpoints.declaredInput,
+      })
+      .from(x402Endpoints)
+      .where(inArray(x402Endpoints.id, chunk));
+    for (const prior of priors) priorById.set(prior.id, prior);
+  }
+  const movedAliases: { aliasId: string; resourceId: string }[] = [];
   for (const item of transferItems) {
     const row = siblingRows.get(item.resourceKey);
     if (!row) continue;
+    const prior = priorById.get(row.id);
     const stored = composeAccepts({
       existingBySource: null,
       existingRaw: null,
@@ -599,6 +625,7 @@ export async function syncCatalog(
       sibling,
       keepSibling: false,
     });
+    const ids = idsOf(item);
     try {
       await db
         .update(x402Endpoints)
@@ -612,13 +639,13 @@ export async function syncCatalog(
           priceAsset: item.priceAsset,
           description: item.description,
           declaredSchema: item.declaredSchema,
-          declaredInput: item.declaredInput ?? null,
-          qualityCalls30d: item.qualityCalls30d,
-          qualityPayers30d: item.qualityPayers30d,
-          qualityLastCalledAt: item.qualityLastCalledAt,
+          declaredInput: declaredInputForMove(item.declaredInput, prior?.declaredInput),
+          qualityCalls30d: item.qualityCalls30d ?? prior?.qualityCalls30d ?? null,
+          qualityPayers30d: item.qualityPayers30d ?? prior?.qualityPayers30d ?? null,
+          qualityLastCalledAt: item.qualityLastCalledAt ?? prior?.qualityLastCalledAt ?? null,
           rawAccepts: stored.rawAccepts,
           acceptsBySource: stored.acceptsBySource,
-          ...idsOf(item),
+          ...ids,
           lastSeenAt: sql`now()`,
           status: "active",
           delistedAt: null,
@@ -626,6 +653,9 @@ export async function syncCatalog(
         .where(eq(x402Endpoints.id, row.id));
       upserted += 1;
       idByKey.set(item.resourceKey, row.id);
+      if (prior?.resourceId && ids.resourceId && prior.resourceId !== ids.resourceId) {
+        movedAliases.push({ aliasId: prior.resourceId, resourceId: ids.resourceId });
+      }
       if (row.status === "delisted") {
         sharedRelists.push({
           resourceKey: item.resourceKey,
@@ -750,7 +780,7 @@ export async function syncCatalog(
     }
   }
   // 不在が証明でき、鍵が兄弟の集合に無いとき、持ち主が兄弟でも行を delist する。
-  // 最新が不完全でも、直前の完全な snapshot との和に無ければ閉じる。
+  // 最新が不完全でも、直前の完全な snapshot 以降の取得の和に無ければ閉じる。
   if (sibling && siblingListing.absenceProven && delistedKeys.length > 0) {
     const extraKeys = delistedKeys.filter((key) => {
       const row = siblingRows.get(key);
@@ -766,16 +796,16 @@ export async function syncCatalog(
     }
   }
 
-  // 日次の突き合わせ。両方の不在が証明でき、どちらの集合にも無い active 行を閉じる。
-  // 今日の不完全なページで見た鍵は ownProven.keys に入っているので落とさない。
+  // 日次の突き合わせ。自分の取得が完全な日だけ行う。両方の不在が証明でき、
+  // どちらの集合にも無い active 行を閉じる。不完全な日は判定しない。
   const reconcileEvents: CatalogDiffEvent[] = [];
-  if (sibling && ownProven.absenceProven && siblingListing.absenceProven) {
+  if (sibling && result.complete && siblingListing.absenceProven) {
     const flippedRaw = await db.execute(sql`
       UPDATE x402_endpoints
       SET status = 'delisted', delisted_at = now()
       WHERE status = 'active'
         AND source IN (${CATALOG_SOURCE}, ${CIRCLE_DISCOVERY_SOURCE})
-        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...ownProven.keys])}::jsonb)))
+        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...currentKeys])}::jsonb)))
         AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...siblingListing.keys])}::jsonb)))
       RETURNING id, resource_key
     `);
@@ -876,7 +906,11 @@ export async function syncCatalog(
 
   // ---- resource_id の別名 ----
   // 持ち主の method だけで作る。共有行を相手の method で別名にすると、どの行の resource_id も指さない。
+  // 持ち主の移動で method が変わったときは、移動前の resource_id を新しい id へ向ける。
   try {
+    if (movedAliases.length > 0) {
+      await db.insert(x402ResourceAliases).values(movedAliases).onConflictDoNothing();
+    }
     const prevByKey = new Map(knownRows.map((r) => [r.resourceKey, r]));
     const aliasItems = [...ownItems, ...transferItems];
     const aliasSources = aliasItems.flatMap((item) => {

@@ -78,7 +78,7 @@ test("joinServiceUrl joins with one slash", () => {
 test("parseMppDirectory maps tempo/charge endpoints only, in the catalog row shape", () => {
   const { items, endpointCount, complete } = parseMppDirectory(FIXTURE);
   assert.equal(complete, true);
-  // tempo/charge: flux/dev, jobs/:id, /weird（PATCH は保存し、測りの対象にはしない）
+  // tempo/charge: flux/dev, jobs/:id, /weird（PATCH → method 未宣言だが行にはなる）
   assert.equal(endpointCount, 3);
   assert.equal(items.length, 3);
   const flux = items.find((i) => i.resourceUrl === "https://fal.mpp.tempo.xyz/fal-ai/flux/dev");
@@ -106,9 +106,9 @@ test("parseMppDirectory maps tempo/charge endpoints only, in the catalog row sha
   // テンプレート path はカタログに残る（L0 が path_template、L1 は候補にしない——Bazaar と同じ）
   const jobs = items.find((i) => i.resourceUrl === "https://fal.mpp.tempo.xyz/jobs/:id");
   assert.ok(jobs);
-  // PATCH は宣言どおり保存する。L0 は要求を出さない（method_not_measured）。
+  // 認めない method は未宣言（null）——推測して測らない
   const weird = items.find((i) => i.resourceUrl === "https://fal.mpp.tempo.xyz/weird");
-  assert.equal(weird?.method, "PATCH");
+  assert.equal(weird?.method, null);
   // session / stripe は行にならない
   assert.equal(items.some((i) => i.resourceUrl.endsWith("/session")), false);
   assert.equal(items.some((i) => i.resourceUrl.endsWith("/stripe-only")), false);

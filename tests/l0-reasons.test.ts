@@ -192,24 +192,6 @@ test("未払いの POST（本文 {}）への 400/422 → unverified request_shap
   assert.equal(withEnvelope.failReason, "no_402");
 });
 
-test("PATCH と PUT は要求を出さず unverified にする", async () => {
-  let calls = 0;
-  const fetchImpl = (async () => {
-    calls += 1;
-    return new Response("no", { status: 200 });
-  }) as unknown as typeof fetch;
-  for (const method of ["PATCH", "PUT"]) {
-    const r = await probeEndpoint(target({ method }), { fetchImpl });
-    assert.equal(r.verdict, "unverified");
-    assert.equal(r.failReason, "method_not_measured");
-    assert.equal(r.httpStatus, null);
-  }
-  assert.equal(calls, 0);
-  const get = await probeEndpoint(target({ method: null }), { fetchImpl });
-  assert.equal(calls, 1, "method が null の行は GET のまま");
-  assert.equal(get.method, "GET");
-});
-
 test("l0-probe が返しうる理由語は全部、方法論の表（L0_REASON_CODES）に定義がある", () => {
   const src = readFileSync("src/lib/observatory/l0-probe.ts", "utf8");
   const emitted = new Set<string>();
@@ -220,7 +202,7 @@ test("l0-probe が返しうる理由語は全部、方法論の表（L0_REASON_C
   const sig = src.match(/function classifyNetworkError\([^)]*\):\s*([^{]+)\{/);
   assert.ok(sig, "classifyNetworkError の戻り値の型が読めない");
   for (const m of sig[1].matchAll(/"([a-z_]+)"/g)) emitted.add(m[1]);
-  for (const c of ["path_template", "request_shape", "body_over_cap", "method_not_measured"]) emitted.add(c); // 定数で返す語
+  for (const c of ["path_template", "request_shape", "body_over_cap"]) emitted.add(c); // 定数で返す語
   assert.ok(emitted.has("dns") && emitted.has("redirect_limit") && emitted.has("accepts_invalid"), [...emitted].join(","));
   const defined = new Set(L0_REASON_CODES.map((r) => r.code));
   for (const code of emitted) assert.ok(defined.has(code), `理由語 ${code} に定義が無い`);
