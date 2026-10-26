@@ -46,9 +46,9 @@ export function HomeIntro({
           <p className="mt-4 max-w-[50ch] text-[0.9375rem] leading-[1.65] text-brand sm:text-[1.0625rem]">
             Independent measurements of{" "}
             <Link href="/x402/stablecoin-payments" className="doc-link">
-              x402 payments for AI agents
-            </Link>
-            , including USDC where that is the pinned asset. Check a seller before paying on{" "}
+              how AI agents pay with stablecoins
+            </Link>{" "}
+            over x402, including USDC where that is the pinned asset. Check a seller before paying on{" "}
             <Link href="/x402/check-a-seller" className="doc-link">
               its own page
             </Link>

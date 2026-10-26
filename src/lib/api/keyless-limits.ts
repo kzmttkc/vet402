@@ -28,4 +28,4 @@ export function keylessRatesSentence(): string {
   return `While keyless reads are on, /decision answers at ${keylessDecisionPerMinute()} requests a minute per IP and /resolve at ${keylessResolvePerMinute()}.`;
 }
 
-export const KEYLESS_READ_STOP = "Keyless reads of /decision stop when DECISION_KEYLESS_READ is 0.";
+export const KEYLESS_READ_STOP = "Keyless reads of /decision can be paused by the operator.";

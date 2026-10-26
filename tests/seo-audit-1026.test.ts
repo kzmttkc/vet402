@@ -213,7 +213,7 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
 
 test("x402 payments for AI agents はトップの頁だけが使う", () => {
   const phrase = "x402 payments for AI agents";
-  const allowed = new Set(["src/app/page.tsx", "src/components/site/home/HomeIntro.tsx"]);
+  const allowed = new Set(["src/app/page.tsx"]);
   const hits = sourceFiles(join(ROOT, "src"))
     .filter((path) => readFileSync(path, "utf8").includes(phrase))
     .map((path) => path.slice(ROOT.length + 1));
@@ -249,9 +249,9 @@ test("凍結面のファイルは origin/main と同じで、ethonline の og al
   }
 });
 
-test("FAQ の導入と Q1 は同じ x402 の定義を使う", () => {
+test("FAQ の導入は短い x402 の定義を使い、Q1 は承認済みの答えのまま", () => {
   assert.equal(FAQS[0].question, "What is x402?");
-  assert.equal(FAQS[0].answer, WHAT_IS_X402_LEAD.join(" "));
+  assert.match(FAQS[0].answer, /^x402 is a machine-payment protocol built on the HTTP 402 "Payment Required" status code\./);
   const faq = read("src/app/faq/page.tsx");
   assert.match(faq, /WHAT_IS_X402_LEAD\[0\]/);
   assert.match(faq, /WHAT_IS_X402_LEAD\[1\]/);

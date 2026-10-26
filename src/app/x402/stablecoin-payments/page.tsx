@@ -62,15 +62,7 @@ export default async function StablecoinPaymentsPage() {
           facilitator submits it on chain. vet402 records the asset it paid on each purchase.
         </p>
         <p className="doc-p">
-          {stablecoinAssetSentence()} The same list is in the{" "}
-          <Link href="/faq" className="doc-link">
-            FAQ
-          </Link>{" "}
-          and in the{" "}
-          <Link href="/observatory/methodology" className="doc-link">
-            methodology
-          </Link>
-          .
+          {stablecoinAssetSentence()}
         </p>
 
         <h2 className="sec-head">
