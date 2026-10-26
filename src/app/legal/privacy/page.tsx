@@ -154,8 +154,8 @@ export default async function PrivacyPage() {
               share one new random owner id, so the account still counts as one owner. The relation
               label stored at deletion (<code>relation_snapshot</code>) and the count for each UTC day
               remain. The
-              billing count in <code>api_usage</code> keeps the original key id and stays for the
-              period the law requires for billing records.
+              billing count in <code>api_usage</code> keeps the original key id and is kept as a
+              billing record.
             </li>
             <li>
               <strong>Public monthly table</strong> (

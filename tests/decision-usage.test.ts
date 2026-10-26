@@ -177,7 +177,7 @@ test("公開の月次ページは noindex で、ポリシーは鍵なしを元�
   assert.match(privacy, /The table leaves out the key, the email address, and the name/);
   assert.match(privacy, /replaces the key id on these rows with a new random id/);
   assert.match(privacy, /relation_snapshot/);
-  assert.match(privacy, /keeps the original key id and stays for the period the law requires for billing records/);
+  assert.match(privacy, /keeps the original key id and is kept as a billing record/);
   assert.match(
     privacy,
     /a row whose key id was replaced with a new random id at account deletion still holds that count/,

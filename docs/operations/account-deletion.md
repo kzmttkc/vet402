@@ -12,7 +12,7 @@
 
 ## アカウント
 
-そのアカウントの `user_id` を持つ鍵を、まとめて切り離す。`__ACCOUNT_ID__` を `accounts.id` に置き換えてから流す。`user_id` が NULL の鍵は入らない。
+そのアカウントの `user_id` を持つ鍵を、まとめて切り離す。`__ACCOUNT_ID__` を `api_keys.user_id` の値（ふつうは `accounts.id`。アカウントの行が無い古い鍵は、`ensureOwnerUserId` が入れた鍵自身の id）に置き換えてから流す。`user_id` が NULL の鍵は入らない。
 
 鍵ごとに新しい uuid を付け、そのアカウントの行は全部、1 つの新しい持ち主の uuid（`owner_snapshot`）にそろえる。鍵を 3 本持っていた 1 人は、消したあとも 1 人と数える。前に「鍵 1 本」で切り離した行（`owner_snapshot` がこのアカウントの id）も、同じ新しい uuid に替える。アカウントの id は残らない。
 
