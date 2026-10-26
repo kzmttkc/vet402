@@ -604,6 +604,12 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   },
   {
     method: "GET",
+    path: "/api/v1/usage/monthly",
+    note: "Decision call counts for one chain and one UTC month. Figures come from the usage tables. A keyed row is a number such as key-1 plus a relation an operator sets by hand. A keyless row is the caller class stored with the count. The response leaves out the key, the email address, and the name. chain is a CAIP-2 network id such as eip155:42220. month is YYYY-MM. Key-less. 60 requests per minute per IP.",
+    response: `HTTP 200. chain, month, keyed, keyless, external_calls. HTTP 400 when chain or month is missing or unreadable. HTTP 503 when the usage tables could not be read.`,
+  },
+  {
+    method: "GET",
     path: "/api/health",
     note: "Liveness for an uptime poller. The public body is up, degraded, or error, from a probe of both scoring engines. degraded and error answer HTTP 503. ?deep=1 returns per-check detail and requires the admin bearer token. Without that token it answers 403. The plain call is key-less.",
     response: `HTTP 200 when the body is up. HTTP 503 when the body is degraded or error.`,

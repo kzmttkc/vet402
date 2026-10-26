@@ -9,11 +9,12 @@ import { lookupManualList } from "@/lib/db/customer-lists";
 import { decide, presentDecision, type DecisionResult } from "@/lib/decision/decide";
 import { evaluateCallerPolicy, parseCallerPolicy, type CallerPolicyInput } from "@/lib/decision/caller-policy";
 import { SHA256_HEX_RE, parsePartyId, payeeId as toPartyId } from "@/lib/ids/canonical";
-import { getResource, hostListingSummary } from "@/lib/resolve/lookup";
+import { getResourceWithNetwork, hostListingSummary } from "@/lib/resolve/lookup";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 import { recordClientUsage } from "@/lib/api/client-usage";
+import { recordDecisionUsage, usageChainOf } from "@/lib/api/decision-usage";
 
 export { DECISION_KEYLESS_LIMIT };
 
@@ -199,13 +200,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const ref = await getResource(resourceId);
-    if (!ref) {
+    const loaded = await getResourceWithNetwork(resourceId);
+    if (!loaded) {
       const errorBody = await notFoundBody(params.get("url"));
       refund(caller);
       return finish(caller, NextResponse.json(errorBody, { status: 404 }));
     }
     // 顧客の WL/BL は私的ポリシー（§13）。判定に効かせるが facts には混ぜない。
+    const ref = loaded.ref;
     const listSubject = roleRaw === "payer" ? ref.payee_id ? parsePartyId(ref.payee_id)?.address ?? null : null : parsePartyId(payerId!)?.address ?? null;
     const list = await lookupManualList(apiKeyId, listSubject && listSubject.startsWith("0x") ? listSubject : null);
     const operatorBlacklist = list === "blacklist";
@@ -225,9 +227,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 成功応答だけ保存する（404/503 は再送で再計算してよい——直った可能性がある）。
     if (idemHash) await saveIdempotentResponse(idemHash, result, IDEMPOTENCY_TTL_MS);
     // 2026-10-07 / 10-11: 鍵なしの呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
-    // 応答は変わらない）。鍵つきは数えない（api_usage が鍵ごとに数えている）。
+    // 応答は変わらない）。2026-10-26: 答えた出品の主ネットワーク（CAIP-2）も同じ行に足す。
+    // 鍵ありは api_usage の課金を変えず、decision_usage_daily に鍵・日・チェーンで足す。
     // 枠を戻す早期 return（400/404/503・replay）では数えない——戻した枠の分だけ書き込みを増やせるため（独立レビュー・高）。
-    if (caller.kind === "keyless") recordClientUsage(request.headers, "decision");
+    const usageChain = usageChainOf(loaded.network);
+    if (caller.kind === "keyless") recordClientUsage(request.headers, "decision", usageChain);
+    else recordDecisionUsage(caller.ctx.apiKeyId, usageChain);
     const res = finish(caller, NextResponse.json(withCallerPolicy(result)));
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;

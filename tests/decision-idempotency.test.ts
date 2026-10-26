@@ -83,9 +83,10 @@ test("saveIdempotentResponse: 単一文で期限切れを掃きつつ upsert す
     assert.match(captured[0].text, /INSERT INTO decision_idempotency/);
     assert.match(captured[0].text, /DELETE FROM decision_idempotency WHERE expires_at <= now\(\)/);
     assert.match(captured[0].text, /ON CONFLICT \(key_hash\) DO NOTHING/);
-    const exp = captured[0].params.find((p) => p instanceof Date) as Date | undefined;
-    assert.ok(exp, "expires_at が渡っていない");
-    assert.ok(exp.getTime() - before >= 10 * 60_000 - 50 && exp.getTime() - before <= 10 * 60_000 + 5_000);
+    const exp = captured[0].params.find((p) => typeof p === "string" && /^\d{4}-\d{2}-\d{2}T/.test(p));
+    assert.equal(typeof exp, "string", "expires_at が渡っていない");
+    const delta = new Date(String(exp)).getTime() - before;
+    assert.ok(delta >= 10 * 60_000 - 50 && delta <= 10 * 60_000 + 5_000);
   } finally {
     __setDbForTests(null);
   }

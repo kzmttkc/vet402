@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-26 Celo lane host spread, and decision usage by chain
+
+- **What**: The Celo lane (primary network and a later Celo accept) keeps at most 2 listings per host before the fetch limit, then orders hosts by Celo paid-attempt count ascending. Ties keep the previous demand order. Other lanes keep that order. Keyless `client_usage_daily` gains `chain` (CAIP-2 of the listing primary network, empty for resolve). Keyed decision 200s increment `decision_usage_daily` per key, UTC day, and chain, apart from `api_usage`. `api_keys.owner_relation` is `self`, `related`, `external`, or NULL for an operator to set by hand. `/api/v1/usage/monthly` and `/usage/monthly` publish counts with labels such as `key-1` and the relation. They do not publish the key, the email, or the name. An idempotent decision save binds `expires_at` as an ISO timestamp.
+- **Why**: Celo attempts were concentrated on the host with the most listings, because the per-host cap ran after the fetch limit. The grant needs attempts across many Celo sellers, and a public count of decision calls by chain that can separate keys unrelated to vet402. A Date bound for `expires_at` made the local driver throw. The save is swallowed, so the replay ran the decision again and the counter incremented twice.
+- **Impact**: Celo lane order changes. Caps, reservation, and the other lanes do not. Decision responses stay the same when the usage write fails. A replay of the same Idempotency-Key is not counted again. Production DDL is `scripts/sql/2026-10-26-decision-usage-chain.sql` (not applied here). The privacy policy was not edited. Operator steps are in `docs/operations/api-key-owner-relation.md`.
+- **Commits**: uncommitted.
+
 ## 2026-10-26 schema.ts declares x402_discovery_payees_chain_seen_idx
 
 - **What**: `x402DiscoveryPayees` in `src/lib/db/schema.ts` now declares `index("x402_discovery_payees_chain_seen_idx").on(t.chain, t.lastSeenAt)`, matching production (`btree (chain, last_seen_at)`, no WHERE) and `scripts/sql/2026-09-17-discovery-payees.sql`.

@@ -141,7 +141,8 @@ const DISCLAIMER =
 
 const ENDPOINT_SELECT = sql`
   SELECT id::text AS observatory_id, endpoint_hash, resource_id, coalesce(canonical_url, resource_url) AS canonical_url,
-         coalesce(method, 'GET') AS method, payee_id, status, first_seen_at::text AS first_seen, last_seen_at::text AS last_seen
+         coalesce(method, 'GET') AS method, payee_id, status, first_seen_at::text AS first_seen, last_seen_at::text AS last_seen,
+         network
   FROM x402_endpoints`;
 
 type EndpointRow = {
@@ -154,6 +155,8 @@ type EndpointRow = {
   status: string;
   first_seen: string | null;
   last_seen: string | null;
+  /** 集計用。toRef は公開の EndpointRef に載せない。 */
+  network: string | null;
 };
 
 function toRef(r: EndpointRow): EndpointRef {
@@ -191,17 +194,31 @@ export async function getEndpoint(ref: string): Promise<EndpointRef | null> {
  * （2026-09-29 監査 7 周目・高: 生の URL から id を作る SDK の表記の揺れを、正しい出品へ届ける）。
  * 返る resource_id は常に正規のもの。
  */
-export async function getResource(resourceIdHex: string): Promise<EndpointRef | null> {
+async function resourceRow(resourceIdHex: string): Promise<EndpointRow | null> {
   const db = getDb();
   if (!db || !SHA256_HEX_RE.test(resourceIdHex)) return null;
   const byId = async (id: string) =>
     rowsOf<EndpointRow>(await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id = ${id} ORDER BY status = 'active' DESC LIMIT 1`))[0] ?? null;
   const exact = await byId(resourceIdHex);
-  if (exact) return toRef(exact);
+  if (exact) return exact;
   const canonicalId = await canonicalIdForAlias(db, resourceIdHex);
   if (!canonicalId || canonicalId === resourceIdHex) return null;
-  const viaAlias = await byId(canonicalId);
-  return viaAlias ? toRef(viaAlias) : null;
+  return (await byId(canonicalId)) ?? null;
+}
+
+export async function getResource(resourceIdHex: string): Promise<EndpointRef | null> {
+  const row = await resourceRow(resourceIdHex);
+  return row ? toRef(row) : null;
+}
+
+/**
+ * 判定の集計が読む主ネットワーク。公開の resolve JSON（getResource → toRef）には network を足さない。
+ * 問い合わせは getResource と同じ 1 本。
+ */
+export async function getResourceWithNetwork(resourceIdHex: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
+  const row = await resourceRow(resourceIdHex);
+  if (!row) return null;
+  return { ref: toRef(row), network: row.network ?? null };
 }
 
 /**

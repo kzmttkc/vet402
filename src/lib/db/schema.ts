@@ -108,9 +108,21 @@ export const apiKeys = pgTable(
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     // 2026-09-28: 認証が初めて通った時刻（scripts/sql/2026-09-28-api-keys-first-used.sql）。
     firstUsedAt: timestamp("first_used_at", { withTimezone: true }),
+    /**
+     * 鍵の持ち主と vet402 の関係。運用者が手で付ける。NULL は未分類。
+     * self / related / external。メールからは推測しない。
+     * scripts/sql/2026-10-26-decision-usage-chain.sql
+     */
+    ownerRelation: text("owner_relation"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
-  (t) => [index("api_keys_key_hash_idx").on(t.keyHash)],
+  (t) => [
+    index("api_keys_key_hash_idx").on(t.keyHash),
+    check(
+      "api_keys_owner_relation_check",
+      sql`${t.ownerRelation} IS NULL OR ${t.ownerRelation} IN ('self', 'related', 'external')`,
+    ),
+  ],
 );
 
 export const apiUsage = pgTable(
@@ -1415,10 +1427,13 @@ export const tokyoMutationLog = pgTable("tokyo_mutation_log", {
  * 数えるのは Authorization ヘッダが空で、200 を返した呼び出しだけ）。
  * 鍵なしの呼び出しは api_usage に残らず、Vercel のログにも User-Agent が出ないため、他に数える場所が無い。
  *
- * 持つのは (UTC 日, client, ルート名, 件数) だけ。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない
+ * 持つのは (UTC 日, client, ルート名, チェーン, 件数)。IP・URL・クエリ・鍵・resource_id・UA の生の文字列は持たない
  * （client は clientUsageLabel が選んだ名前で、UA の文字列は捨てる）。
+ * chain は判定が答えた出品の主ネットワーク（CAIP-2）。resolve と、チェーンが分からない行は空文字。
+ * 呼び手の粒度（日・client・ルート）は変えない。chain は同じ行をチェーン別に分ける列。
  * 誰の呼び出しかを結び付ける材料が無いので保持期限は置かない。
- * SQL: scripts/sql/2026-10-07-client-usage-daily.sql
+ * SQL: scripts/sql/2026-10-07-client-usage-daily.sql（作成）と
+ * scripts/sql/2026-10-26-decision-usage-chain.sql（chain と主キー）。
  */
 export const clientUsageDaily = pgTable(
   "client_usage_daily",
@@ -1430,6 +1445,28 @@ export const clientUsageDaily = pgTable(
     /** resolve | decision */
     route: text("route").notNull(),
     count: bigint("count", { mode: "number" }).notNull(),
+    /** 出品の主ネットワーク（CAIP-2）。resolve と不明は空文字。 */
+    chain: text("chain").notNull().default(""),
   },
-  (t) => [primaryKey({ columns: [t.day, t.client, t.route] })],
+  (t) => [primaryKey({ columns: [t.day, t.client, t.route, t.chain] })],
+);
+
+/**
+ * decision_usage_daily — 鍵ありの判定 API が 200 で答えた件数。日・鍵・チェーン。
+ * api_usage の課金・上限とは別の表（あちらは触らない）。鍵を消しても残るよう外部キーは置かない。
+ * 公開するときは鍵 id を出さず、番号（key-1）と owner_relation だけにする。
+ * SQL: scripts/sql/2026-10-26-decision-usage-chain.sql
+ */
+export const decisionUsageDaily = pgTable(
+  "decision_usage_daily",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    apiKeyId: uuid("api_key_id").notNull(),
+    chain: text("chain").notNull(),
+    count: bigint("count", { mode: "number" }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.day, t.apiKeyId, t.chain] }),
+    index("decision_usage_daily_chain_day_idx").on(t.chain, t.day),
+  ],
 );

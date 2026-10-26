@@ -20,8 +20,10 @@
 //   other              … 上のどれでもない（UA 無し・curl・node・python など）。SDK と MCP サーバは今の版では UA を
 //                         名乗らない（Node の fetch の既定 `node`）のでここ。自社の skill-live（.github/workflows/
 //                         skill-live.yml・SKILL.md の curl をそのまま打つ・1 日数本）もここに混ざる
-// 保存するのは client_usage_daily の (UTC 日, client, ルート名, 件数) だけで、IP・URL・クエリ・鍵・resource_id・
+// 保存するのは client_usage_daily の (UTC 日, client, ルート名, チェーン, 件数) で、IP・URL・クエリ・鍵・resource_id・
 // UA の生の文字列・Referer は保存しない。ヘッダは名前を選ぶためだけに読む。
+// chain は判定が答えた出品の主ネットワーク（CAIP-2）。resolve は空文字。呼び手の種類の上限は client のままで、
+// chain では数えない。
 // 名前はどれも呼び手の自己申告（UA は偽れる）。数は「誰が」ではなく「どの入口が何回」を読む。
 //
 // 数えるのは鍵なしの呼び出しだけ（Authorization ヘッダが空。ルートの側で確かめてから呼ぶ）。decision の鍵つきは
@@ -43,6 +45,7 @@ import { getDb } from "@/lib/db/client";
 import { runAfterResponse } from "@/lib/util/after-response";
 import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { OWN_ORIGINS } from "@/lib/decision/lookup-caller";
+import { usageChainOf } from "@/lib/api/decision-usage";
 
 export type ClientUsageRoute = "resolve" | "decision";
 
@@ -150,8 +153,8 @@ export function clientUsageOverflowLabel(client: string): string {
   return (DISTRIBUTED_CLIENTS as readonly string[]).includes(name) ? `${name}/${OTHER_VERSION}` : OTHER_CLIENT;
 }
 
-/** 1 件を加算する単文 upsert。失敗はログへ出して捨てる（呼び手へ投げない）。 */
-export function upsertClientUsage(client: string, route: ClientUsageRoute, now: Date = new Date()): Promise<void> {
+/** 1 件を加算する単文 upsert。失敗はログへ出して捨てる（呼び手へ投げない）。chain の既定は空文字（resolve）。 */
+export function upsertClientUsage(client: string, route: ClientUsageRoute, now: Date = new Date(), chain = ""): Promise<void> {
   let db: ReturnType<typeof getDb>;
   try {
     db = getDb();
@@ -161,21 +164,22 @@ export function upsertClientUsage(client: string, route: ClientUsageRoute, now: 
   }
   if (!db) return Promise.resolve();
   const day = now.toISOString().slice(0, 10);
+  const storedChain = usageChainOf(chain);
   const overflow = clientUsageOverflowLabel(client);
   let pending: PromiseLike<unknown>;
   try {
     // その日に既にある client はそのまま、新しい client は版つきの種類が上限未満のときだけ。それ以外は overflow へ寄せる
     // （決まった名前と `<名前>/other` は overflow が自分自身なので、どちらの枝でも自分の行に足される）。
-    // 上限に数えるのは版つきの client だけ（`/` を含み、末尾が `/other` でないもの）。
+    // 上限に数えるのは版つきの client だけ（`/` を含み、末尾が `/other` でないもの）。chain は種類の数に入れない。
     pending = db.execute(
-      sql`INSERT INTO client_usage_daily (day, client, route, count)
+      sql`INSERT INTO client_usage_daily (day, client, route, chain, count)
           SELECT ${day}::date,
                  CASE WHEN EXISTS (SELECT 1 FROM client_usage_daily WHERE day = ${day}::date AND client = ${client})
                         OR (SELECT count(DISTINCT client) FROM client_usage_daily
                              WHERE day = ${day}::date AND position('/' in client) > 0 AND client NOT LIKE '%/other') < ${MAX_CLIENTS_PER_DAY}
                       THEN ${client} ELSE ${overflow} END,
-                 ${route}, 1
-          ON CONFLICT (day, client, route) DO UPDATE SET count = client_usage_daily.count + 1`,
+                 ${route}, ${storedChain}, 1
+          ON CONFLICT (day, client, route, chain) DO UPDATE SET count = client_usage_daily.count + 1`,
     );
   } catch (error) {
     logAndSwallowSafe("client_usage.record")(error);
@@ -196,12 +200,13 @@ export function isKeylessRequest(headers: Pick<Headers, "get">): boolean {
  * Authorization ヘッダが付いた呼び出しは、ここでも数えない（ルートの確かめ漏れに備えた二重の関門）。
  * 応答の後に 1 件を加算する。同期的に返り、例外を外へ出さない。
  */
-export function recordClientUsage(headers: Headers, route: ClientUsageRoute): void {
+export function recordClientUsage(headers: Headers, route: ClientUsageRoute, chain = ""): void {
   try {
     if (!isKeylessRequest(headers)) return;
     const client = clientUsageLabel(headers.get("user-agent"), isOwnPageRequest(headers));
     const now = new Date();
-    runAfterResponse(() => upsertClientUsage(client, route, now));
+    const storedChain = usageChainOf(chain);
+    runAfterResponse(() => upsertClientUsage(client, route, now, storedChain));
   } catch (error) {
     logAndSwallowSafe("client_usage.schedule")(error);
   }

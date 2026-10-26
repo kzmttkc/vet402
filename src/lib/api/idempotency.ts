@@ -74,7 +74,7 @@ export async function saveIdempotentResponse(keyHash: string, body: unknown, ttl
     await db.execute(sql`
       WITH gc AS (DELETE FROM decision_idempotency WHERE expires_at <= now())
       INSERT INTO decision_idempotency (key_hash, body, expires_at)
-      VALUES (${keyHash}, ${JSON.stringify(body)}::jsonb, ${expiresAt})
+      VALUES (${keyHash}, ${JSON.stringify(body)}::jsonb, ${expiresAt.toISOString()}::timestamptz)
       ON CONFLICT (key_hash) DO NOTHING
     `);
   } catch (error) {

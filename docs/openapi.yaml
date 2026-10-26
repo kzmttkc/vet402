@@ -88,6 +88,8 @@ tags:
     description: Embeddable SVG verification badges
   - name: System
     description: Health and metadata
+  - name: Usage
+    description: Decision call counts for one chain and one UTC month
   - name: RWA
     description: vet402 /rwa — a wallet's Stock Token track record on Robinhood Chain (4663), reconstructed from public chain data. Measurement only; no opinion field.
 
@@ -3459,6 +3461,80 @@ paths:
                   count: { type: integer }
                   note: { type: string }
 
+  /api/v1/usage/monthly:
+    get:
+      operationId: getMonthlyDecisionUsage
+      tags: [Usage]
+      summary: Decision call counts for one chain and one UTC month
+      description: |
+        Counts of decision API answers for one chain and one UTC month.
+        Figures come from the usage tables. A keyed row is a number such as
+        key-1 plus a relation an operator sets by hand. A keyless row is the
+        caller class stored with the count. The response leaves out the key,
+        the email address, and the name. Key-less. 60 requests per minute.
+        `chain` is a CAIP-2 network id such as `eip155:42220`. A known slug
+        such as `base` is read as its CAIP-2 id. `month` is `YYYY-MM` in UTC.
+      security: []
+      parameters:
+        - in: query
+          name: chain
+          required: true
+          schema: { type: string, maxLength: 200 }
+          description: CAIP-2 network id, for example eip155:42220.
+        - in: query
+          name: month
+          required: true
+          schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$" }
+          description: UTC month as YYYY-MM.
+      responses:
+        "200":
+          description: Counts for that chain and UTC month. Arrays are empty when the tables have no matching rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chain, month, keyed, keyless, external_calls]
+                properties:
+                  chain: { type: string }
+                  month: { type: string, example: "2026-10" }
+                  external_calls: { type: integer }
+                  keyed:
+                    type: array
+                    items:
+                      type: object
+                      required: [label, owner_relation, calls]
+                      properties:
+                        label: { type: string, example: key-1 }
+                        owner_relation: { type: string, nullable: true, enum: [self, related, external] }
+                        calls: { type: integer }
+                  keyless:
+                    type: array
+                    items:
+                      type: object
+                      required: [client, calls]
+                      properties:
+                        client: { type: string }
+                        calls: { type: integer }
+        "400":
+          description: |
+            `chain_required` when `chain` is missing. `chain_invalid` when
+            `chain` is not a CAIP-2 network id. `month_required` when `month`
+            is missing. `month_invalid` when `month` is not YYYY-MM.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      message: { type: string }
+        "429": { description: Rate limited }
+        "503":
+          description: "`unavailable` when the usage tables could not be read."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /api/health:
     get:
       operationId: getHealth
@@ -5383,6 +5459,11 @@ components:
             - signature_message_legacy_expired
             # --- badge ---
             - invalid_address
+            # 2026-10-26: /api/v1/usage/monthly query checks.
+            - chain_required
+            - chain_invalid
+            - month_required
+            - month_invalid
         details:
           type: object
           description: Present for `invalid_request` — Zod validation error detail (flattened).
