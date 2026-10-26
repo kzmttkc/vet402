@@ -590,5 +590,28 @@ if (!TEST_DB) {
         resetDerivedOperatorAddresses();
       }
     });
+
+    await t.test("旗 on で ARBITRUM_RPC_URL が無いとき、Base の accept が外れた出品でも Arbitrum には署名しない", async () => {
+      await seed([TOOLS_URL]);
+      process.env.OBSERVATORY_ARBITRUM_L1_ENABLED = "true";
+      const rpc = process.env.ARBITRUM_RPC_URL;
+      delete process.env.ARBITRUM_RPC_URL;
+      try {
+        const badBase = { ...baseUsdc(TOOLS_PAYTO, "1000"), asset: "0x0000000000000000000000000000000000000001" };
+        const w = wall({ [TOOLS_URL]: [badBase, arbUsdc(TOOLS_PAYTO, "1000")] });
+        await runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl });
+        assert.ok(w.requests(TOOLS_URL).length >= 1, "壁まで届いている（候補から外れただけ、ではない）");
+        assert.equal(w.paidOn(ARB_CAIP2).length, 0, "Arbitrum には署名しない");
+        assert.equal(w.paid(TOOLS_URL).length, 0);
+        assert.equal(await arbSpent(), 0);
+        const rows = await ledgerFor(TOOLS_URL);
+        assert.ok(rows.length >= 1);
+        assert.ok(rows.every((r) => r.network !== ARB_CAIP2));
+        assert.ok(rows.every((r) => r.spent_units === "0"));
+      } finally {
+        if (rpc === undefined) delete process.env.ARBITRUM_RPC_URL;
+        else process.env.ARBITRUM_RPC_URL = rpc;
+      }
+    });
   });
 }

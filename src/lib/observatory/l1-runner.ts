@@ -1567,7 +1567,7 @@ export async function runL1Batch(
     // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
     { chain: "celo", ready: isCeloL1Enabled() },
     // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
-    // レーン外で BNB が選ばれたら、残高は公開 RPC で読む（chain/bnb.ts の既定。規則では可）。
+    // 旗が on でも BNB_RPC_URL が空なら署名しない（x402-payer の requiredEnv）。Base 先頭で Base の accept が外れても BNB には署名しない。
     { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
     // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + ARBITRUM_RPC_URL（BNB と同じ。
     // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる。2026-10-22 審査）。

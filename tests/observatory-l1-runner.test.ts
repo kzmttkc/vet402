@@ -1929,6 +1929,91 @@ if (!TEST_DB) {
       }
     });
 
+    await t.test("旗 on で BNB_RPC_URL が無いとき、Base の accept が外れた出品でも BNB には署名しない", async () => {
+      const host = "bnbfalloff.example";
+      const basePayTo = payToFor(8);
+      const bnbPayTo = payToFor(9);
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      process.env.OBSERVATORY_BNB_L1_ENABLED = "true";
+      delete process.env.BNB_RPC_URL;
+      const catalogBase = {
+        scheme: "exact",
+        amount: bnbBaseAmount,
+        asset: BASE_USDC,
+        network: "eip155:8453",
+        payTo: basePayTo,
+        maxTimeoutSeconds: 300,
+        extra: { name: "USD Coin", version: "2" },
+      };
+      const catalogBnb = {
+        scheme: "exact",
+        amount: dualUsd1,
+        asset: BNB_USD1,
+        network: BNB_CAIP2,
+        payTo: bnbPayTo,
+        maxTimeoutSeconds: 60,
+        extra: usd1Extra,
+      };
+      const badBase = { ...catalogBase, asset: "0x0000000000000000000000000000000000000001" };
+      try {
+        await db.execute(
+          sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`,
+        );
+        await syncCatalog({
+          fetchResult: {
+            items: [
+              parseCatalogItem({
+                resource: `https://${host}/api`,
+                accepts: [catalogBase, catalogBnb],
+                extensions: { bazaar: { info: { input: { method: "GET" } } } },
+                quality: { l30DaysTotalCalls: 100, l30DaysUniquePayers: 10 },
+              }),
+            ],
+            totalCount: 1,
+            fetchedCount: 1,
+            complete: true,
+          },
+          today: "2026-10-19",
+        });
+        const honest = JSON.stringify({ x402Version: 2, accepts: [catalogBase, catalogBnb] });
+        await runL0ProbeBatch({
+          limit: 5,
+          concurrency: 1,
+          fetchImpl: async () => new Response(honest, { status: 402, headers: { "content-type": "application/json" } }),
+        });
+        const seen: string[] = [];
+        const paidNetworks: string[] = [];
+        await runL1Batch({
+          limit: 10,
+          getPayerUsdcBalance: FUNDED_PAYER,
+          fetchImpl: async (url: string, init?: RequestInit) => {
+            seen.push(url);
+            const headers = new Headers(init?.headers);
+            const sig = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+            if (sig) {
+              const decoded = JSON.parse(Buffer.from(sig, "base64").toString("utf8")) as { accepted?: { network?: string } };
+              paidNetworks.push(String(decoded.accepted?.network ?? ""));
+            }
+            return new Response(JSON.stringify({ x402Version: 2, accepts: [badBase, catalogBnb] }), {
+              status: 402,
+              headers: { "content-type": "application/json" },
+            });
+          },
+        });
+        assert.ok(seen.some((u) => u.includes(host)), "壁まで届いている（候補から外れただけ、ではない）");
+        assert.equal(paidNetworks.length, 0, "署名しない");
+        assert.ok(!paidNetworks.includes(BNB_CAIP2));
+        const rows = await db.select().from(schema.x402L1Purchases);
+        assert.ok(rows.length >= 1);
+        assert.ok(rows.every((r) => r.network !== BNB_CAIP2));
+        assert.ok(rows.every((r) => r.spentUnits === "0"));
+      } finally {
+        restoreBnbEnv();
+        await restoreBaseCatalog();
+      }
+    });
+
     await t.test("a challenge over-charging vs catalog is recorded, never signed", async () => {
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
       // payTo must be the endpoint's OWN declared payee: since 2026-08-22 the

@@ -72,14 +72,23 @@ const baseAccept = (over: Partial<ChallengeAccept> = {}): ChallengeAccept => ({
 });
 
 function withFlag<T>(value: string | undefined, fn: () => T): T {
-  const saved = process.env.OBSERVATORY_BNB_L1_ENABLED;
+  const savedFlag = process.env.OBSERVATORY_BNB_L1_ENABLED;
+  const savedRpc = process.env.BNB_RPC_URL;
+  // A blank RPC closes the lane on its own. Flag-off cases still set one, so a mutant that
+  // drops the flag (flagEnv null) is caught here and not hidden by the RPC check.
+  const fillRpc = !savedRpc?.trim();
   if (value === undefined) delete process.env.OBSERVATORY_BNB_L1_ENABLED;
   else process.env.OBSERVATORY_BNB_L1_ENABLED = value;
+  if (fillRpc) process.env.BNB_RPC_URL = "http://127.0.0.1:9";
   try {
     return fn();
   } finally {
-    if (saved === undefined) delete process.env.OBSERVATORY_BNB_L1_ENABLED;
-    else process.env.OBSERVATORY_BNB_L1_ENABLED = saved;
+    if (savedFlag === undefined) delete process.env.OBSERVATORY_BNB_L1_ENABLED;
+    else process.env.OBSERVATORY_BNB_L1_ENABLED = savedFlag;
+    if (fillRpc) {
+      if (savedRpc === undefined) delete process.env.BNB_RPC_URL;
+      else process.env.BNB_RPC_URL = savedRpc;
+    }
   }
 }
 
@@ -108,6 +117,7 @@ test("the table pins BNB USD1 as measured on 2026-10-19, and the read-side const
   assert.equal(BNB_CHAIN.eip712Version, BNB_USD1_EIP712_VERSION);
   assert.equal(BNB_CHAIN.v1Slug, null);
   assert.equal(BNB_CHAIN.flagEnv, "OBSERVATORY_BNB_L1_ENABLED");
+  assert.equal(BNB_CHAIN.requiredEnv, "BNB_RPC_URL");
   assert.equal(BNB_CHAIN.label, "BNB Chain");
   assert.equal(EVM_PAY_CHAINS[3], BNB_CHAIN);
   assert.equal(BNB_CHAIN_ID_READ, BNB_CHAIN_ID);
@@ -155,6 +165,43 @@ test("OBSERVATORY_BNB_L1_ENABLED is off unless it is exactly \"true\"", () => {
     assert.equal(isBnbL1Enabled(), true);
     assert.equal(isEvmPayChainEnabled(BNB_CHAIN), true);
   });
+});
+
+test("flag on but BNB_RPC_URL empty or blank: a Base accept that falls off does not select or sign BNB", async () => {
+  const fallen = [baseAccept({ asset: "0x0000000000000000000000000000000000000001" }), bnbAccept()];
+  const opts = { declaredAmount: DIME_LEDGER.toString(), declaredPayTo: PAY_TO, declaredNetwork: BASE_CAIP2 };
+  const account = privateKeyToAccount(generatePrivateKey());
+  const authorization = {
+    from: account.address,
+    to: PAY_TO,
+    value: DIME_TEXT,
+    validAfter: "0",
+    validBefore: "120",
+    nonce: `0x${"cd".repeat(32)}` as `0x${string}`,
+  };
+  const savedFlag = process.env.OBSERVATORY_BNB_L1_ENABLED;
+  const savedRpc = process.env.BNB_RPC_URL;
+  process.env.OBSERVATORY_BNB_L1_ENABLED = "true";
+  try {
+    for (const rpc of [undefined, "   "] as const) {
+      if (rpc === undefined) delete process.env.BNB_RPC_URL;
+      else process.env.BNB_RPC_URL = rpc;
+      assert.equal(isBnbL1Enabled(), true);
+      assert.equal(isEvmPayChainEnabled(BNB_CHAIN), false);
+      const chosen = selectAccept(fallen, opts);
+      assert.equal(chosen.accept, null);
+      assert.equal(chosen.reason, "no_eligible_accept");
+      await assert.rejects(
+        () => signX402Payment({ account, accept: bnbAccept(), authorization }),
+        /BNB Chain lane is not enabled/,
+      );
+    }
+  } finally {
+    if (savedFlag === undefined) delete process.env.OBSERVATORY_BNB_L1_ENABLED;
+    else process.env.OBSERVATORY_BNB_L1_ENABLED = savedFlag;
+    if (savedRpc === undefined) delete process.env.BNB_RPC_URL;
+    else process.env.BNB_RPC_URL = savedRpc;
+  }
 });
 
 test("$0.10 is 100000 ledger units and 1e17 USD1 units, exactly", () => {

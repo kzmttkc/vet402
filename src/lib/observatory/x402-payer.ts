@@ -239,6 +239,15 @@ export type EvmPayChain = {
   v1Slug: string | null;
   /** Feature flag env (exact string "true" enables); null = always on. */
   flagEnv: string | null;
+  /**
+   * Env that must be non-empty after trim before this chain may be signed.
+   * null means the flag (or always-on, for Base) is enough.
+   * Arc and Celo stay null: their lane ready is the flag, and balance reads
+   * fall back to a public RPC. BNB, Arbitrum and Avalanche name their RPC env.
+   * selectAccept and signX402Payment both refuse the chain when that env is
+   * missing or blank, including a Base-first listing whose Base accept fell off.
+   */
+  requiredEnv: string | null;
 };
 
 export const BASE_CHAIN: EvmPayChain = {
@@ -250,6 +259,7 @@ export const BASE_CHAIN: EvmPayChain = {
   label: publicChainLabel(BASE_CAIP2),
   v1Slug: "base",
   flagEnv: null,
+  requiredEnv: null,
 };
 
 export const ARC_CHAIN: EvmPayChain = {
@@ -263,6 +273,7 @@ export const ARC_CHAIN: EvmPayChain = {
   // guess one. v1 headers carry the CAIP-2 id verbatim for Arc.
   v1Slug: null,
   flagEnv: "OBSERVATORY_ARC_L1_ENABLED",
+  requiredEnv: null,
 };
 
 export const CELO_CHAIN: EvmPayChain = {
@@ -276,6 +287,7 @@ export const CELO_CHAIN: EvmPayChain = {
   // resolved by evmChainFor, and a v1 header echoes the CAIP-2 id the seller's own challenge used.
   v1Slug: null,
   flagEnv: "OBSERVATORY_CELO_L1_ENABLED",
+  requiredEnv: null,
 };
 
 export const BNB_CHAIN: EvmPayChain = {
@@ -289,6 +301,7 @@ export const BNB_CHAIN: EvmPayChain = {
   // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
   v1Slug: null,
   flagEnv: "OBSERVATORY_BNB_L1_ENABLED",
+  requiredEnv: "BNB_RPC_URL",
 };
 
 export const ARBITRUM_CHAIN: EvmPayChain = {
@@ -302,6 +315,7 @@ export const ARBITRUM_CHAIN: EvmPayChain = {
   // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
   v1Slug: null,
   flagEnv: "OBSERVATORY_ARBITRUM_L1_ENABLED",
+  requiredEnv: "ARBITRUM_RPC_URL",
 };
 
 export const AVALANCHE_CHAIN: EvmPayChain = {
@@ -315,6 +329,7 @@ export const AVALANCHE_CHAIN: EvmPayChain = {
   // resolved by evmChainFor. A v1 header echoes the CAIP-2 id the seller's challenge used.
   v1Slug: null,
   flagEnv: "OBSERVATORY_AVALANCHE_L1_ENABLED",
+  requiredEnv: "AVALANCHE_RPC_URL",
 };
 
 /** The whole pinned table. Order is irrelevant; nothing outside it can be signed on. */
@@ -344,9 +359,20 @@ export function isAvalancheL1Enabled(): boolean {
   return process.env.OBSERVATORY_AVALANCHE_L1_ENABLED === "true";
 }
 
-/** Base is always on; a flagged chain only when its env is exactly "true" (same discipline as OBSERVATORY_L1_ENABLED). */
+/** True when requiredEnv is unset on the row, or the named env is non-empty after trim. Whitespace does not count. */
+function evmPayChainRpcReady(chain: EvmPayChain): boolean {
+  return chain.requiredEnv === null || !!process.env[chain.requiredEnv]?.trim();
+}
+
+/**
+ * Base is always on. A flagged chain is on only when its env is exactly "true".
+ * BNB, Arbitrum and Avalanche also need requiredEnv set and non-empty.
+ * selectAccept and signX402Payment both use this. declaredPayTosFor does not:
+ * a declaration is a fact about the catalog, not a permission to sign.
+ */
 export function isEvmPayChainEnabled(chain: EvmPayChain): boolean {
-  return chain.flagEnv === null || process.env[chain.flagEnv] === "true";
+  if (chain.flagEnv !== null && process.env[chain.flagEnv] !== "true") return false;
+  return evmPayChainRpcReady(chain);
 }
 
 /**
@@ -701,7 +727,7 @@ export function selectAccept(
 ): AcceptSelection {
   // One predicate (signableUsdcAccept) decides "an accept this module could sign": it is shared
   // with declaredPayTosFor so the catalog's declared-payee set can never be wider than this gate.
-  // The lane flag is checked here only — a declaration is a fact about the catalog, not a permission.
+  // The lane flag and requiredEnv are checked here only. A declaration is a fact about the catalog, not a permission.
   const protocolEligible = accepts
     .map((a) => signableUsdcAccept(a))
     .filter((hit): hit is { accept: ChallengeAccept; chain: EvmPayChain } => hit !== null && isEvmPayChainEnabled(hit.chain))
@@ -976,7 +1002,11 @@ export async function signX402Payment(input: {
   if (!account.signTypedData) throw new Error("account cannot sign typed data");
   const chain = evmChainFor(accept.network);
   if (!chain) throw new Error(`x402: ${accept.network} is not a pinned EVM purchase chain`);
-  if (!isEvmPayChainEnabled(chain)) throw new Error(`x402: the ${chain.label} lane is not enabled`);
+  // isEvmPayChainEnabled already includes requiredEnv. The signer checks it again
+  // so a missing or blank RPC env cannot be signed even if a caller skips selectAccept.
+  if (!isEvmPayChainEnabled(chain) || !evmPayChainRpcReady(chain)) {
+    throw new Error(`x402: the ${chain.label} lane is not enabled`);
+  }
   if (!hasCanonicalUsdcDomain(accept.extra, chain)) {
     throw new Error(`x402: accept contradicts the canonical ${chain.label} USDC EIP-712 domain`);
   }

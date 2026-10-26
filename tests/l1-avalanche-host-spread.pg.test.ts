@@ -290,5 +290,114 @@ if (!TEST_DB) {
       "https://base-mid.example/api",
       "https://base-low.example/api",
     ]);
+
+    await t.test("他チェーンで試行済みのホストは Avalanche では未試行として先に並ぶ", async () => {
+      process.env.L1_LANE_FLOOR_PER_RUN = "2";
+      delete process.env.OBSERVATORY_ARC_L1_ENABLED;
+      const otherNew = "https://other-tried.example/new";
+      const otherOld = "https://other-tried.example/old";
+      const avaxNew = "https://avax-tried.example/new";
+      const avaxOld = "https://avax-tried.example/old";
+      const otherPay = addr(0x81);
+      const avaxPay = addr(0x82);
+      const otherOldPay = addr(0x83);
+      const avaxOldPay = addr(0x84);
+      const rows = [
+        { url: otherOld, accepts: [baseUsdc(otherOldPay)], payers: 10, calls: 100 },
+        { url: otherNew, accepts: [baseUsdc(otherPay), avaxUsdc(otherPay)], payers: 10, calls: 100 },
+        { url: avaxOld, accepts: [baseUsdc(avaxOldPay)], payers: 900, calls: 9000 },
+        { url: avaxNew, accepts: [baseUsdc(avaxPay), avaxUsdc(avaxPay)], payers: 900, calls: 9000 },
+      ];
+      const small = new Map(rows.map((row) => [row.url, row.accepts]));
+      await db.execute(sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases, observed_purchases`);
+      await syncCatalog({
+        fetchResult: {
+          items: rows.map((row) =>
+            parseCatalogItem({
+              resource: row.url,
+              accepts: row.accepts,
+              extensions: { bazaar: { info: { input: { method: "GET" } } } },
+              quality: { l30DaysTotalCalls: row.calls, l30DaysUniquePayers: row.payers },
+            }),
+          ),
+          totalCount: rows.length,
+          fetchedCount: rows.length,
+          complete: true,
+        },
+        today: "2026-10-26",
+      });
+      await runL0ProbeBatch({
+        limit: rows.length + 2,
+        concurrency: 2,
+        fetchImpl: async (url: string) =>
+          new Response(JSON.stringify({ x402Version: 2, accepts: small.get(url) ?? [] }), {
+            status: 402,
+            headers: { "content-type": "application/json" },
+          }),
+      });
+      const idOf = async (url: string) => {
+        const raw = await db.execute(sql`SELECT id FROM x402_endpoints WHERE resource_url = ${url}`);
+        const list = (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { id: string }[];
+        assert.equal(list.length, 1, url);
+        return list[0].id;
+      };
+      const otherOldId = await idOf(otherOld);
+      const avaxOldId = await idOf(avaxOld);
+      const paidRow = (endpointId: string, network: string, payTo: string) => ({
+        endpointId,
+        status: "settle_claimed" as const,
+        payer: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        network,
+        asset: network === AVAX ? AVALANCHE_CHAIN.usdc : BASE_USDC,
+        payTo,
+        amountUnits: amount,
+        spentUnits: amount,
+      });
+      await db.insert(schema.x402L1Purchases).values([
+        paidRow(otherOldId, BASE, otherOldPay),
+        paidRow(otherOldId, BASE, otherOldPay),
+        paidRow(otherOldId, BASE, otherOldPay),
+        paidRow(avaxOldId, AVAX, avaxOldPay),
+      ]);
+      const avaxOrder: string[] = [];
+      let n = 0;
+      const summary = await runL1Batch({
+        limit: 10,
+        getPayerUsdcBalance: async () => 1_000_000_000n,
+        fetchImpl: async (url: string, init?: RequestInit) => {
+          const headers = new Headers(init?.headers);
+          const sig = headers.get("PAYMENT-SIGNATURE") ?? headers.get("X-PAYMENT");
+          const decoded = sig
+            ? (JSON.parse(Buffer.from(sig, "base64").toString("utf8")) as { accepted?: { network?: string } })
+            : null;
+          if (sig && decoded?.accepted?.network === AVAX) avaxOrder.push(url);
+          if (!sig) {
+            return new Response(JSON.stringify({ x402Version: 2, accepts: small.get(url) ?? [] }), {
+              status: 402,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          n += 1;
+          return new Response(JSON.stringify({ data: "goods" }), {
+            status: 200,
+            headers: {
+              "content-type": "application/json",
+              "PAYMENT-RESPONSE": Buffer.from(
+                JSON.stringify({
+                  success: true,
+                  transaction: `0x${n.toString(16).padStart(64, "0")}`,
+                  network: String(decoded?.accepted?.network ?? BASE),
+                  payer: "0x0000000000000000000000000000000000000001",
+                }),
+              ).toString("base64"),
+            },
+          });
+        },
+      });
+      assert.equal(summary.payerUnfunded, 0);
+      // other-tried は Base で 3 件入金済み。絞り込みが無いと試行数 3 で後ろに回る。
+      // avax-tried は Avalanche で 1 件。品質はこちらの方が高いので、試行数を無視すると先に来る。
+      assert.deepEqual(avaxOrder, [otherNew, avaxNew]);
+    });
   });
 }

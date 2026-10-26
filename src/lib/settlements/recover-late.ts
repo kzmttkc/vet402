@@ -1590,8 +1590,10 @@ const AVALANCHE_BLOCK_SECONDS = 0.97;
  */
 export const AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS = 100n;
 const AVALANCHE_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
-// 余裕は見積もりの許容（30 秒 ≈ 31 ブロック）より広く取る。Arbitrum の「余裕は許容より広く」と同じ規則。
-const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 40n;
+// 余裕は許容 30 秒より広く取る。2026-10-26 の実測でブロック間隔は 0.75〜1.43 秒。
+// 40 ブロックは 0.75 秒間隔だと 30 秒ちょうどで、見積もりが速い側にずれると窓を外す。
+// 80 ブロックは 0.75 秒でも 60 秒、1.43 秒でも 30 秒を超える。Arbitrum の「余裕は許容より広く」と同じ規則。
+const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 80n;
 
 type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 

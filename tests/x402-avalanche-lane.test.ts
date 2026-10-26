@@ -145,7 +145,13 @@ function withEnv<T>(name: string, value: string | undefined, fn: () => T): T {
   restore();
   return out;
 }
-const withAvaxFlag = <T>(value: string | undefined, fn: () => T): T => withEnv("OBSERVATORY_AVALANCHE_L1_ENABLED", value, fn);
+const withAvaxFlag = <T>(value: string | undefined, fn: () => T): T =>
+  withEnv("OBSERVATORY_AVALANCHE_L1_ENABLED", value, () => {
+    // A blank RPC closes the lane on its own. Flag-off cases still set one, so a mutant that
+    // drops the flag (flagEnv null) is caught here and not hidden by the RPC check.
+    if (process.env.AVALANCHE_RPC_URL?.trim()) return fn();
+    return withEnv("AVALANCHE_RPC_URL", "http://127.0.0.1:9", fn);
+  });
 
 test("the table pins Avalanche as measured on-chain 2026-10-26, after Base, Arc, Celo, BNB and Arbitrum", () => {
   assert.deepEqual(
@@ -168,6 +174,12 @@ test("the table pins Avalanche as measured on-chain 2026-10-26, after Base, Arc,
   assert.equal(AVALANCHE_CHAIN.label, "Avalanche");
   assert.equal(AVALANCHE_CHAIN.v1Slug, null, "no v1 slug in the money path");
   assert.equal(AVALANCHE_CHAIN.flagEnv, "OBSERVATORY_AVALANCHE_L1_ENABLED");
+  assert.equal(AVALANCHE_CHAIN.requiredEnv, "AVALANCHE_RPC_URL");
+  assert.equal(BASE_CHAIN.requiredEnv, null);
+  assert.equal(ARC_CHAIN.requiredEnv, null);
+  assert.equal(EVM_PAY_CHAINS.find((c) => c.caip2 === CELO_CAIP2)!.requiredEnv, null);
+  assert.equal(ARBITRUM_CHAIN.requiredEnv, "ARBITRUM_RPC_URL");
+  assert.equal(EVM_PAY_CHAINS.find((c) => c.caip2 === BNB_CAIP2)!.requiredEnv, "BNB_RPC_URL");
   assert.equal(EVM_PAY_CHAINS[0], BASE_CHAIN);
   assert.equal(EVM_PAY_CHAINS[1], ARC_CHAIN);
   assert.equal(EVM_PAY_CHAINS[4], ARBITRUM_CHAIN);
@@ -295,6 +307,29 @@ test("flag off: signX402Payment refuses an Avalanche accept even if a caller ski
   const authorization = buildAuthorization({ from: account.address, to: AGENT402_PAYTO, value: "1000", nowSec: 1_760_000_000, maxTimeoutSeconds: 300 });
   await withAvaxFlag(undefined, async () => {
     await assert.rejects(() => signX402Payment({ account, accept: AGENT402_AVAX, authorization }), /the Avalanche lane is not enabled/);
+  });
+});
+
+test("flag on but AVALANCHE_RPC_URL empty or blank: a Base accept that falls off does not select or sign Avalanche", async () => {
+  const fallen = [{ ...AGENT402_BASE, asset: "0x0000000000000000000000000000000000000001" }, AGENT402_AVAX];
+  const opts = { declaredAmount: "1000", declaredPayTo: AGENT402_PAYTO.toLowerCase() };
+  const authorization = buildAuthorization({ from: account.address, to: AGENT402_PAYTO, value: "1000", nowSec: 1_760_000_000, maxTimeoutSeconds: 300 });
+  const check = () => {
+    assert.equal(isAvalancheL1Enabled(), true);
+    assert.equal(isEvmPayChainEnabled(AVALANCHE_CHAIN), false);
+    const chosen = selectAccept(fallen, opts);
+    assert.equal(chosen.accept, null);
+    assert.equal(chosen.reason, "no_eligible_accept");
+  };
+  await withEnv("OBSERVATORY_AVALANCHE_L1_ENABLED", "true", async () => {
+    withEnv("AVALANCHE_RPC_URL", undefined, check);
+    withEnv("AVALANCHE_RPC_URL", "   ", check);
+    await withEnv("AVALANCHE_RPC_URL", undefined, async () => {
+      await assert.rejects(() => signX402Payment({ account, accept: AGENT402_AVAX, authorization }), /the Avalanche lane is not enabled/);
+    });
+    await withEnv("AVALANCHE_RPC_URL", "   ", async () => {
+      await assert.rejects(() => signX402Payment({ account, accept: AGENT402_AVAX, authorization }), /the Avalanche lane is not enabled/);
+    });
   });
 });
 
