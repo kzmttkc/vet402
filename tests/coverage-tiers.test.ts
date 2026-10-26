@@ -70,7 +70,7 @@ test("l0OrderBy: c1 は旧規則の公開 fail（ホストごとの上限つき�
   assert.match(c1, /WHEN lp\.probe_count = 1 AND lp\.last_verdict = 'fail' THEN 1 WHEN lp\.last_probed_at IS NULL THEN 2 ELSE 3 END/);
   assert.match(c1, /END, lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/, "同じ組の中は古い順");
   const capped = new PgDialect().sqlToQuery(l0OrderBy("c1", 7)).sql.replace(/\s+/g, " ");
-  assert.match(capped, /e\.source = 'circle_discovery' AND row_number\(\) OVER \(PARTITION BY \(e\.source = 'circle_discovery' AND lp\.last_probed_at IS NULL\) ORDER BY e\.first_seen_at ASC NULLS LAST, e\.id ASC\) > \$2 THEN 4 WHEN lp\.last_probed_at IS NULL THEN 2/);
+  assert.match(capped, /e\.source = 'circle_discovery' AND row_number\(\) OVER \(PARTITION BY \(e\.source = 'circle_discovery' AND lp\.last_probed_at IS NULL\) ORDER BY e\.first_seen_at ASC NULLS LAST, e\.id ASC\) > \$2 THEN 5 WHEN lp\.last_probed_at IS NULL AND e\.source = 'circle_discovery' THEN 2 WHEN lp\.last_probed_at IS NULL THEN 3 ELSE 4 END/);
   assert.doesNotMatch(c1, /circle_discovery/, "上限を渡さない並びは CDP だけの式のまま");
   for (const tier of ["c2", "all"] as const) {
     const r = render(tier);

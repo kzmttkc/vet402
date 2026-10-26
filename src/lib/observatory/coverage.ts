@@ -164,8 +164,11 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
  * c2 / all: 従来どおり古い順（未測定が先）。
  *
  * circleUnprobedCap（c1 の実行だけ）: circle_discovery で未測定の行は、残り枠の
- * この件数までを未測定の組（2）に残し、超えた分は測定済み（3）の後ろ（4）へ下げる。
- * CDP の未測定は組 2 のまま。1 回失敗の組（1）は上限を掛けない。
+ * この件数までを Circle 以外の未測定（3。CDP・MPP・operator_benchmark）より前の組（2）に置き、超えた分は測定済み（4）の後ろ（5）へ下げる。
+ * 1 回失敗の組（1）は上限を掛けない。
+ * 2026-10-26: 上限だけでは前に出る仕組みが無く、10/26 に入った Circle の行は 18,660 件の古い CDP 未測定の
+ * 後ろに並んだ。Gateway でしか払えない Circle の 1,902 件は L0 が一度も走らず、購入候補（L0 pass が条件）が
+ * 0 件のままだった。上限の内側は CDP より先に測る。
  */
 export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number): SQL {
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
@@ -176,7 +179,7 @@ export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number)
   if (circleUnprobedCap === undefined) {
     return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
   }
-  return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' AND ${circleRank} > ${circleUnprobedCap} THEN 4 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
+  return sql`CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' AND ${circleRank} > ${circleUnprobedCap} THEN 5 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' THEN 2 WHEN lp.last_probed_at IS NULL THEN 3 ELSE 4 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
 }
 
 /**

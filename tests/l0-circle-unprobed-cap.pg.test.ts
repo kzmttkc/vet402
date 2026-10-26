@@ -1,5 +1,5 @@
-// C1 の残り枠では、circle_discovery の未測定だけを 1/3 までにし、超えた分は測定済みの後ろへ下げる。
-// CDP の未測定と、1 回失敗の組は上限の外。
+// C1 の残り枠では、circle_discovery の未測定を 1/3 まで CDP の未測定より先に測り、超えた分は測定済みの後ろへ下げる。
+// 1 回失敗の組は上限の外。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
@@ -12,7 +12,7 @@ if (!TEST_DB) {
   assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
-  test("C1 は circle の未測定を残り枠の 1/3 までにし、CDP の未測定は組 2 のまま", async () => {
+  test("C1 は circle の未測定を残り枠の 1/3 まで CDP の未測定より先に測り、超えた分は測定済みの後ろ", async () => {
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
     const { l0OrderBy } = await import("@/lib/observatory/coverage");
@@ -58,8 +58,8 @@ if (!TEST_DB) {
     );
     assert.deepEqual(urls, [
       "https://cap.example/circle-fail",
-      "https://cap.example/cdp-new",
       "https://cap.example/circle-1",
+      "https://cap.example/cdp-new",
       "https://cap.example/cdp-old",
       "https://cap.example/circle-2",
       "https://cap.example/circle-3",

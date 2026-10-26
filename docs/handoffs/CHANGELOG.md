@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-27 Unprobed Circle discovery rows are probed before unprobed CDP rows
+
+- **What**: In the C1 L0 order, unprobed `circle_discovery` rows within the cap (`floor(restLimit / 3)`) now come before other unprobed rows (CDP Bazaar, MPP directory, operator benchmark). Rows over the cap still sit behind probed rows. The cap is unchanged.
+- **Why**: The Gateway lane had made 0 purchases. Purchase candidates need a latest L0 verdict of pass. The 1,902 Circle rows that only accept Circle Gateway were added on 2026-10-26 01:30 UTC and queued behind 18,660 older unprobed CDP rows, so none had ever been probed (production read, 2026-10-26).
+- **Impact**: At most about 1,000 Circle rows a day get their first L0 probe (fewer when the reprobe and single-fail groups use the day's slots) until the backlog clears. Other unprobed rows wait one group longer. Purchases and the L0 pass gate are unchanged.
+- **Commits**: this entry.
+
 ## 2026-10-26 Avalanche C-Chain purchase lane, off by default
 
 - **What**: Avalanche C-Chain (`eip155:43114`) is a sixth pinned EVM purchase row, copied from the Arbitrum lane. Native USDC `0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E`, EIP-712 name "USD Coin" / version "2", `DOMAIN_SEPARATOR` `0xbbea200329a938bc3438984a49cb0732e66d66d7bd59c127abacc1710e77f7b3`, measured 2026-10-26T10:42:23.389Z on `https://api.avax.network/ext/bc/C/rpc` (`eth_chainId` `0xa86a`). The lane stays off unless `OBSERVATORY_AVALANCHE_L1_ENABLED` is exactly `true` and `AVALANCHE_RPC_URL` is set. Daily cap `L1_AVALANCHE_DAILY_CAP_USD` defaults to 2 inside the shared $25. Bridged USDC.e and `extra.name` `GatewayWalletBatched` are refused. One run takes at most two listings from the same host, and a host with no paid Avalanche attempt yet is tried first. The privacy page lists the public RPC `api.avax.network` and its revision date is October 26, 2026.
