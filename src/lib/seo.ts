@@ -35,6 +35,8 @@ export const ORG_SAME_AS = [
   "https://x.com/vet402_com",
   "https://github.com/kzmttkc/vet402",
   "https://www.npmjs.com/package/@vet402/sdk",
+  "https://www.npmjs.com/package/@vet402/middleware",
+  "https://www.npmjs.com/package/@vet402/mcp-server",
 ] as const;
 
 export function publisherOrg() {
@@ -204,6 +206,59 @@ type DatasetInput = {
    */
   retrievedAt?: string;
 };
+
+export function webPageJsonLd(input: { name: string; description: string; path: string }) {
+  const url = input.path === "/" ? SITE_URL : `${SITE_URL}${input.path}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebPage" as const,
+    name: input.name,
+    description: input.description,
+    url,
+    isPartOf: { "@type": "WebSite" as const, name: "vet402", url: SITE_URL },
+    inLanguage: "en",
+    publisher: publisherOrg(),
+  };
+}
+
+/** docs/api の機械可読な API 記述。頁の冒頭（鍵の要否）と矛盾しない文だけを渡す。 */
+export function webApiJsonLd(input: { name: string; description: string; documentationPath: string }) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebAPI" as const,
+    name: input.name,
+    description: input.description,
+    url: `${SITE_URL}/api/v1`,
+    documentation: `${SITE_URL}${input.documentationPath}`,
+    provider: publisherOrg(),
+    termsOfService: `${SITE_URL}/legal/terms`,
+    inLanguage: "en",
+  };
+}
+
+export function articleJsonLd(input: {
+  headline: string;
+  description: string;
+  path: string;
+  datePublished: string;
+  dateModified?: string;
+}) {
+  const url = `${SITE_URL}${input.path}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article" as const,
+    headline: input.headline,
+    description: input.description,
+    datePublished: input.datePublished,
+    dateModified: input.dateModified ?? input.datePublished,
+    author: publisherOrg(),
+    publisher: publisherOrg(),
+    image: `${SITE_URL}${OG_IMAGE_PATH}`,
+    mainEntityOfPage: { "@type": "WebPage" as const, "@id": url },
+    url,
+    inLanguage: "en",
+  };
+}
 
 export function datasetJsonLd(input: DatasetInput) {
   const url = `${SITE_URL}${input.path}`;

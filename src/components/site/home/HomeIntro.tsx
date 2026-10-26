@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { HomeLedger } from "@/components/site/HomeLedger";
 import { ShareRule } from "@/components/site/Figures";
 import { fmt, lowestChainShareLine, type HomeExample } from "@/lib/observatory/home-example";
@@ -41,6 +42,21 @@ export function HomeIntro({
           <p className="mt-6 max-w-[50ch] text-[0.9375rem] leading-[1.65] text-brand sm:text-[1.0625rem]">
             x402 proves that an agent paid. Nothing in x402 proves that the API delivered. vet402 buys from x402 APIs itself and
             publishes what came back, so you can check a seller before your agent pays it.
+          </p>
+          <p className="mt-4 max-w-[50ch] text-[0.9375rem] leading-[1.65] text-brand sm:text-[1.0625rem]">
+            Independent measurements of{" "}
+            <Link href="/x402/stablecoin-payments" className="doc-link">
+              x402 payments for AI agents
+            </Link>
+            , including USDC where that is the pinned asset.{" "}
+            <Link href="/x402/check-a-seller" className="doc-link">
+              Check a seller before paying
+            </Link>
+            .{" "}
+            <Link href="/x402/chains" className="doc-link">
+              Counts by chain
+            </Link>
+            .
           </p>
         </div>
         <div className="min-w-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-start">

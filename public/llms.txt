@@ -1,6 +1,38 @@
 # vet402
 
-> Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence. It also scores payee wallets on Base, so an x402 API provider or a spending agent can check a counterparty before a payment settles.
+> Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence. It also scores payee wallets on Base, so an x402 API provider or a spending agent can check a counterparty before a payment settles. x402 is an HTTP 402 payment protocol for AI agents. An AI agent pays an x402 API with a stablecoin by answering HTTP 402, often in USDC.
+
+## Questions
+
+### What is x402?
+
+x402 is an HTTP 402 payment protocol for AI agents. A server answers 402 with payment terms, the caller pays on chain, often in USDC, and retries the request with proof of payment.
+
+https://vet402.com/blog/what-is-x402
+
+### How do AI agents pay with stablecoins over x402?
+
+An AI agent pays an x402 API with a stablecoin by answering HTTP 402. The server returns payment terms that name an asset, often USDC, plus a network, an amount, and a recipient. The agent signs that transfer and retries the request with proof of payment.
+
+https://vet402.com/x402/stablecoin-payments
+
+### How do you check an x402 seller before paying?
+
+Check an x402 seller before paying by reading the purchases vet402 has made from that seller and the decision those purchases support. The decision names the terms of the last purchase whose delivery vet402 confirmed. If the 402 in hand names a different recipient, asset, network, or scheme, or a higher amount, that offer is different from the one that was delivered.
+
+https://vet402.com/x402/check-a-seller
+
+### Which chains does vet402 measure for x402 payments?
+
+vet402 publishes purchase results per chain from the same ledger as the observatory. A count appears when that ledger read has a row for the chain. An empty read shows no counts.
+
+https://vet402.com/x402/chains
+https://vet402.com/x402/chains/base
+https://vet402.com/x402/chains/solana
+https://vet402.com/x402/chains/tempo
+https://vet402.com/x402/chains/xrpl
+https://vet402.com/x402/chains/arc
+https://vet402.com/x402/chains/celo
 
 x402 settles payments finally and irreversibly, and proof of payment exists on-chain — but proof of delivery does not exist anywhere. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value: it measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
 
@@ -33,6 +65,9 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 - https://vet402.com/corrections — every correction issued to a published result, and what does not count as one
 - https://vet402.com/operator-log — public, append-only record of every global operator override (network-wide blacklist), with the address, stated reason, and date; customer-private lists never appear here
 - https://vet402.com/faq — x402, ERC-8004, and how scoring works
+- https://vet402.com/x402/stablecoin-payments. How an AI agent pays an x402 API with a stablecoin, often USDC.
+- https://vet402.com/x402/check-a-seller. How to check an x402 seller before paying.
+- https://vet402.com/x402/chains. Purchase results by chain, from the same ledger as the observatory.
 - https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
 - https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification
 - https://vet402.com/blog/rss.xml — the same posts as RSS
@@ -147,7 +182,7 @@ Corrections that are issued are published at https://vet402.com/corrections, and
 - You may cite the content on this site (front page, API docs, FAQ, accuracy ledger, blog) as long as you credit the source with the corresponding vet402.com URL.
 - The same statement is published for human readers in section 4 of https://vet402.com/accuracy — this file is not the only place it exists.
 - Figures on the accuracy ledger are rolling 90-day aggregates; cite them with the retrieval date, or quote the `generatedAt` timestamp from `GET /api/v1/accuracy`.
-- Content current as of 2026-10-21. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
+- Content current as of 2026-10-26. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
 
 ## Freshness
 

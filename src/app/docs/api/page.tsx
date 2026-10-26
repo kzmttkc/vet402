@@ -10,7 +10,7 @@ import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
 import { inviteRequired } from "@/lib/dashboard/signup-core";
@@ -25,10 +25,12 @@ const SELLER_FIX_LABEL: Record<SellerCanFix, string> = { yes: "Yes", partly: "Pa
 // default（LP と同じ長い表題）をそのまま名乗っていた。template "%s | vet402"
 // が効くので、ここは接尾辞なしの固有名だけを書く。
 // 2026-08-14: openGraph/twitter/canonical を pageMetadata で個別化。
+const API_BLURB =
+  "Decision API for x402 agent payments. /decision and /resolve need no key (10 and 60 requests a minute per IP). Score, webhook, and attest endpoints take a Bearer key.";
+
 export const metadata: Metadata = pageMetadata({
-  title: "API reference",
-  description:
-    "REST v1 reference for vet402: score a payee before paying it, prove control of a payee address, read the accuracy ledger. Key-less curl quickstart, limits, webhooks.",
+  title: "Decision API for x402 agent payments",
+  description: API_BLURB,
   path: "/docs/api",
 });
 
@@ -661,13 +663,17 @@ export default async function ApiDocsPage() {
     "@context": "https://schema.org",
     "@type": "TechArticle",
     headline: "API reference",
-    description:
-      "REST v1 reference for vet402: score a payee before paying it, prove control of a payee address, read the public accuracy ledger.",
+    description: API_BLURB,
     url: `${SITE_URL}/docs/api`,
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },
     publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },
     inLanguage: "en",
   };
+  const webApi = webApiJsonLd({
+    name: "vet402 Decision API",
+    description: API_BLURB,
+    documentationPath: "/docs/api",
+  });
 
   return (
     // 2026-08-06 (320px persona audit A-5): `p-8` had no breakpoint, so a 320px
@@ -693,6 +699,12 @@ export default async function ApiDocsPage() {
         nonce={nonce}
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: safeJsonLd(article) }}
+      />
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(webApi) }}
       />
 
       {/* 2026-08-11 UI監査5: このページはモバイル375pxで約21,000px の一枚岩で、
@@ -722,6 +734,13 @@ export default async function ApiDocsPage() {
           </div>
 
           <h1 className="doc-title mt-8">API reference</h1>
+          <p className="mx-auto mt-3 max-w-[62ch] text-center text-brand">
+            Decision API for x402 agent payments.{" "}
+            <Link href="/x402/check-a-seller" className="doc-link">
+              Check an x402 seller before paying
+            </Link>
+            .
+          </p>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         </div>
 

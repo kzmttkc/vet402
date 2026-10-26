@@ -8,12 +8,13 @@ import { buildMonth } from "@/lib/build-month";
 // LP が Q1（x402 の定義）を引用するので、同じ文が2箇所に転記された状態を
 // 作らないため。中身は1文字も変えていない。
 import { FAQS } from "@/components/site/faq-data";
+import { WHAT_IS_X402_LEAD } from "@/components/site/x402-answers";
 import TrackView from "@/components/site/TrackView";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Frequently asked questions",
+  title: "x402 payments for AI agents: questions and answers",
   description:
-    "Answers on x402 machine payments, ERC-8004 agent identity, and how vet402's verification and scores work on Base.",
+    "x402 is an HTTP 402 payment protocol for AI agents. Answers on how a caller pays, often in USDC, and how vet402 measures delivery.",
   path: "/faq",
 });
 
@@ -72,9 +73,25 @@ export default async function FaqPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-8">Frequently asked questions</h1>
-        <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
-          x402 payments, public measurements, and the score API.
+        <h1 className="doc-title mt-8">Questions about x402 payments for AI agents</h1>
+        <p className="mx-auto mt-4 max-w-[62ch] text-center text-brand">
+          {WHAT_IS_X402_LEAD[0]} {WHAT_IS_X402_LEAD[1]} The same answers are expanded in{" "}
+          <Link href="/blog/what-is-x402" className="doc-link">
+            what is x402
+          </Link>
+          ,{" "}
+          <Link href="/x402/stablecoin-payments" className="doc-link">
+            how AI agents pay with stablecoins
+          </Link>
+          ,{" "}
+          <Link href="/x402/check-a-seller" className="doc-link">
+            how to check an x402 seller before paying
+          </Link>
+          , and{" "}
+          <Link href="/x402/chains" className="doc-link">
+            x402 payments by chain
+          </Link>
+          .
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 

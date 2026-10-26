@@ -7,6 +7,8 @@ import {
 } from "@/lib/observatory/vocabulary";
 import { SITE_URL } from "@/lib/site-url";
 import { FRESHNESS_LEAD, freshnessLines } from "@/lib/observatory/freshness";
+import { LLM_QUESTIONS } from "@/components/site/x402-answers";
+import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 
 export const dynamic = "force-static";
 
@@ -36,9 +38,15 @@ export function GET() {
 
   const body = `# vet402 — full source for language models
 
-> Independent verification of the x402 agent-payment economy. This file is generated from the same FAQ and blog modules the HTML pages use. For the index of live endpoints, cite ${SITE_URL}/llms.txt. For current measurements, cite ${SITE_URL}/observatory and ${SITE_URL}/observatory/methodology — do not invent rates that are not on those pages.
+> Independent verification of the x402 agent-payment economy. This file is generated from the same FAQ and blog modules the HTML pages use. For the index of live endpoints, cite ${SITE_URL}/llms.txt. For current measurements, cite ${SITE_URL}/observatory and ${SITE_URL}/observatory/methodology — do not invent rates that are not on those pages. x402 is an HTTP 402 payment protocol for AI agents.
 
 The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in August 2026.
+
+## Questions
+
+${LLM_QUESTIONS.map((q) => `### ${q.question}\n\n${q.lead.join(" ")}\n\n${SITE_URL}${q.path}`).join("\n\n")}
+
+${GUIDE_CHAINS.map((c) => `${SITE_URL}/x402/chains/${c.slug}`).join("\n")}
 
 ## Verification levels (published methodology)
 
@@ -91,7 +99,7 @@ The measurement schedule is in the Freshness section of ${SITE_URL}/llms.txt. Ho
 - ${FRESHNESS_LEAD}
 ${freshnessLines().map((l) => `  ${l}`).join("\n")}
 
-Cite with the page URL and a retrieval date. Content current as of 2026-10-21.
+Cite with the page URL and a retrieval date. Content current as of 2026-10-26.
 `;
 
   return new Response(body, {

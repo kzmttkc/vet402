@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { pageMetadata } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { boardAsOfDay, parseSellerSideFilter, searchSellers, sellerSearchRedirect, type SellerBoard } from "@/lib/sellers/board";
 import { getPurchasedHostsCached, getSellerBoardCached } from "@/lib/sellers/cached";
-import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/sellers/SellersViews";
+import { SellersIndexView, SellersNotice, sellerPath, sellersIndexHeading } from "@/components/site/sellers/SellersViews";
 
 /**
  * /sellers — a Base x402 seller finds its own purchase results by domain (2026-09-28).
@@ -62,8 +64,31 @@ export default async function SellersPage({ searchParams }: { searchParams: Prom
   const page = Math.max(1, Math.trunc(Number(params.page ?? "1")) || 1);
   // 2026-09-29 第6巡: 区分の絞り込み（?side=seller|vet402|unsorted|delivered・知らない値は全部）。
   const side = parseSellerSideFilter(params.side);
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const webPage = webPageJsonLd({
+    name: sellersIndexHeading(boardAsOfDay(board)),
+    description:
+      "vet402 buys x402 listings with real USDC on Base and publishes what happened. Type your domain to see each of your Base listings: when vet402 last bought it, what it saw, what to fix, and whether a failure was on your side or on vet402's.",
+    path: "/sellers",
+  });
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Sellers", path: "/sellers" },
+  ]);
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
+      />
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+      />
       <SellersIndexView
         board={board}
         page={page}

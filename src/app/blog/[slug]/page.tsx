@@ -114,6 +114,26 @@ export default async function BlogPostPage({
           ))}
         </div>
 
+        <p className="doc-p mt-8">
+          Related reading:{" "}
+          <Link href="/faq" className="doc-link">
+            questions about x402 payments for AI agents
+          </Link>
+          ,{" "}
+          <Link href="/x402/stablecoin-payments" className="doc-link">
+            how AI agents pay with stablecoins
+          </Link>
+          ,{" "}
+          <Link href="/x402/check-a-seller" className="doc-link">
+            how to check an x402 seller before paying
+          </Link>
+          , and{" "}
+          <Link href="/x402/chains" className="doc-link">
+            x402 payments by chain
+          </Link>
+          .
+        </p>
+
         <p className="mt-10 text-[0.84375rem]">
           <Link href="/blog" className="doc-link">
             All posts

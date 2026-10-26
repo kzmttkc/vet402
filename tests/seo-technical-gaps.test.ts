@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import sitemap from "@/app/sitemap";
-import robots from "@/app/robots";
+import robots, { PUBLIC_READ_ALLOWS } from "@/app/robots";
 import { OG_IMAGE_PATH } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 import { SITEMAP_ENDPOINT_LIMIT, SITEMAP_MEASURED_WITHIN_DAYS } from "@/lib/observatory/reader";
@@ -120,17 +120,33 @@ test("robots は静的 sitemap と endpoint sitemap の両方を指す", () => {
   assert.ok(!sitemaps.includes(`${SITE_URL}/sitemap-sellers.xml`), "売り手頁の sitemap は見直し中は出さない（2026-09-29）");
 });
 
-test("probe402 だけに key なしの台帳 2 口を開け、/api/ のほかと /dashboard/ は閉じたまま（2026-10-09）", () => {
+test("公開の読み取り API は * と AI クローラに名指しで開け、書き込みと配下は閉じたまま（2026-10-26）", () => {
   const rules = robots().rules;
   const list = Array.isArray(rules) ? rules : [rules];
+  const star = list.find((r) => r.userAgent === "*");
+  assert.ok(star, "* の行が無い");
+  const starAllow = Array.isArray(star.allow) ? star.allow : [star.allow];
+  for (const path of PUBLIC_READ_ALLOWS) {
+    assert.ok(starAllow.includes(path), `* が ${path} を許可していない`);
+  }
+  assert.ok(!starAllow.includes("/api/"), "Disallow を打ち消す Allow /api/ は置かない");
+  assert.ok(!starAllow.includes("/api/v1/observatory/"), "観測所の配下をまとめて開けない");
+  assert.ok(!starAllow.includes("/api/v1/census/"), "センサスの配下をまとめて開けない");
+  assert.ok(!starAllow.some((a) => a === "/api/health" || a === "/api/v1/sellers/export.csv"));
+  assert.deepEqual(star.disallow, ["/api/", "/dashboard/"]);
+  for (const ua of ["GPTBot", "ClaudeBot", "PerplexityBot", "Google-Extended"]) {
+    const row = list.find((r) => r.userAgent === ua);
+    assert.ok(row, `${ua} の行が無い`);
+    const allow = Array.isArray(row.allow) ? row.allow : [row.allow];
+    for (const path of PUBLIC_READ_ALLOWS) {
+      assert.ok(allow.includes(path), `${ua} が ${path} を許可していない`);
+    }
+  }
   const p = list.find((r) => r.userAgent === "probe402");
   assert.ok(p, "probe402 の行が無い");
   const allow = Array.isArray(p.allow) ? p.allow : [p.allow];
-  assert.ok(allow.includes("/api/v1/observatory/") && allow.includes("/api/v1/census/"));
+  assert.ok(allow.includes("/") && allow.includes("/api/v1/observatory/") && allow.includes("/api/v1/census/"));
   assert.deepEqual(p.disallow, ["/api/", "/dashboard/"]);
-  const star = list.find((r) => r.userAgent === "*");
-  const starAllow = Array.isArray(star?.allow) ? star.allow : [star?.allow];
-  assert.ok(!starAllow.some((a) => a?.startsWith("/api/")), "全員向けの行で /api/ を開けない");
 });
 
 test("売り手の sitemap は /sellers の一覧と同じデータ源から、頁が受け付けるホストだけを出す（2026-09-28）", () => {

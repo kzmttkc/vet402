@@ -87,8 +87,8 @@ test("llms.txt の Cite as は型で、時刻を渡した creditText はその�
   assert.match(state, /retrievedAt:\s*stats\.readAt/);
 });
 
-test("Dataset を出す 2 頁は共通ビルダを通る（手書きの Dataset を残さない）", () => {
-  for (const file of ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx"]) {
+test("Dataset を出す頁は共通ビルダを通る（手書きの Dataset を残さない）", () => {
+  for (const file of ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx", "src/app/impact/page.tsx"]) {
     const src = read(file);
     assert.ok(src.includes("datasetJsonLd({"), `${file} が共通ビルダを使っていない`);
     assert.ok(
@@ -104,12 +104,13 @@ test("構造化データに書く配布 URL は llms.txt が公開だと宣言�
     "/api/v1/observatory/state",
     "/api/v1/observatory/history",
     "/api/v1/observatory/export.csv",
+    "/api/v1/observatory/l0/export.csv",
     "/api/v1/accuracy",
   ];
   for (const path of declared) {
     assert.ok(llms.includes(path), `llms.txt が ${path} を宣言していない`);
   }
-  for (const file of ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx"]) {
+  for (const file of ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx", "src/app/impact/page.tsx"]) {
     const src = read(file);
     const urls = [...src.matchAll(/contentUrl: `\$\{SITE_URL\}([^`]+)`/g)].map((m) => m[1]);
     assert.ok(urls.length > 0, `${file} に contentUrl が無い`);

@@ -424,6 +424,13 @@ export function SellersIndexView({
         of your Base listings: when vet402 last bought it, what it saw, what to fix, and whether a failure was on your
         side or on vet402&apos;s.
       </p>
+      <p className="doc-p">
+        Before an agent pays,{" "}
+        <Link href="/x402/check-a-seller" className="doc-link">
+          check an x402 seller
+        </Link>{" "}
+        against the decision and the purchases vet402 has already made.
+      </p>
       <SearchForm q={q} />
 
       {search && (

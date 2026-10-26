@@ -59,10 +59,12 @@ const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
  * listings (a verifier that special-cases itself is flagging its own fraud).
  */
 
+const METHOD_BLURB =
+  "Methodology for x402 payment measurements: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.";
+
 export const metadata: Metadata = pageMetadata({
-  title: "Observatory methodology",
-  description:
-    "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.",
+  title: "Methodology for x402 payment measurements",
+  description: METHOD_BLURB,
   path: "/observatory/methodology",
 });
 
@@ -92,9 +94,8 @@ export default async function ObservatoryMethodologyPage() {
   const article = {
     "@context": "https://schema.org",
     "@type": "TechArticle",
-    headline: "Observatory methodology",
-    description:
-      "Definitions behind the x402 Observatory: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.",
+    headline: "Methodology for x402 payment measurements",
+    description: METHOD_BLURB,
     url: `${SITE_URL}/observatory/methodology`,
     dateModified: "2026-09-04",
     author: { "@type": "Organization", name: "vet402", url: SITE_URL },
@@ -145,6 +146,13 @@ export default async function ObservatoryMethodologyPage() {
         </div>
 
         <h1 className="doc-title mt-8">What these measurements mean</h1>
+        <p className="doc-p mt-4">
+          Chain pages for the purchase lanes are at{" "}
+          <Link href="/x402/chains" className="doc-link">
+            x402 payments by chain
+          </Link>
+          .
+        </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">

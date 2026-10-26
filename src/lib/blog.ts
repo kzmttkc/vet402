@@ -1,3 +1,5 @@
+import { WHAT_IS_X402_LEAD } from "@/components/site/x402-answers";
+
 export type BlogPost = {
   slug: string;
   title: string;
@@ -26,9 +28,8 @@ export const BLOG_POSTS: BlogPost[] = [
     title: "What is x402? The HTTP status code that waited 28 years for a job",
     description:
       "What is x402? It's the machine-payment protocol that finally gave HTTP 402 Payment Required something to do — letting an AI agent pay for an API call in a single request. Here's how it works, where it stands today, and the one thing it deliberately doesn't tell you.",
-    seoTitle: "What is x402? The HTTP code that waited 28 years",
-    seoDescription:
-      "x402 gives HTTP 402 Payment Required a job: an AI agent pays for an API call in a single request. How it works, where it stands, and what it doesn't tell you.",
+    seoTitle: "What is x402? HTTP 402 payments for AI agents",
+    seoDescription: WHAT_IS_X402_LEAD.join(" "),
     publishedAt: "2026-08-13",
     updatedAt: "2026-09-29",
     editorsNote:

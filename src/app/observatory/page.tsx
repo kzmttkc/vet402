@@ -39,9 +39,9 @@ import { WideColumn } from "@/components/site/WideColumn";
  */
 
 export const metadata: Metadata = pageMetadata({
-  title: "x402 Observatory",
+  title: "x402 Observatory of agent payments",
   description:
-    "Daily measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402 challenge, and is it still listed. Facts, no scores.",
+    "Daily measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402 challenge, and is it still listed. Facts, no scores. The same measurements cover x402 agent payments.",
   path: "/observatory",
 });
 
@@ -162,6 +162,17 @@ export default async function ObservatoryPage({
             1行として置く。 */}
         <p className="mt-2 text-brand-lift">
           This page lists live endpoint checks. Values here are measurements, not opinions.
+        </p>
+        <p className="mt-2 max-w-[62ch] text-brand">
+          Counts by chain are on{" "}
+          <Link href="/x402/chains" className="doc-link">
+            x402 payments by chain
+          </Link>
+          .{" "}
+          <Link href="/x402/check-a-seller" className="doc-link">
+            Check a seller before paying
+          </Link>
+          .
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 

@@ -9,9 +9,9 @@ import { SITE_URL } from "@/lib/site-url";
 
 export const metadata: Metadata = pageMetadata({
   // 2026-08-13 [m2]: 接尾辞は layout の template "%s | vet402" が付ける。
-  // ここに書くと「Blog — vet402 | vet402」になる。
-  title: "Blog",
-  description: "Notes on agent-to-agent payments, x402, and what a buyer can check before paying.",
+  // ここに書くと「Blog | vet402 | vet402」になる。
+  title: "Notes on x402 agent payments",
+  description: "Notes on x402 agent payments, stablecoin payments, and what a buyer can check before paying.",
   path: "/blog",
 });
 
@@ -21,7 +21,7 @@ export default async function BlogIndexPage() {
   const itemListJsonLd = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    name: "vet402 blog",
+    name: "Notes on x402 agent payments",
     itemListElement: posts.map((post, i) => ({
       "@type": "ListItem",
       position: i + 1,
@@ -64,9 +64,13 @@ export default async function BlogIndexPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-8">Blog</h1>
+        <h1 className="doc-title mt-8">Notes on x402 agent payments</h1>
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
-          Notes on agent-to-agent payments, x402, and what a buyer can check before paying.
+          Notes on x402 agent payments, stablecoin payments, and what a buyer can check before paying.{" "}
+          <Link href="/x402/stablecoin-payments" className="doc-link">
+            How AI agents pay with stablecoins
+          </Link>
+          .
         </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 

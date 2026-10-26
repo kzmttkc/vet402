@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
+import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 import { SITE_URL } from "@/lib/site-url";
 
 // 静的頁の lastmod（2026-08-14）。`new Date()` を使うとデプロイのたびに全頁が
@@ -13,26 +14,29 @@ const SITE_REVISION = "2026-08-15";
 // （それがまさに `new Date()` を使わない理由なので、同じ嘘を定数でやらない）。
 const REV_2026_09_05 = "2026-09-05";
 
+// 2026-10-26 SEO/GEO: 本文・表題・回答頁を足した頁だけ。legal / ethonline / rwa / tokyo は上げない。
+const REV_2026_10_26 = "2026-10-26";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 1 },
-    { url: `${SITE_URL}/docs/api`, lastModified: SITE_REVISION, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE_URL}/`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE_URL}/leaderboard`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.7 },
     { url: `${SITE_URL}/status`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.6 },
     // 2026-08-15: 観測所（L0/L1/L2）は本番稼働中だが sitemap から漏れていた。
     // 動的な /observatory/e/:id は /payee/:address と同じ理由（無限に生成できる）
     // で列挙しない — 各頁は自己参照 canonical を持ち、robots も許可済み。
-    { url: `${SITE_URL}/observatory`, lastModified: REV_2026_09_05, changeFrequency: "daily", priority: 0.8 },
+    { url: `${SITE_URL}/observatory`, lastModified: REV_2026_10_26, changeFrequency: "daily", priority: 0.8 },
     {
       url: `${SITE_URL}/observatory/state`,
-      lastModified: REV_2026_09_05,
+      lastModified: REV_2026_10_26,
       changeFrequency: "daily",
       priority: 0.7,
     },
     {
       url: `${SITE_URL}/observatory/methodology`,
-      lastModified: REV_2026_09_05,
+      lastModified: REV_2026_10_26,
       changeFrequency: "monthly",
       priority: 0.6,
     },
@@ -53,18 +57,27 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 個々の /sellers/:host はここでは列挙しない。/sitemap-sellers.xml（一覧と同じデータ源）が出す。
     // 2026-09-28: RWA の公開頁。
     { url: `${SITE_URL}/rwa`, lastModified: "2026-09-28", changeFrequency: "weekly", priority: 0.6 },
-    { url: `${SITE_URL}/faq`, lastModified: REV_2026_09_05, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE_URL}/faq`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.7 },
+    { url: `${SITE_URL}/x402/stablecoin-payments`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/check-a-seller`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
+    ...GUIDE_CHAINS.map((chain) => ({
+      url: `${SITE_URL}/x402/chains/${chain.slug}`,
+      lastModified: REV_2026_10_26,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
     // 2026-09-02 敵対的監査: 公開・robots 許可・内部リンクありの 4 頁が sitemap に無かった。
     // /demo /live /partners は入れない —— 内部リンクが 0 本の孤立頁で、sitemap に載せると
     // 「サイトの一部」だと索引に言うことになる。導線を付けた時点で足す。
-    { url: `${SITE_URL}/impact`, lastModified: "2026-09-02", changeFrequency: "weekly", priority: 0.6 },
+    { url: `${SITE_URL}/impact`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/decisions`, lastModified: "2026-09-02", changeFrequency: "daily", priority: 0.6 },
     { url: `${SITE_URL}/operations`, lastModified: "2026-09-02", changeFrequency: "weekly", priority: 0.5 },
     { url: `${SITE_URL}/playground`, lastModified: "2026-09-02", changeFrequency: "monthly", priority: 0.6 },
     // 2026-09-09: /ethonline（ETHOnline 2026 の判定者向け頁）。同日朝の公開時は内部リンク 0 で
     // 上の規則どおり載せなかった。/ の doc-head から導線を付けたので、同じ規則で足す。
     { url: `${SITE_URL}/ethonline`, lastModified: "2026-09-09", changeFrequency: "weekly", priority: 0.6 },
-    { url: `${SITE_URL}/blog`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${SITE_URL}/blog`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
     {
       url: `${SITE_URL}/blog/rss.xml`,
       lastModified: SITE_REVISION,

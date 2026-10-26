@@ -130,7 +130,7 @@ export default async function Home() {
   ]);
   const ledger = homeLedgerOf(stats);
   const organization = organizationJsonLd(
-    "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
+    "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
   );
   // 2026-08-14 SEO/AEO: WebSite ノードが欠けていた（Organization と
   // SoftwareApplication はあった）。検索の sitelinks／エンティティ束ねに効く
@@ -142,7 +142,7 @@ export default async function Home() {
     name: "vet402",
     url: SITE_URL,
     description:
-      "Independent verification of the x402 agent-payment economy.",
+      "Independent verification of x402 payments for AI agents.",
     publisher: publisherOrg(),
     inLanguage: "en",
     sameAs: organization.sameAs,

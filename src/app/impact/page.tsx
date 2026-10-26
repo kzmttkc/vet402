@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { pageMetadata } from "@/lib/seo";
+import { headers } from "next/headers";
+import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
+import { SITE_URL } from "@/lib/site-url";
 import { formatUsdcUnits } from "@/lib/util/usd";
 import {
   getCoverageShare,
@@ -21,10 +24,12 @@ import { TableScroll } from "@/components/site/TableScroll";
  * リンク付きで読めるようにするだけ。主張は分母付きの事実に限る。
  */
 
+const IMPACT_DESCRIPTION =
+  "Public x402 payment measurements: coverage, purchases with evidence, and a hash-chained ledger. Every figure links to its API.";
+
 export const metadata: Metadata = pageMetadata({
-  title: "Impact — a public good, in numbers you can check",
-  description:
-    "What vet402 gives the x402 economy for free: endpoint coverage, real purchases with evidence, and a hash-chained ledger; every figure links to its API.",
+  title: "Impact of public x402 payment measurements",
+  description: IMPACT_DESCRIPTION,
   path: "/impact",
 });
 
@@ -42,11 +47,54 @@ export default async function ImpactPage() {
     getLatestSettledReceipts(5).catch(() => []),
   ]);
   const latestAnchor = anchors[0] ?? null;
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const retrievedOn = drawnAt.slice(0, 10);
+  const dataset = datasetJsonLd({
+    name: "vet402 impact figures",
+    citeName: "impact figures",
+    description:
+      "Public x402 payment measurements: coverage, purchases with evidence, and a hash-chained ledger.",
+    path: "/impact",
+    citeUrl: `${SITE_URL}/api/v1/observatory/state`,
+    retrievedAt: retrievedOn,
+    measurementTechnique:
+      "Figures on this page are read from the public observatory state and the purchase export.",
+    variableMeasured: ["endpoint coverage", "purchase attempts", "settled purchases", "delivered purchases"],
+    keywords: ["x402", "agent payments", "USDC"],
+    distribution: [
+      {
+        name: "Aggregate snapshot (JSON)",
+        encodingFormat: "application/json",
+        contentUrl: `${SITE_URL}/api/v1/observatory/state`,
+      },
+      {
+        name: "L1 purchase ledger (CSV)",
+        encodingFormat: "text/csv",
+        contentUrl: `${SITE_URL}/api/v1/observatory/export.csv`,
+      },
+    ],
+  });
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Impact", path: "/impact" },
+  ]);
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet sheet-wide">
         <WideColumn />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(dataset) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+        />
         <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
             <span>Independent Measurement</span>
@@ -68,6 +116,16 @@ export default async function ImpactPage() {
         </div>
 
         <h1 className="doc-title mt-8">Impact</h1>
+        <p className="mx-auto mt-3 max-w-[62ch] text-center text-brand">
+          x402 agent payment measurements, each figure linked to its API. Chain counts are on{" "}
+          <Link href="/x402/chains" className="doc-link">
+            x402 payments by chain
+          </Link>
+          .
+        </p>
+        <p className="doc-p">
+          {`KIZUNA Creation. vet402 impact figures. Dataset, retrieved ${retrievedOn}. ${SITE_URL}/api/v1/observatory/state`}
+        </p>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
 
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
