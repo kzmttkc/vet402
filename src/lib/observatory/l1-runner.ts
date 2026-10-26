@@ -474,7 +474,8 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
       FROM (
         SELECT base.*,
                ${censusHostSql(sql`base.resource_key`)} AS celo_host,
-               coalesce(tries.n, 0)::int AS celo_host_attempts
+               coalesce(tries.n, 0)::int AS celo_host_attempts,
+               coalesce(unpaid.n, 0)::int AS celo_host_unpaid_7d
         FROM (${inner}) base
         LEFT JOIN (
           SELECT ${censusHostSql(sql`he.resource_key`)} AS host, count(*)::int AS n
@@ -484,10 +485,22 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
             AND att.status IN (${statuses})
           GROUP BY 1
         ) tries ON tries.host = ${censusHostSql(sql`base.resource_key`)}
+        -- A host that ends before payment every time (no 402, no eligible accept, request error) keeps 0 paid
+        -- attempts. Its rows of the last 7 days that never reached a payment push it back, so it does not take
+        -- the Celo slots run after run (review of 34dfea05).
+        LEFT JOIN (
+          SELECT ${censusHostSql(sql`ue.resource_key`)} AS host, count(*)::int AS n
+          FROM x402_l1_purchases un
+          JOIN x402_endpoints ue ON ue.id = un.endpoint_id
+          WHERE un.attempted_at >= now() - interval '7 days'
+            AND un.status NOT IN (${statuses})
+          GROUP BY 1
+        ) unpaid ON unpaid.host = ${censusHostSql(sql`base.resource_key`)}
       ) c
     ) ranked
     WHERE ranked.celo_host_rn <= ${CELO_LANE_MAX_LISTINGS_PER_HOST}
     ORDER BY ranked.celo_host_attempts ASC,
+             ranked.celo_host_unpaid_7d ASC,
              ranked.celo_ord_tier DESC,
              ranked.celo_ord_unbought DESC,
              ranked.celo_ord_priority DESC,

@@ -182,6 +182,24 @@ if (!TEST_DB) {
       })),
     );
 
+    // fat-celo ended before payment three times this week on a listing that is not picked here (no eligible
+    // accept). Those rows put the whole host behind the untried thin hosts, so fat-celo takes no Celo slot
+    // (review of 34dfea05). Without the unpaid key, fat-celo's two listings would still come first.
+    const fatLast = await db.execute(sql`SELECT id FROM x402_endpoints WHERE resource_url LIKE 'https://fat-celo.example/%' ORDER BY resource_url DESC LIMIT 1`);
+    const fatLastRows = (Array.isArray(fatLast) ? fatLast : ((fatLast as { rows?: unknown[] }).rows ?? [])) as { id: string }[];
+    assert.equal(fatLastRows.length, 1);
+    await db.insert(schema.x402L1Purchases).values(
+      [0, 1, 2].map(() => ({
+        endpointId: fatLastRows[0].id,
+        status: "no_eligible_accept",
+        payer: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        network: BASE,
+        payTo: addr(0x30),
+        amountUnits: "0",
+        spentUnits: "0",
+      })),
+    );
+
     let txSeq = 0;
     const seen: { url: string; network: string | null }[] = [];
     const fetchImpl = async (url: string, init?: RequestInit) => {
@@ -230,9 +248,9 @@ if (!TEST_DB) {
     for (const host of celoHosts) celoCount.set(host, (celoCount.get(host) ?? 0) + 1);
     assert.deepEqual(
       [...celoCount.keys()].sort(),
-      ["fat-celo.example", "primary-celo.example", "thin-celo-0.example", "thin-celo-1.example"],
+      ["primary-celo.example", "thin-celo-0.example", "thin-celo-1.example", "thin-celo-2.example", "thin-celo-3.example"],
     );
-    assert.equal(celoCount.get("fat-celo.example"), 2);
+    assert.equal(celoCount.get("fat-celo.example"), undefined);
     assert.equal(celoCount.get("primary-celo.example"), 1);
     assert.ok(!celoHosts.includes("tried.example"));
     for (const count of celoCount.values()) assert.ok(count <= 2);
