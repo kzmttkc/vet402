@@ -1403,302 +1403,21 @@ async function haltGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<Halt
   return verdict;
 }
 
-export async function runL1Batch(
-  options: {
-    limit?: number;
-    fetchImpl?: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
-    timeoutMs?: number;
-    /**
-     * Test seam: Celo の支払い付き要求の待ち。既定は L1_CELO_PAID_TIMEOUT_MS。
-     * 無払いの要求と、Celo 以外の支払い付き要求は timeoutMs のまま。
-     */
-    celoPaidTimeoutMs?: number;
-    /**
-     * Playground demo path: narrow candidate selection to this one endpoint.
-     * Everything else — L0-pass requirement, self-exclusion, sweep-window
-     * dedup, the atomic budget reservation — applies unchanged, so a demo
-     * trigger can never spend past what the daily batch itself could.
-     */
-    onlyEndpointId?: string;
-    /** Test seam: Solana recent blockhash. Default hits SOLANA_RPC_URL. */
-    getSolanaBlockhash?: () => Promise<string>;
-    /** Whole-batch wall-clock budget; default L1_BATCH_BUDGET_MS (test seam). */
-    batchBudgetMs?: number;
-    /** Test seam: 購入元の USDC 残高（基本単位）。既定は BASE_RPC_URL / SOLANA_RPC_URL を読む。 */
-    getPayerUsdcBalance?: PayerUsdcBalanceReader;
-    /** Test seam: Circle Gateway の available。既定は GatewayClient.getBalances。テストはここを差し替え、ネットへ出ない。 */
-    readArcGatewayAvailable?: () => Promise<bigint | null>;
-    /** Test seam: Gateway の署名。既定は BatchEvmScheme（ローカル署名、ブロードキャストしない）。 */
-    signArcGateway?: ArcGatewaySigner;
-    /** Test seam: Tempo（MPP）の署名器。既定は mppx/client（Tempo RPC へ出る）。 */
-    mppxCharge?: MppxCharge;
-    /** Test seam: XRPL の Sequence と validated ledger。既定は XRPL_RPC_URL（JSON-RPC）を読む。 */
-    getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
-    /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
-    createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
-    /**
-     * Test seam: レーン枠の時間の上限（L1_LANE_TIME_SHARE）と setupMs が読む時計。既定は Date.now。
-     * デッドライン（createDeadline）は差し替えない——maxDuration を守る判定は従来どおり壁時計で決める。
-     */
-    now?: () => number;
-  } = {},
-): Promise<L1BatchSummary> {
-  const now = options.now ?? Date.now;
-  const runStartedAt = now();
-  // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
-  // public Bazaar catalog. The production default refuses any target that is —
-  // or redirects to — a non-public address, so this runner cannot be pointed
-  // at the platform's own internal surfaces (nor made to carry a signed
-  // payment authorization there). See src/lib/net/safe-fetch.ts.
-  const {
-    limit = 100,
-    fetchImpl = guardedFetch,
-    timeoutMs = L1_REQUEST_TIMEOUT_MS,
-    celoPaidTimeoutMs = L1_CELO_PAID_TIMEOUT_MS,
-    onlyEndpointId,
-    batchBudgetMs = L1_BATCH_BUDGET_MS,
-  } = options;
-  const deadline = createDeadline(batchBudgetMs);
-  const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
-  const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
-  const createStellarPayment = options.createStellarPayment ?? defaultCreateStellarPayment;
-  const summary: L1BatchSummary = {
-    attempted: 0,
-    settled: 0,
-    settleFailed: 0,
-    deliveredNoReceipt: 0,
-    skipped: 0,
-    budgetDenied: 0,
-    spentUnitsTotal: "0",
-    stoppedForDeadline: false,
-    notAttempted: 0,
-    orphansResolved: 0,
-    halted: false,
-    haltReason: null,
-    disabledReason: null,
-    payerUnfunded: 0,
-    sellerCapped: 0,
-    payerFundsUnreadable: [],
-    laneFloor: {},
-    laneFloorHostCapped: {},
-    xrplFeeOverCap: 0,
-    xrplLaneClosed: null,
-    censusCandidates: 0,
-    retestCandidates: 0,
-    censusRemaining: null,
-    laneSkippedForTime: 0,
-    setupMs: null,
-    attemptsByNetwork: {},
-  };
+/**
+ * 候補 SQL の組み立て（2026-10-27・runL1Batch の中から外へ出した。文は 1 文字も変えていない）。
+ * 準備の各問い合わせを本番の読み取りで同じ関数のまま測り、DB 試験で選ぶ候補を固定するため。
+ * 値は runL1Batch が準備の途中で決めたもの（初回購入の枠・レーンの除外・自己除外）をそのまま受け取る。
+ */
+export type L1TargetsSqlContext = {
+  limit: number;
+  onlyEndpointId?: string;
+  laneExclusions: SQL[];
+  firstPurchasesSelectable: boolean;
+  censusFirstSelectable: boolean;
+};
 
-  // 1. Master switches — fail-closed before any network traffic.
-  if (!isL1Enabled()) {
-    summary.disabledReason = "l1_disabled";
-    return summary;
-  }
-  // MetaMask exports the key WITHOUT the 0x prefix; Coinbase Wallet WITH it.
-  // Accept both, normalize to the 0x form viem requires.
-  const rawPk = process.env.OBSERVATORY_WALLET_PRIVATE_KEY?.trim() ?? "";
-  const pk = rawPk.startsWith("0x") ? rawPk : rawPk ? `0x${rawPk}` : "";
-  if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
-    summary.disabledReason = "wallet_key_missing";
-    return summary;
-  }
-  const db = getDb();
-  if (!db) throw new Error("DATABASE_URL is not configured");
-
-  // 1.2 実行時の停止スイッチ（2026-09-05 監査 P0）。env のフラグ（上）は
-  //     再デプロイしないと変わらないので、支出を今すぐ止める手段になれない。
-  //     DB の 1 行を、ネットワークへ 1 本も出す前に読む。
-  const batchHalt = await haltGate(db);
-  if (batchHalt.halted) {
-    summary.halted = true;
-    summary.haltReason = batchHalt.reason;
-    summary.disabledReason = "spending_halted";
-    return summary;
-  }
-
-  const account = privateKeyToAccount(pk as `0x${string}`);
-  // Solana は独立フラグ + 独立鍵。どちらか欠ければ candidates から除外される
-  // （試行すらしない）。予算・台帳は Base と共有（USDC 基本単位が共通）。
-  const solanaKeypair = isSolanaL1Enabled() ? loadSolanaKeypair() : null;
-  const solanaReady = solanaKeypair !== null;
-  // XRPL（2026-09-17）も同じ形: 独立フラグ + 独立 seed。RLUSD は 1 単位 = $1 なので台帳の目盛りは共有。
-  const xrplPayer = await loadXrplPayerModule();
-  const xrplWallet = xrplPayer ? xrplPayer.loadXrplWallet() : null;
-  // ready = フラグ + seed + XRPL_RPC_URL。RPC が無ければ SQL の段階で候補外にする——署名の材料（Sequence・
-  // validated ledger）を読めない失敗を、売り手の request_error 行にしない（2026-09-17 出荷前レビュー #2）。
-  const xrplReady = xrplWallet !== null && !!process.env.XRPL_RPC_URL?.trim();
-  // Stellar（2026-10-18）: 旗 + 秘密 + Horizon（残高）+ Soroban RPC（署名）。RPC が無いと予約の後に
-  // createPaymentPayload が落ちるので、SQL の段階で候補外にする（XRPL の RPC と同じ理由）。
-  const stellarPayer = await loadStellarPayerModule();
-  const stellarAccount = stellarPayer ? stellarPayer.loadStellarPayer() : null;
-  const stellarReady =
-    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();
-
-  // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
-  // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
-  // 場所に置かない。いま鍵を読んだアドレス（＝我々が署名できる＝定義上そこへの
-  // 支払いは自己取引）を実行時に注入し、環境変数のリストと合併する。
-  addDerivedOperatorAddresses([
-    account.address,
-    solanaKeypair?.publicKey.toBase58() ?? null,
-    xrplWallet?.classicAddress ?? null,
-    stellarAccount?.address ?? null,
-  ]);
-
-  // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
-  //     reads the ledger. Ordering is safe by construction: the sweep never
-  //     touches spent_units, so the day total below is identical either way.
-  //     A failure here must not stop the batch — it is housekeeping, not a
-  //     money gate — but it is never swallowed silently.
-  try {
-    summary.orphansResolved = await sweepOrphanedInFlight(db);
-  } catch (error) {
-    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.orphan_sweep", redactedError(error));
-  }
-
-  // 2. Today's spend from the ledger (UTC day).
-  let spentToday = 0n;
-  try {
-    const raw = await db.execute(sql`
-      SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
-      FROM x402_l1_purchases
-      WHERE attempted_at >= ${utcDayStart()}
-    `);
-    const list = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
-      spent: string;
-    }[];
-    // Fail-closed: an unreadable ledger must never read as "nothing spent
-    // today" — that is the one wrong answer that opens a fresh daily budget.
-    const spentRaw = list[0]?.spent;
-    if (typeof spentRaw !== "string") throw new Error("l1 daily spend query returned no total");
-    spentToday = BigInt(spentRaw.split(".")[0]);
-  } catch (error) {
-    if (!isMissingSchemaError(error)) throw error;
-    return summary; // table missing → cold start, nothing to do safely
-  }
-
-  // 2.5 別枠を持つレーン（Solana・Arc）ごとに、(a) レーンが有効か、(b) その日の別枠が
-  //     もう尽きていないかを見て、どちらかが否なら候補から外す（試行して断られた行を
-  //     書くと、その売り手はスイープ窓のあいだ再選択されない）。読めなければ外す側へ倒す。
-  //     Arc（2026-09-17）は Base と同じ鍵で署名するので、有効条件はフラグだけ。
-  const lanes: { chain: CappedChain; ready: boolean }[] = [
-    { chain: "solana", ready: solanaReady },
-    { chain: "arc", ready: isArcL1Enabled() },
-    // Circle Gateway（2026-10-25）: 旗が正確に "true" かつ ARC_RPC_URL。ネイティブ Arc のフラグとは独立。
-    { chain: "arc_gateway", ready: isArcGatewayL1Enabled() && !!process.env.ARC_RPC_URL?.trim() },
-    // Tempo（MPP・2026-09-17）: Base と同じ EOA・USDC.e。有効条件はフラグだけ。
-    { chain: "tempo", ready: isTempoL1Enabled() },
-    // XRPL（2026-09-17）: 独立フラグ + 独立 seed。どちらか欠ければ候補から外れる。
-    { chain: "xrpl", ready: xrplReady },
-    // Celo（2026-10-10）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Arc と同じ）。
-    // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
-    { chain: "celo", ready: isCeloL1Enabled() },
-    // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
-    // 旗が on でも BNB_RPC_URL が空なら署名しない（x402-payer の requiredEnv）。Base 先頭で Base の accept が外れても BNB には署名しない。
-    { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
-    // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + ARBITRUM_RPC_URL（BNB と同じ。
-    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる。2026-10-22 審査）。
-    { chain: "arbitrum", ready: isArbitrumL1Enabled() && !!process.env.ARBITRUM_RPC_URL?.trim() },
-    // Avalanche（2026-10-26）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + AVALANCHE_RPC_URL（Arbitrum と同じ。
-    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる）。
-    { chain: "avalanche", ready: isAvalancheL1Enabled() && !!process.env.AVALANCHE_RPC_URL?.trim() },
-    // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
-    { chain: "stellar", ready: stellarReady },
-  ];
-  const laneExclusionChains: { chain: CappedChain; clause: SQL }[] = [];
-  const laneSelectable = new Map<CappedChain, boolean>();
-  /** そのレーンの当日支出（バッチ開始時の台帳 + このバッチで署名した額）。別枠を使い切ったら優先を止める（レビュー C2）。 */
-  const laneSpent = new Map<CappedChain, bigint>();
-  for (const lane of lanes) {
-    let selectable = lane.ready;
-    if (selectable) {
-      try {
-        const capPredicate =
-          lane.chain === "arc" || lane.chain === "arc_gateway"
-            ? chainCapNetworkSql(lane.chain, CHAIN_DAILY_CAPS[lane.chain].networkLike)
-            : sql`network LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike}`;
-        const rawLane = await db.execute(sql`
-          SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
-          FROM x402_l1_purchases
-          WHERE attempted_at >= ${utcDayStart()} AND ${capPredicate}
-        `);
-        const laneRows = (Array.isArray(rawLane) ? rawLane : (rawLane as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
-        const spentRaw = laneRows[0]?.spent;
-        if (typeof spentRaw !== "string") {
-          selectable = false;
-        } else {
-          const spentNow = BigInt(spentRaw.split(".")[0]);
-          const open = lane.chain === "arc_gateway" ? arcGatewayCapOpen(spentNow) : spentNow < chainDailyCapUnits(lane.chain);
-          if (!open) selectable = false;
-          else laneSpent.set(lane.chain, spentNow);
-        }
-      } catch (error) {
-        logServerErrorSafe(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
-        selectable = false;
-      }
-    }
-    // レーンが無効（フラグ無し or 鍵が読めない）か別枠が尽きた間は、候補から SQL の段階で
-    // 外す——「試行して skip」の雑音でなく、最初から対象外。行も書かない。
-    laneSelectable.set(lane.chain, selectable);
-    // 旗 OFF の stellar:pubnet は origin/main と同じく候補 SQL から外さない。未知の network として主候補に残り、
-    // purchaseOne は EVM の selectAccept に落とす。旗 ON で準備が足りないときだけ外す。
-    // 旗 OFF の eip155:56 も同じ（2026-10-19・段B2）。旗 ON で BNB_RPC_URL が無いときだけ外す。
-    const flagOffKeepsCandidates =
-      (lane.chain === "stellar" && process.env.OBSERVATORY_STELLAR_L1_ENABLED !== "true") ||
-      (lane.chain === "bnb" && process.env.OBSERVATORY_BNB_L1_ENABLED !== "true");
-    if (!selectable && !flagOffKeepsCandidates) {
-      laneExclusionChains.push({
-        chain: lane.chain,
-        clause: sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`,
-      });
-    }
-  }
-  // 主候補は従来どおり。Gateway の専用取得だけは、ネイティブ Arc が止まっていても eip155:5042 を隠さない
-  // （Gateway だけの出品は network が eip155:5042。arc の NOT LIKE を掛けると旗が on でも 0 件になる）。
-  const laneExclusions: SQL[] = laneExclusionChains.map((x) => x.clause);
-  const gatewayExclusions: SQL[] = laneExclusionChains.filter((x) => x.chain !== "arc").map((x) => x.clause);
-  /** レーンの優先がまだ開いているか: selectable で、バッチ内の加算込みの支出が別枠未満。 */
-  const laneOpen = (chain: CappedChain): boolean =>
-    laneSelectable.get(chain) === true && (laneSpent.get(chain) ?? chainDailyCapUnits(chain)) < chainDailyCapUnits(chain);
-
-  // 2.6 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。枠に達した日は「購入行が
-  //     まだ 1 件も無いエンドポイント」を候補から外す（買い直しは続く）。読めなければ
-  //     外す側へ倒す——初回購入を 1 日見送っても翌日また候補になるが、枠を数えられない
-  //     まま走ると、カタログが跳ねた日に初回購入だけで日次予算を使い切る。
-  let firstPurchasesSelectable = true;
-  // census の候補（selection = "census"）だけは censusFirstPurchaseQuota（2026-09-29・既定は同じ 120）まで。
-  // 数え方は同じ（当日の初回購入の総数）。読めなければ census も外す側へ倒す。
-  const censusFirstQuota = censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA);
-  let censusFirstSelectable = true;
-  try {
-    const rawFirst = await db.execute(sql`SELECT ${firstPurchasesTodayCountSql()}::text AS n`);
-    const firstRows = (Array.isArray(rawFirst)
-      ? rawFirst
-      : ((rawFirst as { rows?: unknown[] }).rows ?? [])) as { n: string }[];
-    const firstRaw = firstRows[0]?.n;
-    if (typeof firstRaw !== "string" || Number(firstRaw) >= FIRST_PURCHASE_DAILY_QUOTA) {
-      firstPurchasesSelectable = false;
-    }
-    if (typeof firstRaw !== "string" || !Number.isFinite(Number(firstRaw)) || Number(firstRaw) >= censusFirstQuota) {
-      censusFirstSelectable = false;
-    }
-  } catch (error) {
-    logServerErrorSafe("observatory.l1.first_purchase_quota_read", redactedError(error));
-    firstPurchasesSelectable = false;
-    censusFirstSelectable = false;
-  }
-
-  // 3. Targets: L0-passing active endpoints. Priority sellers (verified
-  //    organic demand, PRIORITY_SELLER_HOSTS) are pinned to the head and
-  //    re-enter daily so their receipt series accumulates; the long tail
-  //    follows by observed demand and is swept once per SWEEP_WINDOW_DAYS.
-  //    (要件定義v2 2026-08-14 §2.1-2: concentrate the daily budget on repeat
-  //    purchases of the endpoints buyers depend on, not one-shot coverage.)
-  // 2026-09-19 最終確認 Note: 読み取り経路の逐語コピーは operator-sql.ts へ寄せた。
-  // 買い手側に残っていたこの 1 箇所も同じ述語を通す（denylist が空なら `AND true` で、
-  // 以前の「句ごと空」と結果は同じ。違いは、空なら 1 回鳴ること）。
+export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
+  const { limit, onlyEndpointId, laneExclusions, firstPurchasesSelectable, censusFirstSelectable } = ctx;
   const selfExclusion = sql`AND ${operatorExclusionPredicate("e")}`;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
@@ -1996,6 +1715,312 @@ export async function runL1Batch(
     LIMIT ${censusLimit}
   `;
   const primaryExtra = sql`${gatewayPrimaryExclusionSql()} ${nativeArcGatewayOnlyExclusionSql()}`;
+  return { targetsSql, censusTargetsSql, primaryExtra };
+}
+
+export async function runL1Batch(
+  options: {
+    limit?: number;
+    fetchImpl?: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
+    timeoutMs?: number;
+    /**
+     * Test seam: Celo の支払い付き要求の待ち。既定は L1_CELO_PAID_TIMEOUT_MS。
+     * 無払いの要求と、Celo 以外の支払い付き要求は timeoutMs のまま。
+     */
+    celoPaidTimeoutMs?: number;
+    /**
+     * Playground demo path: narrow candidate selection to this one endpoint.
+     * Everything else — L0-pass requirement, self-exclusion, sweep-window
+     * dedup, the atomic budget reservation — applies unchanged, so a demo
+     * trigger can never spend past what the daily batch itself could.
+     */
+    onlyEndpointId?: string;
+    /** Test seam: Solana recent blockhash. Default hits SOLANA_RPC_URL. */
+    getSolanaBlockhash?: () => Promise<string>;
+    /** Whole-batch wall-clock budget; default L1_BATCH_BUDGET_MS (test seam). */
+    batchBudgetMs?: number;
+    /** Test seam: 購入元の USDC 残高（基本単位）。既定は BASE_RPC_URL / SOLANA_RPC_URL を読む。 */
+    getPayerUsdcBalance?: PayerUsdcBalanceReader;
+    /** Test seam: Circle Gateway の available。既定は GatewayClient.getBalances。テストはここを差し替え、ネットへ出ない。 */
+    readArcGatewayAvailable?: () => Promise<bigint | null>;
+    /** Test seam: Gateway の署名。既定は BatchEvmScheme（ローカル署名、ブロードキャストしない）。 */
+    signArcGateway?: ArcGatewaySigner;
+    /** Test seam: Tempo（MPP）の署名器。既定は mppx/client（Tempo RPC へ出る）。 */
+    mppxCharge?: MppxCharge;
+    /** Test seam: XRPL の Sequence と validated ledger。既定は XRPL_RPC_URL（JSON-RPC）を読む。 */
+    getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
+    /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
+    createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
+    /**
+     * Test seam: レーン枠の時間の上限（L1_LANE_TIME_SHARE）と setupMs が読む時計。既定は Date.now。
+     * デッドライン（createDeadline）は差し替えない——maxDuration を守る判定は従来どおり壁時計で決める。
+     */
+    now?: () => number;
+  } = {},
+): Promise<L1BatchSummary> {
+  const now = options.now ?? Date.now;
+  const runStartedAt = now();
+  // SSRF (2026-08-15 audit): resourceUrl is a seller-declared string from the
+  // public Bazaar catalog. The production default refuses any target that is —
+  // or redirects to — a non-public address, so this runner cannot be pointed
+  // at the platform's own internal surfaces (nor made to carry a signed
+  // payment authorization there). See src/lib/net/safe-fetch.ts.
+  const {
+    limit = 100,
+    fetchImpl = guardedFetch,
+    timeoutMs = L1_REQUEST_TIMEOUT_MS,
+    celoPaidTimeoutMs = L1_CELO_PAID_TIMEOUT_MS,
+    onlyEndpointId,
+    batchBudgetMs = L1_BATCH_BUDGET_MS,
+  } = options;
+  const deadline = createDeadline(batchBudgetMs);
+  const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
+  const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
+  const createStellarPayment = options.createStellarPayment ?? defaultCreateStellarPayment;
+  const summary: L1BatchSummary = {
+    attempted: 0,
+    settled: 0,
+    settleFailed: 0,
+    deliveredNoReceipt: 0,
+    skipped: 0,
+    budgetDenied: 0,
+    spentUnitsTotal: "0",
+    stoppedForDeadline: false,
+    notAttempted: 0,
+    orphansResolved: 0,
+    halted: false,
+    haltReason: null,
+    disabledReason: null,
+    payerUnfunded: 0,
+    sellerCapped: 0,
+    payerFundsUnreadable: [],
+    laneFloor: {},
+    laneFloorHostCapped: {},
+    xrplFeeOverCap: 0,
+    xrplLaneClosed: null,
+    censusCandidates: 0,
+    retestCandidates: 0,
+    censusRemaining: null,
+    laneSkippedForTime: 0,
+    setupMs: null,
+    attemptsByNetwork: {},
+  };
+
+  // 1. Master switches — fail-closed before any network traffic.
+  if (!isL1Enabled()) {
+    summary.disabledReason = "l1_disabled";
+    return summary;
+  }
+  // MetaMask exports the key WITHOUT the 0x prefix; Coinbase Wallet WITH it.
+  // Accept both, normalize to the 0x form viem requires.
+  const rawPk = process.env.OBSERVATORY_WALLET_PRIVATE_KEY?.trim() ?? "";
+  const pk = rawPk.startsWith("0x") ? rawPk : rawPk ? `0x${rawPk}` : "";
+  if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
+    summary.disabledReason = "wallet_key_missing";
+    return summary;
+  }
+  const db = getDb();
+  if (!db) throw new Error("DATABASE_URL is not configured");
+
+  // 1.2 実行時の停止スイッチ（2026-09-05 監査 P0）。env のフラグ（上）は
+  //     再デプロイしないと変わらないので、支出を今すぐ止める手段になれない。
+  //     DB の 1 行を、ネットワークへ 1 本も出す前に読む。
+  const batchHalt = await haltGate(db);
+  if (batchHalt.halted) {
+    summary.halted = true;
+    summary.haltReason = batchHalt.reason;
+    summary.disabledReason = "spending_halted";
+    return summary;
+  }
+
+  const account = privateKeyToAccount(pk as `0x${string}`);
+  // Solana は独立フラグ + 独立鍵。どちらか欠ければ candidates から除外される
+  // （試行すらしない）。予算・台帳は Base と共有（USDC 基本単位が共通）。
+  const solanaKeypair = isSolanaL1Enabled() ? loadSolanaKeypair() : null;
+  const solanaReady = solanaKeypair !== null;
+  // XRPL（2026-09-17）も同じ形: 独立フラグ + 独立 seed。RLUSD は 1 単位 = $1 なので台帳の目盛りは共有。
+  const xrplPayer = await loadXrplPayerModule();
+  const xrplWallet = xrplPayer ? xrplPayer.loadXrplWallet() : null;
+  // ready = フラグ + seed + XRPL_RPC_URL。RPC が無ければ SQL の段階で候補外にする——署名の材料（Sequence・
+  // validated ledger）を読めない失敗を、売り手の request_error 行にしない（2026-09-17 出荷前レビュー #2）。
+  const xrplReady = xrplWallet !== null && !!process.env.XRPL_RPC_URL?.trim();
+  // Stellar（2026-10-18）: 旗 + 秘密 + Horizon（残高）+ Soroban RPC（署名）。RPC が無いと予約の後に
+  // createPaymentPayload が落ちるので、SQL の段階で候補外にする（XRPL の RPC と同じ理由）。
+  const stellarPayer = await loadStellarPayerModule();
+  const stellarAccount = stellarPayer ? stellarPayer.loadStellarPayer() : null;
+  const stellarReady =
+    stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();
+
+  // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
+  // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
+  // 場所に置かない。いま鍵を読んだアドレス（＝我々が署名できる＝定義上そこへの
+  // 支払いは自己取引）を実行時に注入し、環境変数のリストと合併する。
+  addDerivedOperatorAddresses([
+    account.address,
+    solanaKeypair?.publicKey.toBase58() ?? null,
+    xrplWallet?.classicAddress ?? null,
+    stellarAccount?.address ?? null,
+  ]);
+
+  // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
+  //     reads the ledger. Ordering is safe by construction: the sweep never
+  //     touches spent_units, so the day total below is identical either way.
+  //     A failure here must not stop the batch — it is housekeeping, not a
+  //     money gate — but it is never swallowed silently.
+  try {
+    summary.orphansResolved = await sweepOrphanedInFlight(db);
+  } catch (error) {
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.orphan_sweep", redactedError(error));
+  }
+
+  // 2. Today's spend from the ledger (UTC day).
+  let spentToday = 0n;
+  try {
+    const raw = await db.execute(sql`
+      SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
+      FROM x402_l1_purchases
+      WHERE attempted_at >= ${utcDayStart()}
+    `);
+    const list = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+      spent: string;
+    }[];
+    // Fail-closed: an unreadable ledger must never read as "nothing spent
+    // today" — that is the one wrong answer that opens a fresh daily budget.
+    const spentRaw = list[0]?.spent;
+    if (typeof spentRaw !== "string") throw new Error("l1 daily spend query returned no total");
+    spentToday = BigInt(spentRaw.split(".")[0]);
+  } catch (error) {
+    if (!isMissingSchemaError(error)) throw error;
+    return summary; // table missing → cold start, nothing to do safely
+  }
+
+  // 2.5 別枠を持つレーン（Solana・Arc）ごとに、(a) レーンが有効か、(b) その日の別枠が
+  //     もう尽きていないかを見て、どちらかが否なら候補から外す（試行して断られた行を
+  //     書くと、その売り手はスイープ窓のあいだ再選択されない）。読めなければ外す側へ倒す。
+  //     Arc（2026-09-17）は Base と同じ鍵で署名するので、有効条件はフラグだけ。
+  const lanes: { chain: CappedChain; ready: boolean }[] = [
+    { chain: "solana", ready: solanaReady },
+    { chain: "arc", ready: isArcL1Enabled() },
+    // Circle Gateway（2026-10-25）: 旗が正確に "true" かつ ARC_RPC_URL。ネイティブ Arc のフラグとは独立。
+    { chain: "arc_gateway", ready: isArcGatewayL1Enabled() && !!process.env.ARC_RPC_URL?.trim() },
+    // Tempo（MPP・2026-09-17）: Base と同じ EOA・USDC.e。有効条件はフラグだけ。
+    { chain: "tempo", ready: isTempoL1Enabled() },
+    // XRPL（2026-09-17）: 独立フラグ + 独立 seed。どちらか欠ければ候補から外れる。
+    { chain: "xrpl", ready: xrplReady },
+    // Celo（2026-10-10）: Base と同じ鍵で署名する EVM レーン。有効条件はフラグだけ（Arc と同じ）。
+    // フラグが無ければ候補 SQL が Celo を主ネットワークにする行を外し、レーン枠も問い合わせない。
+    { chain: "celo", ready: isCeloL1Enabled() },
+    // BNB（2026-10-19・段B2）: 同じ EOA。レーン枠の有効条件は旗 + BNB_RPC_URL。どちらか欠ければレーン枠を問い合わせない。
+    // 旗が on でも BNB_RPC_URL が空なら署名しない（x402-payer の requiredEnv）。Base 先頭で Base の accept が外れても BNB には署名しない。
+    { chain: "bnb", ready: isBnbL1Enabled() && !!process.env.BNB_RPC_URL?.trim() },
+    // Arbitrum（2026-10-22）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + ARBITRUM_RPC_URL（BNB と同じ。
+    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる。2026-10-22 審査）。
+    { chain: "arbitrum", ready: isArbitrumL1Enabled() && !!process.env.ARBITRUM_RPC_URL?.trim() },
+    // Avalanche（2026-10-26）: Base と同じ鍵で署名する EVM レーン。有効条件は旗 + AVALANCHE_RPC_URL（Arbitrum と同じ。
+    // RPC が無いまま買うと照合も遅延回収もできない行が積み上がる）。
+    { chain: "avalanche", ready: isAvalancheL1Enabled() && !!process.env.AVALANCHE_RPC_URL?.trim() },
+    // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
+    { chain: "stellar", ready: stellarReady },
+  ];
+  const laneExclusionChains: { chain: CappedChain; clause: SQL }[] = [];
+  const laneSelectable = new Map<CappedChain, boolean>();
+  /** そのレーンの当日支出（バッチ開始時の台帳 + このバッチで署名した額）。別枠を使い切ったら優先を止める（レビュー C2）。 */
+  const laneSpent = new Map<CappedChain, bigint>();
+  for (const lane of lanes) {
+    let selectable = lane.ready;
+    if (selectable) {
+      try {
+        const capPredicate =
+          lane.chain === "arc" || lane.chain === "arc_gateway"
+            ? chainCapNetworkSql(lane.chain, CHAIN_DAILY_CAPS[lane.chain].networkLike)
+            : sql`network LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike}`;
+        const rawLane = await db.execute(sql`
+          SELECT coalesce(sum(spent_units::numeric), 0)::text AS spent
+          FROM x402_l1_purchases
+          WHERE attempted_at >= ${utcDayStart()} AND ${capPredicate}
+        `);
+        const laneRows = (Array.isArray(rawLane) ? rawLane : (rawLane as { rows?: unknown[] }).rows ?? []) as { spent: string }[];
+        const spentRaw = laneRows[0]?.spent;
+        if (typeof spentRaw !== "string") {
+          selectable = false;
+        } else {
+          const spentNow = BigInt(spentRaw.split(".")[0]);
+          const open = lane.chain === "arc_gateway" ? arcGatewayCapOpen(spentNow) : spentNow < chainDailyCapUnits(lane.chain);
+          if (!open) selectable = false;
+          else laneSpent.set(lane.chain, spentNow);
+        }
+      } catch (error) {
+        logServerErrorSafe(`observatory.l1.${lane.chain}_cap_read`, redactedError(error));
+        selectable = false;
+      }
+    }
+    // レーンが無効（フラグ無し or 鍵が読めない）か別枠が尽きた間は、候補から SQL の段階で
+    // 外す——「試行して skip」の雑音でなく、最初から対象外。行も書かない。
+    laneSelectable.set(lane.chain, selectable);
+    // 旗 OFF の stellar:pubnet は origin/main と同じく候補 SQL から外さない。未知の network として主候補に残り、
+    // purchaseOne は EVM の selectAccept に落とす。旗 ON で準備が足りないときだけ外す。
+    // 旗 OFF の eip155:56 も同じ（2026-10-19・段B2）。旗 ON で BNB_RPC_URL が無いときだけ外す。
+    const flagOffKeepsCandidates =
+      (lane.chain === "stellar" && process.env.OBSERVATORY_STELLAR_L1_ENABLED !== "true") ||
+      (lane.chain === "bnb" && process.env.OBSERVATORY_BNB_L1_ENABLED !== "true");
+    if (!selectable && !flagOffKeepsCandidates) {
+      laneExclusionChains.push({
+        chain: lane.chain,
+        clause: sql`AND (e.network IS NULL OR e.network NOT LIKE ${CHAIN_DAILY_CAPS[lane.chain].networkLike})`,
+      });
+    }
+  }
+  // 主候補は従来どおり。Gateway の専用取得だけは、ネイティブ Arc が止まっていても eip155:5042 を隠さない
+  // （Gateway だけの出品は network が eip155:5042。arc の NOT LIKE を掛けると旗が on でも 0 件になる）。
+  const laneExclusions: SQL[] = laneExclusionChains.map((x) => x.clause);
+  const gatewayExclusions: SQL[] = laneExclusionChains.filter((x) => x.chain !== "arc").map((x) => x.clause);
+  /** レーンの優先がまだ開いているか: selectable で、バッチ内の加算込みの支出が別枠未満。 */
+  const laneOpen = (chain: CappedChain): boolean =>
+    laneSelectable.get(chain) === true && (laneSpent.get(chain) ?? chainDailyCapUnits(chain)) < chainDailyCapUnits(chain);
+
+  // 2.6 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。枠に達した日は「購入行が
+  //     まだ 1 件も無いエンドポイント」を候補から外す（買い直しは続く）。読めなければ
+  //     外す側へ倒す——初回購入を 1 日見送っても翌日また候補になるが、枠を数えられない
+  //     まま走ると、カタログが跳ねた日に初回購入だけで日次予算を使い切る。
+  let firstPurchasesSelectable = true;
+  // census の候補（selection = "census"）だけは censusFirstPurchaseQuota（2026-09-29・既定は同じ 120）まで。
+  // 数え方は同じ（当日の初回購入の総数）。読めなければ census も外す側へ倒す。
+  const censusFirstQuota = censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA);
+  let censusFirstSelectable = true;
+  try {
+    const rawFirst = await db.execute(sql`SELECT ${firstPurchasesTodayCountSql()}::text AS n`);
+    const firstRows = (Array.isArray(rawFirst)
+      ? rawFirst
+      : ((rawFirst as { rows?: unknown[] }).rows ?? [])) as { n: string }[];
+    const firstRaw = firstRows[0]?.n;
+    if (typeof firstRaw !== "string" || Number(firstRaw) >= FIRST_PURCHASE_DAILY_QUOTA) {
+      firstPurchasesSelectable = false;
+    }
+    if (typeof firstRaw !== "string" || !Number.isFinite(Number(firstRaw)) || Number(firstRaw) >= censusFirstQuota) {
+      censusFirstSelectable = false;
+    }
+  } catch (error) {
+    logServerErrorSafe("observatory.l1.first_purchase_quota_read", redactedError(error));
+    firstPurchasesSelectable = false;
+    censusFirstSelectable = false;
+  }
+
+  // 3. Targets: L0-passing active endpoints. Priority sellers (verified
+  //    organic demand, PRIORITY_SELLER_HOSTS) are pinned to the head and
+  //    re-enter daily so their receipt series accumulates; the long tail
+  //    follows by observed demand and is swept once per SWEEP_WINDOW_DAYS.
+  //    (要件定義v2 2026-08-14 §2.1-2: concentrate the daily budget on repeat
+  //    purchases of the endpoints buyers depend on, not one-shot coverage.)
+  // 2026-09-19 最終確認 Note: 読み取り経路の逐語コピーは operator-sql.ts へ寄せた。
+  // 買い手側に残っていたこの 1 箇所も同じ述語を通す（denylist が空なら `AND true` で、
+  // 以前の「句ごと空」と結果は同じ。違いは、空なら 1 回鳴ること）。
+  const { targetsSql, censusTargetsSql, primaryExtra } = l1TargetsSqlBuilders({
+    limit,
+    onlyEndpointId,
+    laneExclusions,
+    firstPurchasesSelectable,
+    censusFirstSelectable,
+  });
   const rawTargets = await withDailyFallback(
     async () => await db.execute(targetsSql(true, undefined, undefined, undefined, primaryExtra)),
     async () => await db.execute(targetsSql(false, undefined, undefined, undefined, primaryExtra)),
@@ -2719,7 +2744,7 @@ export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>
  * まだ L1 の購入行が 1 件も無い Base のホストの数（summary.censusRemaining）。分母は active で Base の accept
  * （CAIP-2 か v1 の `base`）を 1 つでも宣言している行のホスト。読めなければ null（0 と混ぜない）。
  */
-async function countCensusRemaining(db: NonNullable<ReturnType<typeof getDb>>): Promise<number | null> {
+export async function countCensusRemaining(db: NonNullable<ReturnType<typeof getDb>>): Promise<number | null> {
   try {
     const raw = await db.execute(sql`
       SELECT count(DISTINCT ${CENSUS_HOST_SQL})::text AS n
