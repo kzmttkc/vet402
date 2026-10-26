@@ -154,10 +154,10 @@ flowchart LR
   RPC on 2026-10-26 against `https://api.avax.network/ext/bc/C/rpc` and checked
   against the token's own `DOMAIN_SEPARATOR()`
   `0xbbea200329a938bc3438984a49cb0732e66d66d7bd59c127abacc1710e77f7b3`).
-  Same EOA as Base, funded with Avalanche USDC separately; no AVAX is needed.
+  Same EOA as Base, funded with Avalanche USDC separately. No AVAX is needed.
   Bridged USDC.e is never signed for. An accept whose `extra.name` is
-  `GatewayWalletBatched` is refused. Off by default
-  (`OBSERVATORY_AVALANCHE_L1_ENABLED` and `AVALANCHE_RPC_URL`); while off,
+  `GatewayWalletBatched` is refused. Off unless `OBSERVATORY_AVALANCHE_L1_ENABLED`
+  is exactly true and `AVALANCHE_RPC_URL` is non-empty. While either is missing,
   Avalanche candidates are excluded in SQL and no row is written. Its own
   $2/day cap (`L1_AVALANCHE_DAILY_CAP_USD`) inside the shared $25. The on-chain
   re-read and the settlement index need `AVALANCHE_RPC_URL`. Late recovery is

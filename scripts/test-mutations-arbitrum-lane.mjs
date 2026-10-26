@@ -98,8 +98,8 @@ const MUTATIONS = [
     rule: "署名の前に読む残高は arbitrum（Base の残高で通さない）",
     file: RUNNER,
     needsDb: true,
-    find: 'evmPayChainId === 42161 ? "arbitrum" : "base";',
-    replace: 'evmPayChainId === 42161 ? /* MUTANT */ "base" : "base";',
+    find: 'evmPayChainId === 42161 ? "arbitrum" : evmPayChainId === 43114 ? "avalanche" : "base";',
+    replace: 'evmPayChainId === 42161 ? /* MUTANT */ "base" : evmPayChainId === 43114 ? "avalanche" : "base";',
   },
   {
     id: "A09",
