@@ -562,6 +562,20 @@ claims:
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
     verified_at: 2026-09-04
+  - id: privacy_monthly_table_key_appears_only_as_label
+    surface: src/app/legal/privacy/page.tsx
+    quote: "A key appears only as a label such as"
+    means: "公開の月次表（/usage/monthly と /api/v1/usage/monthly）で、鍵は key-N の番号と運用者が付けた区分でしか出ない"
+    check: null
+    why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ないことを固定する"
+    verified_at: 2026-10-26
+  - id: privacy_monthly_table_never_shows_key_email_name
+    surface: src/app/legal/privacy/page.tsx
+    quote: "The table never shows the key, the email address or the name."
+    means: "公開の月次表は鍵そのもの・メール・名前を出さない"
+    check: null
+    why_unverifiable: "出力の形の約束。tests/decision-usage.pg.test.ts が固定する"
+    verified_at: 2026-10-26
   - id: privacy_people_and_businesses_who_never
     surface: src/app/legal/privacy/page.tsx
     quote: "people and businesses who never opened an account with us. If one of those addresses can"

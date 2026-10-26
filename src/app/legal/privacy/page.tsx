@@ -47,7 +47,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-8">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 22, 2026</p>
+        <p className="doc-note text-center">Last updated: October 26, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -138,7 +138,29 @@ export default async function PrivacyPage() {
               calls made by pages on vet402.com, <code>browser</code>, or <code>other</code>. We read
               the User-Agent header, and for browsers whether the request came from a vet402.com
               page, only to pick that name. We do not store the User-Agent text, the IP address, the
-              URL or query being looked up, or any API key with these counts
+              URL or query being looked up, or any API key with these counts. For a decision answer,
+              the same daily row also stores the chain of the listing that was looked up, as a CAIP-2
+              id such as <code>eip155:42220</code>. A resolve row stores an empty chain.
+            </li>
+            {/* 2026-10-26 Takeshi 承認（「最適解ですすめて」）: Prezenti（Celo）の助成金の M2「外部の利用者」を数えるため、
+                鍵ありの判定の件数を鍵・日・チェーンごとに数え、鍵の持ち主の区分を手で付け、月ごとの表を公開する。 */}
+            <li>
+              <strong>Keyed decision counts</strong> (<code>decision_usage_daily</code>): for decision
+              answers made with an API key, a count per key, per UTC day and per chain of the listing
+              looked up. The row holds no email address and no name, and it is kept apart from the
+              usage meter for billing. An operator may label a key by hand as <code>self</code>,{" "}
+              <code>related</code> or <code>external</code> (<code>api_keys.owner_relation</code>) to
+              tell calls by vet402 and people close to it from calls by others.
+            </li>
+            <li>
+              <strong>Public monthly table</strong> (
+              <a className="doc-link" href="/usage/monthly">
+                /usage/monthly
+              </a>
+              , <code>/api/v1/usage/monthly</code>): for one chain and one UTC month, the number of
+              decision answers per caller class for calls without a key, and per key for calls with
+              one. A key appears only as a label such as <code>key-1</code> with its relation label.
+              The table never shows the key, the email address or the name.
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,
@@ -263,7 +285,9 @@ export default async function PrivacyPage() {
           </p>
           <p>
             Key-less API call counts are kept without an expiry date. Each row is a count for one
-            day, client name and API route, and holds nothing that identifies who made the calls.
+            day, client name, API route and chain, and holds nothing that identifies who made the
+            calls. Keyed decision counts are kept the same way, per key, day and chain, without the
+            email address or the name.
           </p>
         </section>
 
