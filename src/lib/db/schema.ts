@@ -1335,6 +1335,7 @@ export const jobLeases = pgTable("job_leases", {
  * x402_discovery_payees — 決済索引が見る受取人のうち、カタログ（x402_endpoints）の外から来たもの（2026-09-15）。
  * PayAI facilitator の公開 discovery の Solana 受取人を入れる。カタログの総数・L0・L1 の候補には入らない。
  * 行は消さない。索引は last_seen_at が新しいものだけを読む（DISCOVERY_PAYEE_FRESH_DAYS）。
+ * SQL: scripts/sql/2026-09-17-discovery-payees.sql（chain_seen_idx は本番に在る。宣言しないと drizzle-kit push が消す）
  */
 export const x402DiscoveryPayees = pgTable(
   "x402_discovery_payees",
@@ -1345,7 +1346,10 @@ export const x402DiscoveryPayees = pgTable(
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.chain, t.payTo, t.source] })],
+  (t) => [
+    primaryKey({ columns: [t.chain, t.payTo, t.source] }),
+    index("x402_discovery_payees_chain_seen_idx").on(t.chain, t.lastSeenAt),
+  ],
 );
 
 export const runtimeFlags = pgTable("runtime_flags", {

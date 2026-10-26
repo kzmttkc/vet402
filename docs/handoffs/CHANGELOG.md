@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-26 schema.ts declares x402_discovery_payees_chain_seen_idx
+
+- **What**: `x402DiscoveryPayees` in `src/lib/db/schema.ts` now declares `index("x402_discovery_payees_chain_seen_idx").on(t.chain, t.lastSeenAt)`, matching production (`btree (chain, last_seen_at)`, no WHERE) and `scripts/sql/2026-09-17-discovery-payees.sql`.
+- **Why**: `npm run db:drift` against production showed one line, `DROP INDEX x402_discovery_payees_chain_seen_idx`. A `drizzle-kit push` would have dropped the index.
+- **Impact**: Schema declaration only. No DDL was run on production; the index already exists there. `db:drift` should report no drift.
+- **Commits**: this entry.
+
 ## 2026-10-26 Buyer check for a Circle Gateway batch, on the methodology page
 
 - **What**: The methodology page has a section, Checking a Circle Gateway batch as the buyer (`#gateway-batch`). It states the three buyer steps (signed nonce, the Circle Gateway API, the negative debit in `submitBatch` calldata), the settle / refute / defer rule, and the signature time rule (`validAfter` plus 600 seconds, 60 seconds of clock margin). Two public Arc transactions are the examples (50 rows, 4.119 USDC and 40 rows, 3.214 USDC). The arc-delivery-receipts README points at the same section. Seller names and per-seller delivery rates stay out of both.
