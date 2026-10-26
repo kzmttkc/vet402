@@ -421,6 +421,86 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
 };
 
 /**
+ * Celo レーンで、1 回の取得が同じホストから取る出品の上限。
+ * JS の LANE_FLOOR_MAX_PER_HOST は LIMIT の後なので、出品の多い 1 ホストが
+ * 取得窓（枠 × LANE_FLOOR_OVERSAMPLE、上限 LANE_FLOOR_FETCH_MAX）を埋めると
+ * 他のホストは窓に入らない。Celo だけ、LIMIT の前に同じ上限を掛ける。
+ */
+export const CELO_LANE_MAX_LISTINGS_PER_HOST = 2;
+
+/**
+ * ホストの Celo 試行数。reader.ts の PAID_ATTEMPT_STATUSES と同じ並び。
+ * l1-runner は reader を import しない（購入の実行側から読み取り側を引かない）。
+ * 署名前の skip（budget_denied など）は試行に数えない。
+ */
+export const CELO_HOST_ATTEMPT_STATUSES = [
+  "settled",
+  "settle_failed",
+  "delivered_no_receipt",
+  "settle_claimed_unverifiable",
+  "settle_claimed",
+  "settle_claim_refuted",
+] as const;
+
+/** Celo レーンの取得だけ、ホストの幅を広げる包みを掛ける。census と他レーンは掛けない。 */
+export function celoLaneUsesHostSpread(lane: { chain: string } | undefined, census: boolean): boolean {
+  return lane?.chain === "celo" && !census;
+}
+
+/**
+ * Celo レーンの候補を、ホストあたり CELO_LANE_MAX_LISTINGS_PER_HOST 件に絞ってから
+ * ホストの Celo 試行数の少ない順に並べる。同点は内側の並び（需要・未購入・優先・
+ * 品質・最終試行・first_seen・id）のまま。試行は network が eip155:42220 の
+ * CELO_HOST_ATTEMPT_STATUSES だけ。
+ */
+function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
+  const statuses = sql.join(
+    CELO_HOST_ATTEMPT_STATUSES.map((st) => sql`${st}`),
+    sql`, `,
+  );
+  return sql`
+    SELECT ranked.* FROM (
+      SELECT c.*, row_number() OVER (
+        PARTITION BY c.celo_host
+        ORDER BY c.celo_ord_tier DESC,
+                 c.celo_ord_unbought DESC,
+                 c.celo_ord_priority DESC,
+                 c.celo_ord_payers DESC NULLS LAST,
+                 c.celo_ord_calls DESC NULLS LAST,
+                 c.celo_ord_last ASC NULLS FIRST,
+                 c.celo_ord_seen ASC NULLS LAST,
+                 c.id ASC
+      ) AS celo_host_rn
+      FROM (
+        SELECT base.*,
+               ${censusHostSql(sql`base.resource_key`)} AS celo_host,
+               coalesce(tries.n, 0)::int AS celo_host_attempts
+        FROM (${inner}) base
+        LEFT JOIN (
+          SELECT ${censusHostSql(sql`he.resource_key`)} AS host, count(*)::int AS n
+          FROM x402_l1_purchases att
+          JOIN x402_endpoints he ON he.id = att.endpoint_id
+          WHERE att.network = ${CELO_CAIP2}
+            AND att.status IN (${statuses})
+          GROUP BY 1
+        ) tries ON tries.host = ${censusHostSql(sql`base.resource_key`)}
+      ) c
+    ) ranked
+    WHERE ranked.celo_host_rn <= ${CELO_LANE_MAX_LISTINGS_PER_HOST}
+    ORDER BY ranked.celo_host_attempts ASC,
+             ranked.celo_ord_tier DESC,
+             ranked.celo_ord_unbought DESC,
+             ranked.celo_ord_priority DESC,
+             ranked.celo_ord_payers DESC NULLS LAST,
+             ranked.celo_ord_calls DESC NULLS LAST,
+             ranked.celo_ord_last ASC NULLS FIRST,
+             ranked.celo_ord_seen ASC NULLS LAST,
+             ranked.id ASC
+    LIMIT ${limit}
+  `;
+}
+
+/**
  * 主候補から外す。network が Arc で、Arc の accept が GatewayWalletBatched だけの行。
  * 旗 off の gatewayPrimaryExclusionSql は空なので、ここが無いと主ネットワークを Arc にした
  * Gateway だけの行がネイティブ Arc の主掃引に戻り、no_eligible_accept を書き続ける。
@@ -1491,7 +1571,10 @@ export async function runL1Batch(
     retest?: RetestParams,
     extraWhere: SQL = gatewayPrimaryExclusionSql(),
     exclusions: SQL[] = laneExclusions,
-  ) => sql`
+  ) => {
+    // Celo だけ、ORDER BY / LIMIT を外してホスト幅の包みに渡す。他レーンの並びの文は下のまま。
+    const celoLane = celoLaneUsesHostSpread(lane, census !== undefined);
+    const query = sql`
     SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
@@ -1545,6 +1628,18 @@ export async function runL1Batch(
                ? sql`(e.id::text IN (SELECT jsonb_array_elements_text(${retest.preferredIdsJson}::jsonb)))`
                : sql`false`
            } AS census_preferred`
+               : sql``
+           }
+           ${
+             celoLane
+               ? sql`, e.resource_key,
+           (${l1TierWhere(daily)}) AS celo_ord_tier,
+           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS celo_ord_unbought,
+           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS celo_ord_priority,
+           e.quality_payers_30d AS celo_ord_payers,
+           e.quality_calls_30d AS celo_ord_calls,
+           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS celo_ord_last,
+           e.first_seen_at AS celo_ord_seen`
                : sql``
            }
     FROM x402_endpoints e
@@ -1713,7 +1808,7 @@ export async function runL1Batch(
     -- 8.1%。C2 の次は「一度も買っていない in-cap endpoint」を優先し、証拠の裾野を広げる
     -- （上限は全て据え置き: 1 件 $1・日次 $25・原子的予約・cooldown）。
     ${
-      census
+      census || celoLane
         ? sql``
         : sql`ORDER BY (${l1TierWhere(daily)}) DESC,
              (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) DESC,
@@ -1729,6 +1824,8 @@ export async function runL1Batch(
     LIMIT ${lane?.limit ?? limit}`
     }
   `;
+    return celoLane && lane ? celoDiversifiedCandidatesSql(query, lane.limit) : query;
+  };
   /**
    * census の候補（2026-09-28）: 上の WHERE を通った行から 1 ホスト 1 件（そのホストでいちばん安い行・
    * 同額なら id の小さい方）を選び、安い順（同額ならホスト名順）に censusLimit 件。決定的な並び。
