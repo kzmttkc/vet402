@@ -21,6 +21,9 @@
 # proof that none of this needs one.
 
 set -u
+# Supply-chain guard (2026-10-28): `npm ci --prefix <dir>` ignores the root .npmrc,
+# so stop dependency install scripts here too, also when this file is run directly.
+export NPM_CONFIG_IGNORE_SCRIPTS=true
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOGDIR="${TMPDIR:-/tmp}/vet402-judge-check.$$"

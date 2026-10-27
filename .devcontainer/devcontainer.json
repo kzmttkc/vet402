@@ -15,6 +15,8 @@
   //   3. examples/ethonline-2026-demo         (nothing to install)
   //   4. root npm ci, examples/ethonline-2026-ab npm ci (viem for the A/B bridge signer)
   // Chained with && on purpose: a failed step must stop the setup, not hide behind the next one.
+  // `npm ci --prefix <dir>` ignores the root .npmrc, so stop dependency install scripts for every step (2026-10-28).
+  "containerEnv": { "NPM_CONFIG_IGNORE_SCRIPTS": "true" },
   "postCreateCommand": "npm ci --prefix packages/sdk && npm run build --prefix packages/sdk && npm ci --prefix packages/mcp-server && npm run build --prefix packages/mcp-server && npm ci && npm ci --prefix examples/ethonline-2026-ab",
 
   "postAttachCommand": "echo 'vet402: run  npm run judge-check  (no API key needed), then follow SKILL.md'",
