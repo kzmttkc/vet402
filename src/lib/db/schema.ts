@@ -862,6 +862,15 @@ export const x402L1Purchases = pgTable(
     /** 照合が通らなかった理由（wrong_chain / tx_reverted / no_matching_transfer 等）。 */
     settlementVerifyReason: text("settlement_verify_reason"),
     settlementBlockNumber: bigint("settlement_block_number", { mode: "bigint" }),
+    /**
+     * 2026-10-27: 購入ごとの証拠（purchase-evidence.ts・scripts/sql/2026-10-27-l1-purchase-evidence.sql）。
+     *   challenge_402    予約行を書くときに残す、その購入で受け取った 402 の応答（デコード後の JSON）。
+     *   payment_payload  auth_nonce と同じ UPDATE で残す、有料の要求に載せた支払いペイロード（デコード後の JSON）。
+     * **内部専用。公開の面に出さない**——署名済みペイロードは期限内なら誰でも決済に出せる。
+     * null は 2026-10-27 より前の行と、予約まで進まなかった行。各列 32KB まで（超えたら truncated の印）。
+     */
+    challenge402: jsonb("challenge_402"),
+    paymentPayload: jsonb("payment_payload"),
   },
   (t) => [
     index("x402_l1_purchases_endpoint_idx").on(t.endpointId, t.attemptedAt),

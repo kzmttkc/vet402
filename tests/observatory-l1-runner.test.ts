@@ -1105,7 +1105,12 @@ if (!TEST_DB) {
             const meta = rows[0].rawResponseMeta as { stellarLane?: { reason?: string } } | null;
             assert.equal(meta?.stellarLane?.reason, "payto_mismatch");
             assert.equal(JSON.stringify(rows).includes(payer.secret()), false);
-            assert.equal(JSON.stringify(rows).includes(STELLAR_PUBNET_CAIP2), false);
+            // 2026-10-27: challenge_402 は壁が出した accepts を全部残す（Stellar の accept も入る）。Stellar で
+            // 払っていないことは、証拠の列を除いた台帳の列で見る。署名済みペイロード（payment_payload）は Base のもの。
+            const ledgerOnly = JSON.stringify(rows, (k, v) => (k === "challenge402" || k === "paymentPayload" ? undefined : v));
+            assert.equal(ledgerOnly.includes(STELLAR_PUBNET_CAIP2), false);
+            assert.equal(JSON.stringify(rows[0].paymentPayload).includes(STELLAR_PUBNET_CAIP2), false);
+            assert.equal(JSON.stringify(rows[0].challenge402).includes(STELLAR_PUBNET_CAIP2), true, "受け取った 402 の Stellar の accept は証拠に残る");
           },
         );
       } finally {

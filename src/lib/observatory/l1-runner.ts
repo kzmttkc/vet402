@@ -116,6 +116,7 @@ import {
   type ArcGatewaySigner,
 } from "./arc-gateway";
 import { createHash } from "node:crypto";
+import { PURCHASE_EVIDENCE_VERSION, challengeEvidenceForRow, mppChallengeEvidence, paymentPayloadEvidence, x402ChallengeEvidence } from "./purchase-evidence";
 // Tempo の MPP 方言（2026-09-17・mpp-payer.ts）。x402 ではなく WWW-Authenticate: Payment の壁。
 // フラグ OBSERVATORY_TEMPO_L1_ENABLED（既定 off）が無ければ Tempo は lanes で候補外（行 0）。
 import {
@@ -1108,9 +1109,17 @@ async function reserveSpend(input: {
    * Gateway の支出はここが "arc_gateway" のときだけ Gateway の別枠に入る。省略時は従来どおり。
    */
   capChain?: CappedChain;
+  /**
+   * 2026-10-27: その購入で受け取った 402 の記録（purchase-evidence.ts・内部専用の列 challenge_402）。
+   * 上限に収めた JSON。null / 省略なら列を書かない。金の条件（WHERE）には関わらない。
+   */
+  challenge402?: Record<string, unknown> | null;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
   const metaJson = input.meta ? JSON.stringify(input.meta) : null;
+  // 予約と同じ 1 文で書く。この INSERT が落ちれば予約も無い＝署名しない（auth_nonce の UPDATE が落ちたら
+  // 有料の要求を出さないのと同じ側に倒す: 記録の無い支払いを出さない）。
+  const challengeJson = input.challenge402 ? JSON.stringify(input.challenge402) : null;
   // チェーン別の別枠（budget.ts CHAIN_DAILY_CAPS）。2026-09-15 の Solana の別枠を 2026-09-17 に
   // Arc と共通の表にした。Base は別枠を持たないので CTE も条件も入らない（従来と同じ 1 文）。
   const capChain = cappedChainFor(network);
@@ -1173,9 +1182,9 @@ async function reserveSpend(input: {
       WHERE sp.attempted_at >= ${utcDayStart()}
     ), ins AS (
       INSERT INTO x402_l1_purchases
-        (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units${metaJson === null ? sql`` : sql`, raw_response_meta`})
+        (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units${metaJson === null ? sql`` : sql`, raw_response_meta`}${challengeJson === null ? sql`` : sql`, challenge_402`})
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
-             ${payTo}, ${amountUnits}, ${amountUnits}${metaJson === null ? sql`` : sql`, ${metaJson}::jsonb`}
+             ${payTo}, ${amountUnits}, ${amountUnits}${metaJson === null ? sql`` : sql`, ${metaJson}::jsonb`}${challengeJson === null ? sql`` : sql`, ${challengeJson}::jsonb`}
       FROM day, chain_day, dup, first_day, seller_day
       WHERE NOT dup.taken
         AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
@@ -3541,12 +3550,22 @@ async function purchaseOne(input: {
     }
   }
 
+  // 2026-10-27: 購入ごとの証拠①（受け取った 402）。予約行と同じ INSERT で書く（内部専用の列・purchase-evidence.ts）。
+  const challenge402 = buildPurchaseEvidence("challenge_402", () =>
+    challengeEvidenceForRow(
+      isTempo
+        ? mppChallengeEvidence({ httpStatus: first.status, headers: first.headers, challenges: mppChallenges, selectedAccept: accept })
+        : x402ChallengeEvidence({ httpStatus: first.status, headers: first.headers, bodyText: firstBody, selectedAccept: accept }),
+    ),
+  );
+
   // Reserve BEFORE signing. This is the authoritative gate: it re-reads the
   // day's total and the sweep window inside one statement and writes the row
   // that carries spent_units, so the money is on the ledger before it can
   // exist. A kill, a timeout or a DB error after this point loses the outcome
   // detail, never the spend.
   const reservation = await reserveSpend({
+    challenge402,
     db,
     endpointId: candidate.id,
     payer: payerLabel,
@@ -3867,9 +3886,13 @@ async function purchaseOne(input: {
             },
           }
         : null;
+    // 2026-10-27: 購入ごとの証拠②（有料の要求に載せる支払いペイロードのデコード結果・内部専用の列）。
+    // auth_nonce と同じ UPDATE に載せる: 有料の要求より前に残るので、この後で落ちても残る。この UPDATE が落ちたら
+    // 従来どおり有料の要求を出さずに止まる（auth_nonce と同じ扱い——記録の無い支払いを売り手へ出さない）。
+    const paymentPayload = buildPurchaseEvidence("payment_payload", () => paymentPayloadEvidence(header));
     await db
       .update(x402L1Purchases)
-      .set(gatewayAuthMeta ? { authNonce, rawResponseMeta: gatewayAuthMeta } : { authNonce })
+      .set(gatewayAuthMeta ? { authNonce, paymentPayload, rawResponseMeta: gatewayAuthMeta } : { authNonce, paymentPayload })
       .where(eq(x402L1Purchases.id, reservation.rowId));
 
     let paid: Response | null = null;
@@ -4402,6 +4425,20 @@ function isDuplicateTxHashError(error: unknown): boolean {
   const code = (error as { code?: unknown })?.code;
   const text = `${(error as { constraint_name?: string })?.constraint_name ?? ""} ${String(error)}`;
   return (code === "23505" || /23505|duplicate key/i.test(text)) && /x402_l1_purchases_tx_unique/.test(text);
+}
+
+/**
+ * 購入ごとの証拠（challenge_402 / payment_payload）を組む（2026-10-27）。組み立ての不具合で購入を止めない:
+ * 例外は印だけの記録にして、ログには列の名前と誤りの型だけを出す（中身・ヘッダーの値は出さない）。
+ * 書き込みの失敗は別で、呼び手の INSERT / UPDATE ごと落ちる（予約・auth_nonce と同じ扱い）。
+ */
+function buildPurchaseEvidence(column: "challenge_402" | "payment_payload", build: () => Record<string, unknown>): Record<string, unknown> {
+  try {
+    return build();
+  } catch (error) {
+    logServerErrorSafe(`observatory.l1.evidence_${column}`, error instanceof Error ? error.name : typeof error);
+    return { v: PURCHASE_EVIDENCE_VERSION, error: "evidence_build_failed" };
+  }
 }
 
 /**
