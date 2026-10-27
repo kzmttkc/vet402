@@ -2068,11 +2068,11 @@ claims:
     verified_at: 2026-09-29
   - id: privacy_keyless_call_counts_header_use
     surface: src/app/legal/privacy/page.tsx
-    quote: "We read the User-Agent header, and for browsers whether the request came from a vet402.com page, only to pick that name"
-    means: "鍵なしの呼び出しの件数（client_usage_daily）で、User-Agent と自サイトの頁からの要求かどうかは client の名前を選ぶためだけに読み、文字列は保存しない"
+    quote: "We read the User-Agent header, the client name an MCP client sends when it connects, and for browsers whether the request came from a vet402.com page, only to pick that name"
+    means: "鍵なしの呼び出しの件数（client_usage_daily）で、User-Agent・MCP の initialize が名乗る clientInfo・自サイトの頁からの要求かどうかは client の名前を選ぶためだけに読み、文字列は保存しない（2026-10-28 に MCP の入口を足した）"
     check: null
-    why_unverifiable: "サーバの中の処理の記述で、公開 GET が返す値ではない。根拠は src/lib/api/client-usage.ts の clientUsageLabel と isOwnPageRequest（返すのは決まった名前だけ）で、tests/client-usage.test.ts と tests/client-usage.pg.test.ts が表に UA の文字列・Referer・IP が入らないことを固定する"
-    verified_at: 2026-10-11
+    why_unverifiable: "サーバの中の処理の記述で、公開 GET が返す値ではない。根拠は src/lib/api/client-usage.ts の clientUsageLabel・mcpClientUsageLabel・isOwnPageRequest（返すのは決まった名前だけ）で、tests/client-usage.test.ts と tests/client-usage.pg.test.ts と tests/mcp.pg.test.ts が表に UA の文字列・Referer・IP・clientInfo の生の値が入らないことを固定する"
+    verified_at: 2026-10-28
   # 2026-10-21: public/llms.txt を走査に加えた。抽出器は .txt を TSX として読み、バッククォートを文字列の境界にするため、断定は文ではなく断片になる。引用はその断片とファイルの両方にある短い範囲。
   - id: llms_levels_l0_span
     surface: public/llms.txt

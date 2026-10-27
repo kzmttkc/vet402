@@ -127,18 +127,26 @@ export default async function PrivacyPage() {
               below
             </li>
             {/* 2026-10-07: Hermes プラグインの呼び出しを UA で数える表。2026-10-11: 鍵なしの呼び出しの全部を、決まった名前に
-                寄せて数える（src/lib/api/client-usage.ts）。保存する列は day / client / route / count だけ。 */}
+                寄せて数える（src/lib/api/client-usage.ts）。保存する列は day / client / route / count だけ。
+                2026-10-28: MCP の入口（/mcp）の initialize と tools/call も同じ表に数える（route は mcp:*、client は
+                mcpClientUsageLabel が選ぶ cursor・grok-bot・claude・chatgpt・paybox を足した）。 */}
             <li>
               <strong>Key-less API call counts</strong> (<code>client_usage_daily</code>): for
               requests to the public resolve and decision APIs made without an API key, a count per
-              UTC day, client name and API route. The client name is one of a short fixed list:{" "}
+              UTC day, client name and API route. Since 2026-10-28 the same table also counts calls to
+              the MCP server at https://vet402.com/mcp that are answered with HTTP 200, under the
+              routes <code>mcp:initialize</code>, <code>mcp:check_x402_seller</code>,{" "}
+              <code>mcp:check_my_x402_endpoint</code> and <code>mcp:find_x402_sellers</code>. The
+              client name is one of a short fixed list:{" "}
               <code>vet402-hermes/</code>, <code>vet402-sdk/</code> or <code>vet402-mcp/</code>{" "}
               followed by a version number for the tools we publish, <code>self-monitor</code> for
               the monitoring tools we run ourselves, <code>crawler</code>, <code>site</code> for
-              calls made by pages on vet402.com, <code>browser</code>, or <code>other</code>. We read
-              the User-Agent header, and for browsers whether the request came from a vet402.com
-              page, only to pick that name. We do not store the User-Agent text, the IP address, the
-              URL or query being looked up, or any API key with these counts
+              calls made by pages on vet402.com, <code>browser</code>, or <code>other</code>. MCP
+              calls can also get <code>cursor</code>, <code>grok-bot</code>, <code>claude</code>,{" "}
+              <code>chatgpt</code> or <code>paybox</code>. We read the User-Agent header, the client
+              name an MCP client sends when it connects, and for browsers whether the request came
+              from a vet402.com page, only to pick that name. We do not store the User-Agent text, the
+              IP address, the URL or query being looked up, or any API key with these counts
             </li>
             {/* 2026-10-26 Takeshi 承認。レビュー: 公開は持ち主の人数。締まった月だけを、
                 翌月 3 日 00:00 UTC 以降の最初の読み取りで固定する。削除すると鍵 id は新しい
