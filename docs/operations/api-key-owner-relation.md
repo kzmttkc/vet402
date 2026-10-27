@@ -20,7 +20,7 @@
 | `prezenti_grantee` | Prezenti（Celo のビルダー支援）の採択者だと、下の証拠で確かめた人の鍵（2026-10-28） |
 | NULL | まだ分類していない |
 
-`prezenti_grantee` は external の一種だが、別の行に数える。`external` の行には入らない（同じ持ち主を 2 つの行に数えない）。3 人未満は `<3` で件数を出さない、は他の区分と同じ。`scripts/sql/2026-10-28-owner-relation-prezenti-grantee.sql` を本番に流す前は、この値は CHECK で入らない。
+`prezenti_grantee` は external の一種だが、別の行に数える。`prezenti_grantee` の鍵は `external` の行に入らない。区分は鍵ごとに数えるので、1 つのアカウントに区分の違う鍵があると、その持ち主は両方の行に 1 人ずつ数えられる（仕組みでは止めていない。下の手順 3 で防ぐ）。3 人未満は `<3` で件数を出さない、は他の区分と同じ。`scripts/sql/2026-10-28-owner-relation-prezenti-grantee.sql` を本番に流す前は、この値は CHECK で入らない。
 
 ## `prezenti_grantee` の証拠
 
@@ -40,7 +40,7 @@ Prezenti の公式の採択者一覧は無い（2026-10-27 に Celo Forum を検
 
 1. 本番の DB（Neon の **vouch**。neondb ではない）へ、秘密の入った接続で入る。公開の URL からは更新できない。
 2. 分類する鍵の `api_keys.id` を、手元の台帳（発行時の記録）で特定する。公開表からは id へ戻れない。
-3. 人が関係を判断してから、次の 1 文で書く。`<api_keys.id>` は手順 2 の uuid に置き換える。`prezenti_grantee` は、上の証拠のどれかで持ち主を確かめ、その URL を台帳に書いてから付ける。
+3. 人が関係を判断してから、次の 1 文で書く。`<api_keys.id>` は手順 2 の uuid に置き換える。`prezenti_grantee` は、上の証拠のどれかで持ち主を確かめ、その URL を台帳に書いてから付ける。同じアカウント（`api_keys.user_id`）の鍵は全部同じ区分にする（付ける前に `SELECT id, owner_relation FROM api_keys WHERE user_id = (SELECT user_id FROM api_keys WHERE id = '<api_keys.id>'::uuid);` で同じアカウントの鍵を見て、全部に同じ値を付ける）。
 
 ```sql
 UPDATE api_keys

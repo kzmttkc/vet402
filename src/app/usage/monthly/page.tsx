@@ -135,8 +135,8 @@ export default async function UsageMonthlyPage({
           number of calls. Fewer than 3 owners shows &lt;3 and leaves the call count off this page. An unclassified
           relation leaves the call count off this page. Calls made without a key are not counted per chain. Relation is
           a label an operator sets by hand. The prezenti_grantee relation marks an owner matched by hand to a public
-          record of a Prezenti grant, such as a post on the Celo Forum. Those owners count on that row and stay off the
-          external row. Published chains: {PUBLIC_USAGE_CHAINS.join(", ")}.
+          record of a Prezenti grant, such as a post on the Celo Forum. Keys marked prezenti_grantee are counted in their
+          own row. Published chains: {PUBLIC_USAGE_CHAINS.join(", ")}.
         </p>
         <form method="get" action="/usage/monthly" className="doc-p">
           <label>

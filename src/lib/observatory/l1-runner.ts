@@ -533,7 +533,7 @@ export const CELO_HOST_ATTEMPT_STATUSES = [
  * 段（小さいほど先）:
  *   0  その network で資格情報を出した行（auth_nonce IS NOT NULL）が、その payTo にまだ無い
  *   1  資格情報は出したが、Celo では証拠の列（payment_payload IS NOT NULL）のある行がまだ無い（M3 の証拠のため 1 回買い直す）
- *   2  Celo で証拠の列つきの行がある
+ *   2  Celo で証拠の列つきの行がある（組み立て失敗の印 {error: "evidence_build_failed"} だけの行は 1 のまま）
  * Avalanche は段 0 と 1 だけ（資格情報を出したら 1）。
  *
  * payTo は小文字で比べる。購入の側は x402_l1_purchases.pay_to、出品の側はその network の accept の payTo
@@ -553,7 +553,8 @@ function lanePayToTierCtes(network: string, threeTier: boolean): SQL {
     lane_tried_payto AS MATERIALIZED (
       SELECT lower(tp.pay_to) AS pay_to,
              ${censusHostSql(sql`te.resource_key`)} AS host,
-             max(CASE WHEN ${threeTier ? sql`tp.payment_payload IS NOT NULL` : sql`false`} THEN 2 ELSE 1 END)::int AS tier
+             -- 証拠の組み立てに失敗した印（buildPurchaseEvidence の {error: "evidence_build_failed"}）は証拠に数えない。
+             max(CASE WHEN ${threeTier ? sql`tp.payment_payload IS NOT NULL AND tp.payment_payload->'error' IS NULL` : sql`false`} THEN 2 ELSE 1 END)::int AS tier
       FROM x402_l1_purchases tp
       JOIN x402_endpoints te ON te.id = tp.endpoint_id
       WHERE tp.network = ${network}

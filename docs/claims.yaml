@@ -565,7 +565,7 @@ claims:
   - id: privacy_monthly_table_relation_under_3_hides_calls
     surface: src/app/legal/privacy/page.tsx
     quote: "A labeled relation with fewer than 3 owners shows"
-    means: "公開の月次表は、分類済みの区分（self / related / external）を持ち主の人数と件数で出す。3 人未満は人数を <3 とし、件数は出さない"
+    means: "公開の月次表は、分類済みの区分（self / related / external / prezenti_grantee）を持ち主の人数と件数で出す。3 人未満は人数を <3 とし、件数は出さない"
     check: null
     why_unverifiable: "公開 GET の数値ではなく出力の形の約束。tests/decision-usage.pg.test.ts が JSON と HTML に鍵・メール・名前が出ず、持ち主 3 人未満で件数が欠けることを固定する"
     verified_at: 2026-10-26

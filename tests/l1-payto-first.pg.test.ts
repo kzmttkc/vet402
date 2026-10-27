@@ -152,4 +152,56 @@ if (!TEST_DB) {
     assert.deepEqual(celoNine.slice(0, 3), ["nocred-b.example/api", "fresh.example/api", "cred-b.example/api"]);
     assert.ok(celoNine.indexOf("agg-1.example/api") > celoNine.indexOf("cred-b.example/api"), "9 ホストの payTo は 1 運営者として後ろへ");
   });
+  test("Celo: 証拠の組み立てに失敗した印（evidence_build_failed）だけの payTo は段 1 のまま（証拠ありに数えない）", async () => {
+    const { l1TargetsSqlBuilders } = await import("@/lib/observatory/l1-runner");
+    const { CHAIN_DAILY_CAPS } = await import("@/lib/observatory/budget");
+    const { BASE_USDC, CELO_CHAIN } = await import("@/lib/observatory/x402-payer");
+    const { getDb } = await import("@/lib/db/client");
+    const { sql } = await import("drizzle-orm");
+    const db = getDb()!;
+    const CELO = "eip155:42220";
+    const addr = (tag: string) => `0x${tag.padStart(40, "0")}`;
+    const seed = [
+      // [resource_key, payTo, payers, status]
+      ["fail-a.example/bought", addr("FA11"), 1, "delisted"],
+      ["fail-b.example/api", addr("FA11"), 500, "active"],
+      ["good-a.example/bought", addr("600D"), 1, "delisted"],
+      ["good-b.example/api", addr("600D"), 900, "active"],
+      ["cred-a.example/bought", addr("C0DE"), 1, "delisted"],
+      ["cred-b.example/api", addr("C0DE"), 100, "active"],
+    ] as const;
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
+    for (const [key, payTo, payers, status] of seed) {
+      const accepts = [
+        { scheme: "exact", network: "eip155:8453", asset: BASE_USDC, payTo, amount: "1000" },
+        { scheme: "exact", network: CELO, asset: CELO_CHAIN.usdc, payTo, amount: "1000", extra: { name: "USDC", version: "2" } },
+      ];
+      await db.execute(sql`
+        INSERT INTO x402_endpoints (resource_key, resource_url, method, network, pay_to, price_amount, raw_accepts, status, quality_payers_30d, quality_calls_30d, first_seen_at)
+        VALUES (${key}, ${"https://" + key}, 'GET', 'eip155:8453', ${payTo}, '1000', ${JSON.stringify(accepts)}::jsonb, ${status}, ${payers}, ${payers * 10}, timestamptz '2025-01-01+00')
+      `);
+    }
+    await db.execute(sql`INSERT INTO x402_l0_probes (endpoint_id, method, verdict) SELECT id, 'GET', 'pass' FROM x402_endpoints`);
+    const buy = async (key: string, payTo: string, payload: Record<string, unknown> | null) => {
+      await db.execute(sql`
+        INSERT INTO x402_l1_purchases (endpoint_id, network, status, pay_to, auth_nonce, payment_payload, amount_units, spent_units, attempted_at)
+        SELECT id, ${CELO}, 'settle_failed', ${payTo}, ${"0x" + "cd".repeat(32)}, ${payload === null ? null : JSON.stringify(payload)}::jsonb,
+               '1000', '1000', now() - interval '40 days'
+        FROM x402_endpoints WHERE resource_key = ${key}
+      `);
+    };
+    await buy("fail-a.example/bought", addr("FA11"), { v: 1, error: "evidence_build_failed" });
+    await buy("good-a.example/bought", addr("600D"), { v: 1, header: "X-PAYMENT", decoded: { x402Version: 2 } });
+    await buy("cred-a.example/bought", addr("C0DE"), null);
+
+    const b = l1TargetsSqlBuilders({ limit: 100, laneExclusions: [], firstPurchasesSelectable: true, censusFirstSelectable: true });
+    for (const daily of [true, false]) {
+      const asRows = <T,>(raw: unknown) => (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as T[];
+      const picked = asRows<{ id: string }>(await db.execute(b.targetsSql(daily, { chain: "celo", networkLike: CHAIN_DAILY_CAPS.celo.networkLike, limit: 100 })));
+      const byId = new Map(asRows<{ id: string; resource_key: string }>(await db.execute(sql`SELECT id::text AS id, resource_key FROM x402_endpoints`)).map((r) => [r.id, r.resource_key]));
+      const keys = picked.map((r) => byId.get(String(r.id)));
+      // fail-b（500）と cred-b（100）は同じ段 1（需要の順）。good-b（900）は段 2 で最後。
+      assert.deepEqual(keys, ["fail-b.example/api", "cred-b.example/api", "good-b.example/api"], `daily=${daily}`);
+    }
+  });
 }
