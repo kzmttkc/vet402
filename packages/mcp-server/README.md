@@ -29,7 +29,7 @@ transactions of vet402's own purchases (`l1_purchases[]`), `record_url` and
 
 | Hosted tool | What it returns |
 |---|---|
-| `check_x402_seller` | Before paying an x402 URL: what happened when vet402 paid it (paid attempts, deliveries, the five latest purchases with their transactions), `recommendation`, `reason_codes` and `verified_terms` (the payTo, amount and network of the last delivered purchase) |
+| `check_x402_seller` | What vet402 saw when it paid an x402 URL (paid attempts, deliveries, the five latest purchases with their transactions), `recommendation`, `reason_codes` and `verified_terms` (the payTo, amount and network of the last delivered purchase) |
 | `check_my_x402_endpoint` | For sellers: the catalogs a host is listed in, what happened when vet402 paid its listings, the failure modes with links to the fix-first page, and when vet402 can buy each listing again |
 | `find_x402_sellers` | Listings whose URL or description matches a query and that vet402 paid and received content from in the last 30 days, ordered by that count |
 

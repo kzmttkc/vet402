@@ -1275,8 +1275,11 @@ paths:
         The server reads only its own database and makes no outbound request.
         Calls are counted per client kind and UTC day in `client_usage_daily`
         (routes `mcp:initialize`, `mcp:check_x402_seller`,
-        `mcp:check_my_x402_endpoint`, `mcp:find_x402_sellers`). The URL, IP
-        and User-Agent of a call are not stored.
+        `mcp:check_my_x402_endpoint`, `mcp:find_x402_sellers`). Those counts
+        hold the UTC day, the route, the client kind and the number, with no
+        URL, User-Agent text or IP address. The IP address (an IPv6 address
+        cut to its /64) is held in the rate-limit store for the one-minute
+        window, and the daily log purge deletes the expired rows.
       security: []
       requestBody:
         required: true

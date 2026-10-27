@@ -21,16 +21,16 @@ export const fixFirstUrlOf = (modeKey: string) => `${FIX_FIRST_URL}#${modeKey}`;
 
 export const SERVER_INSTRUCTIONS =
   "vet402 keeps a record of what happened when it paid x402 URLs: when, on which chain, whether the content came back, and the transaction. " +
-  "Call check_x402_seller before paying an x402 URL. Sellers call check_my_x402_endpoint to see the record for their own host. " +
+  "check_x402_seller shows that record for one x402 URL. check_my_x402_endpoint shows the record for the listings on one seller's host. " +
   "Each record links to its public page at record_url, and method_url explains how vet402 measures.";
 
 export const TOOL_TEXT = {
   check_x402_seller: {
-    title: "Check an x402 URL before paying",
+    title: "What vet402 saw when it paid this x402 URL",
     description:
-      "Before an agent pays an x402 URL, this shows what happened when vet402 paid that URL: whether the payment settled, whether the content came back, and the transaction for each attempt. " +
+      "check_x402_seller shows what happened when vet402 paid an x402 URL: whether the payment settled, whether content came back, and the transaction for each attempt. " +
       "For WARN or BLOCK, read reason_codes. " +
-      "verified_terms holds the payTo, amount and network of the last purchase where the content came back. Compare them with the 402 you received before you pay. " +
+      "verified_terms holds the payTo, amount and network of the last purchase where content came back, so they can be set against the terms of a 402 response. " +
       "When method is left out, GET is looked up first and then POST. " +
       "A URL that vet402 has no record of comes back with not_in_catalog set to true, up to five other listings on the same host, and the catalogs vet402 reads.",
   },
@@ -53,7 +53,7 @@ export const TOOL_TEXT = {
 /** 入力欄の説明（tools/list の inputSchema に載る）。 */
 export const INPUT_TEXT = {
   url: "The x402 URL, as an absolute https URL of up to 2048 characters.",
-  method: "The HTTP method you will pay with, such as GET or POST. Leave it out to look up GET first and then POST.",
+  method: "The HTTP method of the listing, such as GET or POST. Leave it out to look up GET first and then POST.",
   sellerUrl: "Any https URL on your host, such as one of your x402 endpoints.",
   query: "Words to match against listing URLs and descriptions, up to 80 characters.",
   limit: "How many sellers to return, from 1 to 10. The default is 5.",

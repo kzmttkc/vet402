@@ -22,6 +22,8 @@ const RULES: { name: string; re: RegExp }[] = [
   { name: "trust / rating / audit / verification service", re: /\b(trust|trusted|rating|ratings|audit|audits|certif\w*|verification service)\b/i },
   { name: "seller is broken", re: /\bbroken\b/i },
   { name: "names not to use", re: /\b(kite|blockrun)\b/i },
+  // 2026-10-28 点検 M1: 「払う前に呼べ」の型（呼び手への指図）を書かない。事実（vet402 が払ったときに見たこと）を言う。
+  { name: "call before paying", re: /\bbefore (paying|you pay|an agent pays|it pays)\b|\bwill pay with\b/i },
 ];
 
 function violations(texts: readonly string[]): string[] {
@@ -36,6 +38,7 @@ test("規則そのものが当たる（空集合で緑にならない）", () =>
   assert.equal(violations(["a \u2014 b", "a - b"]).length, 2);
   assert.equal(violations(["paid, not delivered"]).length, 1);
   assert.equal(violations(["status of the purchase"]).length, 0, "status の us は語ではない");
+  assert.equal(violations(["Call this before paying an x402 URL."]).length, 1);
 });
 
 test("固定文（text.ts）の全部が決まりを守る", async () => {
