@@ -1447,7 +1447,95 @@ async function haltGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<Halt
 }
 
 /**
- * 候補 SQL の組み立て（2026-10-27・runL1Batch の中から外へ出した。文は 1 文字も変えていない）。
+ * 主候補の文（2026-10-27）。選ぶ行と並びは 1 文の形（下の targetsSql の query・旗 primaryLazyWalk=false）と同じ。
+ *
+ * 本番の読み取り（EXPLAIN ANALYZE・2026-10-27）: 1 文の形は、安い条件を通る約 4.2 万行のすべてで L0 の最新判定
+ * （x402_l0_probes を 1 行ずつ）・Gateway の除外（raw_accepts の展開・TOAST）・並びの先頭の C2 判定（settlements を
+ * 1 行ずつ。決済のあるエンドポイントでは表の行を 1 回読む）を評価してから LIMIT していた。温まって 2 秒、冷えると
+ * 10 秒（10/27 08:32 JST の本番の回は 50 秒）。
+ *
+ * ここでは、
+ *  1. 安い条件（coreWhere: x402_endpoints の列と、相関しない売り手の上限）と購入表の条件（purchaseWhere）を通る行を、
+ *     C2 以外の並びの鍵で 1 回だけ並べる（l1_primary_cand）。購入表は 1 回だけ endpoint ごとに畳み（l1_primary_bought）、
+ *     購入行の無い行（約 6.5 万行）では purchaseWhere を評価しない。その行での答えは決まっている: スイープ窓と冷却の
+ *     NOT EXISTS は真、初回購入の EXISTS は偽（＝ firstPurchasesSelectable のときだけ通る）。未購入の鍵は「畳んだ行が無い」、
+ *     最後の試行は畳んだ max(attempted_at)（元の副問い合わせと同じ値。行が無ければ NULL）。
+ *  2. その並びを上から歩き、C2 の行（A）と C2 でない行（B）を別々に、L0 の判定と extraWhere を通るものだけ最大 limit 件ずつ取る。
+ *     重い判定は歩いた行にしか走らない（並びが CTE から伝わり、Limit が止める）。
+ *  3. A と B の和を、元と同じ鍵（C2 → 未購入 → 優先 → 需要 → 最後の試行 → 初出 → id）で並べ直して limit 件。
+ *
+ * 同じ結果になる理由: 元の答え（F を (C2, k) で並べた先頭 limit 件）の各行は、C2 の行なら「C2 の行を k で並べた先頭
+ * limit 件」に、C2 でない行なら「C2 でない行を k で並べた先頭 limit 件」に必ず入る。k は id で終わる全順序なので同点は無い。
+ * C2 の値は NULL にならない（l1_primary_cand の行は status = 'active'・resource_url が https で始まる非 NULL、残りは EXISTS だけ）。
+ * B を IS NOT TRUE で取るのは、仮に NULL が出ても行を落とさないため（並びはその場合だけ元と違いうる）。
+ */
+function lazyPrimaryTargetsSql(input: {
+  daily: boolean;
+  baseColumns: SQL;
+  coreWhere: SQL;
+  purchaseWhere: SQL;
+  extraWhere: SQL;
+  limit: number;
+  firstPurchasesSelectable: boolean;
+}): SQL {
+  const { daily, baseColumns, coreWhere, purchaseWhere, extraWhere, limit, firstPurchasesSelectable } = input;
+  const ordKeys = (a: string) => {
+    const t = sql.raw(a);
+    return sql`${t}.ord_unbought DESC, ${t}.ord_priority DESC, ${t}.ord_payers DESC NULLS LAST, ${t}.ord_calls DESC NULLS LAST,
+             ${t}.ord_last ASC NULLS FIRST, ${t}.ord_seen ASC NULLS LAST, ${t}.id ASC`;
+  };
+  const walk = (c2: boolean) => sql`
+      SELECT w.id, ${c2 ? sql`true` : sql`false`} AS ord_tier,
+             w.ord_unbought, w.ord_priority, w.ord_payers, w.ord_calls, w.ord_last, w.ord_seen
+      FROM (
+        SELECT e.id, e.ord_unbought, e.ord_priority, e.ord_payers, e.ord_calls, e.ord_last, e.ord_seen
+        FROM l1_primary_cand e
+        WHERE (${l1TierWhere(daily)}) ${c2 ? sql`IS TRUE` : sql`IS NOT TRUE`}
+        ORDER BY ${ordKeys("e")}
+      ) w
+      JOIN x402_endpoints e ON e.id = w.id
+      JOIN LATERAL (
+        SELECT verdict FROM x402_l0_probes p
+        WHERE p.endpoint_id = e.id
+        ORDER BY probed_at DESC LIMIT 1
+      ) lp ON lp.verdict = 'pass'
+      WHERE true
+        ${extraWhere}
+      ORDER BY ${ordKeys("w")}
+      LIMIT ${limit}`;
+  return sql`
+    WITH l1_primary_bought AS (
+      SELECT pb.endpoint_id, max(pb.attempted_at) AS last_at
+      FROM x402_l1_purchases pb
+      GROUP BY pb.endpoint_id
+    ),
+    l1_primary_cand AS MATERIALIZED (
+      SELECT e.id, e.status, e.resource_url,
+             (bought.endpoint_id IS NULL) AS ord_unbought,
+             (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS ord_priority,
+             e.quality_payers_30d AS ord_payers,
+             e.quality_calls_30d AS ord_calls,
+             bought.last_at AS ord_last,
+             e.first_seen_at AS ord_seen
+      FROM x402_endpoints e
+      LEFT JOIN l1_primary_bought bought ON bought.endpoint_id = e.id
+      WHERE ${coreWhere}
+        AND CASE WHEN bought.endpoint_id IS NULL THEN ${firstPurchasesSelectable ? sql`true` : sql`false`}
+                 ELSE (true ${purchaseWhere}) END
+      ORDER BY ord_unbought DESC, ord_priority DESC, ord_payers DESC NULLS LAST, ord_calls DESC NULLS LAST,
+               ord_last ASC NULLS FIRST, ord_seen ASC NULLS LAST, e.id ASC
+    )
+    SELECT ${baseColumns}
+    FROM ((${walk(true)}) UNION ALL (${walk(false)})) pick
+    JOIN x402_endpoints e ON e.id = pick.id
+    ORDER BY pick.ord_tier DESC, ${ordKeys("pick")}
+    LIMIT ${limit}
+  `;
+}
+
+/**
+ * 候補 SQL の組み立て（2026-10-27・runL1Batch の中から外へ出した）。レーン枠と census の文は従来のまま。
+ * 主候補（lane も census も無い文）だけ、同じ答えを返す lazyPrimaryTargetsSql の形にした（同日・tests/l1-primary-lazy.pg.test.ts）。
  * 準備の各問い合わせを本番の読み取りで同じ関数のまま測り、DB 試験で選ぶ候補を固定するため。
  * 値は runL1Batch が準備の途中で決めたもの（初回購入の枠・レーンの除外・自己除外）をそのまま受け取る。
  */
@@ -1462,11 +1550,17 @@ export type L1TargetsSqlContext = {
    * 「足しても選ぶ行と並びが同じ」を、足す前の文と並べて確かめるためだけに使う。本番の呼び手は渡さない（既定 true）。
    */
   lanePrefilter?: boolean;
+  /**
+   * Test seam（2026-10-27）: false で主候補を 1 文の並び（重い判定を通る行の全部で評価してから LIMIT）に戻す。
+   * DB 試験が lazyPrimaryTargetsSql と同じ id を同じ順に返すことを確かめるためだけに使う。本番の呼び手は渡さない（既定 true）。
+   */
+  primaryLazyWalk?: boolean;
 };
 
 export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
   const { limit, onlyEndpointId, laneExclusions, firstPurchasesSelectable, censusFirstSelectable } = ctx;
   const lanePrefilter = ctx.lanePrefilter !== false;
+  const primaryLazyWalk = ctx.primaryLazyWalk !== false;
   const selfExclusion = sql`AND ${operatorExclusionPredicate("e")}`;
   // 候補 SQL は settlement_daily を読む（C2 の 30 日窓が生行の保持期間へ縮まないため）。
   // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
@@ -1483,8 +1577,9 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
     // Celo と Avalanche だけ、ORDER BY / LIMIT を外してホスト幅の包みに渡す。他レーンの並びの文は下のまま。
     const celoLane = celoLaneUsesHostSpread(lane, census !== undefined);
     const avalancheLane = avalancheLaneUsesHostSpread(lane, census !== undefined);
-    const query = sql`
-    SELECT e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
+    // 主候補（レーン枠でも census でもない文）だけ、重い判定を並びの順に必要な行まで遅らせる（lazyPrimaryTargetsSql）。
+    const lazyPrimary = primaryLazyWalk && lane === undefined && census === undefined;
+    const baseColumns = sql`e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
            -- レーンの accept 優先（2026-09-17）: このエンドポイントで決済済み／決済主張のある network と、
@@ -1532,63 +1627,8 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) sa
               WHERE sa->>'network' = ${STELLAR_PUBNET_CAIP2}
                 AND (sa->>'asset' = ${STELLAR_USDC_CLASSIC} OR sa->>'asset' = ${STELLAR_USDC_SAC})
-                AND sa->>'payTo' IS NOT NULL) AS stellar_declared_pay_tos
-           ${
-             census
-               ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host,
-           ${
-             census === "retest" && retest
-               ? sql`(e.id::text IN (SELECT jsonb_array_elements_text(${retest.preferredIdsJson}::jsonb)))`
-               : sql`false`
-           } AS census_preferred`
-               : sql``
-           }
-           ${
-             celoLane
-               ? sql`, e.resource_key,
-           (${l1TierWhere(daily)}) AS celo_ord_tier,
-           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS celo_ord_unbought,
-           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS celo_ord_priority,
-           e.quality_payers_30d AS celo_ord_payers,
-           e.quality_calls_30d AS celo_ord_calls,
-           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS celo_ord_last,
-           e.first_seen_at AS celo_ord_seen`
-               : avalancheLane
-                 ? sql`, e.resource_key,
-           (${l1TierWhere(daily)}) AS avax_ord_tier,
-           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS avax_ord_unbought,
-           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS avax_ord_priority,
-           e.quality_payers_30d AS avax_ord_payers,
-           e.quality_calls_30d AS avax_ord_calls,
-           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS avax_ord_last,
-           e.first_seen_at AS avax_ord_seen`
-                 : sql``
-           }
-    FROM x402_endpoints e
-    JOIN LATERAL (
-      SELECT verdict FROM x402_l0_probes p
-      WHERE p.endpoint_id = e.id
-      ORDER BY probed_at DESC LIMIT 1
-    ) lp ON lp.verdict = 'pass'
-    ${
-      // census の値段（2026-09-28・独立レビュー W2 で改訂）: **実際に払う額**＝e.price_amount（カタログの
-      // accepts[0].amount）。selectAccept が壁の accept と照合するのはこの宣言額なので、raw_accepts の別の
-      // accept の方が安くても、その額では払わない（本番 437 件中 18 件で食い違っていた: 並べた 24 units・
-      // 払う 200 units）。price_amount が null の行（v1 の maxAmountRequired だけの行）は census に入れない。
-      // 数字として読めない額・0 は数えない（CASE の中でだけ numeric へ落とす——WHERE の AND は評価順を
-      // 保証しないので、壊れた額で文全体を落とさない）。has_base は Base の USDC accept の宣言があるか。
-      census
-        ? sql`CROSS JOIN LATERAL (
-      SELECT CASE WHEN e.price_amount ~ '^[0-9]{1,30}$' THEN nullif(e.price_amount::numeric, 0) END AS census_price,
-             EXISTS (
-               SELECT 1
-               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) x
-               WHERE x->>'network' IN (${BASE_CAIP2}, 'base') AND lower(x->>'asset') = ${BASE_USDC.toLowerCase()}
-             ) AS has_base
-    ) cp`
-        : sql``
-    }
-    WHERE e.status = 'active'
+                AND sa->>'payTo' IS NOT NULL) AS stellar_declared_pay_tos`;
+    const coreWhere = sql`e.status = 'active'
       -- 2026-08-26 緊急修正（外部レビュー F-1）: resource_url に ':siren' のような
       -- **未置換のパスパラメータ**が残るエンドポイントを対象から外す。パラメータの
       -- 実値を知らない我々には正しいリクエストを作れず、実測で settle_failed の
@@ -1667,7 +1707,10 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
       AND lower(e.resource_url) LIKE 'https://%'
       -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
       -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
-      ${sellerCapExclusionSql()}
+      ${sellerCapExclusionSql()}`;
+    // 購入表を 1 行ずつ引く条件（初回購入の枠・スイープ窓・冷却）。主候補の文（lazyPrimaryTargetsSql）は、購入行の無い
+    // エンドポイントではこの 3 つを評価しない（答えが決まっているので）ため、coreWhere と分けて渡す。
+    const purchaseWhere = sql`
       ${
         // 初回購入の枠を使い切った日は、購入行がまだ無いエンドポイントを外す
         // （買い直しは続く）。行を書かないので、翌 UTC 日にまた候補へ戻る。
@@ -1721,7 +1764,69 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
            AND count(*) FILTER (
                  WHERE recent.status IN ('settled', 'settle_claimed')
                ) = 0
-      )
+      )`;
+    if (lazyPrimary) {
+      return lazyPrimaryTargetsSql({ daily, baseColumns, coreWhere, purchaseWhere, extraWhere, limit, firstPurchasesSelectable });
+    }
+    const query = sql`
+    SELECT ${baseColumns}
+           ${
+             census
+               ? sql`, cp.census_price::text AS census_price, ${CENSUS_HOST_SQL} AS census_host,
+           ${
+             census === "retest" && retest
+               ? sql`(e.id::text IN (SELECT jsonb_array_elements_text(${retest.preferredIdsJson}::jsonb)))`
+               : sql`false`
+           } AS census_preferred`
+               : sql``
+           }
+           ${
+             celoLane
+               ? sql`, e.resource_key,
+           (${l1TierWhere(daily)}) AS celo_ord_tier,
+           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS celo_ord_unbought,
+           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS celo_ord_priority,
+           e.quality_payers_30d AS celo_ord_payers,
+           e.quality_calls_30d AS celo_ord_calls,
+           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS celo_ord_last,
+           e.first_seen_at AS celo_ord_seen`
+               : avalancheLane
+                 ? sql`, e.resource_key,
+           (${l1TierWhere(daily)}) AS avax_ord_tier,
+           (NOT EXISTS (SELECT 1 FROM x402_l1_purchases np WHERE np.endpoint_id = e.id)) AS avax_ord_unbought,
+           (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS avax_ord_priority,
+           e.quality_payers_30d AS avax_ord_payers,
+           e.quality_calls_30d AS avax_ord_calls,
+           (SELECT max(lt.attempted_at) FROM x402_l1_purchases lt WHERE lt.endpoint_id = e.id) AS avax_ord_last,
+           e.first_seen_at AS avax_ord_seen`
+                 : sql``
+           }
+    FROM x402_endpoints e
+    JOIN LATERAL (
+      SELECT verdict FROM x402_l0_probes p
+      WHERE p.endpoint_id = e.id
+      ORDER BY probed_at DESC LIMIT 1
+    ) lp ON lp.verdict = 'pass'
+    ${
+      // census の値段（2026-09-28・独立レビュー W2 で改訂）: **実際に払う額**＝e.price_amount（カタログの
+      // accepts[0].amount）。selectAccept が壁の accept と照合するのはこの宣言額なので、raw_accepts の別の
+      // accept の方が安くても、その額では払わない（本番 437 件中 18 件で食い違っていた: 並べた 24 units・
+      // 払う 200 units）。price_amount が null の行（v1 の maxAmountRequired だけの行）は census に入れない。
+      // 数字として読めない額・0 は数えない（CASE の中でだけ numeric へ落とす——WHERE の AND は評価順を
+      // 保証しないので、壊れた額で文全体を落とさない）。has_base は Base の USDC accept の宣言があるか。
+      census
+        ? sql`CROSS JOIN LATERAL (
+      SELECT CASE WHEN e.price_amount ~ '^[0-9]{1,30}$' THEN nullif(e.price_amount::numeric, 0) END AS census_price,
+             EXISTS (
+               SELECT 1
+               FROM jsonb_array_elements(CASE WHEN jsonb_typeof(e.raw_accepts) = 'array' THEN e.raw_accepts ELSE '[]'::jsonb END) x
+               WHERE x->>'network' IN (${BASE_CAIP2}, 'base') AND lower(x->>'asset') = ${BASE_USDC.toLowerCase()}
+             ) AS has_base
+    ) cp`
+        : sql``
+    }
+    WHERE ${coreWhere}
+      ${purchaseWhere}
       ${extraWhere}
     -- §7.4（2026-09-02）: C2（決済帰属あり ∨ 問い合わせ多）を最初に買う。日次予算が
     -- 尽きれば残りは未実施のまま（facts では l1_not_attempted = 未検証。pass とは書かない）。
