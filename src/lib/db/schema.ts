@@ -110,8 +110,8 @@ export const apiKeys = pgTable(
     firstUsedAt: timestamp("first_used_at", { withTimezone: true }),
     /**
      * 鍵の持ち主と vet402 の関係。運用者が手で付ける。NULL は未分類。
-     * self / related / external。メールからは推測しない。
-     * scripts/sql/2026-10-26-decision-usage-chain.sql
+     * self / related / external / prezenti_grantee。メールからは推測しない。
+     * scripts/sql/2026-10-26-decision-usage-chain.sql・prezenti_grantee は 2026-10-28-owner-relation-prezenti-grantee.sql
      */
     ownerRelation: text("owner_relation"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -120,7 +120,7 @@ export const apiKeys = pgTable(
     index("api_keys_key_hash_idx").on(t.keyHash),
     check(
       "api_keys_owner_relation_check",
-      sql`${t.ownerRelation} IS NULL OR ${t.ownerRelation} IN ('self', 'related', 'external')`,
+      sql`${t.ownerRelation} IS NULL OR ${t.ownerRelation} IN ('self', 'related', 'external', 'prezenti_grantee')`,
     ),
   ],
 );
@@ -1480,7 +1480,7 @@ export const decisionUsageDaily = pgTable(
     index("decision_usage_daily_chain_day_idx").on(t.chain, t.day),
     check(
       "decision_usage_daily_relation_snapshot_check",
-      sql`${t.relationSnapshot} IS NULL OR ${t.relationSnapshot} IN ('self', 'related', 'external')`,
+      sql`${t.relationSnapshot} IS NULL OR ${t.relationSnapshot} IN ('self', 'related', 'external', 'prezenti_grantee')`,
     ),
   ],
 );
@@ -1488,7 +1488,7 @@ export const decisionUsageDaily = pgTable(
 /**
  * decision_usage_monthly_published — 締まった月の公開値を、最初の読み取りで固定する。
  * 翌月 3 日 00:00 UTC 以降にアプリが INSERT … ON CONFLICT DO NOTHING する。以後はこの表だけを読む。
- * relation は self / related / external / unclassified。owners は持ち主の人数。calls は件数。
+ * relation は self / related / external / prezenti_grantee / unclassified。owners は持ち主の人数。calls は件数。
  * 公開の応答は、3 人未満と未分類の件数をこの表の外で落とす。
  * SQL: scripts/sql/2026-10-26-decision-usage-chain.sql
  */
@@ -1509,7 +1509,7 @@ export const decisionUsageMonthlyPublished = pgTable(
     }),
     check(
       "decision_usage_monthly_published_relation_check",
-      sql`${t.relation} IN ('self', 'related', 'external', 'unclassified')`,
+      sql`${t.relation} IN ('self', 'related', 'external', 'prezenti_grantee', 'unclassified')`,
     ),
   ],
 );

@@ -255,7 +255,7 @@ if (!TEST_DB) {
       return found;
     }
     const clock = new Date();
-    const ready = readyUsageMonths(clock, 7);
+    const ready = readyUsageMonths(clock, 9);
     const month = ready[0]!;
     const emptyMonth = ready[1]!;
     const current = clock.toISOString().slice(0, 7);
@@ -556,6 +556,136 @@ if (!TEST_DB) {
         await db.execute(sql`DELETE FROM api_keys WHERE id = ${id}::uuid`);
       }
       await db.execute(sql`DELETE FROM accounts WHERE id = ${String(owner?.id)}::uuid`);
+    });
+
+    await t.test("prezenti_grantee: the 2026-10-28 SQL widens the checks, keeps published rows, and follows the <3 rule", async () => {
+      const sql1028 = join(process.cwd(), "scripts/sql/2026-10-28-owner-relation-prezenti-grantee.sql");
+      const defs = async () =>
+        rows(
+          await db.execute(sql`
+            SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+            WHERE conname IN ('api_keys_owner_relation_check', 'decision_usage_daily_relation_snapshot_check',
+                              'decision_usage_monthly_published_relation_check')
+            ORDER BY conname
+          `),
+        );
+      // 本番の今の形（2026-10-26 の SQL だけ）に戻す。前の小試験が新しいコードで固定した月の 0 人の行も、旧コードは書かない。
+      await db.execute(sql`DELETE FROM decision_usage_monthly_published WHERE relation = 'prezenti_grantee'`);
+      await db.execute(sql`ALTER TABLE api_keys DROP CONSTRAINT api_keys_owner_relation_check`);
+      await db.execute(sql`ALTER TABLE api_keys ADD CONSTRAINT api_keys_owner_relation_check CHECK (owner_relation IS NULL OR owner_relation IN ('self', 'related', 'external'))`);
+      await db.execute(sql`ALTER TABLE decision_usage_daily DROP CONSTRAINT decision_usage_daily_relation_snapshot_check`);
+      await db.execute(sql`ALTER TABLE decision_usage_daily ADD CONSTRAINT decision_usage_daily_relation_snapshot_check CHECK (relation_snapshot IS NULL OR relation_snapshot IN ('self', 'related', 'external'))`);
+      await db.execute(sql`ALTER TABLE decision_usage_monthly_published DROP CONSTRAINT decision_usage_monthly_published_relation_check`);
+      await db.execute(sql`ALTER TABLE decision_usage_monthly_published ADD CONSTRAINT decision_usage_monthly_published_relation_check CHECK (relation IN ('self', 'related', 'external', 'unclassified'))`);
+      for (const row of await defs()) assert.equal(String(row.def).includes("prezenti_grantee"), false, String(row.conname));
+
+      const small = ready[7]!;
+      const large = ready[8]!;
+      const created: { accounts: string[]; keys: string[] } = { accounts: [], keys: [] };
+      const ownerKey = async (email: string, relation: string | null, label: string, count: number) => {
+        const account = rows(await db.execute(sql`INSERT INTO accounts (email) VALUES (${email}) RETURNING id::text AS id`))[0];
+        created.accounts.push(String(account?.id));
+        const key = await createApiKey({ name: "prezenti", userId: String(account?.id) });
+        created.keys.push(key.id);
+        if (relation) await db.execute(sql`UPDATE api_keys SET owner_relation = ${relation} WHERE id = ${key.id}::uuid`);
+        await insertDaily(key.id, label, count);
+        return key.id;
+      };
+
+      // 古い制約のままでは、この値は入らない。
+      const early = await ownerKey("usage-prezenti-early@example.com", null, small, 5);
+      await assert.rejects(() => db.execute(sql`UPDATE api_keys SET owner_relation = 'prezenti_grantee' WHERE id = ${early}::uuid`));
+      // 新しいアプリが SQL より先に出ると、固定の INSERT が落ち、何も書かない（だから SQL を先に流す）。
+      const tooEarly = await loadUsage(`?chain=eip155:42220&month=${small}`);
+      assert.notEqual(tooEarly.status, 200);
+      assert.equal(
+        rows(await db.execute(sql`SELECT count(*)::int AS n FROM decision_usage_monthly_published WHERE month = ${`${small}-01`}::date`))[0]?.n,
+        0,
+      );
+
+      // 旧コードが 4 区分で固定した月（ready[1]）。SQL のあとも行は消えず、作り直されない。
+      const oldMonth = ready[1]!;
+      await db.execute(sql`DELETE FROM decision_usage_monthly_published WHERE month = ${`${oldMonth}-01`}::date`);
+      await db.execute(sql`
+        INSERT INTO decision_usage_monthly_published (month, chain, relation, owners, calls, published_at)
+        VALUES (${`${oldMonth}-01`}::date, 'eip155:42220', 'self', 0, 0, '2026-10-03T00:00:00Z'),
+               (${`${oldMonth}-01`}::date, 'eip155:42220', 'related', 0, 0, '2026-10-03T00:00:00Z'),
+               (${`${oldMonth}-01`}::date, 'eip155:42220', 'external', 4, 10, '2026-10-03T00:00:00Z'),
+               (${`${oldMonth}-01`}::date, 'eip155:42220', 'unclassified', 0, 0, '2026-10-03T00:00:00Z')
+      `);
+      const oldBefore = rows(
+        await db.execute(sql`SELECT relation, owners::int AS owners, calls::int AS calls, published_at::text AS published_at
+                             FROM decision_usage_monthly_published WHERE month = ${`${oldMonth}-01`}::date ORDER BY relation`),
+      );
+
+      execFileSync("psql", [TEST_DB, "-v", "ON_ERROR_STOP=1", "-f", sql1028], { stdio: "pipe" });
+      execFileSync("psql", [TEST_DB, "-v", "ON_ERROR_STOP=1", "-f", sql1028], { stdio: "pipe" });
+      const after = await defs();
+      assert.equal(after.length, 3);
+      for (const row of after) {
+        const def = String(row.def);
+        assert.ok(def.includes("prezenti_grantee"), String(row.conname));
+        for (const kept of ["self", "related", "external"]) assert.ok(def.includes(`'${kept}'`), `${String(row.conname)} keeps ${kept}`);
+      }
+      assert.ok(String(after.find((row) => row.conname === "decision_usage_monthly_published_relation_check")?.def).includes("'unclassified'"));
+      await assert.rejects(() => db.execute(sql`UPDATE api_keys SET owner_relation = 'prezenti' WHERE id = ${early}::uuid`));
+
+      // 1 人の採択者と 3 人の external。採択者の行は <3 で件数なし。external の行に採択者は入らない。
+      await db.execute(sql`UPDATE api_keys SET owner_relation = 'prezenti_grantee' WHERE id = ${early}::uuid`);
+      for (let i = 0; i < 3; i += 1) await ownerKey(`usage-prezenti-ext-${i}@example.com`, "external", small, 2);
+      // 旧コードで固定した月に採択者の行を足しても、公開の行は動かない。
+      await insertDaily(early, oldMonth, 9);
+      const oldRes = await loadUsage(`?chain=eip155:42220&month=${oldMonth}`);
+      assert.equal(oldRes.status, 200);
+      assert.deepEqual(((await oldRes.json()) as { relations: RelationRow[] }).relations, [{ owner_relation: "external", owners: 4, calls: 10 }]);
+      const oldAfter = rows(
+        await db.execute(sql`SELECT relation, owners::int AS owners, calls::int AS calls, published_at::text AS published_at
+                             FROM decision_usage_monthly_published WHERE month = ${`${oldMonth}-01`}::date ORDER BY relation`),
+      );
+      assert.deepEqual(oldAfter, oldBefore);
+
+      const smallRes = await loadUsage(`?chain=eip155:42220&month=${small}`);
+      assert.equal(smallRes.status, 200);
+      const smallBody = (await smallRes.json()) as { relations: RelationRow[] };
+      assert.deepEqual(smallBody.relations, [
+        { owner_relation: "external", owners: 3, calls: 6 },
+        { owner_relation: "prezenti_grantee", owners: "<3" },
+      ]);
+      const storedSmall = rows(
+        await db.execute(sql`SELECT relation, owners::int AS owners, calls::int AS calls FROM decision_usage_monthly_published
+                             WHERE month = ${`${small}-01`}::date AND chain = 'eip155:42220' ORDER BY relation`),
+      );
+      assert.deepEqual(
+        storedSmall.map((row) => row.relation),
+        ["external", "prezenti_grantee", "related", "self", "unclassified"],
+      );
+      assert.deepEqual(storedSmall.find((row) => row.relation === "prezenti_grantee"), { relation: "prezenti_grantee", owners: 1, calls: 5 });
+
+      // 3 人の採択者は人数と件数を出す。ページの表にも同じ値。
+      for (let i = 0; i < 3; i += 1) await ownerKey(`usage-prezenti-${i}@example.com`, "prezenti_grantee", large, 4);
+      const largeRes = await loadUsage(`?chain=eip155:42220&month=${large}`);
+      assert.equal(largeRes.status, 200);
+      assert.deepEqual(((await largeRes.json()) as { relations: RelationRow[] }).relations, [
+        { owner_relation: "prezenti_grantee", owners: 3, calls: 12 },
+      ]);
+      const page = renderToStaticMarkup(await pageMod.default({ searchParams: Promise.resolve({ chain: "eip155:42220", month: large }) }));
+      assert.match(page, /<td>prezenti_grantee<\/td><td>3<\/td><td>12<\/td>/);
+      const pageSmall = renderToStaticMarkup(await pageMod.default({ searchParams: Promise.resolve({ chain: "eip155:42220", month: small }) }));
+      assert.match(pageSmall, /<td>prezenti_grantee<\/td><td>&lt;3<\/td><td>withheld<\/td>/);
+      assert.doesNotMatch(pageSmall, /usage-prezenti/);
+
+      // アカウントを消すと、区分は relation_snapshot に残る（広げた CHECK を通る）。
+      runOps(fence("## アカウント").replaceAll("__ACCOUNT_ID__", created.accounts[0]!));
+      assert.equal(
+        rows(await db.execute(sql`SELECT count(*)::int AS n FROM decision_usage_daily WHERE relation_snapshot = 'prezenti_grantee'`))[0]?.n,
+        2,
+      );
+
+      for (const id of created.keys) {
+        await db.execute(sql`DELETE FROM api_usage WHERE api_key_id = ${id}::uuid`);
+        await db.execute(sql`DELETE FROM api_keys WHERE id = ${id}::uuid`);
+      }
+      for (const id of created.accounts) await db.execute(sql`DELETE FROM accounts WHERE id = ${id}::uuid`);
     });
 
     await t.test("a closed month before the 3rd day writes nothing", async () => {

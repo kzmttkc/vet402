@@ -13,7 +13,7 @@
 //
 // 数える単位は鍵ではなく持ち主。生きている鍵は COALESCE(user_id, 鍵 id)。消した鍵は owner_snapshot（無ければ置き換えた鍵 id）。
 // 消した行は api_keys に無いので、置き換えた api_key_id を 1 人として数える。
-// self / related / external は人数と件数。3 人未満は人数を "<3" とし、件数は出さない。
+// self / related / external / prezenti_grantee は人数と件数。3 人未満は人数を "<3" とし、件数は出さない。
 // 未分類は件数を出さない。3 人未満なら人数も "<3"。
 // 鍵 1 本の行は出さない。鍵なしの節も出さない（チェーンが無い）。
 // 引けるチェーンは PUBLIC_USAGE_CHAINS だけ。month の年は 2026 から 2100。
@@ -57,7 +57,14 @@ export const PUBLIC_USAGE_CHAINS = ["eip155:42220"] as const;
 /** この人数未満の区分は、公開の表で人数を "<3" とし、件数を出さない。 */
 export const PUBLIC_USAGE_MIN_OWNERS = 3;
 
-export type UsageRelation = "self" | "related" | "external";
+/**
+ * prezenti_grantee（2026-10-28）: Prezenti（Celo のビルダー支援）の採択者だと、公開の記録で確かめた持ち主の鍵。
+ * external の一種だが別の区分に数える（external の行には入らない）。3 人未満の秘匿は他の区分と同じ。
+ * 出どころの証拠は docs/operations/api-key-owner-relation.md。
+ */
+export const USAGE_RELATIONS = ["self", "related", "external", "prezenti_grantee"] as const;
+
+export type UsageRelation = (typeof USAGE_RELATIONS)[number];
 
 export type MonthlyUsageError =
   | "chain_required"
@@ -219,11 +226,10 @@ export type MonthlyDecisionUsage = {
   relations: MonthlyRelationUsage[];
 };
 
-const RELATION_ORDER: Record<string, number> = { self: 0, related: 1, external: 2 };
+const RELATION_ORDER: Record<string, number> = { self: 0, related: 1, external: 2, prezenti_grantee: 3 };
 
 function asRelation(value: string | null): UsageRelation | null {
-  if (value === "self" || value === "related" || value === "external") return value;
-  return null;
+  return (USAGE_RELATIONS as readonly string[]).includes(value ?? "") ? (value as UsageRelation) : null;
 }
 
 type PublishedRow = { relation: string; owners: number | string; calls: number | string };
@@ -246,7 +252,7 @@ function publishRelations(stored: PublishedRow[]): MonthlyRelationUsage[] {
     }
     relations.push({ owner_relation, owners, calls });
   }
-  relations.sort((a, b) => (RELATION_ORDER[a.owner_relation ?? ""] ?? 3) - (RELATION_ORDER[b.owner_relation ?? ""] ?? 3));
+  relations.sort((a, b) => (RELATION_ORDER[a.owner_relation ?? ""] ?? 4) - (RELATION_ORDER[b.owner_relation ?? ""] ?? 4));
   return relations;
 }
 
@@ -261,7 +267,7 @@ async function readPublished(db: AppDb, query: Extract<MonthlyUsageQuery, { ok: 
 }
 
 /**
- * 空の月も 4 区分の 0 行を書いて固定する。あとから行が増えても、次の読み取りは再集計しない。
+ * 空の月も 5 区分（2026-10-28 に prezenti_grantee を足した）の 0 行を書いて固定する。あとから行が増えても、次の読み取りは再集計しない。
  * 0 人の区分は公開の配列に出さない。
  */
 async function freezeMonthlyDecisionUsage(db: AppDb, query: Extract<MonthlyUsageQuery, { ok: true }>): Promise<void> {
@@ -270,10 +276,10 @@ async function freezeMonthlyDecisionUsage(db: AppDb, query: Extract<MonthlyUsage
     SELECT ${query.start}::date, ${query.chain}, bucket.relation,
            COALESCE(agg.owners, 0)::int,
            COALESCE(agg.calls, 0)::bigint
-    FROM (VALUES ('self'::text), ('related'::text), ('external'::text), ('unclassified'::text)) AS bucket(relation)
+    FROM (VALUES ('self'::text), ('related'::text), ('external'::text), ('prezenti_grantee'::text), ('unclassified'::text)) AS bucket(relation)
     LEFT JOIN (
       SELECT CASE
-               WHEN COALESCE(k.owner_relation, d.relation_snapshot) IN ('self', 'related', 'external')
+               WHEN COALESCE(k.owner_relation, d.relation_snapshot) IN ('self', 'related', 'external', 'prezenti_grantee')
                THEN COALESCE(k.owner_relation, d.relation_snapshot)
                ELSE 'unclassified'
              END AS relation,

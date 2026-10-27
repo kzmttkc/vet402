@@ -3509,7 +3509,7 @@ paths:
                       type: object
                       required: [owner_relation, owners]
                       properties:
-                        owner_relation: { type: string, nullable: true, enum: [self, related, external] }
+                        owner_relation: { type: string, nullable: true, enum: [self, related, external, prezenti_grantee] }
                         owners:
                           oneOf:
                             - { type: integer, minimum: 3 }
@@ -3518,7 +3518,7 @@ paths:
                         calls:
                           type: integer
                           description: >
-                            Present for self, related, and external when owners is an integer.
+                            Present for self, related, external, and prezenti_grantee when owners is an integer.
                             Absent when owners is <3. Absent for an unclassified relation.
         "400":
           description: |

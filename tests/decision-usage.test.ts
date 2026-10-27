@@ -160,6 +160,41 @@ test("本番 SQL は 1 本で足すだけ。client_usage_daily は変えない",
   assert.doesNotMatch(route, /recordClientUsage\([^)]*usageChainOf/);
 });
 
+test("2026-10-28 の SQL は 3 つの CHECK に prezenti_grantee を足すだけ", () => {
+  const sqlText = readFileSync("scripts/sql/2026-10-28-owner-relation-prezenti-grantee.sql", "utf8");
+  const body = sqlText.split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+  assert.match(sqlText, /本番の vouch DB に、push の直前に流す/);
+  assert.match(sqlText, /Safe to re-run/);
+  assert.match(body, /BEGIN;/);
+  assert.match(body, /SET LOCAL lock_timeout = '3s'/);
+  assert.match(body, /COMMIT;/);
+  for (const name of [
+    "api_keys_owner_relation_check",
+    "decision_usage_daily_relation_snapshot_check",
+    "decision_usage_monthly_published_relation_check",
+  ]) {
+    assert.match(body, new RegExp(`conname = '${name}'[\\s\\S]*?pg_get_constraintdef\\(oid\\) LIKE '%prezenti_grantee%'`), name);
+    assert.match(body, new RegExp(`DROP CONSTRAINT IF EXISTS ${name};`), name);
+  }
+  // 足すだけ: 表・列・行には触らない。
+  assert.doesNotMatch(body, /\b(DELETE|UPDATE|INSERT|TRUNCATE|DROP TABLE|DROP COLUMN|ADD COLUMN|CREATE TABLE)\b/i);
+  const checks = [...body.matchAll(/CHECK \(([^;]*)\);/g)].map((m) => m[1]);
+  assert.equal(checks.length, 3);
+  for (const check of checks) {
+    for (const kept of ["self", "related", "external", "prezenti_grantee"]) assert.ok(check.includes(`'${kept}'`), `${check} has ${kept}`);
+  }
+  const schemaSrc = readFileSync("src/lib/db/schema.ts", "utf8");
+  assert.equal((schemaSrc.match(/'external', 'prezenti_grantee'/g) ?? []).length, 3, "schema.ts の 3 つの CHECK も同じ");
+  const docSrc = readFileSync("docs/operations/api-key-owner-relation.md", "utf8");
+  for (const url of [
+    "https://forum.celo.org/t/meet-the-prezenti-season-3-ai-builder-sponsorship-cohort/13912",
+    "https://forum.celo.org/t/abapay-payment-rails-for-ai-agents-to-pay-real-bills-on-celo-x402-mcp-a2a/13936",
+    "https://pledge.prezenti.xyz/#/trial",
+  ]) {
+    assert.ok(docSrc.includes(url), url);
+  }
+});
+
 test("公開の月次ページは noindex で、ポリシーは鍵なしを元の文に戻し、鍵ありの合計と削除を書く", () => {
   const page = readFileSync("src/app/usage/monthly/page.tsx", "utf8");
   const privacy = readFileSync("src/app/legal/privacy/page.tsx", "utf8").replace(/\s+/g, " ");

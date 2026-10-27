@@ -148,8 +148,10 @@ export default async function PrivacyPage() {
               answers made with an API key, a count per key, per UTC day and per chain of the listing
               looked up. The row holds no email address and no name, and it is kept apart from the
               usage meter for billing. An operator may label a key by hand as <code>self</code>,{" "}
-              <code>related</code> or <code>external</code> (<code>api_keys.owner_relation</code>) to
-              tell calls by vet402 and people close to it from calls by others. Deleting an account
+              <code>related</code>, <code>external</code> or <code>prezenti_grantee</code>{" "}
+              (<code>api_keys.owner_relation</code>) to tell calls by vet402 and people close to it from
+              calls by others. <code>prezenti_grantee</code> is set for an owner matched by hand to a
+              public record of a Prezenti grant, such as a post on the Celo Forum. Deleting an account
               replaces the key id on these rows with a new random id, and all rows of that account
               share one new random owner id, so the account still counts as one owner. The relation
               label stored at deletion (<code>relation_snapshot</code>) and the count for each UTC day
@@ -166,7 +168,8 @@ export default async function PrivacyPage() {
               answers made with a key are summed by relation for a UTC month after that month has
               closed. The first read at or after 00:00 UTC on the 3rd day of the next month stores
               the figures, and later reads return that stored copy. The relations are{" "}
-              <code>self</code>, <code>related</code>, <code>external</code>, and unclassified. A
+              <code>self</code>, <code>related</code>, <code>external</code>,{" "}
+              <code>prezenti_grantee</code>, and unclassified. A
               labeled relation shows the number of owners and the number of calls. A labeled relation
               with fewer than 3 owners shows {"<3"} and leaves the call count out. An unclassified
               relation shows the number of owners and leaves the call count out. Fewer than 3

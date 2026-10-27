@@ -525,6 +525,71 @@ export const CELO_HOST_ATTEMPT_STATUSES = [
   "settle_claim_refuted",
 ] as const;
 
+/**
+ * Celo・Avalanche の候補の並びの最初のキー（2026-10-28・Prezenti M3 と Team1 の数え方）。「試した売り手」は
+ * ホストではなく運営者（payTo）で数える。10/27 の Celo の SiteCheck は 9 ホストが同じ payTo
+ * 0xb8491f…（/.well-known/x402 の name もどれも SiteCheck）なので、1 ホストを試したら、ほかの 8 ホストは後ろへ回す。
+ *
+ * 段（小さいほど先）:
+ *   0  その network で資格情報を出した行（auth_nonce IS NOT NULL）が、その payTo にまだ無い
+ *   1  資格情報は出したが、Celo では証拠の列（payment_payload IS NOT NULL）のある行がまだ無い（M3 の証拠のため 1 回買い直す）
+ *   2  Celo で証拠の列つきの行がある
+ * Avalanche は段 0 と 1 だけ（資格情報を出したら 1）。
+ *
+ * payTo は小文字で比べる。購入の側は x402_l1_purchases.pay_to、出品の側はその network の accept の payTo
+ * （SELECT の celo_declared_accepts / avalanche_declared_accepts）と、主ネットワークがその network の行の e.pay_to。
+ *
+ * 共有の payTo（集約型の仲介）: active の出品で、その network の accept が同じ payTo を LANE_SHARED_PAYTO_MIN_HOSTS
+ * 以上のホストに出しているとき、その payTo は運営者の印にしない。その payTo の「試した」は同じホストの行だけで見る
+ * （1 つの売り手を試しても、同じ受取先を使うほかの売り手を後ろへ回さない）。10/28 の公開カタログ（CDP Bazaar）では、
+ * Celo・Avalanche で最も多いのは SiteCheck の 9 ホストで、10 以上の payTo は無い。
+ *
+ * 並びだけを変える。上限（日次・チェーン別・売り手別）・予約・署名の順・金の条件・候補に入る行は変えない。
+ */
+export const LANE_SHARED_PAYTO_MIN_HOSTS = 10;
+
+function lanePayToTierCtes(network: string, threeTier: boolean): SQL {
+  return sql`
+    lane_tried_payto AS MATERIALIZED (
+      SELECT lower(tp.pay_to) AS pay_to,
+             ${censusHostSql(sql`te.resource_key`)} AS host,
+             max(CASE WHEN ${threeTier ? sql`tp.payment_payload IS NOT NULL` : sql`false`} THEN 2 ELSE 1 END)::int AS tier
+      FROM x402_l1_purchases tp
+      JOIN x402_endpoints te ON te.id = tp.endpoint_id
+      WHERE tp.network = ${network}
+        AND tp.auth_nonce IS NOT NULL
+        AND tp.pay_to IS NOT NULL AND tp.pay_to <> ''
+      GROUP BY 1, 2
+    ),
+    lane_shared_payto AS MATERIALIZED (
+      SELECT lower(sa->>'payTo') AS pay_to
+      FROM x402_endpoints se
+      CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(se.raw_accepts) = 'array' THEN se.raw_accepts ELSE '[]'::jsonb END) sa
+      WHERE se.status = 'active'
+        AND se.raw_accepts @> ${JSON.stringify([{ network }])}::jsonb
+        AND sa->>'network' = ${network}
+        AND sa->>'payTo' IS NOT NULL AND sa->>'payTo' <> ''
+      GROUP BY 1
+      HAVING count(DISTINCT ${censusHostSql(sql`se.resource_key`)}) >= ${LANE_SHARED_PAYTO_MIN_HOSTS}
+    )`;
+}
+
+function lanePayToTierSql(network: string, declaredAccepts: SQL): SQL {
+  return sql`coalesce((
+          SELECT max(lt.tier)
+          FROM lane_tried_payto lt
+          WHERE lt.pay_to IN (
+                  SELECT lower(da->>'payTo')
+                  FROM jsonb_array_elements(CASE WHEN jsonb_typeof(${declaredAccepts}) = 'array' THEN ${declaredAccepts} ELSE '[]'::jsonb END) da
+                  WHERE da->>'network' = ${network} AND da->>'payTo' IS NOT NULL
+                  UNION ALL
+                  SELECT lower(base.pay_to) WHERE base.network = ${network} AND base.pay_to IS NOT NULL
+                )
+            AND (lt.pay_to NOT IN (SELECT ls.pay_to FROM lane_shared_payto ls)
+                 OR lt.host = ${censusHostSql(sql`base.resource_key`)})
+        ), 0)::int`;
+}
+
 /** Celo レーンの取得だけ、ホストの幅を広げる包みを掛ける。census と他レーンは掛けない。 */
 export function celoLaneUsesHostSpread(lane: { chain: string } | undefined, census: boolean): boolean {
   return lane?.chain === "celo" && !census;
@@ -532,7 +597,7 @@ export function celoLaneUsesHostSpread(lane: { chain: string } | undefined, cens
 
 /**
  * Celo レーンの候補を、ホストあたり CELO_LANE_MAX_LISTINGS_PER_HOST 件に絞ってから
- * ホストの Celo 試行数の少ない順に並べる。同点は内側の並び（需要・未購入・優先・
+ * payTo の段（lanePayToTierSql・2026-10-28）の小さい順、次にホストの Celo 試行数の少ない順に並べる。同点は内側の並び（需要・未購入・優先・
  * 品質・最終試行・first_seen・id）のまま。試行は network が eip155:42220 の
  * CELO_HOST_ATTEMPT_STATUSES だけ。
  */
@@ -542,6 +607,7 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
     sql`, `,
   );
   return sql`
+    WITH ${lanePayToTierCtes(CELO_CAIP2, true)}
     SELECT ranked.* FROM (
       SELECT c.*, row_number() OVER (
         PARTITION BY c.celo_host
@@ -557,6 +623,7 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
       FROM (
         SELECT base.*,
                ${censusHostSql(sql`base.resource_key`)} AS celo_host,
+               ${lanePayToTierSql(CELO_CAIP2, sql`base.celo_declared_accepts`)} AS celo_payto_tier,
                coalesce(tries.n, 0)::int AS celo_host_attempts,
                coalesce(unpaid.n, 0)::int AS celo_host_unpaid_7d
         FROM (${inner}) base
@@ -582,7 +649,8 @@ function celoDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
       ) c
     ) ranked
     WHERE ranked.celo_host_rn <= ${CELO_LANE_MAX_LISTINGS_PER_HOST}
-    ORDER BY ranked.celo_host_attempts ASC,
+    ORDER BY ranked.celo_payto_tier ASC,
+             ranked.celo_host_attempts ASC,
              ranked.celo_host_unpaid_7d ASC,
              ranked.celo_ord_tier DESC,
              ranked.celo_ord_unbought DESC,
@@ -610,6 +678,7 @@ export function avalancheLaneUsesHostSpread(lane: { chain: string } | undefined,
 
 /**
  * Avalanche レーンの候補を、ホストあたり AVALANCHE_LANE_MAX_LISTINGS_PER_HOST 件に絞ってから
+ * payTo の段（lanePayToTierSql・2026-10-28。Avalanche は 0 と 1 だけ）の小さい順、次に
  * ホストの Avalanche 試行数の少ない順、次に直近 7 日の未入金試行の少ない順に並べる。
  * 試行（paid）は network が eip155:43114 の CELO_HOST_ATTEMPT_STATUSES だけ。
  * 未入金の数えはネットワークで絞らない（Celo と同じ。支払いの前に終わった試行はどの network でも後ろへ回す）。
@@ -621,6 +690,7 @@ function avalancheDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
     sql`, `,
   );
   return sql`
+    WITH ${lanePayToTierCtes(AVALANCHE_CAIP2, false)}
     SELECT ranked.* FROM (
       SELECT c.*, row_number() OVER (
         PARTITION BY c.avax_host
@@ -636,6 +706,7 @@ function avalancheDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
       FROM (
         SELECT base.*,
                ${censusHostSql(sql`base.resource_key`)} AS avax_host,
+               ${lanePayToTierSql(AVALANCHE_CAIP2, sql`base.avalanche_declared_accepts`)} AS avax_payto_tier,
                coalesce(tries.n, 0)::int AS avax_host_attempts,
                coalesce(unpaid.n, 0)::int AS avax_host_unpaid_7d
         FROM (${inner}) base
@@ -658,7 +729,8 @@ function avalancheDiversifiedCandidatesSql(inner: SQL, limit: number): SQL {
       ) c
     ) ranked
     WHERE ranked.avax_host_rn <= ${AVALANCHE_LANE_MAX_LISTINGS_PER_HOST}
-    ORDER BY ranked.avax_host_attempts ASC,
+    ORDER BY ranked.avax_payto_tier ASC,
+             ranked.avax_host_attempts ASC,
              ranked.avax_host_unpaid_7d ASC,
              ranked.avax_ord_tier DESC,
              ranked.avax_ord_unbought DESC,
