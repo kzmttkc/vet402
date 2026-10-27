@@ -34,6 +34,17 @@ function redactStellarSecrets(text: string): string {
   return text.replace(STELLAR_SECRET_RE, "<stellar-secret>");
 }
 
+/**
+ * drizzle の DrizzleQueryError は message に `Failed query: <文>\nparams: <値>` を持つ（2026-10-27 独立点検 H1）。
+ * 値には署名済みの支払いペイロード（購入の証拠の列・Gateway の signature・Solana / XRPL / Stellar の署名済み tx）が
+ * 入りうるので、台帳・ログへ書く前に `params:` の行から後ろを丸ごと落とす。文（プレースホルダだけ）は診断に残す。
+ */
+const QUERY_PARAMS_RE = /(^|\n)[ \t]*params:[\s\S]*$/;
+
+export function stripQueryParams(text: string): string {
+  return text.replace(QUERY_PARAMS_RE, "$1params: <redacted>");
+}
+
 /** 文字列中の接続 URL を `<url>` に伏せる。長さは変えない。 */
 export function redactUrls(text: string): string {
   return text.replace(URL_RE, "<url>");
@@ -41,7 +52,7 @@ export function redactUrls(text: string): string {
 
 /** 台帳・summary へ書く誤り文字列。伏せてから 300 字に切る。 */
 export function redactForLog(error: unknown): string {
-  return redactStellarSecrets(redactUrls(String(error))).slice(0, 300);
+  return redactStellarSecrets(redactUrls(stripQueryParams(String(error)))).slice(0, 300);
 }
 
 /**
@@ -53,5 +64,5 @@ export function redactForLog(error: unknown): string {
  * ログは診断のためにあるから。
  */
 export function redactedError(error: unknown): Error {
-  return new Error(redactStellarSecrets(redactUrls(String(error))));
+  return new Error(redactStellarSecrets(redactUrls(stripQueryParams(String(error)))));
 }

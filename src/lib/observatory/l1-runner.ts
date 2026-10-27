@@ -3890,10 +3890,16 @@ async function purchaseOne(input: {
     // auth_nonce と同じ UPDATE に載せる: 有料の要求より前に残るので、この後で落ちても残る。この UPDATE が落ちたら
     // 従来どおり有料の要求を出さずに止まる（auth_nonce と同じ扱い——記録の無い支払いを売り手へ出さない）。
     const paymentPayload = buildPurchaseEvidence("payment_payload", () => paymentPayloadEvidence(header));
-    await db
-      .update(x402L1Purchases)
-      .set(gatewayAuthMeta ? { authNonce, paymentPayload, rawResponseMeta: gatewayAuthMeta } : { authNonce, paymentPayload })
-      .where(eq(x402L1Purchases.id, reservation.rowId));
+    try {
+      await db
+        .update(x402L1Purchases)
+        .set(gatewayAuthMeta ? { authNonce, paymentPayload, rawResponseMeta: gatewayAuthMeta } : { authNonce, paymentPayload })
+        .where(eq(x402L1Purchases.id, reservation.rowId));
+    } catch (error) {
+      // 2026-10-27 独立点検 H1: drizzle の誤りは message に params（署名済みペイロード・Gateway の signature）を持つ。
+      // 外の catch はそれをログと raw_response_meta.error に書くので、SQLSTATE と原因の本文だけで作り直して投げる。
+      throw dbWriteErrorWithoutParams("auth_nonce_write", error);
+    }
 
     let paid: Response | null = null;
     let paidBody = "";
@@ -4439,6 +4445,20 @@ function buildPurchaseEvidence(column: "challenge_402" | "payment_payload", buil
     logServerErrorSafe(`observatory.l1.evidence_${column}`, error instanceof Error ? error.name : typeof error);
     return { v: PURCHASE_EVIDENCE_VERSION, error: "evidence_build_failed" };
   }
+}
+
+/**
+ * DB の書き込みの誤りを、値（params）を含めずに作り直す（2026-10-27 独立点検 H1）。
+ * drizzle の DrizzleQueryError は message に `params: <値>` を持ち、値には署名済みの支払いペイロードが入りうる。
+ * 残すのは段の名前・SQLSTATE・原因（postgres の誤り）の本文だけ。cause には同じ 2 つだけを持つ Error を置き、
+ * resolveReservationAsFailed の dbErrorCause が従来どおり SQLSTATE を台帳に残せるようにする。
+ */
+export function dbWriteErrorWithoutParams(phase: string, error: unknown): Error {
+  const cause = dbErrorCause(error);
+  const code = cause?.code ?? null;
+  const text = cause ? cause.message : error instanceof Error ? error.name : typeof error;
+  const inner = Object.assign(new Error(text), { code: code ?? undefined });
+  return new Error(`${phase} failed: ${code ?? "no_sqlstate"} ${text}`, { cause: inner });
 }
 
 /**

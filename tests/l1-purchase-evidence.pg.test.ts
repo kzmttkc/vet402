@@ -15,6 +15,9 @@
 //  4. 上限（32KB）で切り詰め、印を付ける。購入は止めない。
 //  5. 秘密が入らない（鍵・RPC の URL・支払いヘッダー以外の要求ヘッダー）。ログにも署名を出さない。
 //  6. scripts/sql/2026-10-27-l1-purchase-evidence.sql は何度流しても同じ（追加だけ・jsonb・NULL 可）。
+//  7. （2026-10-27 独立点検 H1）auth_nonce / payment_payload の UPDATE が落ちても、drizzle の誤りの params
+//     （署名済みペイロード・Gateway の signature）がログにも raw_response_meta にも出ない。伏せる層（redact.ts /
+//     log-safe.ts）も `params:` 以降を落とす（Solana / XRPL / Stellar の署名済み tx の目印で確かめる）。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-purchase-evidence.pg.test.ts
@@ -43,6 +46,12 @@ if (!TEST_DB) {
   const CELO_URL = "https://celo-evidence.example/api/v2/addresses";
   const BASE_URL = "https://base-evidence.example/api";
   const RPC_SENTINEL = "https://rpc-sentinel.example/secret-token-0f1e2d";
+  const GW_URL = "https://gw-evidence.example/api";
+  const GW_PAYTO = "0x1111111111111111111111111111111111111111";
+  /** Gateway の署名器の差し替えが返す目印（実物と同じ形・漏れたら必ず見つかる値）。 */
+  const GW_SIGNATURE = `0x${"7e".repeat(65)}`;
+  const GW_NONCE = `0x${"cd".repeat(32)}`;
+  const GW_HEADER_MARK = "GWHEADERMARK0000";
 
   test("L1 purchase evidence", async (t) => {
     const { runL1Batch } = await import("@/lib/observatory/l1-runner");
@@ -75,6 +84,9 @@ if (!TEST_DB) {
       "VET402_OPERATOR_PAYTO",
       "CELO_RPC_URL",
       "BASE_RPC_URL",
+      "ARC_RPC_URL",
+      "OBSERVATORY_ARC_GATEWAY_L1_ENABLED",
+      "L1_ARC_GATEWAY_DAILY_CAP_USD",
     ] as const;
     const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
     t.after(() => {
@@ -97,9 +109,16 @@ if (!TEST_DB) {
     const baseUsdc = (amount: string) => ({
       scheme: "exact", network: BASE_CAIP2, amount, asset: BASE_USDC, payTo: BASE_PAYTO, maxTimeoutSeconds: 60, extra: { name: "USD Coin", version: "2" },
     });
+    const { ARC_USDC } = await import("@/lib/observatory/x402-payer");
+    const { ARC_GATEWAY_WALLET } = await import("@/lib/observatory/arc-gateway");
+    const gatewayAccept = (amount: string) => ({
+      scheme: "exact", network: "eip155:5042", amount, asset: ARC_USDC, payTo: GW_PAYTO, maxTimeoutSeconds: 60,
+      extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: ARC_GATEWAY_WALLET },
+    });
     const CATALOG: Record<string, unknown[]> = {
       [CELO_URL]: [celoUsdc("2000")],
       [BASE_URL]: [baseUsdc("3000")],
+      [GW_URL]: [gatewayAccept("1000")],
     };
 
     type Seen = { url: string; paid: boolean; headers: Record<string, string>; paymentHeaderName: string | null; paymentHeaderValue: string | null };
@@ -420,6 +439,169 @@ if (!TEST_DB) {
       }
     });
 
+    /** auth_nonce / payment_payload の UPDATE をわざと落とすトリガー（このテストの間だけ置く）。 */
+    const withFailingAuthWrite = async (fn: () => Promise<void>) => {
+      await db.execute(sql.raw(`
+        CREATE OR REPLACE FUNCTION evidence_test_fail_auth_write() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.payment_payload IS NOT NULL AND OLD.payment_payload IS NULL THEN
+            RAISE EXCEPTION 'evidence test: auth write refused';
+          END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql`));
+      await db.execute(sql.raw(`DROP TRIGGER IF EXISTS evidence_test_fail_auth_write ON x402_l1_purchases`));
+      await db.execute(sql.raw(`
+        CREATE TRIGGER evidence_test_fail_auth_write BEFORE UPDATE ON x402_l1_purchases
+        FOR EACH ROW EXECUTE FUNCTION evidence_test_fail_auth_write()`));
+      try {
+        await fn();
+      } finally {
+        await db.execute(sql.raw(`DROP TRIGGER IF EXISTS evidence_test_fail_auth_write ON x402_l1_purchases`));
+        await db.execute(sql.raw(`DROP FUNCTION IF EXISTS evidence_test_fail_auth_write()`));
+      }
+    };
+    /** 支払いペイロードの目印。どれか 1 つでもログ・台帳に出たら漏れ。 */
+    const PAYLOAD_MARKERS: RegExp[] = [
+      /0x[0-9a-f]{130}/i, // EIP-3009 / Gateway の signature（65 バイト）
+      /0x[0-9a-f]{64}/i, // authorization.nonce（この回は tx が無いので 32 バイトの hex は出てはいけない）
+      /"authorization"/,
+      /"signature"/,
+      /PAYMENT-SIGNATURE/,
+      /headerName/,
+      /params: (?!<redacted>)/,
+    ];
+    const assertNoPayload = (label: string, text: string) => {
+      for (const re of PAYLOAD_MARKERS) assert.ok(!re.test(text), `${label}: ${re} が出ない\n${text.slice(0, 600)}`);
+    };
+    const failedRow = async (resourceUrl: string) => {
+      const list = rowsOf(
+        await db.execute(sql`
+          SELECT pu.status, pu.spent_units, pu.auth_nonce, pu.payment_payload, pu.raw_response_meta::text AS meta
+          FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id WHERE e.resource_url = ${resourceUrl}`),
+      );
+      assert.equal(list.length, 1);
+      return list[0]!;
+    };
+
+    await t.test("H1: Celo の auth_nonce / payment_payload の UPDATE が落ちても、署名済みペイロードはログにも台帳にも出ない", async () => {
+      await seed([CELO_URL]);
+      const w = wall();
+      let logs = "";
+      await withFailingAuthWrite(async () => {
+        ({ text: logs } = await captureConsole(() => runL1Batch({ getPayerUsdcBalance: FUNDED, limit: 10, fetchImpl: w.fetchImpl })));
+      });
+      assert.equal(w.paid(CELO_URL).length, 0, "有料の要求は出さない（auth_nonce と同じ扱い）");
+      const row = await failedRow(CELO_URL);
+      assert.equal(row.status, "request_error", "資格情報は外へ出ていない＝予約を戻す");
+      assert.equal(row.spent_units, "0");
+      assert.equal(row.auth_nonce, null);
+      assert.equal(row.payment_payload, null);
+      const meta = JSON.parse(String(row.meta)) as Record<string, unknown>;
+      assert.equal(meta.reason, "threw_after_reservation");
+      assert.match(String(meta.error), /auth_nonce_write failed: P0001 .*evidence test: auth write refused/, "SQLSTATE と原因の本文は残す");
+      assert.equal((meta.cause as Record<string, unknown>).code, "P0001");
+      assertNoPayload("raw_response_meta", String(row.meta));
+      assert.ok(logs.includes("auth_nonce_write failed"), "ログに失敗は残る（黙って消さない）");
+      assertNoPayload("logs", logs);
+    });
+
+    await t.test("H1: Arc Gateway の UPDATE が落ちても、gatewayAuthMeta の signature はログにも台帳にも出ない", async () => {
+      await seed([GW_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      process.env.ARC_RPC_URL = "http://127.0.0.1:9/arc-evidence-test-rpc";
+      const w = wall();
+      let signed = 0;
+      let logs = "";
+      try {
+        await withFailingAuthWrite(async () => {
+          ({ text: logs } = await captureConsole(() =>
+            runL1Batch({
+              limit: 10,
+              fetchImpl: w.fetchImpl,
+              getPayerUsdcBalance: FUNDED,
+              readArcGatewayAvailable: async () => 5_000_000n,
+              signArcGateway: async () => {
+                signed++;
+                return {
+                  header: { headerName: "PAYMENT-SIGNATURE", headerValue: Buffer.from(JSON.stringify({ x402Version: 2, mark: GW_HEADER_MARK, payload: { signature: GW_SIGNATURE } })).toString("base64") },
+                  authorization: {
+                    from: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                    to: GW_PAYTO,
+                    value: "1000",
+                    validAfter: "1",
+                    validBefore: String(Math.floor(Date.now() / 1000) + 600),
+                    nonce: GW_NONCE,
+                  },
+                  signature: GW_SIGNATURE,
+                  verifyingContract: ARC_GATEWAY_WALLET,
+                };
+              },
+            }),
+          ));
+        });
+      } finally {
+        delete process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED;
+      }
+      assert.equal(signed, 1, "Gateway で署名まで進んだ（UPDATE の失敗を通った）");
+      assert.equal(w.paid(GW_URL).length, 0, "有料の要求は出さない");
+      const row = await failedRow(GW_URL);
+      assert.equal(row.status, "request_error");
+      assert.equal(row.auth_nonce, null);
+      const meta = String(row.meta);
+      assert.match(meta, /auth_nonce_write failed: P0001/);
+      for (const text of [meta, logs]) {
+        assert.ok(!text.includes(GW_SIGNATURE.slice(2)), "Gateway の signature が出ない");
+        assert.ok(!text.includes(GW_NONCE.slice(2)), "Gateway の nonce が出ない");
+        assert.ok(!text.includes(GW_HEADER_MARK), "支払いヘッダーの値が出ない");
+        assert.ok(!text.includes(Buffer.from(JSON.stringify({ x402Version: 2, mark: GW_HEADER_MARK })).toString("base64").slice(0, 16)), "base64 のままでも出ない");
+        assertNoPayload("gateway", text);
+      }
+    });
+
+    await t.test("H1: 伏せる層は drizzle の params を落とす（Solana / XRPL / Stellar の署名済み tx・EVM の署名）", async () => {
+      const { DrizzleQueryError } = await import("drizzle-orm/errors");
+      const { redactForLog, redactedError, stripQueryParams } = await import("@/lib/observatory/redact");
+      const { redactSecretsForLog, logServerErrorSafe } = await import("@/lib/util/log-safe");
+      const { dbErrorCause, dbWriteErrorWithoutParams } = await import("@/lib/observatory/l1-runner");
+      const SOLANA_TX = "AQAAAAAAAAAASOLANASIGNEDTXMARKER" + "A".repeat(200);
+      const XRPL_BLOB = "1200002280000000XRPLSIGNEDBLOBMARKER" + "F".repeat(200);
+      const STELLAR_XDR = "AAAAAgAAAABSTELLARSIGNEDXDRMARKER" + "B".repeat(200);
+      const EVM_SIG = `0x${"5a".repeat(65)}`;
+      const markers = ["SOLANASIGNEDTXMARKER", "XRPLSIGNEDBLOBMARKER", "STELLARSIGNEDXDRMARKER", EVM_SIG.slice(2)];
+      const pgCause = Object.assign(new Error("evidence test: auth write refused"), { code: "P0001" });
+      for (const payload of [
+        { payload: { transaction: SOLANA_TX } },
+        { payload: { signedTxBlob: XRPL_BLOB, invoiceId: "inv" } },
+        { payload: { transaction: STELLAR_XDR } },
+        { payload: { signature: EVM_SIG, authorization: { nonce: `0x${"01".repeat(32)}` } } },
+      ]) {
+        const err = new DrizzleQueryError(
+          'update "x402_l1_purchases" set "auth_nonce" = $1, "payment_payload" = $2 where "x402_l1_purchases"."id" = $3',
+          ["n", JSON.stringify({ v: 1, decoded: payload }), "00000000-0000-0000-0000-000000000000"],
+          pgCause,
+        );
+        assert.ok(markers.some((m) => err.message.includes(m)), "前提: drizzle の message は params を持つ");
+        const outs: [string, string][] = [
+          ["redactForLog", redactForLog(err)],
+          ["redactedError", redactedError(err).message],
+          ["redactSecretsForLog", redactSecretsForLog(err.message)],
+          ["dbErrorCause", JSON.stringify(dbErrorCause(err))],
+          ["dbWriteErrorWithoutParams", `${dbWriteErrorWithoutParams("auth_nonce_write", err).message} ${JSON.stringify(dbErrorCause(dbWriteErrorWithoutParams("auth_nonce_write", err)))}`],
+          ["logServerErrorSafe", (await captureConsole(async () => logServerErrorSafe("observatory.l1.test", err))).text],
+          ["logServerErrorSafe(redactedError)", (await captureConsole(async () => logServerErrorSafe("observatory.l1.test", redactedError(err)))).text],
+        ];
+        for (const [label, text] of outs) {
+          for (const m of markers) assert.ok(!text.includes(m), `${label}: 署名済みの値が出ない (${text.slice(0, 200)})`);
+        }
+        assert.match(redactForLog(err), /Failed query: update "x402_l1_purchases" set "auth_nonce" = \$1.*\nparams: <redacted>$/s, "文は診断に残す");
+        assert.match(dbWriteErrorWithoutParams("auth_nonce_write", err).message, /^auth_nonce_write failed: P0001 .*auth write refused$/);
+        assert.equal(dbErrorCause(dbWriteErrorWithoutParams("auth_nonce_write", err))?.code, "P0001", "SQLSTATE は台帳の cause に残る");
+      }
+      // params の無い文字列は変えない。
+      assert.equal(stripQueryParams("plain error: timeout"), "plain error: timeout");
+      assert.equal(stripQueryParams("multi\nline"), "multi\nline");
+    });
+
     await t.test("src の中で 2 列を名指すのは書き手の 3 ファイルだけ。購入の表を丸ごと読む問い合わせも無い", () => {
       const allowed = new Set(["src/lib/db/schema.ts", "src/lib/observatory/l1-runner.ts", "src/lib/observatory/purchase-evidence.ts"]);
       const files: string[] = [];
@@ -439,7 +621,26 @@ if (!TEST_DB) {
         if (/challenge_402|payment_payload|\.challenge402\b|x402L1Purchases\.paymentPayload\b/.test(text) && !allowed.has(f)) offenders.push(f);
         if (/\.select\(\s*\)\s*\.from\(\s*(schema\.)?x402L1Purchases\b/.test(text)) wildcard.push(`${f}: select().from(x402L1Purchases)`);
         if (/SELECT\s+\*\s+FROM\s+x402_l1_purchases\b/i.test(text)) wildcard.push(`${f}: SELECT * FROM x402_l1_purchases`);
-        if (/to_jsonb?\(\s*pu\s*\)|row_to_json\(\s*pu\s*\)|\bpu\.\*/.test(text)) wildcard.push(`${f}: whole-row pu`);
+        // drizzle の relational query（db.query.x402L1Purchases.findMany 等）は既定で全列を返す。
+        if (/\.query\.x402L1Purchases\b/.test(text)) wildcard.push(`${f}: db.query.x402L1Purchases`);
+        // 引数なしの returning() は行の全列を返す（insert / update / delete のどれでも）。
+        if (/\.(insert|update|delete)\(\s*(schema\.)?x402L1Purchases\s*\)(?:(?!;\s*\n)[\s\S]){0,800}?\.returning\(\s*\)/.test(text)) {
+          wildcard.push(`${f}: returning() on x402L1Purchases`);
+        }
+        // 生 SQL の RETURNING * は、同じ文に x402_l1_purchases があるときだけ数える（文は ; か ` で区切る）。
+        for (const stmt of text.split(/[;`]/)) {
+          if (/x402_l1_purchases/.test(stmt) && /RETURNING\s+\*/i.test(stmt)) wildcard.push(`${f}: RETURNING * on x402_l1_purchases`);
+        }
+        // x402_l1_purchases に付けた別名（FROM / JOIN x402_l1_purchases pu・AS lp …）の `.*` と行丸ごとの JSON 化。
+        const aliases = new Set(["x402_l1_purchases"]);
+        for (const m of text.matchAll(/x402_l1_purchases\s+(?:AS\s+)?([a-z_][a-z0-9_]*)\b/gi)) {
+          const a = m[1]!.toLowerCase();
+          if (!["where", "set", "on", "join", "left", "inner", "group", "order", "limit", "values", "using", "returning", "as", "for", "union", "from", "and", "or", "select", "insert", "update", "delete", "with", "having", "window", "except", "intersect", "cross", "full", "right", "natural", "lateral", "tablesample", "only"].includes(a)) aliases.add(a);
+        }
+        for (const a of aliases) {
+          const re = new RegExp(`\\b${a}\\.\\*|to_jsonb?\\(\\s*${a}\\s*\\)|row_to_json\\(\\s*${a}\\s*\\)|jsonb?_agg\\(\\s*${a}\\s*\\)`, "i");
+          if (re.test(text)) wildcard.push(`${f}: whole-row ${a}`);
+        }
       }
       assert.deepEqual(offenders, [], "2 列を読む・書くのは書き手だけ（公開の読み手が名指したらここで落ちる）");
       assert.deepEqual(wildcard, [], "購入の表を列の指定なしに読まない");

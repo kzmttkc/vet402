@@ -19,7 +19,7 @@
 // （秘密鍵を文字列でログへ渡す経路はそもそも無い）。
 // ============================================================
 import { logAndSwallow, logServerError } from "./log";
-import { redactUrls } from "@/lib/observatory/redact";
+import { redactUrls, stripQueryParams } from "@/lib/observatory/redact";
 
 // redactUrls は http(s)/ws(s)/postgres だけを見る。ログ側は redis・mysql・amqp 等も
 // 来うるので scheme を問わず伏せる（台帳用の redact.ts は既存の長さ契約があるので触らない）。
@@ -49,7 +49,8 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 export function redactSecretsForLog(text: string): string {
   // 先に引用符・山括弧で止まる側で伏せ、JSON 化したオブジェクトの残りを食わせない。
   // redactUrls（`\S+` で行末まで食う）は取りこぼしの保険として後に通す。
-  let out = redactUrls(text.replace(ANY_SCHEME_URL_RE, "<url>"));
+  // drizzle の `params:` 以降（署名済みペイロードなどの値）は最初に落とす（2026-10-27 独立点検 H1・redact.ts）。
+  let out = redactUrls(stripQueryParams(text).replace(ANY_SCHEME_URL_RE, "<url>"));
   for (const [re, replacement] of SECRET_PATTERNS) out = out.replace(re, replacement);
   return out;
 }
