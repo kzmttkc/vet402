@@ -10,6 +10,33 @@ Published on npm. No clone, no build: your MCP client launches it with `npx`.
 npm install -g @vet402/mcp-server   # optional — the configs below use npx
 ```
 
+## Hosted endpoint (no install)
+
+Since 2026-10-28 vet402 also runs an MCP server on the web at
+**`https://vet402.com/mcp`** (Streamable HTTP, stateless, read only, free, no
+key). Nothing to install and no key to set: point any MCP client that speaks
+Streamable HTTP at the URL.
+
+```json
+{ "mcpServers": { "vet402": { "type": "http", "url": "https://vet402.com/mcp" } } }
+```
+
+In Claude Code, add it as an HTTP transport server named `vet402` with that URL.
+
+The hosted endpoint has its own read-only tools, and every result carries the
+transactions of vet402's own purchases (`l1_purchases[]`), `record_url` and
+`method_url`:
+
+| Hosted tool | What it returns |
+|---|---|
+| `check_x402_seller` | Before paying an x402 URL: what happened when vet402 paid it (paid attempts, deliveries, the five latest purchases with their transactions), `recommendation`, `reason_codes` and `verified_terms` (the payTo, amount and network of the last delivered purchase) |
+| `check_my_x402_endpoint` | For sellers: the catalogs a host is listed in, what happened when vet402 paid its listings, the failure modes with links to the fix-first page, and when vet402 can buy each listing again |
+| `find_x402_sellers` | Listings whose URL or description matches a query and that vet402 paid and received content from in the last 30 days, ordered by that count |
+
+The hosted endpoint does not pay and holds no signer. `pay_if_trusted` stays
+in this stdio package only. Limits: 120 requests per minute per IP, 30 per
+minute for `find_x402_sellers`. The OpenAPI spec documents it as `/api/mcp`.
+
 ## Tools
 
 Seven tools. Two of them — `check_resource_decision` and `pay_if_trusted` — work

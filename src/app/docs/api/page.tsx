@@ -220,6 +220,22 @@ const endpoints: Endpoint[] = [
   // 製品定義書 §7.3 / §9.1（2026-09-02）。監査 P1-13: 本番で動いている 9 ルートが
   // このページに 0 件だった。tests/docs-surface-parity.test.ts が網羅を検査する。
   // ------------------------------------------------------------------
+  // 2026-10-28: MCP の入口（https://vet402.com/mcp）。tests/docs-api-public-paths.test.ts が openapi の paths と突き合わせる。
+  {
+    method: "POST",
+    path: "/api/mcp",
+    note: "The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again) and find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count). 120/min per IP, 30/min per IP for find_x402_sellers (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB.",
+    response: `{
+  "jsonrpc": "2.0", "id": 1,
+  "result": {
+    "structuredContent": { "not_in_catalog": false, "recommendation": "ALLOW", "reason_codes": ["l0_pass", "l1_delivered"],
+      "delivery": { "paid_attempts": 3, "delivered": 3, "settled_not_delivered": 0, "last_attempt_at": "…", "window_days": 30 },
+      "l1_purchases": [ { "attempted_at": "…", "network": "eip155:8453", "status": "settled", "tx_hash": "0x…", "explorer_url": "https://basescan.org/tx/0x…" } ],
+      "record_url": "https://vet402.com/observatory/e/521e929e-…", "method_url": "https://vet402.com/observatory/methodology", "as_of": "…" },
+    "content": [ { "type": "text", "text": "{ …the same JSON… }" } ]
+  }
+}`,
+  },
   {
     method: "GET",
     path: "/api/v1/resolve?q=…",

@@ -498,6 +498,8 @@ function publicSurfaces(): string[] {
   out.push(relative(ROOT, join(ROOT, "public/llms.txt")));
   // 2026-10-24: 他社の測定 payer 一覧。basis と sourceQuote を方法論の表にそのまま出す。
   out.push(relative(ROOT, join(ROOT, "src/lib/settlements/measurement-payers.ts")));
+  // 2026-10-28: MCP の入口（/mcp）の tool の説明と出力の固定文。エージェントがそのまま読み、引用する。
+  out.push(relative(ROOT, join(ROOT, "src/lib/mcp/text.ts")));
   return out.sort();
 }
 

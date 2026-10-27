@@ -61,6 +61,8 @@ const nextConfig: NextConfig = {
       // /.well-known/llms.txt or /ai.txt; alias them rather than 404.
       { source: "/.well-known/llms.txt", destination: "/llms.txt" },
       { source: "/ai.txt", destination: "/llms.txt" },
+      // 2026-10-28: MCP の入口の公開 URL（https://vet402.com/mcp）。実体は src/app/api/mcp/route.ts。
+      { source: "/mcp", destination: "/api/mcp" },
     ];
   },
   // 2026-08-06 (JS-disabled / navigation audit): the header's "Pricing" item

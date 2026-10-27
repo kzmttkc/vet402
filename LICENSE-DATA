@@ -5,8 +5,10 @@ WHAT THIS COVERS
   /api/v1/observatory/state, the daily series at /api/v1/observatory/history,
   the L1 purchase ledger at /api/v1/observatory/export.csv, the L0 export at
   /api/v1/observatory/l0/export.csv, the sellers export at
-  /api/v1/sellers/export.csv, the figures rendered on /impact, and the same
-  facts as rendered on the public observatory pages.
+  /api/v1/sellers/export.csv, the figures rendered on /impact, the tool
+  results of the hosted MCP server at https://vet402.com/mcp (since
+  2026-10-28), the delivery feed at /api/v1/delivery/sellers.json (once it is
+  published), and the same facts as rendered on the public observatory pages.
 
   It does not cover the source code in this repository, which is MIT (see
   LICENSE), and it does not cover third-party content that the catalog merely

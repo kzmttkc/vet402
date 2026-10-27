@@ -348,3 +348,33 @@ test("プライバシーポリシーがこの表と保存しない値を書い�
   assert.match(page, /Key-less API call counts are kept without an expiry date/);
   assert.doesNotMatch(page, /Hermes plugin call counts/);
 });
+
+// ------------------------------------------------------------
+// 2026-10-28: MCP の入口（/mcp）。既存の clientUsageLabel を先に通し、other か browser になったものにだけ表を当てる。
+// ------------------------------------------------------------
+test("MCP の client: 既存の名前はそのまま、other・browser にだけ表（grok-bot・cursor・claude・chatgpt・paybox）を当てる", async () => {
+  const { mcpClientUsageLabel, MCP_CLIENTS, MCP_USAGE_ROUTES, clientUsageOverflowLabel } = await import("@/lib/api/client-usage");
+  const cases: [string | null, string][] = [
+    ["Grok/1.0", "grok-bot"],
+    ["xai-sand/2 (sand)", "grok-bot"],
+    ["sandbox-runner/1", "other"], // 語として独立した sand だけ
+    ["Cursor/3.13.0", "cursor"],
+    ["cursor-vscode/1.0.0", "cursor"],
+    ["claude-ai/0.1.0", "claude"],
+    ["Anthropic-MCP/1", "claude"],
+    ["openai-mcp/1.0.0", "chatgpt"],
+    ["ChatGPT-User", "chatgpt"],
+    ["MoonPay PayBox/1", "paybox"],
+    ["Mozilla/5.0 (Macintosh) Cursor/3.1", "cursor"], // browser に寄った UA にも当てる
+    ["vet402-mcp/0.9.0", "vet402-mcp/0.9.0"], // 配布物は既存どおり
+    ["kizuna-mcp-check/1", "self-monitor"],
+    ["vet402-surface-consistency-canary/1.0", "self-monitor"],
+    ["grok-bot/1.0", "crawler"], // bot を含む UA は既存の crawler（表は当てない・要件書 §2.4 の順）
+    ["curl/8.4.0", "other"],
+    [null, "other"],
+  ];
+  for (const [ua, want] of cases) assert.equal(mcpClientUsageLabel(ua), want, String(ua));
+  // 決まった名前は 1 日の種類の上限の外（寄せ先が自分自身）
+  for (const c of MCP_CLIENTS) assert.equal(clientUsageOverflowLabel(c), c);
+  assert.deepEqual([...MCP_USAGE_ROUTES], ["mcp:initialize", "mcp:check_x402_seller", "mcp:check_my_x402_endpoint", "mcp:find_x402_sellers"]);
+});

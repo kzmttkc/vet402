@@ -44,7 +44,13 @@ import { runAfterResponse } from "@/lib/util/after-response";
 import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { OWN_ORIGINS } from "@/lib/decision/lookup-caller";
 
-export type ClientUsageRoute = "resolve" | "decision";
+/**
+ * 2026-10-28: MCP の入口（/mcp）の 4 本を足した。列は text なので migration は要らない。
+ * initialize は clientInfo から、tools/call は UA から client を決める（mcpClientUsageLabel）。
+ */
+export const MCP_USAGE_ROUTES = ["mcp:initialize", "mcp:check_x402_seller", "mcp:check_my_x402_endpoint", "mcp:find_x402_sellers"] as const;
+export type McpUsageRoute = (typeof MCP_USAGE_ROUTES)[number];
+export type ClientUsageRoute = "resolve" | "decision" | McpUsageRoute;
 
 /**
  * 配布物（利用者の手元で動き、vet402 の API を呼ぶときにこの名前を UA に名乗るもの）。
@@ -140,11 +146,39 @@ export function clientUsageLabel(userAgent: string | null | undefined, ownPage =
 }
 
 /**
+ * MCP の呼び手を寄せる先（2026-10-28）。版を持たない決まった名前なので、FIXED_CLIENTS と同じく
+ * 1 日の種類の上限（MAX_CLIENTS_PER_DAY）の外に置く（clientUsageOverflowLabel が自分自身を返す）。
+ */
+export const MCP_CLIENTS: readonly string[] = ["grok-bot", "cursor", "claude", "chatgpt", "paybox"];
+
+/** 小文字にした名前に当てる表（上から順に最初に当たったもの）。 */
+const MCP_CLIENT_RULES: readonly { test: (s: string) => boolean; client: string }[] = [
+  { test: (s) => s.includes("grok") || /\bsand\b/.test(s), client: "grok-bot" },
+  { test: (s) => s.includes("cursor"), client: "cursor" },
+  { test: (s) => s.includes("claude") || s.includes("anthropic"), client: "claude" },
+  { test: (s) => s.includes("openai") || s.includes("chatgpt"), client: "chatgpt" },
+  { test: (s) => s.includes("paybox") || s.includes("moonpay"), client: "paybox" },
+];
+
+/**
+ * MCP の入口の client の値。先に既存の clientUsageLabel を通す（vet402-mcp/<版> などの配布物・self-monitor・crawler・
+ * site はそのまま）。other か browser になったものにだけ MCP_CLIENT_RULES を当て、どれにも当たらなければ other。
+ * 生の値（clientInfo.name・UA）は返さない・保存しない。
+ */
+export function mcpClientUsageLabel(raw: string | null | undefined, ownPage = false): string {
+  const base = clientUsageLabel(raw, ownPage);
+  if (base !== OTHER_CLIENT && base !== BROWSER_CLIENT) return base;
+  const s = (raw ?? "").slice(0, UA_READ_CHARS).toLowerCase();
+  for (const rule of MCP_CLIENT_RULES) if (rule.test(s)) return rule.client;
+  return OTHER_CLIENT;
+}
+
+/**
  * その日の種類が上限に達した後、新しい client を寄せる先。配布物の版は `<名前>/other`。
  * 決まった名前は自分自身（上限に関係なく自分の行に足す）。
  */
 export function clientUsageOverflowLabel(client: string): string {
-  if (FIXED_CLIENTS.includes(client)) return client;
+  if (FIXED_CLIENTS.includes(client) || MCP_CLIENTS.includes(client)) return client;
   const slash = client.indexOf("/");
   const name = slash > 0 ? client.slice(0, slash) : "";
   return (DISTRIBUTED_CLIENTS as readonly string[]).includes(name) ? `${name}/${OTHER_VERSION}` : OTHER_CLIENT;
@@ -200,6 +234,20 @@ export function recordClientUsage(headers: Headers, route: ClientUsageRoute): vo
   try {
     if (!isKeylessRequest(headers)) return;
     const client = clientUsageLabel(headers.get("user-agent"), isOwnPageRequest(headers));
+    const now = new Date();
+    runAfterResponse(() => upsertClientUsage(client, route, now));
+  } catch (error) {
+    logAndSwallowSafe("client_usage.schedule")(error);
+  }
+}
+
+/**
+ * MCP の入口から呼ぶ（2026-10-28）。HTTP 200 で答えた initialize と tools/call のときだけ route が呼ぶ。
+ * client は mcpClientUsageLabel が選んだ名前。MCP は鍵を持たないので Authorization の有無で分けない
+ * （api_usage と二重に数えることが無い）。応答の後に 1 件を加算し、例外を外へ出さない。
+ */
+export function recordMcpUsage(client: string, route: McpUsageRoute): void {
+  try {
     const now = new Date();
     runAfterResponse(() => upsertClientUsage(client, route, now));
   } catch (error) {

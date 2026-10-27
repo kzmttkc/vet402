@@ -90,6 +90,8 @@ tags:
     description: Health and metadata
   - name: Usage
     description: Decision call counts for one chain and one UTC month
+  - name: MCP
+    description: The hosted MCP entry at https://vet402.com/mcp (read only, free, no key)
   - name: RWA
     description: vet402 /rwa — a wallet's Stock Token track record on Robinhood Chain (4663), reconstructed from public chain data. Measurement only; no opinion field.
 
@@ -1243,6 +1245,124 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/mcp:
+    post:
+      operationId: mcpEntry
+      tags: [MCP]
+      summary: Hosted MCP server (Streamable HTTP, stateless). Public URL https://vet402.com/mcp
+      description: |
+        Since 2026-10-28. A Model Context Protocol server over Streamable HTTP.
+        `https://vet402.com/mcp` is rewritten to this path. Read only, free and
+        key-less. It serves protocol revision `2025-06-18` (with `initialize`)
+        and `2026-07-28` (stateless, `server/discover`) from the same URL and
+        keeps no session. The body is a single JSON-RPC 2.0 message.
+
+        Tools (all with `readOnlyHint: true`, `destructiveHint: false`,
+        `idempotentHint: true`, `openWorldHint: false` and an `outputSchema`):
+        `check_x402_seller` (what happened when vet402 paid an x402 URL, with
+        the transaction of each attempt), `check_my_x402_endpoint` (the public
+        seller page of a host, the catalogs it is listed in and when vet402 can
+        buy again) and `find_x402_sellers` (listings with paid and delivered
+        purchases in the last 30 days, ordered by that count). Every tool
+        result carries `as_of`, `record_url` and `method_url`. Each result is
+        returned as `structuredContent` and as the same JSON in a text block.
+
+        Limits: 120 requests per minute per IP (`MCP_RATE_PER_MIN`), and 30 per
+        minute per IP for `find_x402_sellers` (`MCP_FIND_RATE_PER_MIN`). The
+        request body is capped at 64 KB and JSON-RPC batches are refused.
+        The server reads only its own database and makes no outbound request.
+        Calls are counted per client kind and UTC day in `client_usage_daily`
+        (routes `mcp:initialize`, `mcp:check_x402_seller`,
+        `mcp:check_my_x402_endpoint`, `mcp:find_x402_sellers`). The URL, IP
+        and User-Agent of a call are not stored.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: One JSON-RPC 2.0 request or notification (MCP).
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: { type: string, enum: ["2.0"] }
+                id: { oneOf: [{ type: string }, { type: integer }] }
+                method: { type: string }
+                params: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: |
+            A JSON-RPC 2.0 response, as `application/json` or as a single
+            `text/event-stream` message (2025-06-18 clients that accept it).
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+            text/event-stream:
+              schema: { type: string }
+        "202":
+          description: A JSON-RPC notification was accepted. No body.
+        "400":
+          description: |
+            The body is a JSON-RPC batch (`error.message: batch_not_supported`)
+            or is not a valid MCP message (JSON-RPC error from the MCP library).
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "403":
+          description: |
+            `forbidden`. The request carries an `Origin` header that is not
+            vet402.com. Requests without `Origin` (server to server) pass.
+            No CORS headers are sent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "413":
+          description: "The body is larger than 64 KB (JSON-RPC error, `error.message` is `request_too_large`)."
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "429":
+          description: |
+            Rate limited. The body is a JSON-RPC error with `code: -32029`,
+            `message: rate_limited` and `data.retry_after_s`. `Retry-After` and
+            `RateLimit-*` headers are set.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "503":
+          description: |
+            `mcp_disabled` when the entry is switched off (`MCP_ENABLED=false`),
+            or `temporarily_unavailable` with `Retry-After: 30` when the
+            database or the rate-limit store cannot be read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    get:
+      operationId: mcpEntryGet
+      tags: [MCP]
+      summary: Not served (stateless server, no SSE stream)
+      security: []
+      responses:
+        "405":
+          description: "GET is not served. `Allow: POST`."
+        "503":
+          description: "`mcp_disabled`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      operationId: mcpEntryDelete
+      tags: [MCP]
+      summary: Not served (no session to end)
+      security: []
+      responses:
+        "405":
+          description: "DELETE is not served. `Allow: POST`."
+        "503":
+          description: "`mcp_disabled`."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
   /api/v1/resolve:
     get:
       operationId: resolveQuery
@@ -5389,6 +5509,8 @@ components:
             - watchlist_unavailable
             - limit_reached
             - rate_limited
+            # 2026-10-28: the hosted MCP entry (/api/mcp) is switched off with MCP_ENABLED=false (503).
+            - mcp_disabled
             - not_found
             - forbidden
             # 2026-09-02 敵対的監査 P1-1: 実装が返しているのに enum に無かった語を全数

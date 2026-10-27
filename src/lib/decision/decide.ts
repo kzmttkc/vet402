@@ -308,7 +308,19 @@ function notAttemptedReasonOf(halted: boolean, lastAttemptStatus: string | null)
 }
 
 export type DecideRequest = (
-  | { role: "payer"; observatoryId: string; callerDialect?: "v1" | "v2"; allowWithoutL1?: boolean; operatorBlacklist: boolean }
+  | {
+      role: "payer";
+      observatoryId: string;
+      callerDialect?: "v1" | "v2";
+      allowWithoutL1?: boolean;
+      operatorBlacklist: boolean;
+      /**
+       * 2026-10-28（MCP の入口）: true なら移行期の受取人スコア（scorePayeeWallet）を読まずに score を null にする。
+       * スコアは RPC・Blockscout・Alchemy へ出て十数秒かかることがあり、判定（recommendation）には使わない。
+       * MCP の route は外へ出ない約束なので必ず true で呼ぶ。既存の HTTP の route は渡さない（動きは変わらない）。
+       */
+      skipScore?: boolean;
+    }
   | { role: "payee"; observatoryId: string; payerId: string; operatorBlacklist: boolean }
 ) & {
   /** 問い合わせを数える単位（lookup-caller.ts lookupCallerMaterial）。無ければ数えない。判定とキャッシュには使わない。 */
@@ -319,7 +331,8 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   void recordDecisionLookup(req.observatoryId, req.callerMaterial);
   const baseKey =
     req.role === "payer"
-      ? `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}`
+      ? // skipScore はキーに入れる（score の有無が違う文書を同じキーで配らない）。false のときのキーは従来と同じ形。
+        `${req.observatoryId}|payer|${req.callerDialect ?? "-"}|${req.allowWithoutL1 ? 1 : 0}|${req.operatorBlacklist ? 1 : 0}${req.skipScore ? "|noscore" : ""}`
       : `${req.observatoryId}|payee|${req.payerId}|${req.operatorBlacklist ? 1 : 0}`;
   // 停止フラグは応答に焼き込んだうえで 5 分キャッシュされるので、**キーに入れる**。
   // 入れないと「止めた直後の 5 分間、止めていないと答える」文書が配られる。
@@ -338,7 +351,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   if (req.role === "payer") {
     let score: { trustScore: number; recommendation: Recommendation } | null = null;
     const payTo = loaded.endpoint.payTo;
-    if (payTo && /^0x[0-9a-fA-F]{40}$/.test(payTo)) {
+    if (!req.skipScore && payTo && /^0x[0-9a-fA-F]{40}$/.test(payTo)) {
       try {
         const { scorePayeeWallet } = await import("@/lib/scoring/payee-engine");
         const s = await scorePayeeWallet(payTo);
