@@ -94,7 +94,22 @@ function asRecord(v: unknown): Record<string, unknown> | null {
   return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
 }
 
-/** A live or catalog accept this rail may sign. The returned extra is the pin, not the seller's extra. */
+/**
+ * The seller's verifyingContract string when it is the pinned wallet (case ignored), else null.
+ * The facilitator compares `accepted` with the seller's requirements as exact strings, so the
+ * header must carry the seller's spelling. The signing domain stays ARC_GATEWAY_WALLET.
+ */
+export function gatewayEchoedVerifyingContract(extra: unknown): string | null {
+  const rec = asRecord(extra);
+  if (!rec || typeof rec.verifyingContract !== "string") return null;
+  return rec.verifyingContract.toLowerCase() === ARC_GATEWAY_WALLET.toLowerCase() ? rec.verifyingContract : null;
+}
+
+/**
+ * A live or catalog accept this rail may sign. name and version are the pin.
+ * verifyingContract is the seller's string, kept only after it matched the pin (case ignored),
+ * so the PAYMENT-SIGNATURE `accepted` echoes what the seller sent.
+ */
 export function arcGatewayAcceptOf(raw: unknown): ChallengeAccept | null {
   const rec = asRecord(raw);
   if (!rec) return null;
@@ -113,6 +128,8 @@ export function arcGatewayAcceptOf(raw: unknown): ChallengeAccept | null {
   if (extra.chainId !== undefined && extra.chainId !== 5042 && extra.chainId !== "5042") return null;
   if (rec.maxTimeoutSeconds !== undefined && !Number.isInteger(rec.maxTimeoutSeconds)) return null;
   if (typeof rec.maxTimeoutSeconds === "number" && rec.maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS) return null;
+  const echoedContract = gatewayEchoedVerifyingContract(extra);
+  if (echoedContract === null) return null;
   return {
     scheme: "exact",
     network: ARC_CAIP2,
@@ -123,7 +140,7 @@ export function arcGatewayAcceptOf(raw: unknown): ChallengeAccept | null {
     extra: {
       name: ARC_GATEWAY_DOMAIN_NAME,
       version: ARC_GATEWAY_DOMAIN_VERSION,
-      verifyingContract: ARC_GATEWAY_WALLET,
+      verifyingContract: echoedContract,
     },
   };
 }
@@ -443,6 +460,9 @@ export type ArcGatewaySigner = (input: {
  * The scheme does not broadcast. Validity is capped at 7 days + 100 seconds, not the 120s native window.
  */
 export const signArcGatewayPayment: ArcGatewaySigner = async (input) => {
+  // Checked again before signing: an accept that did not come from arcGatewayAcceptOf is refused.
+  const echoedContract = gatewayEchoedVerifyingContract(input.accept.extra);
+  if (echoedContract === null) throw new Error("gateway_verifying_contract_mismatch");
   const { BatchEvmScheme } = await import("@circle-fin/x402-batching/client");
   const scheme = new BatchEvmScheme(input.account as never);
   const maxTimeoutSeconds = input.accept.maxTimeoutSeconds ?? 0;
@@ -475,7 +495,8 @@ export const signArcGatewayPayment: ArcGatewaySigner = async (input) => {
       extra: {
         name: ARC_GATEWAY_DOMAIN_NAME,
         version: ARC_GATEWAY_DOMAIN_VERSION,
-        verifyingContract: ARC_GATEWAY_WALLET,
+        // The seller's spelling, already matched to the pin. The domain above signed the pin.
+        verifyingContract: echoedContract,
       },
     },
     payload: { signature: created.payload.signature, authorization },

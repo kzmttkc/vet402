@@ -245,6 +245,49 @@ test("Gateway の署名はピンしたドメインで、120 秒の窓には切�
   assert.equal(recovered, true);
 });
 
+test("Gateway の accepted は売り手の verifyingContract の表記をそのまま返す。署名のドメインはピンのまま", async () => {
+  // 2026-10-27 本番: api.aisa.one は小文字の verifyingContract を出し、チェックサム形を返したら
+  // payment_requirements_mismatch で断られた。売り手の accept をそのまま使う。
+  const seller = {
+    asset: "0x3600000000000000000000000000000000000000",
+    extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee" },
+    payTo: "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+    amount: "100000",
+    scheme: "exact",
+    network: "eip155:5042",
+    maxTimeoutSeconds: 604900,
+  };
+  const accept = arcGatewayAcceptOf(seller);
+  assert.ok(accept);
+  assert.equal(accept.extra?.verifyingContract, seller.extra.verifyingContract);
+  const account = privateKeyToAccount(TEST_PK);
+  const signed = await signArcGatewayPayment({ account, accept, x402Version: 2, resourceUrl: "https://gw.example/api" });
+  const decoded = JSON.parse(Buffer.from(signed.header.headerValue, "base64").toString("utf8")) as { accepted?: unknown };
+  assert.deepEqual(decoded.accepted, seller);
+  assert.equal(signed.verifyingContract, ARC_GATEWAY_WALLET);
+  assert.equal(
+    await gatewayAuthorizationRecovers({ ...signed.authorization, signature: signed.signature, verifyingContract: signed.verifyingContract }, account.address),
+    true,
+  );
+
+  const upper = arcGatewayAcceptOf(gatewayRaw(PAY_TO, "1000", "0x77777777DCC4D5A8B6E418FD04D8997EF11000EE"));
+  assert.equal(upper?.extra?.verifyingContract, "0x77777777DCC4D5A8B6E418FD04D8997EF11000EE");
+
+  const other = "0x77777777dcc4d5a8b6e418fd04d8997ef11000ef";
+  assert.equal(arcGatewayAcceptOf({ ...seller, extra: { ...seller.extra, verifyingContract: other } }), null);
+  assert.equal(arcGatewayAcceptOf({ ...seller, extra: { name: "GatewayWalletBatched", version: "1" } }), null);
+  for (const extra of [
+    { name: "GatewayWalletBatched", version: "1", verifyingContract: other },
+    { name: "GatewayWalletBatched", version: "1" },
+    undefined,
+  ]) {
+    await assert.rejects(
+      signArcGatewayPayment({ account, accept: { ...accept, extra }, x402Version: 2, resourceUrl: "https://gw.example/api" }),
+      /gateway_verifying_contract_mismatch/,
+    );
+  }
+});
+
 test("請求が無い行は settled にしない。請求があって残高の減りが違えば refute", async () => {
   assert.equal(interpretGatewayTransfers({ transfers: [] }, NONCE).kind, "absent");
   assert.equal(interpretGatewayTransfers({ transfers: [{ nonce: NONCE, status: "batched" }] }, NONCE).kind, "pending");
