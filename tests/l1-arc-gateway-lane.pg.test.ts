@@ -101,8 +101,14 @@ if (!TEST_DB) {
     };
 
     let txSeq = 0;
-    const wall = (over: Record<string, unknown[]> = {}) => {
-      const seen: { url: string; paid: boolean; accepted: Record<string, unknown> | null; authorization: Record<string, string> | null }[] = [];
+    const wall = (over: Record<string, unknown[]> = {}, docResource?: Record<string, unknown>) => {
+      const seen: {
+        url: string;
+        paid: boolean;
+        accepted: Record<string, unknown> | null;
+        authorization: Record<string, string> | null;
+        resource?: unknown;
+      }[] = [];
       const fetchImpl: typeof fetch = async (input, init) => {
         const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const headers = new Headers(init?.headers);
@@ -111,11 +117,19 @@ if (!TEST_DB) {
           ? (JSON.parse(Buffer.from(sig, "base64").toString("utf8")) as {
               accepted?: Record<string, unknown>;
               payload?: { authorization?: Record<string, string> };
+              resource?: unknown;
             })
           : null;
-        seen.push({ url, paid: sig !== null, accepted: decoded?.accepted ?? null, authorization: decoded?.payload?.authorization ?? null });
+        seen.push({
+          url,
+          paid: sig !== null,
+          accepted: decoded?.accepted ?? null,
+          authorization: decoded?.payload?.authorization ?? null,
+          resource: decoded?.resource,
+        });
         if (!sig) {
-          return new Response(JSON.stringify({ x402Version: 2, accepts: over[url] ?? CATALOG[url] ?? [] }), {
+          const doc = { x402Version: 2, ...(docResource ? { resource: docResource } : {}), accepts: over[url] ?? CATALOG[url] ?? [] };
+          return new Response(JSON.stringify(doc), {
             status: 402,
             headers: { "content-type": "application/json" },
           });
@@ -420,6 +434,28 @@ if (!TEST_DB) {
       assert.equal(paid.length, 1);
       assert.equal((paid[0]?.accepted?.extra as { name?: string } | undefined)?.name, "GatewayWalletBatched");
       assert.equal((await ledger(BASE_URL)).length, 0);
+    });
+
+    await t.test("Gateway の resource は 402 の文書のまま返す。文書に無ければ絶対 URL。Base は今までどおり", async () => {
+      const docResource = { url: "/apis/v2/apollo/emailer_campaigns/search", mimeType: "application/json", description: "Paid resource" };
+      await seed([GW_URL, BASE_URL]);
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const w = wall({}, docResource);
+      await run(w.fetchImpl, async () => 5_000_000n);
+      const gwPaid = w.seen.filter((s) => s.url === GW_URL && s.paid);
+      assert.equal(gwPaid.length, 1);
+      assert.equal((gwPaid[0]?.accepted?.extra as { name?: string } | undefined)?.name, "GatewayWalletBatched");
+      assert.deepEqual(gwPaid[0]?.resource, docResource);
+      const basePaid = w.seen.filter((s) => s.url === BASE_URL && s.paid);
+      assert.equal(basePaid.length, 1);
+      assert.deepEqual(basePaid[0]?.resource, { url: BASE_URL });
+
+      await seed([GW_URL]);
+      const bare = wall();
+      await run(bare.fetchImpl, async () => 5_000_000n);
+      const barePaid = bare.seen.filter((s) => s.url === GW_URL && s.paid);
+      assert.equal(barePaid.length, 1);
+      assert.deepEqual(barePaid[0]?.resource, { url: GW_URL });
     });
 
     await t.test("ライブの 402 に Base があれば Gateway の拒否で止めない", async () => {

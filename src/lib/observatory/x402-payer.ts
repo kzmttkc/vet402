@@ -1060,6 +1060,11 @@ export function encodePaymentHeader(input: {
     | { signedTxBlob: string; invoiceId: string }
     | { transaction: string };
   resourceUrl: string;
+  /**
+   * v2 only. The seller's 402 `resource`, copied as is. Only the Arc Gateway rail passes it
+   * (arc-gateway.ts gatewaySellerResource). Left out, the header keeps `{ url: resourceUrl }`.
+   */
+  resource?: Record<string, unknown>;
 }): { headerName: string; headerValue: string } {
   const { x402Version, accept, payload, resourceUrl } = input;
   if (x402Version === 1) {
@@ -1077,7 +1082,7 @@ export function encodePaymentHeader(input: {
   }
   const body = {
     x402Version: 2,
-    resource: { url: resourceUrl },
+    resource: input.resource ?? { url: resourceUrl },
     accepted: {
       scheme: accept.scheme,
       network: accept.network,

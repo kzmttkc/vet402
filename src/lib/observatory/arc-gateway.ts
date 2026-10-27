@@ -17,6 +17,7 @@ import {
   hasSignableNativeArcAccept,
   isEvmPayChainEnabled,
   MAX_PER_PURCHASE_UNITS,
+  parseChallenge,
   type ChallengeAccept,
   type Eip3009Authorization,
   type EvmPayChain,
@@ -143,6 +144,39 @@ export function arcGatewayAcceptOf(raw: unknown): ChallengeAccept | null {
       verifyingContract: echoedContract,
     },
   };
+}
+
+/** Largest seller `resource` (UTF-8 bytes of its JSON) the Gateway header copies. */
+export const GATEWAY_RESOURCE_MAX_BYTES = 4096;
+
+/**
+ * The `resource` of the 402 document parseChallenge read the accepts from (PAYMENT-REQUIRED
+ * header first, then the body), copied as is. A relative url is not rewritten: Circle's
+ * GatewayClient and the x402 reference client send `paymentRequired.resource` unchanged.
+ * Null when that document has no resource object or its JSON is over 4 KB; the header then
+ * keeps `{ url: resourceUrl }`.
+ */
+export function gatewaySellerResource(input: { bodyText: string; headers: Headers }): Record<string, unknown> | null {
+  let doc: unknown = undefined;
+  const headerB64 = input.headers.get("PAYMENT-REQUIRED");
+  if (headerB64 && parseChallenge({ bodyText: "", headers: new Headers({ "PAYMENT-REQUIRED": headerB64 }) })) {
+    try {
+      doc = JSON.parse(Buffer.from(headerB64, "base64").toString("utf8"));
+    } catch {
+      return null;
+    }
+  } else if (input.bodyText && parseChallenge({ bodyText: input.bodyText, headers: new Headers() })) {
+    try {
+      doc = JSON.parse(input.bodyText);
+    } catch {
+      return null;
+    }
+  }
+  const resource = asRecord(asRecord(doc)?.resource);
+  if (!resource) return null;
+  const json = JSON.stringify(resource);
+  if (Buffer.byteLength(json, "utf8") > GATEWAY_RESOURCE_MAX_BYTES) return null;
+  return JSON.parse(json) as Record<string, unknown>;
 }
 
 /** Payees the catalog declared on a pinned Gateway accept (lowercased). */
@@ -453,6 +487,8 @@ export type ArcGatewaySigner = (input: {
   accept: ChallengeAccept;
   x402Version: 1 | 2;
   resourceUrl: string;
+  /** gatewaySellerResource of the live 402. Null or absent keeps `{ url: resourceUrl }`. */
+  sellerResource?: Record<string, unknown> | null;
 }) => Promise<ArcGatewaySigned>;
 
 /**
@@ -501,6 +537,7 @@ export const signArcGatewayPayment: ArcGatewaySigner = async (input) => {
     },
     payload: { signature: created.payload.signature, authorization },
     resourceUrl: input.resourceUrl,
+    ...(input.sellerResource ? { resource: input.sellerResource } : {}),
   });
   return {
     header,

@@ -20,6 +20,8 @@ import {
   arcGatewayAcceptOf,
   arcGatewayCapOpen,
   arcGatewayFundsOk,
+  GATEWAY_RESOURCE_MAX_BYTES,
+  gatewaySellerResource,
   chainCapNetworkSql,
   gatewayAuthWindowOk,
   gatewayCandidateInclusionSql,
@@ -286,6 +288,56 @@ test("Gateway の accepted は売り手の verifyingContract の表記をその�
       /gateway_verifying_contract_mismatch/,
     );
   }
+});
+
+test("Gateway の resource は売り手の 402 の文書のまま返す。無い・4KB 超は絶対 URL に戻す", async () => {
+  // 2026-10-27 本番の api.aisa.one の PAYMENT-REQUIRED。相対 url を書き換えない。
+  const prodResource = { url: "/apis/v2/apollo/emailer_campaigns/search", mimeType: "application/json", description: "Paid resource" };
+  const seller = {
+    scheme: "exact",
+    network: "eip155:5042",
+    asset: "0x3600000000000000000000000000000000000000",
+    amount: "100000",
+    payTo: "0xBd7b9f3e0CD3E1f6e698D0eeBb99F96E093BdeE3",
+    maxTimeoutSeconds: 604900,
+    extra: { name: "GatewayWalletBatched", version: "1", verifyingContract: "0x77777777dcc4d5a8b6e418fd04d8997ef11000ee" },
+  };
+  const b64 = (doc: unknown) => Buffer.from(JSON.stringify(doc)).toString("base64");
+  const prodHeaders = new Headers({ "PAYMENT-REQUIRED": b64({ x402Version: 2, resource: prodResource, accepts: [seller] }) });
+  const sellerResource = gatewaySellerResource({ bodyText: "{}", headers: prodHeaders });
+  assert.deepEqual(sellerResource, prodResource);
+
+  const accept = arcGatewayAcceptOf(seller);
+  assert.ok(accept);
+  const account = privateKeyToAccount(TEST_PK);
+  const resourceUrl = "https://api.aisa.one/apis/v2/apollo/emailer_campaigns/search";
+  const decode = (v: string) => JSON.parse(Buffer.from(v, "base64").toString("utf8")) as { resource?: unknown; accepted?: unknown };
+  const signed = await signArcGatewayPayment({ account, accept, x402Version: 2, resourceUrl, sellerResource });
+  assert.equal(JSON.stringify(decode(signed.header.headerValue).resource), JSON.stringify(prodResource));
+  assert.deepEqual(decode(signed.header.headerValue).accepted, seller);
+
+  for (const missing of [undefined, null]) {
+    const fallback = await signArcGatewayPayment({ account, accept, x402Version: 2, resourceUrl, sellerResource: missing });
+    assert.deepEqual(decode(fallback.header.headerValue).resource, { url: resourceUrl });
+  }
+
+  // 文書に resource が無い・object でない → null（絶対 URL の形に戻る）
+  assert.equal(gatewaySellerResource({ bodyText: "", headers: new Headers({ "PAYMENT-REQUIRED": b64({ x402Version: 2, accepts: [seller] }) }) }), null);
+  for (const bad of ["/x", ["/x"], null, 1]) {
+    assert.equal(gatewaySellerResource({ bodyText: JSON.stringify({ x402Version: 2, resource: bad, accepts: [seller] }), headers: new Headers() }), null);
+  }
+  // 4KB の境界
+  const pad = (n: number) => ({ url: "/x", description: "d".repeat(n) });
+  const base = Buffer.byteLength(JSON.stringify(pad(0)), "utf8");
+  const atCap = pad(GATEWAY_RESOURCE_MAX_BYTES - base);
+  const overCap = pad(GATEWAY_RESOURCE_MAX_BYTES - base + 1);
+  assert.deepEqual(gatewaySellerResource({ bodyText: JSON.stringify({ x402Version: 2, resource: atCap, accepts: [seller] }), headers: new Headers() }), atCap);
+  assert.equal(gatewaySellerResource({ bodyText: JSON.stringify({ x402Version: 2, resource: overCap, accepts: [seller] }), headers: new Headers() }), null);
+  // accepts を読んだ文書の resource を使う（ヘッダが読めればヘッダ、読めなければ本文）
+  const bodyDoc = JSON.stringify({ x402Version: 2, resource: { url: "/body" }, accepts: [seller] });
+  assert.deepEqual(gatewaySellerResource({ bodyText: bodyDoc, headers: prodHeaders }), prodResource);
+  assert.deepEqual(gatewaySellerResource({ bodyText: bodyDoc, headers: new Headers({ "PAYMENT-REQUIRED": "not-base64-json" }) }), { url: "/body" });
+  assert.equal(gatewaySellerResource({ bodyText: bodyDoc, headers: new Headers({ "PAYMENT-REQUIRED": b64({ x402Version: 2, accepts: [seller] }) }) }), null);
 });
 
 test("請求が無い行は settled にしない。請求があって残高の減りが違えば refute", async () => {

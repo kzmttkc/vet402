@@ -110,6 +110,7 @@ import {
   hasSignableOtherRailAccept,
   isArcGatewayL1Enabled,
   readArcGatewayAvailable as readArcGatewayAvailableProd,
+  gatewaySellerResource,
   selectArcGatewayAccept,
   signArcGatewayPayment,
   type ArcGatewaySigned,
@@ -3815,6 +3816,7 @@ async function purchaseOne(input: {
           accept,
           x402Version: challenge.x402Version,
           resourceUrl: candidate.resourceUrl,
+          sellerResource: gatewaySellerResource({ bodyText: firstBody, headers: first.headers }),
         });
       } catch (error) {
         logServerErrorSafe("observatory.l1.arc_gateway_sign", redactedError(error));
