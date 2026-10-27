@@ -139,7 +139,7 @@ export function clientUsageLabel(userAgent: string | null | undefined, ownPage =
     const m = VERSION_RE.exec(ua.slice(name.length + 1));
     return m ? `${name}/${m[1]}` : `${name}/${OTHER_VERSION}`;
   }
-  if (ua.startsWith(SELF_MONITOR_PREFIX) || SELF_MONITOR_NAMES.includes(UA_NAME_RE.exec(ua)?.[0] ?? "")) return SELF_MONITOR_CLIENT;
+  if (isSelfMonitorUa(ua)) return SELF_MONITOR_CLIENT;
   if (CRAWLER_RE.test(ua)) return CRAWLER_CLIENT;
   if (ua.startsWith("Mozilla/")) return ownPage ? SITE_CLIENT : BROWSER_CLIENT;
   return OTHER_CLIENT;
@@ -160,17 +160,26 @@ const MCP_CLIENT_RULES: readonly { test: (s: string) => boolean; client: string 
   { test: (s) => s.includes("paybox") || s.includes("moonpay"), client: "paybox" },
 ];
 
+/** 自社の道具の UA か（先頭の名前が SELF_MONITOR_NAMES にあるか、`kizuna-` で始まる）。clientUsageLabel と MCP で同じ規則。 */
+function isSelfMonitorUa(ua: string): boolean {
+  return ua.startsWith(SELF_MONITOR_PREFIX) || SELF_MONITOR_NAMES.includes(UA_NAME_RE.exec(ua)?.[0] ?? "");
+}
+
 /**
- * MCP の入口の client の値。先に既存の clientUsageLabel を通す（vet402-mcp/<版> などの配布物・self-monitor・crawler・
- * site はそのまま）。other か browser になったものにだけ MCP_CLIENT_RULES を当て、どれにも当たらなければ other。
+ * MCP の入口（`mcp:*` の route）だけの client の値。順は 2026-10-28 の指示どおり:
+ *   1. vet402 の自分の確認（self-monitor）
+ *   2. MCP の表（MCP_CLIENT_RULES: grok-bot・cursor・claude・chatgpt・paybox。小文字にして部分一致・上から最初に当たったもの）
+ *   3. 既存の clientUsageLabel（配布物・crawler・site・browser・other）
+ * 2 を 3 より先にするのは、`grok-bot/1.0` のように bot を含む MCP の呼び手を crawler に入れないため。
+ * resolve・decision の route は clientUsageLabel のままで、この関数を通らない。
  * 生の値（clientInfo.name・UA）は返さない・保存しない。
  */
 export function mcpClientUsageLabel(raw: string | null | undefined, ownPage = false): string {
-  const base = clientUsageLabel(raw, ownPage);
-  if (base !== OTHER_CLIENT && base !== BROWSER_CLIENT) return base;
-  const s = (raw ?? "").slice(0, UA_READ_CHARS).toLowerCase();
+  const ua = (raw ?? "").slice(0, UA_READ_CHARS);
+  if (ua && isSelfMonitorUa(ua)) return SELF_MONITOR_CLIENT;
+  const s = ua.toLowerCase();
   for (const rule of MCP_CLIENT_RULES) if (rule.test(s)) return rule.client;
-  return OTHER_CLIENT;
+  return clientUsageLabel(raw, ownPage);
 }
 
 /**

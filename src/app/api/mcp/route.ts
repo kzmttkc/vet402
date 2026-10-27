@@ -10,7 +10,8 @@
 //   - Origin が付いていて OWN_ORIGINS に無ければ 403（MCP 仕様の MUST）。付いていない要求は通す。CORS のヘッダーは付けない
 //   - GET と DELETE は 405
 //   - 本文は 64KB まで（SDK の既定は 4MB で、mcp-handler からは変えられない）。JSON-RPC の batch 配列は受けない
-//   - 枠: bucket mcp（MCP_RATE_PER_MIN・既定 120/分/IP）と、② だけ bucket mcp_find（MCP_FIND_RATE_PER_MIN・既定 30）。
+//   - 枠: bucket mcp（MCP_RATE_PER_MIN・既定 120/分/IP）と、② は bucket mcp_find（MCP_FIND_RATE_PER_MIN・既定 30）、
+//     ③ は bucket mcp_seller（MCP_SELLER_RATE_PER_MIN・既定 30）。
 //     超えたら HTTP 429 と JSON-RPC の -32029
 //   - DB を読めなかったら 503 temporarily_unavailable・Retry-After 30
 //   - 要求ごとに server と transport を作る（共有しない）。応答は全部読み切ってから返す（SSE を開けっぱなしにしない）
@@ -35,6 +36,7 @@ export const MCP_MAX_BODY_BYTES = 64 * 1024;
 export const MCP_RATE_LIMIT_CODE = -32029;
 const DEFAULT_RATE_PER_MIN = 120;
 const DEFAULT_FIND_RATE_PER_MIN = 30;
+const DEFAULT_SELLER_RATE_PER_MIN = 30;
 const UNAVAILABLE_RETRY_AFTER_S = 30;
 const NO_STORE = { "Cache-Control": "no-store" };
 
@@ -163,9 +165,17 @@ export async function POST(request: NextRequest): Promise<Response> {
 
   const gate = await publicRateLimit(request, "mcp", perMin(process.env.MCP_RATE_PER_MIN, DEFAULT_RATE_PER_MIN), 60_000);
   if (!gate.ok) return rateLimitedOrUnavailable(gate.response, id);
-  if (FIND_TOOL_ENABLED && rpc?.method === "tools/call" && rpc.params?.name === TOOL_NAMES.findSellers) {
-    const find = await publicRateLimit(request, "mcp_find", perMin(process.env.MCP_FIND_RATE_PER_MIN, DEFAULT_FIND_RATE_PER_MIN), 60_000);
-    if (!find.ok) return rateLimitedOrUnavailable(find.response, id);
+  // 重い 2 本は、全体の枠に加えて別の低い枠を持つ（② は LIKE の全件走査、③ はホストごとの出品の走査）。
+  const tool = rpc?.method === "tools/call" ? rpc.params?.name : undefined;
+  const extra =
+    FIND_TOOL_ENABLED && tool === TOOL_NAMES.findSellers
+      ? { bucket: "mcp_find", limit: perMin(process.env.MCP_FIND_RATE_PER_MIN, DEFAULT_FIND_RATE_PER_MIN) }
+      : tool === TOOL_NAMES.checkEndpoint
+        ? { bucket: "mcp_seller", limit: perMin(process.env.MCP_SELLER_RATE_PER_MIN, DEFAULT_SELLER_RATE_PER_MIN) }
+        : null;
+  if (extra) {
+    const more = await publicRateLimit(request, extra.bucket, extra.limit, 60_000);
+    if (!more.ok) return rateLimitedOrUnavailable(more.response, id);
   }
 
   const state: McpRequestState = { unavailable: false };

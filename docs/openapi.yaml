@@ -1267,8 +1267,10 @@ paths:
         result carries `as_of`, `record_url` and `method_url`. Each result is
         returned as `structuredContent` and as the same JSON in a text block.
 
-        Limits: 120 requests per minute per IP (`MCP_RATE_PER_MIN`), and 30 per
-        minute per IP for `find_x402_sellers` (`MCP_FIND_RATE_PER_MIN`). The
+        Limits: 120 requests per minute per IP (`MCP_RATE_PER_MIN`), 30 per
+        minute per IP for `find_x402_sellers` (`MCP_FIND_RATE_PER_MIN`) and
+        30 per minute per IP for `check_my_x402_endpoint`
+        (`MCP_SELLER_RATE_PER_MIN`), each on top of the first. The
         request body is capped at 64 KB and JSON-RPC batches are refused.
         The server reads only its own database and makes no outbound request.
         Calls are counted per client kind and UTC day in `client_usage_daily`

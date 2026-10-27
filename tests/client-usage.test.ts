@@ -352,7 +352,7 @@ test("プライバシーポリシーがこの表と保存しない値を書い�
 // ------------------------------------------------------------
 // 2026-10-28: MCP の入口（/mcp）。既存の clientUsageLabel を先に通し、other か browser になったものにだけ表を当てる。
 // ------------------------------------------------------------
-test("MCP の client: 既存の名前はそのまま、other・browser にだけ表（grok-bot・cursor・claude・chatgpt・paybox）を当てる", async () => {
+test("MCP の client: self-monitor → MCP の表（grok-bot・cursor・claude・chatgpt・paybox）→ 既存の clientUsageLabel の順", async () => {
   const { mcpClientUsageLabel, MCP_CLIENTS, MCP_USAGE_ROUTES, clientUsageOverflowLabel } = await import("@/lib/api/client-usage");
   const cases: [string | null, string][] = [
     ["Grok/1.0", "grok-bot"],
@@ -369,7 +369,10 @@ test("MCP の client: 既存の名前はそのまま、other・browser にだけ
     ["vet402-mcp/0.9.0", "vet402-mcp/0.9.0"], // 配布物は既存どおり
     ["kizuna-mcp-check/1", "self-monitor"],
     ["vet402-surface-consistency-canary/1.0", "self-monitor"],
-    ["grok-bot/1.0", "crawler"], // bot を含む UA は既存の crawler（表は当てない・要件書 §2.4 の順）
+    ["grok-bot/1.0", "grok-bot"], // bot を含んでも、MCP の表が crawler より先（2026-10-28）
+    ["ClaudeBot/1.0", "claude"],
+    ["Googlebot/2.1", "crawler"], // 表に当たらないものは既存どおり
+    ["kizuna-cursor-check/1", "self-monitor"], // 自分の確認は表より先
     ["curl/8.4.0", "other"],
     [null, "other"],
   ];
@@ -377,4 +380,13 @@ test("MCP の client: 既存の名前はそのまま、other・browser にだけ
   // 決まった名前は 1 日の種類の上限の外（寄せ先が自分自身）
   for (const c of MCP_CLIENTS) assert.equal(clientUsageOverflowLabel(c), c);
   assert.deepEqual([...MCP_USAGE_ROUTES], ["mcp:initialize", "mcp:check_x402_seller", "mcp:check_my_x402_endpoint", "mcp:find_x402_sellers"]);
+});
+
+test("MCP の順は mcp:* だけ: resolve・decision の client は今までどおり（bot を含めば crawler）", async () => {
+  const { clientUsageLabel, mcpClientUsageLabel } = await import("@/lib/api/client-usage");
+  assert.equal(clientUsageLabel("grok-bot/1.0"), "crawler");
+  assert.equal(clientUsageLabel("Cursor/3.13.0"), "other");
+  assert.equal(mcpClientUsageLabel("grok-bot/1.0"), "grok-bot");
+  const route = (await import("node:fs")).readFileSync("src/app/api/v1/resolve/route.ts", "utf8");
+  assert.ok(!route.includes("mcpClientUsageLabel"), "resolve の route は MCP の寄せ方を使わない");
 });

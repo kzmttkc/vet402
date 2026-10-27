@@ -429,7 +429,7 @@ if (!TEST_DB) {
       await send(init("claude-ai"));
       await send(init("kizuna-mcp-check"));
       await callTool("check_x402_seller", { url: "https://nobody-here.example/x" }, { "user-agent": "Grok/1.0 (sand)" });
-      // 要件書 §2.4 のとおり既存の clientUsageLabel を先に通すので、UA に bot を含むものは crawler に入る（表は当てない）
+      // mcp:* は MCP の表が既存の crawler より先（2026-10-28）。bot を含む Grok Bot の UA も grok-bot に入る
       await callTool("check_x402_seller", { url: "https://nobody-here.example/x" }, { "user-agent": "grok-bot/1.0" });
       await callTool("check_x402_seller", { url: "http://not-https.example/x" }, { "user-agent": "curl/8.0" }); // 入力エラーも数える
       await send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "no_such_tool", arguments: {} } }); // 前の段で落ちる
@@ -450,8 +450,7 @@ if (!TEST_DB) {
         (r) => `${r.route} ${r.client} ${r.n}`,
       );
       assert.deepEqual(got, [
-        "mcp:check_x402_seller crawler 1",
-        "mcp:check_x402_seller grok-bot 1",
+        "mcp:check_x402_seller grok-bot 2",
         "mcp:check_x402_seller other 1",
         "mcp:initialize claude 1",
         "mcp:initialize cursor 2",

@@ -261,3 +261,25 @@ test("§2.6 packages/mcp-server の README に「ネット上の入口」の節�
   assert.match(license, /https:\/\/vet402\.com\/mcp/);
   assert.match(license, /\/api\/v1\/delivery\/sellers\.json/);
 });
+
+test("③ check_my_x402_endpoint は別の低い枠（bucket mcp_seller・MCP_SELLER_RATE_PER_MIN）を持ち、他の tool を止めない", async () => {
+  const prev = process.env.MCP_SELLER_RATE_PER_MIN;
+  process.env.MCP_SELLER_RATE_PER_MIN = "1";
+  try {
+    const ip = "203.0.113.79";
+    // 入力エラーで止まる呼び出しでも枠は消費する（DB に触れない形で枠だけを確かめる）
+    const a = await post(call("check_my_x402_endpoint", { url: "http://x.example/a" }), { ...V2025, "x-real-ip": ip });
+    const b = await post(call("check_my_x402_endpoint", { url: "http://x.example/a" }), { ...V2025, "x-real-ip": ip });
+    const other = await post(call("check_x402_seller", { url: "http://x.example/a" }), { ...V2025, "x-real-ip": ip });
+    assert.equal(a.res.status, 200);
+    assert.equal(b.res.status, 429);
+    assert.equal((b.json.error as { code: number }).code, -32029);
+    assert.equal(other.res.status, 200, "③ の枠は ① を止めない");
+  } finally {
+    if (prev === undefined) delete process.env.MCP_SELLER_RATE_PER_MIN;
+    else process.env.MCP_SELLER_RATE_PER_MIN = prev;
+  }
+  const src = readFileSync(ROUTE_FILE, "utf8");
+  assert.match(src, /bucket: "mcp_seller"/);
+  assert.match(readFileSync(join(process.cwd(), ".env.example"), "utf8"), /^# MCP_SELLER_RATE_PER_MIN=$/m);
+});

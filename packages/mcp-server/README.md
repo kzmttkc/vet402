@@ -34,8 +34,8 @@ transactions of vet402's own purchases (`l1_purchases[]`), `record_url` and
 | `find_x402_sellers` | Listings whose URL or description matches a query and that vet402 paid and received content from in the last 30 days, ordered by that count |
 
 The hosted endpoint does not pay and holds no signer. `pay_if_trusted` stays
-in this stdio package only. Limits: 120 requests per minute per IP, 30 per
-minute for `find_x402_sellers`. The OpenAPI spec documents it as `/api/mcp`.
+in this stdio package only. Limits: 120 requests per minute per IP, plus 30 per
+minute for `find_x402_sellers` and 30 per minute for `check_my_x402_endpoint`. The OpenAPI spec documents it as `/api/mcp`.
 
 ## Tools
 
