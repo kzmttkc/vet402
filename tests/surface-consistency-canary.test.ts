@@ -16,6 +16,7 @@ import {
   sideFromWords,
 } from "@/lib/surface-canary/parse";
 import { buildReport, compareListing, type DecisionBody, type ListingInput, type Registry, type SurfaceTally } from "@/lib/surface-canary/compare";
+import { buildLedgerIndex } from "@/lib/surface-canary/ledger";
 import { buildPools, PoolCursor, seedFor } from "@/lib/surface-canary/sample";
 
 // ---- 登録簿の固定具（/docs/api の表・openapi・llms） -------------------------------------------
@@ -376,4 +377,143 @@ test("標本: 同じ日は同じ順・掲載中だけ・型ごとの列", () => 
   const cur = new PoolCursor(pools);
   assert.equal(cur.next("l0_fail")!.observatoryId, "b");
   assert.equal(cur.next("l2_mismatch"), null, "the same listing is not drawn twice");
+});
+
+// ---- 2026-10-28: 台帳の行は endpoint 単位で付ける（別のチェーンで買った行も含む） ------------------------------
+// 10/25 から毎回赤: agent402.tools/api/skill/contact-verify（Base の出品）を Celo と Stellar で買った行が、
+// resource_key|network で引いた台帳の側から落ち、判定 n_settled=2 と台帳 0 行が食い違って見えた。
+
+const STELLAR_TX = "202626484c28c26d1b7a2c5821a924d8001450113b747ff2d16ed2a949002cb1";
+
+/** allow の出品に、同じ endpoint を Stellar で買った配達の行を足す（判定は 2 回と数える） */
+function crossChainListing(): { x: ListingInput; l0: Record<string, string>[]; ledger: Record<string, string>[] } {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.decision.ok === true && x.ledgerRows.ok === true && x.l0Row.ok === true);
+  const stellar = {
+    attempted_at: "2026-09-25T12:01:05Z", resource_key: x.resourceKey, network: "stellar:pubnet", status: "settled", tx_hash: STELLAR_TX,
+    http_status_paid: "200", l2_schema: "no_declaration", held_reason: "", confirmed_units: "4000", purchase_id: "p-stellar",
+  };
+  const ledger = [...x.ledgerRows.value, stellar];
+  const d = structuredClone(x.decision.value);
+  d.facts!.l1 = { n_delivered: 2, n_settled: 2, n_attempts: 2, last_attempt_at: stellar.attempted_at };
+  d.evidence = [{ level: "L1", purchase_id: `stellar:pubnet:${STELLAR_TX}` }, { level: "L2", purchase_id: `stellar:pubnet:${STELLAR_TX}` }];
+  x.decision = { ok: true, value: d };
+  assert.ok(x.mcp.ok === true);
+  x.mcp = { ok: true, value: { ...x.mcp.value, measurement: structuredClone(d) } };
+  return { x, l0: [x.l0Row.value], ledger };
+}
+
+test("台帳の付け方: endpoint が 1 つの resource_key は network を問わず全部その出品の行（空の network も）", () => {
+  const l0 = [{ endpoint_id: "a", resource_key: "s.example/x", network: "eip155:8453" }];
+  const ledger = [
+    { resource_key: "s.example/x", network: "eip155:8453", status: "settled", purchase_id: "1" },
+    { resource_key: "s.example/x", network: "stellar:pubnet", status: "settled", purchase_id: "2" },
+    { resource_key: "s.example/x", network: "eip155:42220", status: "settled", purchase_id: "3" },
+    { resource_key: "s.example/x", network: "", status: "no_eligible_accept", purchase_id: "" },
+    { resource_key: "other.example/y", network: "eip155:8453", status: "settled", purchase_id: "4" },
+  ];
+  const got = buildLedgerIndex({ l0, ledger }).rowsOf({ observatoryId: "a", resourceKey: "s.example/x", network: "eip155:8453" });
+  assert.deepEqual(got.rows.map((r) => r.network), ["eip155:8453", "stellar:pubnet", "eip155:42220", ""]);
+  assert.deepEqual(got.unplaced, []);
+});
+
+test("台帳の付け方: endpoint が複数（Base と Tempo）なら network の一致で分け、どれにも合わない network は unplaced", () => {
+  const l0 = [
+    { endpoint_id: "base", resource_key: "s.example/x", network: "eip155:8453" },
+    { endpoint_id: "tempo", resource_key: "s.example/x", network: "eip155:4217" },
+  ];
+  const ledger = [
+    { resource_key: "s.example/x", network: "eip155:8453", status: "settle_failed", purchase_id: "1" },
+    { resource_key: "s.example/x", network: "eip155:4217", status: "settled", purchase_id: "2" },
+    { resource_key: "s.example/x", network: "eip155:56", status: "settled", purchase_id: "3" },
+    { resource_key: "s.example/x", network: "", status: "no_eligible_accept", purchase_id: "" },
+  ];
+  const idx = buildLedgerIndex({ l0, ledger });
+  const b = idx.rowsOf({ observatoryId: "base", resourceKey: "s.example/x", network: "eip155:8453" });
+  assert.deepEqual(b.rows.map((r) => r.purchase_id), ["1"]);
+  assert.deepEqual(b.unplaced.map((r) => r.purchase_id), ["3"]);
+  const t = idx.rowsOf({ observatoryId: "tempo", resourceKey: "s.example/x", network: "eip155:4217" });
+  assert.deepEqual(t.rows.map((r) => r.purchase_id), ["2"]);
+  // 売り手一覧が指す最新の購入は、同じ resource_key なら含める（unplaced からは外す）
+  const withLatest = idx.rowsOf({ observatoryId: "base", resourceKey: "s.example/x", network: "eip155:8453" }, "3");
+  assert.deepEqual(withLatest.rows.map((r) => r.purchase_id), ["1", "3"]);
+  assert.deepEqual(withLatest.unplaced, []);
+});
+
+test("別のチェーンで買った行: endpoint 単位で付ければ判定 n_settled=2 と台帳が一致する（resource_key|network だけなら赤）", () => {
+  const { x, l0, ledger } = crossChainListing();
+  // 以前の付け方（その出品の network の行だけ）は Stellar の行を落とし、money_moved・failure_count・evidence_in_ledger が赤になる
+  const old = { ...x, ledgerRows: { ok: true as const, value: ledger.filter((r) => r.network === x.network) } };
+  const oldBad = compareListing(old, registry()).checks.filter((c) => !c.ok).map((c) => c.rule);
+  assert.ok(oldBad.includes("n_settled_vs_ledger") && oldBad.includes("n_attempts_vs_ledger") && oldBad.includes("evidence_in_ledger"), oldBad.join(","));
+
+  const placed = buildLedgerIndex({ l0, ledger }).rowsOf(x, "p-1");
+  x.ledgerRows = { ok: true, value: placed.rows };
+  x.ledgerUnplaced = placed.unplaced;
+  const { checks } = compareListing(x, registry());
+  assert.deepEqual(checks.filter((c) => !c.ok), [], JSON.stringify(checks.filter((c) => !c.ok), null, 1));
+  for (const rule of ["n_settled_vs_ledger", "n_attempts_vs_ledger", "n_delivered_vs_ledger", "evidence_in_ledger", "l2_same_row"])
+    assert.ok(checks.some((c) => c.rule === rule && c.ok), `${rule} was not compared`);
+});
+
+test("付け先の決まらない行が窓の中にあれば、数は比べずに skip（食い違いにしない）", () => {
+  const { x, ledger } = crossChainListing();
+  x.ledgerRows = { ok: true, value: ledger.filter((r) => r.network === x.network) };
+  x.ledgerUnplaced = ledger.filter((r) => r.network !== x.network);
+  const { checks, skips } = compareListing(x, registry());
+  assert.deepEqual(checks.filter((c) => !c.ok), []);
+  const s = skips.find((k) => k.rule === "n_settled_vs_ledger");
+  assert.ok(s && /network none of its endpoints list/.test(s.reason), JSON.stringify(skips));
+  assert.ok(!checks.some((c) => c.rule === "n_settled_vs_ledger"));
+  // 証拠の行は unplaced の中でも見つかる
+  assert.ok(checks.some((c) => c.rule === "evidence_in_ledger" && c.ok));
+});
+
+test("判定が同じ resource の別の endpoint について答えたら、この出品の台帳と L1・L2 を比べない", () => {
+  const x = listing(2, "warn_vet402", ["l1_failure"]);
+  assert.ok(x.decision.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.subject = { ...d.subject, observatory_id: "b55129d8-4197-40fe-9107-e77685de4b94" };
+  d.facts!.l1 = { n_delivered: 0, n_settled: 0, n_attempts: 0, last_attempt_at: null };
+  x.decision = { ok: true, value: d };
+  assert.ok(x.mcp.ok === true);
+  x.mcp = { ok: true, value: { ...x.mcp.value, measurement: structuredClone(d) } };
+  const { checks, skips } = compareListing(x, registry());
+  assert.ok(!checks.some((c) => !c.ok && (c.rule === "n_attempts_vs_ledger" || c.item === "l2_state")), JSON.stringify(checks.filter((c) => !c.ok)));
+  for (const rule of ["n_attempts_vs_ledger", "l2_same_row"])
+    assert.ok(skips.some((k) => k.rule === rule && /decision answers for endpoint b55129d8/.test(k.reason)), rule);
+});
+
+test("L2 の行: 202（受け付けただけ）の行は判定の配達に数えないので、比べる行にしない", () => {
+  const x = listing(3, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.evidence = [];
+  x.decision = { ok: true, value: d };
+  assert.ok(x.mcp.ok === true);
+  x.mcp = { ok: true, value: { ...x.mcp.value, measurement: structuredClone(d) } };
+  // 判定は n_delivered=1（200 の行）・n_settled=1。202 の行は窓の外に置いて数の比較から外し、L2 の行選びだけを見る
+  const accepted = { ...x.ledgerRows.value[0]!, attempted_at: "2026-09-29T09:59:00Z", tx_hash: "", http_status_paid: "202", l2_schema: "not_checked", l2_reading: "not_checked", purchase_id: "p-202" };
+  x.ledgerRows = { ok: true, value: [...x.ledgerRows.value, accepted] };
+  const l2 = compareListing(x, registry()).checks.find((c) => c.rule === "l2_same_row");
+  assert.ok(l2, "l2_same_row was not compared");
+  assert.equal(l2.ok, true, JSON.stringify(l2.values));
+  assert.match(String(l2.values.find((v) => v.surface === "ledger")?.value), /2026-09-20T12:00:00Z/);
+});
+
+test("not tried（Base の購入なし）の出品に別のチェーンの行だけがあるのは食い違いではない", () => {
+  const x = listing(4, "block_l0", ["l0_fail"]);
+  const tx = STELLAR_TX;
+  x.ledgerRows = {
+    ok: true,
+    value: [{ attempted_at: "2026-08-15T12:00:00Z", resource_key: x.resourceKey, network: "stellar:pubnet", status: "settled", tx_hash: tx, http_status_paid: "200", l2_schema: "no_declaration", held_reason: "", confirmed_units: "4000", purchase_id: "p-s" }],
+  };
+  x.record = { ok: true, value: parseRecordPage(recordHtml("fail", [{ minute: "2026-08-15 12:00", result: "settled", http: "200", tx, l2: "no_declaration", side: "no failure (delivered)" }]))! };
+  const { checks } = compareListing(x, registry());
+  const nt = checks.find((c) => c.rule === "not_tried_vs_rows");
+  assert.ok(nt && nt.ok, JSON.stringify(nt));
+  assert.match(String(nt.values.find((v) => v.surface === "ledger")?.value), /0 rows on eip155:8453 in 90d \(\+1 on other chains\)/);
+  // Base の行が 1 つでもあれば not tried は食い違い（今までどおり）
+  x.ledgerRows = { ok: true, value: [...x.ledgerRows.value, { ...x.ledgerRows.value[0]!, network: "eip155:8453", tx_hash: "0x" + "c".repeat(64), purchase_id: "p-b" }] };
+  assert.equal(compareListing(x, registry()).checks.find((c) => c.rule === "not_tried_vs_rows")?.ok, false);
 });

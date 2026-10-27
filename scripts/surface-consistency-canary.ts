@@ -40,6 +40,7 @@ import {
   type Registry,
   type SurfaceTally,
 } from "../src/lib/surface-canary/compare";
+import { buildLedgerIndex } from "../src/lib/surface-canary/ledger";
 import { buildPools, PoolCursor, seedFor, TYPES_FOR_VERDICT, type Candidate, type SampleType } from "../src/lib/surface-canary/sample";
 // MCP の道具が叩く呼び出しそのもの（index.ts はサーバを起動するので import しない。応答の写し方は下の mcpView）。
 import { resourceDecision } from "../packages/mcp-server/src/resource-decision";
@@ -157,27 +158,13 @@ async function main() {
 
   const listings: ListingInput[] = [];
   const unresolved: string[] = [];
+  // /decision が同じ resource の別の endpoint について答えた出品（比べる項目の一部は compare.ts が skip に回す）
+  const otherSubject: string[] = [];
   if (sellersCsv.ok === true && ledgerCsv.ok === true && l0Csv.ok === true) {
     const sellersById = new Map(sellersCsv.value.map((r) => [r.endpoint_id, r]));
     const l0ById = new Map(l0Csv.value.map((r) => [r.endpoint_id, r]));
-    // 台帳の行はその出品の resource_key と network で引く。network が空の行（402 の前に止まった no_eligible_accept 等）は、
-    // その resource_key の endpoint が l0 export に 1 つしか無いときだけ、その出品の行に数える。
-    const endpointsPerKey = new Map<string, number>();
-    for (const r of l0Csv.value) endpointsPerKey.set(r.resource_key, (endpointsPerKey.get(r.resource_key) ?? 0) + 1);
-    const ledgerByKey = new Map<string, Record<string, string>[]>();
-    const ledgerByPurchase = new Map<string, Record<string, string>>();
-    for (const r of ledgerCsv.value.rows) {
-      if (r.purchase_id) ledgerByPurchase.set(r.purchase_id, r);
-      const k = `${r.resource_key}|${r.network}`;
-      (ledgerByKey.get(k) ?? ledgerByKey.set(k, []).get(k)!).push(r);
-    }
-    const ledgerRowsOf = (c: Candidate, latestPurchaseId: string | undefined) => {
-      const rows = [...(ledgerByKey.get(`${c.resourceKey}|${c.network}`) ?? [])];
-      if (endpointsPerKey.get(c.resourceKey) === 1) rows.push(...(ledgerByKey.get(`${c.resourceKey}|`) ?? []));
-      const latest = latestPurchaseId ? ledgerByPurchase.get(latestPurchaseId) : undefined;
-      if (latest && latest.resource_key === c.resourceKey && !rows.includes(latest)) rows.push(latest);
-      return rows;
-    };
+    // 台帳の行の付け方は src/lib/surface-canary/ledger.ts（判定・/purchases と同じく endpoint 単位。別のチェーンで買った行も含む）。
+    const ledgerIndex = buildLedgerIndex({ l0: l0Csv.value, ledger: ledgerCsv.value.rows });
     const pools = buildPools({
       sellers: sellersCsv.value,
       l0: l0Csv.value,
@@ -256,6 +243,9 @@ async function main() {
         sellerPage = got.ok === true ? (got.value ? { ok: true, value: got.value } : { ok: "n/a", why: `not on the first ${MAX_SELLER_PAGES} pages` }) : got;
       }
       const l0Row = l0ById.get(c.observatoryId);
+      const ledger = ledgerIndex.rowsOf(c, sRow?.purchase_id);
+      const subject = decision.ok === true ? decision.value.subject?.observatory_id : undefined;
+      if (subject && subject !== c.observatoryId) otherSubject.push(`${c.resourceKey} (${c.observatoryId} → decision speaks for ${subject})`);
       listings.push({
         observatoryId: c.observatoryId,
         resourceKey: c.resourceKey,
@@ -266,7 +256,8 @@ async function main() {
         sellersRow,
         sellerPage,
         record,
-        ledgerRows: { ok: true, value: ledgerRowsOf(c, sRow?.purchase_id) },
+        ledgerRows: { ok: true, value: ledger.rows },
+        ledgerUnplaced: ledger.unplaced,
         ledgerRetrievedAt: ledgerCsv.value.retrievedAt,
         l0Row: l0Row ? { ok: true, value: l0Row } : { ok: "n/a", why: "not in l0 export" },
       });
@@ -312,6 +303,7 @@ async function main() {
     startedAt: started.toISOString(),
     finishedAt: new Date().toISOString(),
     unresolved,
+    otherSubject,
   };
   if (OUT) writeFileSync(OUT, JSON.stringify(out, null, 2));
 
@@ -322,6 +314,7 @@ async function main() {
   }
   if (report.discrepancies.length > 60) console.log(`  … and ${report.discrepancies.length - 60} more (see --out)`);
   for (const f of report.surfaces.failedList.slice(0, 20)) console.log(`  ! fetch failed: ${f.surface} ${f.listing}: ${f.error}`);
+  if (otherSubject.length) console.log(`  ! /decision answered for another endpoint of the same resource (decision-vs-ledger counts and L2 skipped): ${otherSubject.join(", ")}`);
   if (unresolved.length) console.log(`  ! not resolvable through /api/v1/resolve (skipped): ${unresolved.join(", ")}`);
   const byRule = new Map<string, number>();
   for (const d of report.discrepancies) byRule.set(`${d.item}/${d.rule}`, (byRule.get(`${d.item}/${d.rule}`) ?? 0) + 1);

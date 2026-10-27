@@ -77,6 +77,11 @@ export type ListingInput = {
   record: Fetched<RecordPage>;
   /** その出品の台帳の行（0 行もあり得る）。台帳そのものが取れなければ ok:false */
   ledgerRows: Fetched<Record<string, string>[]>;
+  /**
+   * 同じ resource_key に endpoint が複数あり、export（endpoint_id の列が無い）からはどれの行か決まらない行
+   * （src/lib/surface-canary/ledger.ts）。窓の中に在れば数の比較を控える。
+   */
+  ledgerUnplaced?: Record<string, string>[];
   /** 台帳を読んだ時刻（x-vet402-retrieved-at）。これより後の購入は台帳に無くて当然なので数の比較を控える */
   ledgerRetrievedAt: string | null;
   l0Row: Fetched<Record<string, string>>;
@@ -116,6 +121,11 @@ const is2xx = (h: string | number | null | undefined) => {
   const n = typeof h === "number" ? h : Number(h);
   return Number.isFinite(n) && n >= 200 && n < 300;
 };
+/**
+ * 判定が「配達」に数える有料応答の HTTP（src/lib/observatory/delivery.ts の isDeliveryHttp と同じ線: 2xx のうち 202 を除く）。
+ * 実装は import しない（本番の出力だけを比べる）ので、線をここに写す。202 は受け付けただけで、判定の L2 はその行を読まない。
+ */
+const isDeliveryHttp = (h: string | number | null | undefined) => is2xx(h) && Number(h) !== 202;
 const minuteOf = (iso: string | null | undefined): string | null =>
   iso && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(iso) ? `${iso.slice(0, 10)} ${iso.slice(11, 16)}` : null;
 const ms = (iso: string | null | undefined) => (iso ? Date.parse(iso.replace(" ", "T").replace(/\+00$/, "Z")) : NaN);
@@ -176,9 +186,14 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
   const page = x.sellerPage.ok === true ? x.sellerPage.value : null;
   const rec = x.record.ok === true ? x.record.value : null;
   const ledger = x.ledgerRows.ok === true ? x.ledgerRows.value : null;
+  const unplaced = x.ledgerUnplaced ?? [];
   const l0 = x.l0Row.ok === true ? x.l0Row.value : null;
 
   const codes = d?.reason_codes ?? [];
+  // /decision は resource（URL と method）について答える。同じ resource に endpoint が複数（Base と Tempo など）あると、
+  // 標本の出品とは別の endpoint の事実を返すことがある（stableenrich.dev/api/firecrawl/scrape: Base の出品 → subject は Tempo）。
+  // そのときは判定の L1・L2 の事実を、この出品の台帳の行と比べない。
+  const subjectElsewhere = d?.subject?.observatory_id && d.subject.observatory_id !== x.observatoryId ? d.subject.observatory_id : null;
   const rec1 = d?.recommendation;
 
   // ---- 判定 ----
@@ -281,16 +296,22 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     x.ledgerRetrievedAt !== null && d?.facts?.l1?.last_attempt_at ? ms(d.facts.l1.last_attempt_at) > ms(x.ledgerRetrievedAt) : false;
   const win = ledger && Number.isFinite(scoredAt) ? ledger.filter((r) => inWindow(r.attempted_at)) : null;
   const unknownStatus = win?.filter((r) => !SIGNED.has(r.status) && !UNSIGNED.has(r.status)) ?? [];
-  const countsComparable = d && win && !nearEdge && !afterLedgerRead && unknownStatus.length === 0;
+  const unplacedInWindow = Number.isFinite(scoredAt) ? unplaced.filter((r) => inWindow(r.attempted_at)) : unplaced;
+  const countsComparable =
+    d && win && !subjectElsewhere && unplacedInWindow.length === 0 && !nearEdge && !afterLedgerRead && unknownStatus.length === 0;
   const whyNot = !d
     ? "decision not read"
     : !win
       ? "ledger not read"
-      : nearEdge
-        ? "a ledger row sits within 2 h of the 30-day window edge"
-        : afterLedgerRead
-          ? "an attempt landed after the ledger was read"
-          : `ledger status not known to the canary: ${unknownStatus.map((r) => r.status).join(", ")}`;
+      : subjectElsewhere
+        ? `decision answers for endpoint ${subjectElsewhere} of the same resource, not this listing`
+        : unplacedInWindow.length > 0
+          ? `${unplacedInWindow.length} ledger rows of this resource_key are on a network none of its endpoints list (the export has no endpoint_id to place them)`
+          : nearEdge
+            ? "a ledger row sits within 2 h of the 30-day window edge"
+            : afterLedgerRead
+              ? "an attempt landed after the ledger was read"
+              : `ledger status not known to the canary: ${unknownStatus.map((r) => r.status).join(", ")}`;
 
   // ---- お金が動いたか・数えた失敗 ----
   if (countsComparable) {
@@ -366,13 +387,17 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
 
   // ---- 誰の側か: まだ試していない ↔ 行がある ----
   if (sellers && ledger) {
+    // /sellers の区分は出品のチェーン（Base）の購入だけで決まる（2026-10-21 94fcff3b: 別のチェーンの購入は
+    // 「not tried on Base yet」のまま Other chains の欄に出る）。台帳はその出品の network の行（と network が空の行）で数え、
+    // 記録頁は別のチェーンの行も載せるので、別のチェーンの行がある出品では記録頁の行数を問わない。
     const notTried = sellers.outcome === "not_tried";
-    const rows = ledger.length;
+    const rows = ledger.filter((r) => r.network === x.network || r.network === "").length;
+    const otherChainRows = ledger.length - rows;
     const recRows = rec?.rows.length ?? null;
-    const ok = notTried ? rows === 0 && (recRows === null || recRows === 0) : true;
+    const ok = notTried ? rows === 0 && (recRows === null || otherChainRows > 0 || recRows === 0) : true;
     push("side", "not_tried_vs_rows", ok, [
       { surface: "sellers", value: sellers.outcome },
-      { surface: "ledger", value: `${rows} rows in 90d` },
+      { surface: "ledger", value: `${rows} rows on ${x.network} in 90d${otherChainRows ? ` (+${otherChainRows} on other chains)` : ""}` },
       ...(recRows === null ? [] : [{ surface: "record", value: `${recRows} purchase rows` }]),
     ]);
   }
@@ -498,17 +523,31 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
   }
 
   // ---- L2 の状態 ----
-  if (d && ledger) {
+  if (d && ledger && subjectElsewhere) {
+    skip("l2_state", "l2_same_row", `decision answers for endpoint ${subjectElsewhere} of the same resource, not this listing`);
+    skip("l2_state", "evidence_in_ledger", `decision answers for endpoint ${subjectElsewhere} of the same resource, not this listing`);
+  } else if (d && ledger) {
     const decL2 = d.facts?.l2?.status ?? null;
     const evTx = (d.evidence ?? []).find((e) => e.level === "L2")?.purchase_id ?? null;
-    const txOf = (pid: string | null) => (pid ? /(0x[0-9a-fA-F]{64}|[1-9A-HJ-NP-Za-km-z]{64,90})$/.exec(pid)?.[1] ?? null : null);
+    // 証拠の purchase_id は `<CAIP-2 の network>:<tx>`。tx は最後の ':' の後（0x の EVM・base58 の Solana に加え、
+    // Stellar・XRPL の 0x の無い 16 進 64 字もある。以前の正規表現は base58 に無い 0 を含む Stellar の tx を読めなかった）。
+    const txOf = (pid: string | null) => {
+      const tx = pid ? pid.slice(pid.lastIndexOf(":") + 1) : "";
+      return /^(0x[0-9a-fA-F]{64}|[0-9a-fA-F]{64}|[1-9A-HJ-NP-Za-km-z]{64,90})$/.test(tx) ? tx : null;
+    };
+    const evRow = evTx ? ledger.find((r) => r.tx_hash && r.tx_hash.toLowerCase() === (txOf(evTx) ?? "").toLowerCase()) : undefined;
     const target =
-      (evTx && ledger.find((r) => r.tx_hash && r.tx_hash.toLowerCase() === (txOf(evTx) ?? "").toLowerCase())) ||
+      evRow ||
       // 証拠の行が無ければ、窓（30 日）の中の最新の配達。窓の外の配達は判定の L2 が読まない（「checked なし」で正しい）。
       [...ledger]
-        .filter((r) => moneyMoved(r) && is2xx(r.http_status_paid) && (!Number.isFinite(scoredAt) || inWindow(r.attempted_at)))
+        .filter((r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid) && (!Number.isFinite(scoredAt) || inWindow(r.attempted_at)))
         .sort((a, b) => b.attempted_at.localeCompare(a.attempted_at))[0];
+    const evInUnplaced = !!evTx && unplaced.some((r) => r.tx_hash && r.tx_hash.toLowerCase() === (txOf(evTx) ?? "").toLowerCase());
+    const unplacedDelivered = unplacedInWindow.some((r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid));
     if (!decL2 || !L2_EQUIV[decL2]) skip("l2_state", "l2_same_row", `decision L2 status ${decL2} not in the canary's vocabulary`);
+    // 証拠の行がこの出品の行に無く、付け先の決まらない行にある（または窓の中の配達がそこにある）なら、判定が読んだ行を決められない
+    else if (!evRow && (evInUnplaced || unplacedDelivered))
+      skip("l2_state", "l2_same_row", "the row the decision reads may be a ledger row the export cannot place on this listing");
     else if (!target) {
       if (decL2 === "mismatch" || decL2 === "conform")
         push("l2_state", "l2_same_row", false, [
@@ -535,7 +574,8 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     if (ev.length > 0) {
       const missing = ev.filter((e) => {
         const tx = txOf(e.purchase_id!);
-        return tx ? !ledger.some((r) => r.tx_hash && r.tx_hash.toLowerCase() === tx.toLowerCase()) : !ledger.some((r) => r.purchase_id === e.purchase_id);
+        const pool = [...ledger, ...unplaced];
+        return tx ? !pool.some((r) => r.tx_hash && r.tx_hash.toLowerCase() === tx.toLowerCase()) : !pool.some((r) => r.purchase_id === e.purchase_id);
       });
       const old = d.facts?.l1?.last_attempt_at && ms(d.facts.l1.last_attempt_at) < scoredAt - 85 * 86_400_000;
       if (old) skip("l2_state", "evidence_in_ledger", "evidence may be older than the 90-day export");
