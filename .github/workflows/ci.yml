@@ -19,6 +19,14 @@ on:
     branches: [main]
   pull_request:
 
+# Supply-chain guard (security audit 2026-10-28 #3). The root .npmrc sets
+# ignore-scripts=true, but npm reads .npmrc only from the project it runs in:
+# `npm ci --prefix packages/*`, `--prefix examples/*` and the per-package
+# installs in scripts/judge-check.sh would still run install scripts. The env
+# var covers every npm call in every job. No dependency needs its script.
+env:
+  NPM_CONFIG_IGNORE_SCRIPTS: "true"
+
 jobs:
   test:
     name: typecheck + unit tests
