@@ -147,14 +147,35 @@ if (!TEST_DB) {
 
     const align = body.rows.find((r) => r.url === mcpAlignUrl);
     assert.ok(align, "mcp align row");
-    const { loadSellerFacts } = await import("@/lib/decision/seller-facts");
-    const { l1BasisOf } = await import("@/lib/decision/rules");
-    const loaded = await loadSellerFacts(mcpAlignId);
-    assert.ok(loaded, "loadSellerFacts");
-    const basis = l1BasisOf(loaded!.facts, { l1Timeline: loaded!.l1Timeline, l1NotCounted: loaded!.l1NotCounted });
-    assert.equal(align!.delivered_30d, loaded!.facts.l1.n_delivered, "delivered vs MCP");
-    assert.equal(align!.paid_attempts_30d, loaded!.facts.l1.n_attempts, "paid_attempts vs MCP");
-    assert.equal(align!.settled_not_delivered_30d, basis.n_paid_undelivered, "settled_not_delivered vs MCP");
+    const { decide } = await import("@/lib/decision/decide");
+    const { resolve } = await import("@/lib/resolve/lookup");
+    const { decisionCache } = await import("@/lib/decision/cache");
+    const { readL1Purchases } = await import("@/lib/mcp/reads");
+    const { checkSeller } = await import("@/lib/mcp/tools");
+    type McpDeps = import("@/lib/mcp/tools").McpDeps;
+    const stubPage = {
+      board: async () => null,
+      detail: async () => null,
+      purchasedHosts: async () => [] as string[],
+      otherChains: async () => null,
+    };
+    const mcpDeps: McpDeps = {
+      resolve,
+      decide,
+      l1Purchases: (id) => readL1Purchases(db, id),
+      sellerPage: stubPage as unknown as McpDeps["sellerPage"],
+      hostExtras: async () =>
+        ({ fetchedAt: new Date().toISOString(), listings: [], purchases: [] }) as Awaited<ReturnType<McpDeps["hostExtras"]>>,
+      findSellers: async () =>
+        ({ fetchedAt: new Date().toISOString(), sellers: [], untested: [] }) as Awaited<ReturnType<McpDeps["findSellers"]>>,
+    };
+    decisionCache.clear();
+    const mcpOut = await checkSeller(mcpDeps, { url: mcpAlignUrl });
+    assert.equal(mcpOut.not_in_catalog, false);
+    assert.ok(mcpOut.delivery);
+    assert.equal(align!.delivered_30d, mcpOut.delivery!.delivered, "delivered vs check_x402_seller");
+    assert.equal(align!.paid_attempts_30d, mcpOut.delivery!.paid_attempts, "paid_attempts vs check_x402_seller");
+    assert.equal(align!.settled_not_delivered_30d, mcpOut.delivery!.settled_not_delivered, "settled_not_delivered vs check_x402_seller");
 
     assert.ok(!body.rows.some((r) => r.url === oldUrl));
     assert.ok(!body.rows.some((r) => r.url === inactiveUrl));
@@ -240,6 +261,25 @@ if (!TEST_DB) {
     assert.equal(scale.row_count, 2000);
     assert.ok(scale.next_cursor);
     assert.ok(explainText.includes("Semi Join") || explainText.includes("Exist"), "EXPLAIN should use semi join or exists");
+
+    const { resetDeliveryFeedCacheForTest } = await import("@/lib/delivery/sellers-feed-cache");
+    resetDeliveryFeedCacheForTest();
+    const seen = new Set<string>();
+    let cursor: string | null = null;
+    let totalRows = 0;
+    for (;;) {
+      const page = await readDeliverySellersFeed(db, { network: null, minDelivered: null, listedIn: null, cursor });
+      if (totalRows === 0) totalRows = page.total_rows;
+      for (const r of page.rows) {
+        const key = `${r.url}\0${r.method}\0${r.network ?? ""}`;
+        assert.ok(!seen.has(key), `duplicate feed row ${r.url}`);
+        seen.add(key);
+      }
+      if (!page.next_cursor) break;
+      cursor = page.next_cursor;
+    }
+    assert.equal(seen.size, totalRows, "cursor walk covers total_rows without gaps or duplicates");
+    assert.equal(totalRows, FEED_SCALE_WITH_ATTEMPTS);
   });
 
   test("cache and cursor pagination", async () => {
