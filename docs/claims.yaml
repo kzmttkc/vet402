@@ -1042,11 +1042,11 @@ claims:
   - id: audit_e_settled_minus_delivered_is_published
     surface: src/app/observatory/state/page.tsx
     quote: "Settled but not delivered and not"
-    means: "金は動いたが 2xx も 4xx も返らなかった件数を、自社に不利でも独立の行として出す（2026-09-05: 4xx は inconclusive として別行になった）"
+    means: "金は動いたが届いたに数えず 4xx でもない件数（5xx・202・本文が空の 2xx・HTTP 記録なし）を、自社に不利でも独立の行として出す（2026-09-05: 4xx は inconclusive として別行。2026-10-29: 202 と空の本文がこの行に入った）"
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.settled >= 1452"
-    verified_at: 2026-09-05
+    verified_at: 2026-10-29
   - id: inconclusive_state_publishes_inconclusive
     surface: src/app/observatory/state/page.tsx
     quote: "Inconclusive: held, not counted against the seller"

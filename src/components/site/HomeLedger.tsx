@@ -202,10 +202,10 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
                 Settled purchases
               </th>
               <th scope="col" className="num">
-                Answered 2xx
+                Delivered
               </th>
               <th scope="col" className="num">
-                Paid, no 2xx
+                Paid, not delivered
               </th>
             </tr>
           </thead>

@@ -343,7 +343,7 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     if (typeof l1.n_delivered === "number")
       push("failure_count", "n_delivered_vs_ledger", l1.n_delivered <= twoxx, [
         { surface: "decision", value: `facts.l1.n_delivered=${l1.n_delivered}` },
-        { surface: "ledger", value: `${twoxx} signed rows counted as delivered (HTTP 2xx other than 202 Accepted with a non-empty body)` },
+        { surface: "ledger", value: `${twoxx} signed rows answered 2xx` },
       ]);
   } else {
     skip("money_moved", "n_settled_vs_ledger", whyNot);

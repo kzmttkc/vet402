@@ -182,7 +182,7 @@ export default async function ObservatoryStatePage() {
       "L1 settled with on-chain receipt",
       "L1 settled (nonce-bound)",
       "L1 settled (amount + payee)",
-      "L1 delivered (settled and a 2xx response other than 202 Accepted with a non-empty body)",
+      "L1 delivered (settled and a 2xx response other than 202 Accepted, with a non-empty body)",
     ],
     keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
     retrievedAt: stats.readAt,

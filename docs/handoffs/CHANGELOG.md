@@ -15,10 +15,10 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ## 2026-10-29 Delivered definition parity (202, empty 2xx, public copy)
 
-- **What**: `deliveredPredicate()` already matched `isDelivered()` after 424eeae9; this change aligns public labels and copy (`/observatory/state`, API disclaimers, methodology, claims.yaml), deduplicates hand-copied SQL in seller-facts, MCP reads, and sellers reader via `deliveredPredicate`, fixes Arc Gateway daily records to use `isDeliveryHttp` for the `delivered` flag (leaf hashes unchanged), wraps the SQL predicate in parentheses, and extends `tests/l1-held-rows.pg.test.ts` with settled rows at HTTP 202, empty-body 200, and null `payload_non_empty`.
-- **Why**: Independent review NO-SHIP: a record page counted a settled 202 as delivered while the aggregate feed did not. A 30-day production read found 36 Base rows with HTTP 202 and 1 empty 2xx; other networks had 0.
-- **Impact**: Public `l1.delivered` (and matching endpoint counts) drop by those rows. UI and API text now describe delivered as 2xx other than 202 Accepted with a non-empty body, and the state-page bucket for settled-not-delivered-not-4xx includes 202 and empty 2xx.
-- **Commits**: 424eeae9, f1b9a9a4.
+- **What**: The SQL `deliveredPredicate()` now matches `isDelivered()`: settled, 2xx other than 202 Accepted, and `payload_non_empty` not false. It returns `coalesce((...), false)` so `NOT(predicate)` keeps settled rows with a NULL HTTP status on the not-delivered side. The hand-copied predicates in seller-facts, MCP reads and the sellers reader now call it. Public copy (`/observatory/state`, state and purchases API text, methodology, llms.txt, llms-full.txt, FAQ, openapi, home chain table headers "Delivered" and "Paid, not delivered", claims.yaml) says delivered is 2xx other than 202 Accepted, with a non-empty body. The state-page row for settled, not delivered and not 4xx now names 202 and empty 2xx. Arc Gateway daily records use `isDeliveryHttp` for the `delivered` flag (leaf hashes unchanged). `tests/l1-held-rows.pg.test.ts` covers settled rows at 202, empty 200 and null payload.
+- **Why**: On 2026-10-29 an outside reader cross-checked the delivery feed against record pages and found a record page counting a settled 202 as delivered while the feed did not. `isDelivered` has excluded 202 since 2026-09-29, the SQL count did not. Production read, 30 days, settled: 36 Base rows with HTTP 202 and 1 empty 2xx. Other networks 0.
+- **Impact**: Public `l1.delivered` and the matching endpoint and chain counts drop by those rows. The legal terms page still defines delivered as 2xx and is left for the owner. The executive scanner `scripts/vet402_surface_scan.py` accepts both wordings since Takeshi_Automation ce898b35.
+- **Commits**: 424eeae9, f1b9a9a4, f8225bde and the copy follow-up after round 2 review.
 
 ## 2026-10-29 Gateway lane skips POST listings with no catalog body shape
 

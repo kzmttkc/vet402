@@ -100,7 +100,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "delivered",
     group: "l1",
     definition:
-      "delivered means the attempt is settled and the paid request also answered HTTP 2xx other than 202 Accepted with a non-empty body. settled is a statement about the money and delivered is a statement about the goods: a seller can take the payment and answer 400, and that row is settled and not delivered.",
+      "delivered means the attempt is settled and the paid request also answered HTTP 2xx other than 202 Accepted, with a non-empty body. settled is a statement about the money and delivered is a statement about the goods: a seller can take the payment and answer 400, and that row is settled and not delivered.",
   },
   {
     term: "inconclusive",

@@ -1019,7 +1019,7 @@ export type MoneyMoved = "moved" | "not_moved" | "unknown";
  * （src/lib/decision/rules-text.ts）・llms.txt・openapi はここから作る。手で写さない。
  */
 export const BUCKET_DOCS: Readonly<Record<Bucket, string>> = {
-  delivered: "delivered (settled on-chain, then a 2xx other than 202 Accepted with a non-empty body)",
+  delivered: "delivered (settled on-chain, then a 2xx other than 202 Accepted, with a non-empty body)",
   pending: `pending (not yet known whether money moved: a receipt awaiting on-chain verification, a 2xx naming a transaction, or a signed attempt that failed less than ${LATE_LINK_PENDING_MINUTES} minutes ago while vet402 links late settlements; the ledger status is left as recorded)`,
   seller: `seller (the seller's side: vet402 can show from the row that the failure was not its own, and such a failure, of any kind, was seen at the listing on ${SELLER_CONFIRM_DAYS} or more different UTC days)`,
   vet402: "vet402 (vet402's side: its wallet was short, it did not send the declared input, or one of its own limits or errors)",
@@ -1176,7 +1176,7 @@ export const STATUS_GLOSS: Readonly<Record<string, string>> = {
   settled: "vet402 re-read the transfer on-chain in that chain's pinned settlement asset",
   settle_claimed: "the seller returned a receipt that vet402 has not re-read on-chain yet",
   settle_failed: "vet402 signed a payment and got no settlement receipt back",
-  delivered_no_receipt: "the paid request answered HTTP 2xx other than 202 Accepted with a non-empty body without a settlement receipt",
+  delivered_no_receipt: "the paid request answered 200 without a settlement receipt",
   settle_claim_refuted: `the transaction in the receipt did not show this payment on-chain, or was not found there within ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days`,
   settle_claimed_unverifiable: "the receipt named a transaction id that is not valid for the chain",
   no_402: "the unpaid request did not get a 402, so nothing was paid",

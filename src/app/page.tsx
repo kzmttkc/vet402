@@ -274,7 +274,7 @@ export default async function Home() {
           .
         </p>
 
-        {/* チェーン表は残す。Paid, no 2xx は settled − delivered。読めなければ出さない。 */}
+        {/* チェーン表は残す。Paid, not delivered は settled − delivered。読めなければ出さない。 */}
         {ledger ? <SettledChainsSection ledger={ledger} /> : null}
 
         {/* ================= RFC first page ================= */}
