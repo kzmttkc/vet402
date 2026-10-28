@@ -1,6 +1,7 @@
 // ============================================================
 // /docs/mcp の固定英文（2026-10-28）。tests/mcp-plain-english.test.ts が検査する。
 // ============================================================
+import { DELIVERY_FEED_PAGE_SIZE } from "@/lib/delivery/sellers-feed";
 
 export const MCP_DOCS_INTRO =
   "The hosted MCP server at https://vet402.com/mcp returns what vet402 recorded when it paid x402 listings: when each attempt happened, which chain it used, whether content came back, and the transaction hash where vet402 recorded one. " +
@@ -21,7 +22,8 @@ export const MCP_DOCS_SETTLED_NOT_DELIVERED_FEED =
   "settled_not_delivered_30d uses the same rule as check_x402_seller delivery.settled_not_delivered: payment moved on chain with no delivery, and the count excludes vet402-side rows and rows held while HTTP outcomes stay inconclusive.";
 
 export const MCP_DOCS_FEED_INTRO =
-  "GET /api/v1/delivery/sellers.json lists active listings where vet402 made at least one signed purchase attempt in the last 30 days. Each JSON row is one listing. Rows sort by url, method and network ascending. Pages hold at most 200 rows. Use next_cursor to continue.";
+  "GET /api/v1/delivery/sellers.json lists active listings where vet402 made at least one signed purchase attempt in the last 30 days. Each JSON row is one listing. Rows sort by url, method and network ascending. " +
+  `Pages hold at most ${DELIVERY_FEED_PAGE_SIZE.toLocaleString("en-US")} rows. Use next_cursor to continue.`;
 
 export const MCP_DOCS_FEED_STALENESS =
   "The feed snapshot is cached in the vet402 process for 300 seconds. HTTP responses use Cache-Control public, s-maxage=300, stale-while-revalidate=600.";

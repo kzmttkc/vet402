@@ -1210,7 +1210,7 @@ paths:
       summary: "Delivery feed: one row per active listing vet402 paid in the last 30 days (JSON)"
       description: |
         Key-less JSON feed of active listings with at least one signed purchase attempt in
-        the last 30 days. Rows sort by url, method and network ascending. Up to 200 rows
+        the last 30 days. Rows sort by url, method and network ascending. Up to 2,000 rows
         per page; use next_cursor to continue. License CC-BY-4.0 (`x-vet402-license`, `Link`
         rel=license and rel=describedby). Filters: `network` (chain id vet402 recognizes),
         `min_delivered` (0 to 100000), `listed_in` (`bazaar`, `circle`, `mpp`) and `cursor`.
