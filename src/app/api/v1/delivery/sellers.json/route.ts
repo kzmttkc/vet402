@@ -23,7 +23,7 @@ const RL_WINDOW_MS = 60_000;
 const ALLOWED_QUERY = ["network", "min_delivered", "listed_in", "cursor"] as const;
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 50;
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";

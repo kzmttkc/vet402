@@ -458,7 +458,8 @@ test("本番経路（decide.ts）は l1Timeline を判定へ渡し、loadSellerF
   assert.match(decide, /l1Timeline: loaded\.l1Timeline/);
   assert.match(decide, /l1_basis: l1BasisOf\(f, options\)/);
   const facts = read("src/lib/decision/seller-facts.ts");
-  assert.match(facts, /l1Timeline: l1TimelineOf\(factsInput/);
+  assert.match(facts, /const l1Timeline = l1TimelineOf\(factsInput\)/);
+  assert.match(facts, /l1Timeline,/);
 });
 
 test("SDK（凍結）は /decision の reason_codes を文字列のまま透過する（新しい語を落とさない）", () => {

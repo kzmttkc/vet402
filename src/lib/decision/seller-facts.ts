@@ -185,7 +185,15 @@ function isPaidUndelivered(v: SellerRowView): boolean {
   return v.money === "moved" && !v.delivered && v.bucket !== "vet402" && v.held === null;
 }
 
-/** check_x402_seller の delivery と同じ L1 件数（窓の中の purchases を渡す・新しい順・sellerView 必須）。 */
+/**
+ * 窓内の署名行のうち、isPaidUndelivered に該当する件数（l1TimelineOf の n_paid_undelivered と同じ）。
+ * l1CountsOf は full timeline を走らせずここだけ使う。
+ */
+export function l1SettledNotDeliveredCount(input: L1Input, now: number = Date.now()): number {
+  const rows = signedViews(input, now);
+  return rows.filter((x) => isPaidUndelivered(x.v)).length;
+}
+
 export function l1CountsOf(
   purchases: readonly PurchaseInput[],
   endpoint: Pick<L1Input, "declaredSchema" | "method" | "declaredInput">,
@@ -201,7 +209,42 @@ export function l1CountsOf(
   const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const conclusiveSettled = signed.filter((p) => p.status === "settled" && !isInconclusive(p));
   const delivered = conclusiveSettled.filter((p) => isDelivered(p)).length;
-  const timeline = l1TimelineOf(input, now);
+  const settledNotDelivered = l1SettledNotDeliveredCount(input, now);
+  let lastInWindow: string | null = null;
+  for (const p of signed) {
+    const iso = toIsoUtc(p.attemptedAt) ?? p.attemptedAt;
+    if (lastInWindow === null || epoch(iso) > epoch(lastInWindow)) lastInWindow = iso;
+  }
+  return {
+    paid_attempts: signed.length,
+    delivered,
+    settled_not_delivered: settledNotDelivered,
+    last_delivered_at: l1LastDeliveredAtForCounts(input, now),
+    last_attempt_at_in_window: lastInWindow,
+  };
+}
+
+function l1LastDeliveredAtForCounts(input: L1Input, now: number): string | null {
+  const rows = signedViews(input, now);
+  const lastDeliveredInWindow = rows.find((x) => x.v.delivered) ?? null;
+  const newer = (a: string | null | undefined, b: string | null | undefined): string | null => {
+    const ta = epoch(a);
+    const tb = epoch(b);
+    if (!Number.isFinite(ta)) return Number.isFinite(tb) ? (b as string) : null;
+    if (!Number.isFinite(tb)) return a as string;
+    return ta >= tb ? (a as string) : (b as string);
+  };
+  return toIsoUtc(newer(lastDeliveredInWindow?.p.attemptedAt ?? null, input.lastDeliveredAt ?? null));
+}
+
+function l1CountsUsingTimeline(
+  purchases: readonly PurchaseInput[],
+  endpoint: Pick<L1Input, "declaredSchema" | "method" | "declaredInput">,
+  timeline: L1Timeline,
+): ReturnType<typeof l1CountsOf> {
+  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
+  const conclusiveSettled = signed.filter((p) => p.status === "settled" && !isInconclusive(p));
+  const delivered = conclusiveSettled.filter((p) => isDelivered(p)).length;
   let lastInWindow: string | null = null;
   for (const p of signed) {
     const iso = toIsoUtc(p.attemptedAt) ?? p.attemptedAt;
@@ -371,7 +414,7 @@ export function l1TimelineOf(input: L1Input, now: number = Date.now()): L1Timeli
   };
   return {
     n_counted: counted.length,
-    n_paid_undelivered: paidUndelivered.length,
+    n_paid_undelivered: l1SettledNotDeliveredCount(input, now),
     n_paid_undelivered_since_delivery: paidSince.length,
     n_paid_undelivered_seller_side_since_delivery: paidSince.filter((x) => x.v.bucket === "seller").length,
     n_settlement_unknown_since_delivery: rows.filter((x) => x.reason === "settlement_unknown" && afterCut(x.t)).length,
@@ -406,7 +449,7 @@ export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[]): s
   return reason === "" ? "unrecorded" : reason.slice(0, 40);
 }
 
-export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
+export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline?: L1Timeline }): SellerFacts {
   const { probes, purchases } = input;
   const latestProbe = probes[0] ?? null;
   const l0Status = publishedVerdict(probes.map((p) => p.verdict));
@@ -434,7 +477,9 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
   // 配達の述語は delivery.ts isDelivered の 1 つ（settled・2xx（202 を除く）・本文が空でない）。/sellers と同じ。
   const delivered = conclusiveSettled.filter((p) => isDelivered(p));
-  const l1Counts = l1CountsOf(purchases, input);
+  const l1Counts = opts?.l1Timeline
+    ? l1CountsUsingTimeline(purchases, input, opts.l1Timeline)
+    : l1CountsOf(purchases, input);
   // 遅延は結論のある settled だけで測る（4xx の往復は配達の遅延ではない）。
   const latencies = conclusiveSettled
     .map((p) => p.latencyMs)
@@ -753,13 +798,14 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     lastSignedAttemptAt: toIsoUtc(lastSignedRows[0]?.last_signed ?? null),
     lastDeliveredAt: toIsoUtc(lastSignedRows[0]?.last_delivered ?? null),
   };
-  const facts = assembleSellerFacts(factsInput);
+  const l1Timeline = l1TimelineOf(factsInput);
+  const facts = assembleSellerFacts(factsInput, { l1Timeline });
   return {
     facts,
     lastAttempt,
     l1NotCounted: l1NotCountedOf(factsInput),
     l0UnverifiedCause: l0UnverifiedCauseOf(probes),
-    l1Timeline: l1TimelineOf(factsInput),
+    l1Timeline,
     verifiedTerms,
     l2ContentType: l2ContentTypeOf(purchases, facts),
     endpoint: {

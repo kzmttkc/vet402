@@ -71,7 +71,7 @@ export async function fetchL1WindowPurchaseRows(db: Db, endpointId: string): Pro
              (settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (p.tx_hash, lower(p.tx_hash))))
            END AS settlement_confirmed
     FROM x402_l1_purchases p WHERE endpoint_id = ${endpointId}::uuid AND attempted_at > now() - ${WINDOW_INTERVAL}
-    ORDER BY attempted_at DESC LIMIT ${L1_WINDOW_PURCHASE_LIMIT}
+    ORDER BY attempted_at DESC, id DESC LIMIT ${L1_WINDOW_PURCHASE_LIMIT}
   `);
   return (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
 }
@@ -90,7 +90,7 @@ export function l1WindowPurchasesFeedJoinSql(activeEpSubquery: SQL): SQL {
              'requestBody', CASE WHEN w.raw_response_meta ? 'requestBody' THEN
                CASE WHEN jsonb_typeof(w.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(w.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
              'requestQuery', w.raw_response_meta->'requestQuery')) END AS request_meta,
-           w.amount_units, w.payer,
+           w.amount_units, w.payer, w.pay_to, w.asset,
            (w.auth_nonce IS NOT NULL AND w.auth_nonce <> '') AS has_nonce,
            CASE WHEN w.status = 'settle_failed' AND w.tx_hash IS NOT NULL THEN
              (w.settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (w.tx_hash, lower(w.tx_hash))))
@@ -101,10 +101,10 @@ export function l1WindowPurchasesFeedJoinSql(activeEpSubquery: SQL): SQL {
            w.receipt_error_reason, w.example_input
     FROM (
       SELECT pu.endpoint_id, pu.attempted_at, pu.status, pu.latency_ms, pu.http_status_paid, pu.payload_non_empty,
-             pu.l2_schema, pu.tx_hash, pu.network, pu.amount_units, pu.payer, pu.auth_nonce,
+             pu.l2_schema, pu.tx_hash, pu.network, pu.amount_units, pu.payer, pu.pay_to, pu.asset, pu.auth_nonce,
              pu.settlement_verified, pu.raw_response_meta, pu.raw_settlement,
              ${feedL1WindowClassifyColumnsSql},
-             row_number() OVER (PARTITION BY pu.endpoint_id ORDER BY pu.attempted_at DESC) AS rn
+             row_number() OVER (PARTITION BY pu.endpoint_id ORDER BY pu.attempted_at DESC, pu.id DESC) AS rn
       FROM x402_l1_purchases pu
       INNER JOIN (${activeEpSubquery}) ep ON ep.id = pu.endpoint_id
       INNER JOIN x402_endpoints e ON e.id = pu.endpoint_id

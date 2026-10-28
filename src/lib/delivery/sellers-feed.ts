@@ -13,7 +13,7 @@ import {
 } from "@/lib/decision/l1-window-purchases";
 import { toCaip2, networkFilterIds } from "@/lib/observatory/chains";
 import { buildRecordSides } from "@/lib/sellers/board";
-import { listingDeclaredSchemaMinSql, readSellerFailureDays, toRowFacts } from "@/lib/sellers/reader";
+import { listingDeclaredSchemaMinSql, toRowFacts } from "@/lib/sellers/reader";
 import { feedListedIn, type FeedListedIn } from "./listed-in";
 import { feedPriceUsd } from "./feed-price";
 import type { DeliverySellersQuery } from "./sellers-feed-query";
@@ -104,9 +104,24 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v !== "" ? v : null;
 }
 
-/** 絞り込みなしの全量（DB 1 本 + readRecordSidesBatch）。 */
-export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryFeedSnapshot> {
-  const asOf = new Date().toISOString();
+export type DeliveryFeedSnapshotTiming = {
+  windowSqlMs: number;
+  assembleMs: number;
+};
+
+let lastSnapshotTiming: DeliveryFeedSnapshotTiming | null = null;
+
+export function deliveryFeedSnapshotTiming(): DeliveryFeedSnapshotTiming | null {
+  return lastSnapshotTiming;
+}
+
+type FeedEndpointBucket = {
+  meta: Record<string, unknown>;
+  purchases: Record<string, unknown>[];
+  facts: ReturnType<typeof toRowFacts>[];
+};
+
+async function loadFeedWindowRows(db: Db): Promise<{ flat: Record<string, unknown>[]; windowSqlMs: number }> {
   const activeEp = sql`
     SELECT e.id, e.resource_url, coalesce(e.method, 'GET') AS method, e.network, e.price_amount, e.price_asset, e.source,
            e.quality_payers_30d, ${listingDeclaredSchemaMinSql} AS declared_schema_min, e.declared_input, e.id::text AS endpoint_id
@@ -119,6 +134,7 @@ export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryF
           AND pu.status IN (${SIGNED_LIST})
       )
   `;
+  const t0 = performance.now();
   const raw = await db.execute(sql`
     WITH active AS (${activeEp}),
     purchases AS (${l1WindowPurchasesFeedJoinSql(sql`SELECT id FROM active`)})
@@ -126,36 +142,77 @@ export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryF
            a.declared_schema_min, a.declared_input, a.endpoint_id,
            p.attempted_at, p.status, p.latency_ms, p.http_status_paid, p.payload_non_empty, p.l2_schema, p.tx_hash,
            p.network AS purchase_network, p.attempted_at_utc, p.content_type, p.l2_detail, p.body_head, p.request_meta,
-           p.amount_units, p.payer, p.has_nonce, p.settlement_confirmed
+           p.amount_units, p.payer, p.pay_to, p.asset, p.has_nonce, p.settlement_confirmed,
+           p.method AS row_method, p.schema_min, p.declared_input AS row_declared_input, p.meta_min, p.unpaid_status, p.selection, p.settlement_verify_reason,
+           p.settlement_verified_at, p.listing_max_timeout, p.declares_headers, p.path_template, p.challenge_min,
+           p.declared_amount, p.declared_pay_to, p.paid_content_type, p.receipt_present, p.receipt_success,
+           p.receipt_error_reason, p.example_input
     FROM active a
     LEFT JOIN purchases p ON p.endpoint_id = a.endpoint_id
-    ORDER BY a.resource_url, a.method, a.network NULLS FIRST, p.attempted_at DESC NULLS LAST
+    ORDER BY a.resource_url, a.method, a.network NULLS FIRST, p.attempted_at DESC NULLS LAST, p.tx_hash NULLS LAST
   `);
+  return { flat: rowsOf(raw), windowSqlMs: performance.now() - t0 };
+}
 
-  const flat = rowsOf(raw);
-  const epIds = [...new Set(flat.map((r) => String(r.endpoint_id)))];
-  const failureDays = await readSellerFailureDays(db, epIds);
-
-  const byEp = new Map<string, { meta: Record<string, unknown>; purchases: Record<string, unknown>[]; facts: ReturnType<typeof toRowFacts>[] }>();
+function groupFeedWindowRows(flat: Record<string, unknown>[]): {
+  byEp: Map<string, FeedEndpointBucket>;
+  sidesMap: Map<string, ReturnType<typeof buildRecordSides>>;
+} {
+  const byEp = new Map<string, FeedEndpointBucket>();
   for (const r of flat) {
     const id = String(r.endpoint_id);
     if (!byEp.has(id)) {
-      byEp.set(id, {
-        meta: r,
-        purchases: [],
-        facts: [],
-      });
+      byEp.set(id, { meta: r, purchases: [], facts: [] });
     }
     if (r.attempted_at != null && r.attempted_at !== "") {
       byEp.get(id)!.purchases.push(r);
-      byEp.get(id)!.facts.push(toRowFacts(r));
+      byEp.get(id)!.facts.push(
+        toRowFacts({
+          ...r,
+          method: r.row_method ?? r.method,
+          declared_input: r.row_declared_input ?? r.declared_input,
+          has_auth_nonce: r.has_nonce ?? r.has_auth_nonce,
+        }),
+      );
     }
   }
-
   const sidesMap = new Map<string, ReturnType<typeof buildRecordSides>>();
   for (const [id, { facts }] of byEp) {
-    sidesMap.set(id, buildRecordSides(facts, Date.now(), failureDays));
+    sidesMap.set(id, buildRecordSides(facts));
   }
+  return { byEp, sidesMap };
+}
+
+/** pg テスト: 窓 SQL 経路の PurchaseInput（sellerView 付き）。 */
+export async function deliveryFeedWindowPurchaseInputs(db: Db): Promise<Map<string, PurchaseInput[]>> {
+  const { flat } = await loadFeedWindowRows(db);
+  const { byEp, sidesMap } = groupFeedWindowRows(flat);
+  const out = new Map<string, PurchaseInput[]>();
+  for (const [id, { purchases }] of byEp) {
+    const sides = sidesMap.get(id)!;
+    out.set(
+      id,
+      purchases.map((r) => purchaseInputFromL1WindowRow(r, sides)),
+    );
+  }
+  return out;
+}
+
+/** pg テスト: 窓 SQL 行から buildRecordSides した分類表。 */
+export async function deliveryFeedWindowRecordSides(db: Db, endpointId: string): Promise<ReturnType<typeof buildRecordSides>> {
+  const { flat } = await loadFeedWindowRows(db);
+  const { sidesMap } = groupFeedWindowRows(flat);
+  return sidesMap.get(endpointId) ?? buildRecordSides([]);
+}
+
+/** 絞り込みなしの全量（窓 SQL 1 本 + 行ごとの buildRecordSides）。 */
+export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryFeedSnapshot> {
+  const asOf = new Date().toISOString();
+  const { flat, windowSqlMs } = await loadFeedWindowRows(db);
+  const tAssemble = performance.now();
+  const { byEp, sidesMap } = groupFeedWindowRows(flat);
+  const assembleMs = performance.now() - tAssemble;
+  lastSnapshotTiming = { windowSqlMs, assembleMs };
 
   const rows: DeliveryFeedRow[] = [];
   const entries = [...byEp.values()];

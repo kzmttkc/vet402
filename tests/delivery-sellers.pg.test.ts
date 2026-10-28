@@ -25,7 +25,7 @@ if (!TEST_DB) {
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
     const { canonicalUrl, endpointHash, resourceId } = await import("@/lib/ids/canonical");
-    const { readDeliverySellersFeed } = await import("@/lib/delivery/sellers-feed");
+    const { readDeliverySellersFeed, readDeliverySellersFeedSnapshot } = await import("@/lib/delivery/sellers-feed");
     const { CIRCLE_DISCOVERY_SOURCE } = await import("@/lib/observatory/listing-sources");
     const { CATALOG_SOURCE } = await import("@/lib/observatory/catalog-source");
     const db = getDb()!;
@@ -201,24 +201,25 @@ if (!TEST_DB) {
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases`);
     const t0 = performance.now();
     await db.execute(sql`
-      INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, canonical_url, last_seen_at)
+      INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, canonical_url, last_seen_at, declared_schema)
       SELECT 'host' || n || '.example/r' || n,
              'https://scale-host' || n || '.example/' || repeat('p', 60 + (n % 61)),
              CASE WHEN n % 3 = 0 THEN ${CIRCLE_DISCOVERY_SOURCE} WHEN n % 3 = 1 THEN 'mpp_directory' ELSE ${CATALOG_SOURCE} END,
-             'GET',
+             CASE WHEN n % 2 = 0 THEN 'POST' ELSE 'GET' END,
              'eip155:8453',
              ${SECRETS.pay_to},
              (1000 * (1 + n % 50))::text,
              '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
              'active',
              'https://scale-host' || n || '.example/' || repeat('p', 60 + (n % 61)),
-             now()
+             now(),
+             '{"properties":{"input":{"type":"object"}}}'::jsonb
       FROM generate_series(1, ${FEED_SCALE_EPS}) n`);
     await db.execute(sql`
       WITH ids AS (
         SELECT id, row_number() OVER (ORDER BY id) AS rn FROM x402_endpoints ORDER BY id LIMIT ${FEED_SCALE_EPS}
       )
-      INSERT INTO x402_l1_purchases (endpoint_id, attempted_at, status, network, http_status_paid, payload_non_empty, spent_units, amount_units, payer, pay_to, tx_hash)
+      INSERT INTO x402_l1_purchases (endpoint_id, attempted_at, status, network, http_status_paid, payload_non_empty, spent_units, amount_units, payer, pay_to, tx_hash, raw_response_meta, raw_settlement)
       SELECT ids.id,
              CASE WHEN p.i < 10
                THEN now() - (p.i + 1) * interval '1 day'
@@ -231,11 +232,14 @@ if (!TEST_DB) {
              '1000', '1000',
              ${SECRETS.payer},
              ${SECRETS.pay_to},
-             ('0x' || lpad(to_hex((ids.rn - 1) * ${PURCHASES_PER_EP} + p.i + 1), 64, '0'))::text
+             ('0x' || lpad(to_hex((ids.rn - 1) * ${PURCHASES_PER_EP} + p.i + 1), 64, '0'))::text,
+             jsonb_build_object('status', '200', 'contentType', 'application/json', 'requestBody', 'declared'),
+             '{"success": true}'::jsonb
       FROM ids
       CROSS JOIN generate_series(0, ${PURCHASES_PER_EP - 1}) AS p(i)`);
-    await db.execute(sql`ANALYZE x402_endpoints`);
-    await db.execute(sql`ANALYZE x402_l1_purchases`);
+    // 本番の表は autovacuum 済み。seed 直後の hint bit 書き込みで1回目が膨らまないよう、同じ状態にしてから測る。
+    await db.execute(sql`VACUUM ANALYZE x402_endpoints`);
+    await db.execute(sql`VACUUM ANALYZE x402_l1_purchases`);
     const seedMs = performance.now() - t0;
 
     const explain = await db.execute(sql`
@@ -252,22 +256,35 @@ if (!TEST_DB) {
     const explainText = JSON.stringify(explain);
     console.log("scale_explain_snip", explainText.slice(0, 400));
 
+    const { buildDeliveryFeedPayload, deliveryFeedSnapshotTiming } = await import("@/lib/delivery/sellers-feed");
+    // 1回目（キャッシュの外れ・Neon の休止明けに当たる経路）も測って止める。
+    const c0 = performance.now();
+    await readDeliverySellersFeedSnapshot(db);
+    const coldMs = performance.now() - c0;
+    console.log("scale_cold_snapshot_ms", coldMs);
+    assert.ok(coldMs < 30_000, `cold snapshot took ${coldMs}ms`);
+
     const heapBefore = process.memoryUsage().heapUsed;
     const q0 = performance.now();
-    const scale = await readDeliverySellersFeed(db, { network: null, minDelivered: null, listedIn: null, cursor: null });
-    const queryMs = performance.now() - q0;
+    const snap = await readDeliverySellersFeedSnapshot(db);
+    const snapshotMs = performance.now() - q0;
+    const timing = deliveryFeedSnapshotTiming();
+    assert.ok(timing, "snapshot timing");
+    console.log("scale_window_sql_ms", timing!.windowSqlMs);
+    console.log("scale_assemble_ms", timing!.assembleMs);
+    const scale = buildDeliveryFeedPayload(snap, { network: null, minDelivered: null, listedIn: null, cursor: null });
     const heapAfter = process.memoryUsage().heapUsed;
     const bytes = Buffer.byteLength(JSON.stringify(scale), "utf8");
     const { DELIVERY_FEED_PAGE_SIZE } = await import("@/lib/delivery/sellers-feed");
 
     console.log("scale_seed_ms", seedMs);
-    console.log("scale_query_ms", queryMs);
+    console.log("scale_snapshot_ms", snapshotMs);
     console.log("scale_heap_used", heapAfter - heapBefore);
     console.log("scale_bytes", bytes);
     console.log("scale_total_rows", scale.total_rows);
     console.log("scale_row_count", scale.row_count);
 
-    assert.ok(queryMs < 5_000, `query took ${queryMs}ms`);
+    assert.ok(snapshotMs < 5_000, `snapshot took ${snapshotMs}ms (window ${timing!.windowSqlMs}ms assemble ${timing!.assembleMs}ms)`);
     assert.equal(scale.total_rows, FEED_SCALE_EPS);
     assert.equal(scale.row_count, DELIVERY_FEED_PAGE_SIZE);
     assert.ok(scale.next_cursor);
@@ -369,5 +386,57 @@ if (!TEST_DB) {
       cursor = next.next_cursor;
     }
     assert.equal(walked.length, 5);
+  });
+
+  test("export busy returns stale snapshot with old as_of", async () => {
+    const { getDb } = await import("@/lib/db/client");
+    const { sql } = await import("drizzle-orm");
+    const schema = await import("@/lib/db/schema");
+    const { acquireExportSlot } = await import("@/lib/api/export-guard");
+    const {
+      getDeliveryFeedSnapshotCached,
+      resetDeliveryFeedCacheForTest,
+      seedDeliveryFeedCacheForTest,
+      DELIVERY_FEED_CACHE_MS,
+    } = await import("@/lib/delivery/sellers-feed-cache");
+    const db = getDb()!;
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, ip_rate_limits`);
+    resetDeliveryFeedCacheForTest();
+    const [ep] = await db
+      .insert(schema.x402Endpoints)
+      .values({
+        resourceKey: "stale-feed.example/",
+        resourceUrl: "https://stale-feed.example/",
+        canonicalUrl: "https://stale-feed.example/",
+        network: "eip155:8453",
+        method: "GET",
+        payTo: "0xcccccccccccccccccccccccccccccccccccccccc",
+        status: "active",
+      })
+      .returning();
+    await db.insert(schema.x402L1Purchases).values({
+      endpointId: ep.id,
+      attemptedAt: new Date(),
+      status: "settled",
+      network: "eip155:8453",
+      httpStatusPaid: 200,
+      payloadNonEmpty: true,
+      spentUnits: "1000",
+      amountUnits: "1000",
+    });
+
+    const first = await getDeliveryFeedSnapshotCached(db);
+    seedDeliveryFeedCacheForTest(first, DELIVERY_FEED_CACHE_MS + 5_000);
+
+    const slot = await acquireExportSlot();
+    assert.ok(slot.ok);
+    try {
+      const second = await getDeliveryFeedSnapshotCached(db);
+      assert.equal(second.as_of, first.as_of);
+      assert.equal(second.rows.length, first.rows.length);
+    } finally {
+      await slot.release();
+      resetDeliveryFeedCacheForTest();
+    }
   });
 }

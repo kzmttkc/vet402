@@ -38,6 +38,12 @@ export function resetDeliveryFeedCacheForTest(): void {
   exportSlotAcquireCount = 0;
 }
 
+/** テスト: 期限切れキャッシュを載せる。 */
+export function seedDeliveryFeedCacheForTest(data: DeliveryFeedSnapshot, cachedAgeMs: number): void {
+  cached = { at: Date.now() - cachedAgeMs, data };
+  inflight = null;
+}
+
 async function loadSnapshot(db: Db): Promise<DeliveryFeedSnapshot> {
   const slot = await acquireExportSlot();
   exportSlotAcquireCount++;
@@ -55,9 +61,14 @@ export async function getDeliveryFeedSnapshotCached(db: Db): Promise<DeliveryFee
   if (cached && now - cached.at < DELIVERY_FEED_CACHE_MS) return cached.data;
   if (inflight) return inflight;
   inflight = (async () => {
-    const data = await loadSnapshot(db);
-    cached = { at: Date.now(), data };
-    return data;
+    try {
+      const data = await loadSnapshot(db);
+      cached = { at: Date.now(), data };
+      return data;
+    } catch (error) {
+      if (error instanceof DeliveryFeedExportBusy && cached) return cached.data;
+      throw error;
+    }
   })().finally(() => {
     inflight = null;
   });

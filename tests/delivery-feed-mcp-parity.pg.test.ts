@@ -222,7 +222,7 @@ if (!TEST_DB) {
       await compare(url);
     });
 
-    await t.test("(d) meta fixture: readRecordSidesBatch rows match readRecordSides and feed vs checkSeller", async () => {
+    await t.test("(d) meta fixture: feed window sides match readRecordSides and feed vs checkSeller", async () => {
       await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases`);
       const url = "https://parity-meta.example/api";
       const ep = await mkEp(url);
@@ -257,12 +257,20 @@ if (!TEST_DB) {
         spentUnits: "7000",
         asset: ASSET,
       });
-      const { readRecordSides, readRecordSidesBatch } = await import("@/lib/sellers/reader");
-      const batch = (await readRecordSidesBatch(db, [ep.id])).get(ep.id)!;
+      const { readRecordSides } = await import("@/lib/sellers/reader");
+      const { deliveryFeedWindowRecordSides } = await import("@/lib/delivery/sellers-feed");
+      const { recordRowKey } = await import("@/lib/sellers/board");
+      const { fetchL1WindowPurchaseRows } = await import("@/lib/decision/l1-window-purchases");
+      const feedSides = await deliveryFeedWindowRecordSides(db, ep.id);
       const single = await readRecordSides(db, ep.id);
-      assert.equal(batch.rows.size, single.rows.size);
-      for (const [k, v] of batch.rows) {
-        assert.deepEqual(v, single.rows.get(k), k);
+      const windowRows = await fetchL1WindowPurchaseRows(db, ep.id);
+      for (const r of windowRows) {
+        const key = recordRowKey(
+          String(r.attempted_at_utc),
+          String(r.status),
+          r.tx_hash === null || r.tx_hash === undefined ? null : String(r.tx_hash),
+        );
+        assert.deepEqual(feedSides.rows.get(key), single.rows.get(key), key);
       }
       await compare(url);
     });
