@@ -469,7 +469,7 @@ export function gatewayCandidateInclusionSql(): SQL {
   );
 }
 
-/** テスト用: Gateway レーンの核（existsGateway・他レール不可）だけ。POST 本文の形は載せない。 */
+/** テスト用の対照: POST 本文の形の条件を外した核。fixture の POST+empty が条件なしなら選ばれることを示し、除外のテストが空振りでないことを保証する。本番の経路からは呼ばない。 */
 export function gatewayCandidateInclusionWithoutRequestShapeSql(): SQL {
   if (!isArcGatewayL1Enabled()) return sql`AND false`;
   return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()})`);
