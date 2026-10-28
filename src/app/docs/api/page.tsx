@@ -398,7 +398,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/delivery/sellers.json",
-    note: "Delivery feed — one row per active listing with at least one paid attempt in the last 30 days. Key-less, 30/min, cached up to 300 seconds. CC-BY-4.0. Filters: network (CAIP-2), min_delivered (0–100000), listed_in (bazaar | circle | mpp). See /docs/mcp#feed.",
+    note: "Delivery feed: one row per active listing with at least one signed purchase in the last 30 days. Key-less, 30/min, process cache 300 seconds. CC-BY-4.0. Filters: network, min_delivered (0 to 100000), listed_in (bazaar | circle | mpp), cursor. See /docs/mcp#feed.",
     response: `{
   "as_of": "2026-10-28T12:00:00Z",
   "window_days": 30,
@@ -406,6 +406,8 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   "license": "CC-BY-4.0",
   "license_url": "https://creativecommons.org/licenses/by/4.0/",
   "row_count": 1,
+  "total_rows": 1,
+  "next_cursor": null,
   "rows": [{
     "url": "https://api.example.com/v1/data",
     "method": "GET",
@@ -416,8 +418,8 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
     "paid_attempts_30d": 3,
     "delivered_30d": 2,
     "settled_not_delivered_30d": 0,
-    "last_attempt_at": "2026-10-27T00:00:00Z",
-    "last_delivered_at": "2026-10-26T00:00:00Z",
+    "last_attempt_at_30d": "2026-10-27T00:00:00Z",
+    "last_delivered_at_30d": "2026-10-26T00:00:00Z",
     "record_url": "https://vet402.com/observatory/e/00000000-0000-0000-0000-000000000001"
   }]
 }`,

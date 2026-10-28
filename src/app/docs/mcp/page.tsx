@@ -12,26 +12,27 @@ import {
   DELIVERY_FEED_LICENSE_URL,
   DELIVERY_FEED_METHOD_URL,
   DELIVERY_FEED_RATE_PER_MIN,
-  DELIVERY_FEED_WINDOW_DAYS,
 } from "@/lib/delivery/sellers-feed";
 import {
   MCP_DOCS_CONNECT_CURSOR,
   MCP_DOCS_CONTACT,
   MCP_DOCS_DELIVERED_ONE_LINER,
-  MCP_DOCS_GROK_BOT,
+  MCP_DOCS_FEED_FIELDS,
+  MCP_DOCS_FEED_FILTERS,
+  MCP_DOCS_FEED_INTRO,
   MCP_DOCS_INTRO,
   MCP_DOCS_PRIVACY,
-  MCP_DOCS_SETTLED_NOT_DELIVERED_FEED,
 } from "@/lib/docs/mcp-page-text";
+import {
+  MCP_DEFAULT_PER_MIN,
+  MCP_FIND_PER_MIN,
+  MCP_RATE_LIMIT_CODE,
+  MCP_SELLER_PER_MIN,
+} from "@/lib/mcp/public-limits";
 import { TOOL_TEXT } from "@/lib/mcp/text";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
-
-const MCP_RATE_LIMIT_CODE = -32029;
-const MCP_DEFAULT_PER_MIN = 120;
-const MCP_FIND_PER_MIN = 30;
-const MCP_SELLER_PER_MIN = 30;
 
 export const metadata: Metadata = pageMetadata({
   title: "Hosted MCP server",
@@ -50,20 +51,7 @@ const TOC: TocItem[] = [
   { href: "#contact", label: "Contact" },
 ];
 
-const FEED_FIELDS: { name: string; meaning: string }[] = [
-  { name: "url", meaning: "Listing URL (one row per x402_endpoints row)." },
-  { name: "method", meaning: "HTTP method of the listing." },
-  { name: "network", meaning: "CAIP-2 network id." },
-  { name: "price_usd", meaning: "Listed price in US dollars when the catalog stores USDC base units." },
-  { name: "listed_in", meaning: "Catalog source: bazaar, circle, or mpp." },
-  { name: "bazaar_payers_30d", meaning: "Bazaar quality payers in the last 30 days, or null outside Bazaar." },
-  { name: "paid_attempts_30d", meaning: "Paid attempts vet402 signed in the last 30 days." },
-  { name: "delivered_30d", meaning: "Delivered purchases in that window." },
-  { name: "settled_not_delivered_30d", meaning: MCP_DOCS_SETTLED_NOT_DELIVERED_FEED },
-  { name: "last_attempt_at", meaning: "Latest paid attempt timestamp (UTC ISO8601)." },
-  { name: "last_delivered_at", meaning: "Latest delivered attempt timestamp, if any." },
-  { name: "record_url", meaning: "Public observatory record for this listing." },
-];
+const FEED_FIELDS = MCP_DOCS_FEED_FIELDS;
 
 export default async function McpDocsPage() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
@@ -123,7 +111,6 @@ export default async function McpDocsPage() {
           <p className="text-[0.84375rem] text-brand">
             Any MCP client that speaks Streamable HTTP can use the same URL.
           </p>
-          <p className="text-[0.84375rem] text-brand">{MCP_DOCS_GROK_BOT}</p>
         </section>
 
         <section id="tools" className="scroll-mt-32 space-y-4">
@@ -174,14 +161,7 @@ export default async function McpDocsPage() {
 
         <section id="feed" className="scroll-mt-32 space-y-3">
           <h2 className="sec-head">Delivery feed</h2>
-          <p className="text-[0.84375rem] text-brand">
-            <code className="text-brand-deep">GET /api/v1/delivery/sellers.json</code> lists active listings where vet402 made at least one paid attempt in the last{" "}
-            {DELIVERY_FEED_WINDOW_DAYS} days. Rows sort by URL ascending. License: {DELIVERY_FEED_LICENSE} (
-            <Link href={DELIVERY_FEED_LICENSE_URL} className="doc-link">
-              {DELIVERY_FEED_LICENSE_URL}
-            </Link>
-            ).
-          </p>
+          <p className="text-[0.84375rem] text-brand">{MCP_DOCS_FEED_INTRO}</p>
           <TableScroll label="Delivery feed row fields">
             <table className="fact-table">
               <caption className="sr-only">Delivery feed columns</caption>
@@ -202,9 +182,11 @@ export default async function McpDocsPage() {
             </table>
           </TableScroll>
           <p className="text-[0.84375rem] text-brand">
-            Filters: <code className="text-brand-deep">network</code> (CAIP-2 id),{" "}
-            <code className="text-brand-deep">min_delivered</code> (integer 0 through 100000),{" "}
-            <code className="text-brand-deep">listed_in</code> (bazaar, circle, or mpp). Any other query parameter returns 400.
+            License: {DELIVERY_FEED_LICENSE} (
+            <Link href={DELIVERY_FEED_LICENSE_URL} className="doc-link">
+              {DELIVERY_FEED_LICENSE_URL}
+            </Link>
+            ). {MCP_DOCS_FEED_FILTERS}
           </p>
           <CodeBlock
             label="Example curl"

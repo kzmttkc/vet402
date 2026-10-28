@@ -1207,15 +1207,14 @@ paths:
     get:
       operationId: getDeliverySellersFeed
       tags: [Observatory]
-      summary: Delivery feed — one row per active listing vet402 paid in the last 30 days (JSON)
+      summary: "Delivery feed: one row per active listing vet402 paid in the last 30 days (JSON)"
       description: |
-        Key-less JSON feed of active listings with at least one paid attempt in
-        the last 30 days (same paid-attempt set as the observatory ledger).
-        Rows sort by URL. License CC-BY-4.0 (`x-vet402-license`, `Link`
-        rel=license and rel=describedby). Filters: `network` (CAIP-2),
-        `min_delivered` (0–100000), `listed_in` (`bazaar`, `circle`, `mpp`).
-        Any other query returns 400. 30 requests per minute per IP.
-        CDN cache up to 300 seconds.
+        Key-less JSON feed of active listings with at least one signed purchase attempt in
+        the last 30 days. Rows sort by url, method and network ascending. Up to 2000 rows
+        per page; use next_cursor to continue. License CC-BY-4.0 (`x-vet402-license`, `Link`
+        rel=license and rel=describedby). Filters: `network` (chain id vet402 recognizes),
+        `min_delivered` (0 to 100000), `listed_in` (`bazaar`, `circle`, `mpp`) and `cursor`.
+        Any other query returns 400. 30 requests per minute per IP. Process cache 300 seconds.
       security: []
       parameters:
         - in: query
@@ -1228,6 +1227,10 @@ paths:
         - in: query
           name: listed_in
           schema: { type: string, enum: [bazaar, circle, mpp] }
+        - in: query
+          name: cursor
+          schema: { type: string }
+          description: Continuation token from next_cursor on the previous page.
       responses:
         "200":
           description: Delivery feed envelope with `rows`
@@ -1235,14 +1238,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [as_of, window_days, method_url, license, license_url, row_count, rows]
+                required: [as_of, window_days, method_url, license, license_url, row_count, total_rows, next_cursor, rows]
                 properties:
                   as_of: { type: string, format: date-time }
                   window_days: { type: integer }
                   method_url: { type: string, format: uri }
                   license: { type: string }
                   license_url: { type: string, format: uri }
-                  row_count: { type: integer }
+                  row_count: { type: integer, description: Rows in this page. }
+                  total_rows: { type: integer, description: Rows after filters, all pages. }
+                  next_cursor: { type: string, nullable: true }
                   rows:
                     type: array
                     items:
@@ -1257,8 +1262,8 @@ paths:
                         - paid_attempts_30d
                         - delivered_30d
                         - settled_not_delivered_30d
-                        - last_attempt_at
-                        - last_delivered_at
+                        - last_attempt_at_30d
+                        - last_delivered_at_30d
                         - record_url
         "400":
           $ref: "#/components/responses/BadRequest"

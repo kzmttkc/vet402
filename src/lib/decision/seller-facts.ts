@@ -29,7 +29,6 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN, isDelivered, isDeliveryHttp, isInconclusive } from "@/lib/observatory/delivery";
 import { classifySellerRow, ONCE_SUFFIX, type Bucket, type MoneyMoved, type SellerRowFacts } from "@/lib/sellers/fix-modes";
-import { recordRowKey } from "@/lib/sellers/board";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
 import { declaredOutputOf, legacyL2SchemaOf } from "@/lib/observatory/l2-check";
@@ -40,6 +39,7 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { toIsoUtc } from "@/lib/util/iso-utc";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts, VerifiedTerms } from "./types";
+import { fetchL1WindowPurchaseRows, purchaseInputFromL1WindowRow } from "./l1-window-purchases";
 import type { L1Timeline } from "./rules";
 
 export type ProbeInput = {
@@ -168,14 +168,14 @@ export function notCountedReasonOf(v: SellerRowView, p: PurchaseInput): NotCount
  * お金が動いて届かなかった行（l1_paid_not_delivered の材料）。vet402 の側・判定保留（held_reason）は入れない。
  * このうち売り手の側（確定）の行だけが BLOCK の根拠になる（rules.ts L1_PAID_UNDELIVERED_BLOCK）。
  */
-export function isPaidUndelivered(v: SellerRowView): boolean {
+function isPaidUndelivered(v: SellerRowView): boolean {
   return v.money === "moved" && !v.delivered && v.bucket !== "vet402" && v.held === null;
 }
 
-/** check_x402_seller の delivery と同じ L1 件数（窓の中の purchases を渡す・新しい順）。 */
+/** check_x402_seller の delivery と同じ L1 件数（窓の中の purchases を渡す・新しい順・sellerView 必須）。 */
 export function l1McpDeliveryCounts(
   input: L1Input,
-  opts?: { lastAttemptAt?: string | null; now?: number },
+  now: number = Date.now(),
 ): {
   paid_attempts: number;
   delivered: number;
@@ -183,30 +183,18 @@ export function l1McpDeliveryCounts(
   last_delivered_at: string | null;
   last_attempt_at_in_window: string | null;
 } {
-  const now = opts?.now ?? Date.now();
-  const factsInput: SellerFactsInput = {
-    probes: [],
-    purchases: input.purchases,
-    settlements30d: { raw: 0, real: 0, test: 0, uniquePayersReal: 0 },
-    payees: [],
-    declaredSchema: input.declaredSchema ?? null,
-    method: input.method,
-    declaredInput: input.declaredInput,
-    lastAttemptAt: opts?.lastAttemptAt ?? null,
-    lastSignedAttemptAt: input.lastSignedAttemptAt,
-    lastDeliveredAt: input.lastDeliveredAt,
-  };
-  const facts = assembleSellerFacts(factsInput);
+  const signed = input.purchases.filter((p) => SIGNED_STATUSES.has(p.status));
+  const conclusiveSettled = signed.filter((p) => p.status === "settled" && !isInconclusive(p));
+  const delivered = conclusiveSettled.filter((p) => isDelivered(p)).length;
   const timeline = l1TimelineOf(input, now);
   let lastInWindow: string | null = null;
-  for (const p of input.purchases) {
-    if (!SIGNED_STATUSES.has(p.status)) continue;
+  for (const p of signed) {
     const iso = toIsoUtc(p.attemptedAt) ?? p.attemptedAt;
     if (lastInWindow === null || epoch(iso) > epoch(lastInWindow)) lastInWindow = iso;
   }
   return {
-    paid_attempts: facts.l1.n_attempts,
-    delivered: facts.l1.n_delivered,
+    paid_attempts: signed.length,
+    delivered,
     settled_not_delivered: timeline.n_paid_undelivered,
     last_delivered_at: timeline.last_delivered_at,
     last_attempt_at_in_window: lastInWindow,
@@ -591,19 +579,6 @@ export type SellerFactsLoaded = {
   };
 };
 
-/** raw_response_meta.l2（l1-runner の checkL2Detailed の出力）。形が違えば null。 */
-function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
-  if (!v || typeof v !== "object") return null;
-  const o = v as Record<string, unknown>;
-  if (typeof o.responseHash !== "string") return null;
-  return {
-    missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
-    declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
-    responseHash: o.responseHash,
-    reason: typeof o.reason === "string" ? o.reason : null,
-  };
-}
-
 /** Tempo（MPP）の CAIP-2。mpp-payer（支払いの依存）を判定の読み手へ持ち込まないため、値だけ置く。 */
 const TEMPO_MAINNET_NETWORK = "eip155:4217";
 
@@ -684,25 +659,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     payTo: r.metadata_consistent === false ? "changed" : "declared",
   }));
 
-  const purchaseRows = rowsOf<Record<string, unknown>>(
-    await db.execute(sql`
-      SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
-             to_char(attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
-             CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'contentType', 60) END AS content_type,
-             raw_response_meta->'l2' AS l2_detail,
-             CASE WHEN l2_schema = 'mismatch' AND jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'bodyHead', 500) END AS body_head,
-             CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
-               'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
-                 CASE WHEN jsonb_typeof(raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
-               'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta,
-             amount_units, payer, left(auth_nonce, 80) AS auth_nonce,
-             CASE WHEN status = 'settle_failed' AND tx_hash IS NOT NULL THEN
-               (settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (p.tx_hash, lower(p.tx_hash))))
-             END AS settlement_confirmed
-      FROM x402_l1_purchases p WHERE endpoint_id = ${endpointUuid}::uuid AND attempted_at > now() - interval '30 days'
-      ORDER BY attempted_at DESC LIMIT 200
-    `),
-  );
+  const purchaseRows = await fetchL1WindowPurchaseRows(db, endpointUuid);
   // 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（readRecordSides・記録頁と同じ 1 本）。
   // 読めなければ分類なし（お金が動いていない失敗を数える側＝WARN まで）で続ける。理由はログに残す。
   let sides: Awaited<ReturnType<typeof readRecordSides>> | null = null;
@@ -711,33 +668,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   } catch (error) {
     logServerErrorSafe("decision.seller_view", error);
   }
-  const viewOf = (r: Record<string, unknown>): SellerRowView | null => {
-    if (!sides || typeof r.attempted_at_utc !== "string") return null;
-    const shown = sides.rows.get(recordRowKey(r.attempted_at_utc, String(r.status), r.tx_hash === null ? null : String(r.tx_hash)));
-    return shown ? { bucket: shown.bucket, modeKey: shown.mode?.key ?? null, held: shown.held, money: shown.money, delivered: shown.bucket === "delivered" } : null;
-  };
-  const purchases = purchaseRows.map<PurchaseInput>((r) => ({
-    attemptedAt: String(r.attempted_at),
-    status: String(r.status),
-    latencyMs: r.latency_ms === null ? null : Number(r.latency_ms),
-    httpStatusPaid: r.http_status_paid === null ? null : Number(r.http_status_paid),
-    payloadNonEmpty: r.payload_non_empty === null ? null : Boolean(r.payload_non_empty),
-    l2Schema: r.l2_schema === null ? null : String(r.l2_schema),
-    txHash: r.tx_hash === null ? null : String(r.tx_hash),
-    network: r.network === null ? null : String(r.network),
-    l2Detail: parseL2Detail(r.l2_detail),
-    bodyHead: typeof r.body_head === "string" ? r.body_head : null,
-    requestMeta:
-      typeof r.request_meta === "object" && r.request_meta !== null && !Array.isArray(r.request_meta)
-        ? (r.request_meta as Record<string, unknown>)
-        : null,
-    amountUnits: r.amount_units === null || r.amount_units === undefined ? null : String(r.amount_units),
-    payer: r.payer === null || r.payer === undefined ? null : String(r.payer),
-    settlementConfirmed: r.settlement_confirmed === null || r.settlement_confirmed === undefined ? null : Boolean(r.settlement_confirmed),
-    sellerView: viewOf(r),
-    authNonce: typeof r.auth_nonce === "string" && r.auth_nonce !== "" ? r.auth_nonce : null,
-    contentType: typeof r.content_type === "string" && r.content_type !== "" ? r.content_type : null,
-  }));
+  const purchases = purchaseRows.map<PurchaseInput>((r) => purchaseInputFromL1WindowRow(r, sides));
 
   // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
   // status を問わないので、署名前に終わった行（no_eligible_accept / over_cap /

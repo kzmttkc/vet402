@@ -64,6 +64,8 @@ const SCHEMA_MIN = sql.raw(`CASE WHEN jsonb_typeof(e.declared_schema) = 'object'
     'body', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,body}') = 'object' THEN '{}'::jsonb END,
     'queryParams', CASE WHEN jsonb_typeof(e.declared_schema #> '{properties,input,properties,queryParams}') = 'object'
                         THEN jsonb_strip_nulls(jsonb_build_object('required', e.declared_schema #> '{properties,input,properties,queryParams,required}')) END))))) END`);
+/** 配達フィード・loadSellerFacts 以外が宣言の input 部分だけ読むときの SQL（reader.ts SCHEMA_MIN と同じ）。 */
+export const listingDeclaredSchemaMinSql = SCHEMA_MIN;
 // 2026-09-29 第2巡: requestBody は有無だけでなく値（declared / empty / none）も読む（(d) の根拠）。値は runner が書く短い語。
 // 2026-10-19: paidTimeoutMs は支払い付き要求で張った待ち（ミリ秒）。無い行は分類が 20 秒とみなす。
 const META_MIN = sql.raw(`CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
@@ -489,6 +491,30 @@ export async function readRecordSides(db: Db, endpointId: string): Promise<Recor
     WHERE pu.endpoint_id = ${endpointId}::uuid
     ORDER BY pu.attempted_at DESC, pu.id DESC`);
   return buildRecordSides(rowsOf(raw).map(toRowFacts));
+}
+
+/** 配達フィード用: 複数出品の readRecordSides を 1 本で読む（H2）。 */
+export async function readRecordSidesBatch(db: Db, endpointIds: readonly string[]): Promise<Map<string, RecordSides>> {
+  const out = new Map<string, RecordSides>();
+  const unique = [...new Set(endpointIds)];
+  if (unique.length === 0) return out;
+  const ids = JSON.stringify(unique);
+  const raw = await db.execute(sql`
+    SELECT ${ROW_COLUMNS}, pu.id::text AS row_id, pu.endpoint_id::text AS endpoint_id
+    FROM x402_l1_purchases pu JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE pu.endpoint_id IN (SELECT (jsonb_array_elements_text(${ids}::jsonb))::uuid)
+    ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`);
+  const byEp = new Map<string, ReturnType<typeof toRowFacts>[]>();
+  for (const r of rowsOf(raw)) {
+    const id = String(r.endpoint_id);
+    const list = byEp.get(id) ?? [];
+    list.push(toRowFacts(r));
+    byEp.set(id, list);
+  }
+  for (const id of unique) {
+    out.set(id, buildRecordSides(byEp.get(id) ?? []));
+  }
+  return out;
 }
 
 /**

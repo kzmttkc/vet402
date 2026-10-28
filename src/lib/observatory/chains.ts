@@ -355,6 +355,17 @@ function networkGroupKey(raw: string): string {
   return paymentChainLabel(canonicalNetworkId(raw)).toLowerCase();
 }
 
+/** 配達フィード等の `network` クエリが、観測所の絞り込みで認識される鎖か。 */
+export function isKnownNetworkFilterInput(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  const key = networkGroupKey(trimmed);
+  for (const spelling of NETWORK_FILTER_SPELLINGS) {
+    if (networkGroupKey(spelling) === key) return true;
+  }
+  return false;
+}
+
 /**
  * Network 列の title。絞り込みの鎖がカタログの network と違う行は、購入の network で入ったと書く。
  * カタログの network が絞り込みに入る行は、今までどおり台帳の id を title にする。

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { rejectUnknownQuery } from "@/lib/api/export-guard";
+import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { getDeliverySellersFeedCached } from "@/lib/delivery/cached";
@@ -19,7 +19,7 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const RL_LIMIT = DELIVERY_FEED_RATE_PER_MIN;
 const RL_WINDOW_MS = 60_000;
-const ALLOWED_QUERY = ["network", "min_delivered", "listed_in"] as const;
+const ALLOWED_QUERY = ["network", "min_delivered", "listed_in", "cursor"] as const;
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -48,6 +48,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 
+  const slot = await acquireExportSlot();
+  if (!slot.ok) return exportBusyResponse(slot, perCaller);
+
   try {
     const body = await getDeliverySellersFeedCached(parsed);
     const retrievedAt = body.as_of;
@@ -55,6 +58,7 @@ export async function GET(request: NextRequest) {
       headers: {
         ...perCaller,
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        "x-robots-tag": "noindex",
         "x-vet402-license": DELIVERY_FEED_LICENSE,
         "x-vet402-retrieved-at": retrievedAt,
         Link: [
@@ -66,5 +70,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logServerErrorSafe("delivery.sellers", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+  } finally {
+    await slot.release();
   }
 }
