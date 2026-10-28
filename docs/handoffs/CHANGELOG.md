@@ -18,7 +18,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **What**: The Arc Gateway lane (`arc_gateway`) no longer selects POST listings whose catalog `declared_input.body` is not the string `declared` (GET and undeclared method still qualify). The same rule is in `gatewayCandidateInclusionSql` and `laneNetworkPrefilterSql`. Active rows matching Gateway-only + POST + unknown catalog body are counted in `summary.gatewayPostBodyUnknownActive` (`number | null`; null when the count query fails or the lane is not run). After a live 402 is read, Gateway + POST without a declared body in the challenge is skipped before signing (`gatewayPostBodyUnknownSignSkipped`; no ledger row). Count SQL uses `coalesce(..., false)` on `declared_input.body` and the Gateway `@>` prefilter; it runs only when `!onlyEndpointId && laneSelectable arc_gateway`.
 - **Why**: On 2026-10-28, Gateway buys against api.aisa.one POST listings with catalog `{"body":"empty"}` paid with `{}` and returned empty payloads.
 - **Impact**: Gateway lane only. Other lanes unchanged. Public demo summary still omits the new counters. Tests: `tests/l1-gateway-post-body.pg.test.ts`, `tests/l1-gateway-post-body-count.test.ts`.
-- **Commits**: aef71528, (this entry).
+- **Commits**: aef71528, 050ba760.
 
 ## 2026-10-28 Delivery feed, /docs/mcp, and MCP registry auth file
 
