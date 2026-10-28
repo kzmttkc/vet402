@@ -107,7 +107,8 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
         ) : (
           <>
             <p className="doc-p">
-              Delivered counts settled purchases whose paid request answered 2xx. The row is <code>l1.byChain</code> for{" "}
+              Delivered counts settled purchases whose paid request answered HTTP 2xx other than 202 Accepted with a
+              non-empty body. The row is <code>l1.byChain</code> for{" "}
               {chain.publicName}. CAIP-2 {chain.caip2}.
             </p>
             <dl className="mt-4 grid gap-4 sm:grid-cols-3">

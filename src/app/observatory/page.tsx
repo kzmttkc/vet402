@@ -357,7 +357,8 @@ export default async function ObservatoryPage({
                     L1 delivered ·<br /> settled / attempts
                     <span className="sr-only">
                       {" "}
-                      (delivered: a settled purchase whose paid request answered 2xx; settled: the transfer re-read
+                      (delivered: a settled purchase whose paid request answered HTTP 2xx other than 202 Accepted with a
+                      non-empty body; settled: the transfer re-read
                       on-chain; attempts: paid attempts)
                     </span>
                   </th>
@@ -452,7 +453,8 @@ export default async function ObservatoryPage({
             row that has not been probed shows no probe time. The L0 cell is the payment-wall
             measurement alone. The L1 cell counts real purchases whose transfer vet402 re-read
             on-chain (settled / paid attempts). The transaction named by the seller&apos;s receipt, or found by vet402&apos;s own index when the seller returned none, is what that count places above the count that
-            also returned a 2xx response (delivered), with every transaction listed on the
+            also returned a deliverable <code>2xx</code> response (delivered: other than{" "}
+            <code>202 Accepted</code> with a non-empty body), with every transaction listed on the
             endpoint&apos;s page. The
             two are never mixed.{" "}
             <strong>pass / fail / unverified / withdrawn</strong> are defined measurements, not opinions.
@@ -476,7 +478,7 @@ export default async function ObservatoryPage({
           <strong>L1</strong> is shown as <code>delivered · settled / attempts</code> for that endpoint;{" "}
           <code>—</code> means no purchase was attempted. <strong>settled</strong> is the transfer vet402
           re-read on-chain; <strong>delivered</strong> is a settled attempt whose paid request also
-          answered <code>2xx</code>. A paid attempt that answered <code>4xx</code> — settled, or
+          answered HTTP <code>2xx</code> other than <code>202 Accepted</code> with a non-empty body. A paid attempt that answered <code>4xx</code> — settled, or
           refused with no settlement receipt — is published as <code>inconclusive</code> and is not
           counted against the seller: vet402 buys with no API key of the seller&apos;s and sends a
           POST body only when the seller declares one, so a <code>4xx</code> can be vet402&apos;s own

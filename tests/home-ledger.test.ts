@@ -101,7 +101,7 @@ test("The public ledger prints the two counts from the read, and the date is the
   assert.ok(html.includes("The public ledger"));
   assert.ok(html.includes("Paid attempts that settled"));
   assert.ok(html.includes(">4,210<") && html.includes(" of 5,321"));
-  assert.ok(html.includes("3,987 of the settled purchases also returned a 2xx answer."));
+  assert.ok(html.includes("3,987 of the settled purchases also returned a deliverable HTTP 2xx answer."));
   assert.ok(html.includes("Latest L0 verdict on listed endpoints"));
   assert.ok(html.includes(">12,345<") && html.includes(" pass of 20,086 listed"));
   assert.ok(html.includes("7,741 listed endpoints do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed."));
@@ -124,7 +124,7 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   const rows = [...html.matchAll(/<tr><td title="([^"]*)">([\s\S]*?)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
     (m) => [m[1], m[2].replace(/<[^>]+>/g, "").trim(), m[3], m[4], m[5], m[6]],
   );
-  assert.ok(html.includes('aria-label="3,300 of 3,500 settled on Base answered 2xx"'));
+  assert.ok(html.includes('aria-label="3,300 of 3,500 settled on Base counted as delivered"'));
   // The new column is settled − delivered for that chain. The fixture's counts are unchanged.
   assert.deepEqual(rows, [
     ["Base", "Base", "USDC", "3,500", "3,300", "200"],

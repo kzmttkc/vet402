@@ -85,14 +85,14 @@ export function HomeIntro({
             id="ledger-share"
             part={ledger.delivered}
             whole={ledger.settled}
-            label={`${fmt(ledger.delivered)} of ${fmt(ledger.settled)} settled purchases answered 2xx`}
+            label={`${fmt(ledger.delivered)} of ${fmt(ledger.settled)} settled purchases counted as delivered`}
           />
           <p className="doc-note mt-4 max-w-[96ch]">
             Whole ledger, read{" "}
             <time dateTime={readAt}>
               {ledger.readDate} {ledger.readTime} UTC
             </time>
-            : {fmt(ledger.attempts)} paid attempts, {fmt(ledger.settled)} settled, {fmt(ledger.delivered)} answered 2xx.
+            : {fmt(ledger.attempts)} paid attempts, {fmt(ledger.settled)} settled, {fmt(ledger.delivered)} delivered.
             {share}
             {settled4xx !== null
               ? ` ${fmt(settled4xx)} answered 4xx, held as inconclusive because a 4xx can come from the shape of vet402's request.`

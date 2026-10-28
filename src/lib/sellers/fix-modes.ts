@@ -1176,7 +1176,7 @@ export const STATUS_GLOSS: Readonly<Record<string, string>> = {
   settled: "vet402 re-read the transfer on-chain in that chain's pinned settlement asset",
   settle_claimed: "the seller returned a receipt that vet402 has not re-read on-chain yet",
   settle_failed: "vet402 signed a payment and got no settlement receipt back",
-  delivered_no_receipt: "the paid request answered 2xx without a settlement receipt",
+  delivered_no_receipt: "the paid request answered HTTP 2xx other than 202 Accepted with a non-empty body without a settlement receipt",
   settle_claim_refuted: `the transaction in the receipt did not show this payment on-chain, or was not found there within ${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} days`,
   settle_claimed_unverifiable: "the receipt named a transaction id that is not valid for the chain",
   no_402: "the unpaid request did not get a 402, so nothing was paid",

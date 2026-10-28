@@ -1041,7 +1041,7 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_settled_minus_delivered_is_published
     surface: src/app/observatory/state/page.tsx
-    quote: "Settled but the paid response was neither"
+    quote: "Settled but not delivered and not"
     means: "金は動いたが 2xx も 4xx も返らなかった件数を、自社に不利でも独立の行として出す（2026-09-05: 4xx は inconclusive として別行になった）"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1063,6 +1063,14 @@ claims:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.delivered >= 0"
     verified_at: 2026-09-04
+  - id: delivered_register_intro_deliverable_2xx
+    surface: src/app/observatory/page.tsx
+    quote: "also returned a deliverable"
+    means: "登録簿の導入段落で delivered を 202 Accepted と空の 2xx 本文を除く 2xx と定義する"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.delivered >= 0"
+    verified_at: 2026-10-29
   - id: audit_e_priority_sellers_are_disclosed
     surface: src/app/observatory/methodology/page.tsx
     quote: "The priority list, and why it exists."
@@ -1966,7 +1974,7 @@ claims:
     verified_at: 2026-09-28
   - id: sellers_delivered_definition
     surface: src/components/site/sellers/SellersViews.tsx
-    quote: "means vet402 re-read the transfer on-chain in that chain&apos;s pinned settlement asset and the paid request answered 2xx"
+    quote: "means vet402 re-read the transfer on-chain in that chain&apos;s pinned settlement asset and the paid request counted as delivered"
     means: "delivered は settled（そのチェーンの固定資産で転送を読み直した）かつ有料の要求が 2xx。delivery.ts の isDelivered と同じ"
     check: null
     why_unverifiable: "定義の宣言。src/lib/observatory/delivery.ts の isDelivered が正典で、tests/sellers-fix-modes.test.ts が分類の delivered をそれに揃える"

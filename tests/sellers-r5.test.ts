@@ -144,7 +144,7 @@ test("2: 記録頁の noindex と sitemap の除外は、届かなかった購�
   const reader = readFileSync(join(ROOT, "src/lib/sellers/reader.ts"), "utf8");
   const fn = reader.slice(reader.indexOf("export async function readEndpointsWithUndeliveredL1"));
   // 2026-09-29 監査 7 周目: 届いたの述語は delivery.ts isDelivered と同じ（202・空の本文を除く）。HTTP が NULL の行は届いていない側。
-  assert.match(fn, /coalesce\(pu\.http_status_paid BETWEEN \$\{DELIVERED_HTTP_MIN\} AND \$\{DELIVERED_HTTP_MAX\}\s+AND pu\.http_status_paid <> \$\{ACCEPTED_NOT_DONE_HTTP\} AND pu\.payload_non_empty IS NOT FALSE, false\)/, "HTTP が NULL の行を届いた側に落とさない");
+  assert.match(fn, /NOT \$\{sql\.raw\(deliveredPredicate\("pu"\)\)\}/, "HTTP が NULL の行を届いた側に落とさない");
 });
 
 test("3: 冒頭の要約は売り手について言える直近の結果が主（最新が vet402 の側でも、その前の delivered を数える）", () => {

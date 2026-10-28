@@ -66,10 +66,10 @@ test("SQL 述語も isDelivered と同じく 202 と本文が空と記録され�
   assert.equal(isDelivered({ status: "settled", httpStatusPaid: 200, payloadNonEmpty: null }), true);
 });
 
-test("別名なしの述語は列名だけを使う（同じ表を FROM 直下で数えるとき用）", () => {
-  const p = deliveredPredicate();
-  assert.ok(p.includes(`status = 'settled'`), p);
-  assert.ok(!p.includes("."), p);
+test("SQL 述語は括弧で包まれ、deliveredPredicate が seller-facts の唯一の正典", () => {
+  const p = deliveredPredicate("p");
+  assert.ok(p.startsWith("(") && p.endsWith(")"), p);
+  assert.equal(deliveredPredicate(), deliveredPredicate(""));
 });
 
 test("述語に使える別名は識別子だけ（式を渡して SQL を伸ばせない）", () => {

@@ -182,7 +182,7 @@ export default async function ObservatoryStatePage() {
       "L1 settled with on-chain receipt",
       "L1 settled (nonce-bound)",
       "L1 settled (amount + payee)",
-      "L1 delivered (settled and a 2xx response)",
+      "L1 delivered (settled and a 2xx response other than 202 Accepted with a non-empty body)",
     ],
     keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
     retrievedAt: stats.readAt,
@@ -580,7 +580,8 @@ export default async function ObservatoryStatePage() {
                     本番実測では settled のうち 120 件が非 2xx だった。 */}
                 <tr>
                   <td className="text-brand">
-                    Delivered: settled and the paid request answered <code>2xx</code>
+                    Delivered: settled and the paid request answered <code>2xx</code> other than{" "}
+                    <code>202 Accepted</code> with a non-empty body
                   </td>
                   <td className="num">{stats.l1.delivered.toLocaleString()}</td>
                   {/* 2026-09-29 監査 5 周目: 「45.2% of attempts」だけだと、分母に保留（inconclusive）と照合待ちが
@@ -649,8 +650,8 @@ export default async function ObservatoryStatePage() {
                 </tr>
                 <tr>
                   <td className="text-brand">
-                    Settled but the paid response was neither <code>2xx</code> nor{" "}
-                    <code>4xx</code> (a <code>5xx</code>, or no status on record) — not a request we
+                    Settled but not delivered and not <code>4xx</code> (a <code>5xx</code>,{" "}
+                    <code>202 Accepted</code>, an empty <code>2xx</code> body, or no status on record) — not a request we
                     could have malformed
                   </td>
                   <td className="num">

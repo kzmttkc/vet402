@@ -37,7 +37,7 @@ import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
-import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
+import { deliveredPredicate } from "@/lib/observatory/delivery";
 import {
   MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
   NONSETTLED_PAID_ATTEMPT_STATUSES,
@@ -534,9 +534,7 @@ export async function readEndpointsWithUndeliveredL1(db: Db): Promise<Set<string
   const raw = await db.execute(sql`
     SELECT DISTINCT pu.endpoint_id::text AS endpoint_id
     FROM x402_l1_purchases pu
-    WHERE NOT (pu.status = 'settled'
-               AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}
-                            AND pu.http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND pu.payload_non_empty IS NOT FALSE, false))`);
+    WHERE NOT ${sql.raw(deliveredPredicate("pu"))}`);
   return new Set(rowsOf(raw).map((r) => String(r.endpoint_id)));
 }
 

@@ -62,7 +62,7 @@ export function gaugeCells(settled: number, attempts: number, maxCells = 20): { 
 }
 
 /**
- * A thin share rule. `part` is the solid length (answered 2xx). The rest of
+ * A thin share rule. `part` is the solid length (delivered HTTP 2xx). The rest of
  * `whole` is the hatch (no 2xx). Null when the bar would not be a ratio.
  */
 export function ratioParts(part: number, whole: number): { solidPct: number; hatchPct: number } | null {

@@ -135,7 +135,7 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
 
   const aria =
     `vet402: ${settled} of ${attempts} paid attempts settled with an on-chain receipt, and ` +
-    `${delivered} of those also returned a 2xx response. settled is the confirmed transfer; ` +
+    `${delivered} of those also returned a deliverable HTTP 2xx response. settled is the confirmed transfer; ` +
     `delivered is the response arriving.` +
     (inconclusive > 0
       ? ` ${inconclusive} paid attempt${inconclusive === 1 ? " is" : "s are"} held as inconclusive ` +

@@ -124,7 +124,7 @@ export function LedgerSection({ ledger }: { ledger: HomeLedger }) {
             <span className="text-[0.9375rem] text-brand"> of {fmt(ledger.attempts)}</span>
           </p>
           <p className="mt-1 text-[0.84375rem] text-brand">
-            {fmt(ledger.delivered)} of the settled purchases also returned a 2xx answer.
+            {fmt(ledger.delivered)} of the settled purchases also returned a deliverable HTTP 2xx answer.
           </p>
         </div>
         <div className="border-t border-brand-deep pt-3">
@@ -218,7 +218,7 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
                     id={`chain-${r.chain.replace(/[^a-zA-Z0-9]+/g, "-")}`}
                     part={r.delivered}
                     whole={r.settled}
-                    label={`${fmt(r.delivered)} of ${fmt(r.settled)} settled on ${r.label} answered 2xx`}
+                    label={`${fmt(r.delivered)} of ${fmt(r.settled)} settled on ${r.label} counted as delivered`}
                   />
                 </td>
                 <td>{r.asset}</td>

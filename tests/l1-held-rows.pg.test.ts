@@ -49,7 +49,7 @@ if (!TEST_DB) {
     };
     let txSeq = 0;
     const tx = () => `0x${(++txSeq).toString(16).padStart(64, "0")}`;
-    type Seed = { status: string; http: number | null; tx?: boolean; at: string; network?: string };
+    type Seed = { status: string; http: number | null; tx?: boolean; at: string; network?: string; payloadNonEmpty?: boolean | null };
     const insert = async (endpointId: string, s: Seed) =>
       db.insert(schema.x402L1Purchases).values({
         endpointId,
@@ -60,6 +60,7 @@ if (!TEST_DB) {
         network: s.network ?? "eip155:8453",
         spentUnits: "1000",
         amountUnits: "1000",
+        ...(s.payloadNonEmpty !== undefined ? { payloadNonEmpty: s.payloadNonEmpty } : {}),
       });
 
     // 台帳: 境界の全種を 1 つの endpoint に置く（別の endpoint にも数件置き、集計の混線を見る）。
@@ -67,6 +68,9 @@ if (!TEST_DB) {
     const other = await mkEndpoint(2);
     const seeds: Seed[] = [
       { status: "settled", http: 200, tx: true, at: "2026-09-10T00:00:00Z" }, // 配達
+      { status: "settled", http: 202, tx: true, at: "2026-09-10T00:30:00Z" }, // 202 → 配達に数えない
+      { status: "settled", http: 200, tx: true, at: "2026-09-10T00:45:00Z", payloadNonEmpty: false }, // 空本文
+      { status: "settled", http: 200, tx: true, at: "2026-09-10T00:50:00Z", payloadNonEmpty: null }, // 未記録 → 配達
       { status: "settled", http: 422, tx: true, at: "2026-09-10T01:00:00Z" }, // settled_4xx
       { status: "settled", http: 502, tx: true, at: "2026-09-10T02:00:00Z" }, // 数える
       { status: "settle_failed", http: 400, at: "2026-09-12T06:01:26Z" }, // unsettled_4xx（Douglas 型）
@@ -91,9 +95,9 @@ if (!TEST_DB) {
       await insert(other.id, s);
 
     const PAID = ["settled", "settle_failed", "delivered_no_receipt", "settle_claimed_unverifiable", "settle_claimed", "settle_claim_refuted"];
-    const ledger = rowsOf<{ endpoint_id: string; status: string; http_status_paid: number | null; tx_hash: string | null; attempted_at: string; network: string | null; sql_reason: string | null }>(
+    const ledger = rowsOf<{ endpoint_id: string; status: string; http_status_paid: number | null; tx_hash: string | null; attempted_at: string; network: string | null; payload_non_empty: boolean | null; sql_reason: string | null }>(
       await db.execute(sql`
-        SELECT endpoint_id::text AS endpoint_id, status, http_status_paid, tx_hash, attempted_at::text AS attempted_at, network,
+        SELECT endpoint_id::text AS endpoint_id, status, http_status_paid, tx_hash, attempted_at::text AS attempted_at, network, payload_non_empty,
                (${sql.raw(heldReasonSql())}) AS sql_reason
         FROM x402_l1_purchases`),
     );
@@ -125,7 +129,7 @@ if (!TEST_DB) {
             status: r.status,
             latencyMs: 100,
             httpStatusPaid: r.http_status_paid,
-            payloadNonEmpty: true,
+            payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
             l2Schema: null,
             txHash: r.tx_hash,
             network: r.network,
@@ -151,8 +155,8 @@ if (!TEST_DB) {
       assert.equal(facts.l1.n_delivered, purchases!.deliveredCount);
       assert.deepEqual(purchases!.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 2, payerUnfunded: 3 });
       assert.equal(purchases!.inconclusiveSettledCount, 1);
-      // delivered 1 / (settled 3 − settled の保留 1)
-      assert.equal(purchases!.deliveryRatePct, 50);
+      // delivered 2 / (settled 6 − settled の保留 1)
+      assert.equal(purchases!.deliveryRatePct, 40);
     });
 
     await t.test("/observatory/state の l1 集計も同じ件数（理由別の和 = inconclusive）", async () => {
@@ -161,6 +165,7 @@ if (!TEST_DB) {
       assert.equal(stats.l1.inconclusive, 8);
       assert.deepEqual(stats.l1.inconclusiveByReason, { settled4xx: 1, unsettled4xx: 3, payerUnfunded: 4 });
       assert.equal(stats.l1.inconclusiveSettled, 1);
+      assert.equal(stats.l1.delivered, 2);
       const byChainSum = stats.l1.byChain.reduce((a, c) => a + c.inconclusive, 0);
       assert.equal(byChainSum, stats.l1.inconclusive);
     });

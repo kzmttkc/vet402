@@ -382,7 +382,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               {/* 2026-09-29 第6巡: 「receipt」は売り手の受領証（PAYMENT-RESPONSE）の意味だけにする。settled の行には
                   売り手が受領証を返さず vet402 の索引で見つけた tx の行もあるので「settled on-chain」と書く。 */}
               {l1.settled} of {l1.attempts} paid attempts settled on-chain, and{" "}
-              {l1.delivered} of those also returned a 2xx response (delivered). Each settled row
+              {l1.delivered} of those also returned a deliverable <code>2xx</code> response (delivered: other than{" "}
+              <code>202 Accepted</code> with a non-empty body). Each settled row
               carries its on-chain transaction hash, and that transaction is the evidence. On this page a{" "}
               <em>receipt</em> means the seller&apos;s own settlement receipt (<code>PAYMENT-RESPONSE</code>); a
               settled row can have none (see &ldquo;tx from our index&rdquo;).{" "}A settled

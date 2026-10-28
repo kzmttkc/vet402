@@ -27,7 +27,7 @@
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN, isDelivered, isDeliveryHttp, isInconclusive } from "@/lib/observatory/delivery";
+import { deliveredPredicate, isDelivered, isDeliveryHttp, isInconclusive } from "@/lib/observatory/delivery";
 import { classifySellerRow, ONCE_SUFFIX, type Bucket, type MoneyMoved, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { publishedVerdict } from "@/lib/observatory/l0-probe";
@@ -306,8 +306,8 @@ export const SIGNED_STATUSES = new Set([
   "settle_failed",
 ]);
 
-/** delivery.ts isDelivered と同じ述語の SQL（定数だけから作る・202 を除く・payload_non_empty が false の行を除く）。 */
-const DELIVERED_ROW_SQL = `status = 'settled' AND http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX} AND http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND payload_non_empty IS NOT FALSE`;
+/** delivery.ts isDelivered と同じ述語の SQL（deliveredPredicate の別名なし）。 */
+const DELIVERED_ROW_SQL = deliveredPredicate();
 
 /** SIGNED_STATUSES の SQL リテラル列（定数だけから作る・利用者入力は通らない）。 */
 const SIGNED_STATUS_SQL_LIST = [...SIGNED_STATUSES].map((v) => `'${v.replace(/[^a-z_]/g, "")}'`).join(",");

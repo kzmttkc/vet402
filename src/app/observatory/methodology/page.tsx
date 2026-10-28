@@ -964,8 +964,8 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the
           money: we confirmed the transfer on-chain. <code>delivered</code> is a statement about
-          the goods: the attempt is <code>settled</code> <em>and</em> the paid request answered{" "}
-          <code>2xx</code>. A seller can take the payment and answer <code>400</code>, and that row
+          the goods: the attempt is <code>settled</code> <em>and</em> the paid request answered HTTP{" "}
+          <code>2xx</code> other than <code>202 Accepted</code> with a non-empty body. A seller can take the payment and answer <code>400</code>, and that row
           is settled and not delivered. Both counts are published side by side on the endpoint
           page, on the register, in the badge, and at <code>/api/v1/observatory/state</code>
           (<code>l1.settled</code> and <code>l1.delivered</code>), so the difference between them

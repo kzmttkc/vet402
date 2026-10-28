@@ -11,7 +11,7 @@ import { sql } from "drizzle-orm";
 import type { getDb } from "@/lib/db/client";
 import { explorerTxUrl } from "@/lib/observatory/chains";
 import { PAID_ATTEMPT_STATUSES } from "@/lib/observatory/reader";
-import { ACCEPTED_NOT_DONE_HTTP, DELIVERED_HTTP_MAX, DELIVERED_HTTP_MIN } from "@/lib/observatory/delivery";
+import { deliveredPredicate } from "@/lib/observatory/delivery";
 import { sellerHostSql } from "@/lib/sellers/host";
 import type { L1PurchaseOut } from "./schemas";
 
@@ -31,9 +31,8 @@ const PAID_LIST = sql.join(
   PAID_ATTEMPT_STATUSES.map((s) => sql`${s}`),
   sql`, `,
 );
-/** 届いた（delivery.ts の isDelivered と同じ述語: settled・2xx・202 でない・本文が空でない）。 */
-export const DELIVERED = sql`(pu.status = 'settled' AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}
-  AND pu.http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND pu.payload_non_empty IS NOT FALSE, false))`;
+/** 届いた（delivery.ts deliveredPredicate("pu") と同じ述語）。 */
+export const DELIVERED = sql.raw(deliveredPredicate("pu"));
 
 function toPurchase(r: Record<string, unknown>): L1PurchaseOut {
   const network = str(r.network);

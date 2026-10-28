@@ -201,7 +201,7 @@ export function L1Ratio({ settled, attempts, delivered }: { settled: number; att
   const title =
     delivered === undefined
       ? `${settled} settled on-chain of ${attempts} paid attempts`
-      : `${delivered} delivered (paid retry answered 2xx) · ${settled} settled on-chain of ${attempts} paid attempts`;
+      : `${delivered} delivered (paid retry returned deliverable HTTP 2xx) · ${settled} settled on-chain of ${attempts} paid attempts`;
   // 2026-09-29 監査 5 周目（WCAG 2.2・1.3.1）: 3 つの数の意味が title にしか無かった。見える数字は
   // 列見出しと同じ順（delivered · settled/attempts）のまま aria-hidden にし、読み上げには意味付きの文を渡す。
   return (
@@ -289,7 +289,7 @@ export function FunnelFigure({ n, stages, caption }: { n: number; stages: readon
 }
 
 /**
- * Thin ratio. Solid is answered 2xx (`part` of `whole`). The rest is a navy hatch.
+ * Thin ratio. Solid is delivered HTTP 2xx (`part` of `whole`). The rest is a navy hatch.
  * No bar when the ratio is not a number.
  */
 export function ShareRule({ id, part, whole, label }: { id: string; part: number; whole: number; label: string }) {

@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-29 Delivered definition parity (202, empty 2xx, public copy)
+
+- **What**: `deliveredPredicate()` already matched `isDelivered()` after 424eeae9; this change aligns public labels and copy (`/observatory/state`, API disclaimers, methodology, claims.yaml), deduplicates hand-copied SQL in seller-facts, MCP reads, and sellers reader via `deliveredPredicate`, fixes Arc Gateway daily records to use `isDeliveryHttp` for the `delivered` flag (leaf hashes unchanged), wraps the SQL predicate in parentheses, and extends `tests/l1-held-rows.pg.test.ts` with settled rows at HTTP 202, empty-body 200, and null `payload_non_empty`.
+- **Why**: Independent review NO-SHIP: a record page counted a settled 202 as delivered while the aggregate feed did not. A 30-day production read found 36 Base rows with HTTP 202 and 1 empty 2xx; other networks had 0.
+- **Impact**: Public `l1.delivered` (and matching endpoint counts) drop by those rows. UI and API text now describe delivered as 2xx other than 202 Accepted with a non-empty body, and the state-page bucket for settled-not-delivered-not-4xx includes 202 and empty 2xx.
+- **Commits**: 424eeae9, (this branch commit).
+
 ## 2026-10-29 Gateway lane skips POST listings with no catalog body shape
 
 - **What**: The Arc Gateway lane (`arc_gateway`) no longer selects POST listings whose catalog `declared_input.body` is not the string `declared` (GET and undeclared method still qualify). The same rule is in `gatewayCandidateInclusionSql` and `laneNetworkPrefilterSql`. Active rows matching Gateway-only + POST + unknown catalog body are counted in `summary.gatewayPostBodyUnknownActive` (`number | null`; null when the count query fails or the lane is not run). After a live 402 is read, Gateway + POST without a declared body in the challenge is skipped before signing (`gatewayPostBodyUnknownSignSkipped`; no ledger row). Count SQL uses `coalesce(..., false)` on `declared_input.body` and the Gateway `@>` prefilter; it runs only when `!onlyEndpointId && laneSelectable arc_gateway`.

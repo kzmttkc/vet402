@@ -2769,7 +2769,7 @@ paths:
                     description: |
                       L1 real-purchase totals. `settled` is a transfer vet402 re-read
                       on-chain. `delivered` is a settled attempt whose paid request also
-                      answered 2xx. The settlement asset is USDC on Base, Arc, Celo, Solana, and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain. BNB Chain binds the EIP-3009 authorization nonce. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee.
+                      answered HTTP 2xx other than 202 Accepted with a non-empty body. The settlement asset is USDC on Base, Arc, Celo, Solana, and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain. BNB Chain binds the EIP-3009 authorization nonce. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee.
 
                       `settled` is published at two evidence strengths, and
                       `settledNonceBound + settledAmountPayeeOnly` always equals

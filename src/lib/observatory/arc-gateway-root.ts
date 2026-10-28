@@ -3,6 +3,7 @@
 // This module does not deploy or broadcast.
 
 import { concat, encodeAbiParameters, keccak256, type Address, type Hex } from "viem";
+import { isDeliveryHttp } from "./delivery";
 
 export type GatewayLeafV1 = {
   nonce: Hex;
@@ -125,7 +126,7 @@ export function buildGatewayDayRecords(day: string, rows: readonly GatewayDaySou
       return { ok: false, reason: "missing_hash" };
     }
     const httpStatus = typeof gw.httpStatus === "number" ? gw.httpStatus : row.httpStatus ?? 0;
-    const delivered = typeof httpStatus === "number" && httpStatus >= 200 && httpStatus <= 299;
+    const delivered = isDeliveryHttp(httpStatus);
     const leaf = gatewayLeafV1({
       nonce: nonce as Hex,
       from: from as Address,
