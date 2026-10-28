@@ -408,6 +408,21 @@ export function networkFilterIds(raw: string): string[] {
   return [...out].sort();
 }
 
+/** ネットワークごとの USDC（6 decimals）の識別子。配達フィードの price_usd 照合用。 */
+const NETWORK_USDC_ASSET: Record<string, string> = {
+  "eip155:8453": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+  "eip155:5042": "0x3600000000000000000000000000000000000000",
+  "eip155:42220": "0xceba9300f2b948710d2653dd7b07f33a8b32118c",
+  "eip155:42161": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+  "eip155:43114": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+};
+
+export function usdcAssetForNetwork(network: string | null | undefined): string | null {
+  if (!network) return null;
+  const id = (toCaip2(network) ?? network).toLowerCase();
+  return NETWORK_USDC_ASSET[id] ?? null;
+}
+
 /** Block-explorer URL for a settlement tx on the given network, or null when the chain has no explorer here or the tx is not well-formed for it. */
 export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   if (typeof tx !== "string" || tx === "") return null;

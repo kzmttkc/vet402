@@ -660,8 +660,12 @@ export function recordPageNoindex(publishedVerdict: string | null | undefined, s
   return sides === null || sides.undelivered > 0 || publishedVerdict !== "pass";
 }
 
-export function buildRecordSides(rows: readonly SellerRowFacts[], now: number = Date.now()): RecordSides {
-  const days = failureDaysOf(rows, new Map(), now);
+export function buildRecordSides(
+  rows: readonly SellerRowFacts[],
+  now: number = Date.now(),
+  externalFailureDays?: FailureDays,
+): RecordSides {
+  const days = externalFailureDays ? mergeDays(rows, externalFailureDays, now) : failureDaysOf(rows, new Map(), now);
   const out: RecordSides = {
     rows: new Map(),
     vet402Side: 0,

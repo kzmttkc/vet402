@@ -222,25 +222,26 @@ if (!TEST_DB) {
       await compare(url);
     });
 
-    await t.test("(d) vet402 side payer_unfunded window (402 tx-less on Base)", async () => {
+    await t.test("(d) meta fixture: readRecordSidesBatch rows match readRecordSides and feed vs checkSeller", async () => {
       await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases`);
-      const url = "https://parity-vet402.example/api";
+      const url = "https://parity-meta.example/api";
       const ep = await mkEp(url);
-      const unfundedAt = new Date(Date.now() - 5 * 86_400_000);
-      unfundedAt.setUTCHours(12, 0, 0, 0);
       await db.insert(schema.x402L1Purchases).values({
         endpointId: ep.id,
-        attemptedAt: unfundedAt,
-        status: "settle_failed",
+        attemptedAt: new Date(Date.now() - 86_400_000),
+        status: "settled",
         network: "eip155:8453",
-        httpStatusPaid: 402,
-        payloadNonEmpty: null,
+        httpStatusPaid: 401,
+        payloadNonEmpty: false,
         payer: PAYER,
         payTo: PAY_TO,
-        txHash: null,
+        txHash: nextTx(),
         amountUnits: "7000",
-        spentUnits: "0",
+        spentUnits: "7000",
         asset: ASSET,
+        rawResponseMeta: { requestBody: "declared", requestQuery: "a=1", status: "401" },
+        rawSettlement: { success: true, errorReason: null },
+        settlementVerifyReason: "matched",
       });
       await db.insert(schema.x402L1Purchases).values({
         endpointId: ep.id,
@@ -256,9 +257,14 @@ if (!TEST_DB) {
         spentUnits: "7000",
         asset: ASSET,
       });
-      const { feed, mcp } = await compare(url);
-      assert.equal(feed.paid, mcp.paid);
-      assert.equal(feed.delivered, 1);
+      const { readRecordSides, readRecordSidesBatch } = await import("@/lib/sellers/reader");
+      const batch = (await readRecordSidesBatch(db, [ep.id])).get(ep.id)!;
+      const single = await readRecordSides(db, ep.id);
+      assert.equal(batch.rows.size, single.rows.size);
+      for (const [k, v] of batch.rows) {
+        assert.deepEqual(v, single.rows.get(k), k);
+      }
+      await compare(url);
     });
 
     await t.test("(e) unsigned settled 4xx held and tx settle_failed mixed", async () => {

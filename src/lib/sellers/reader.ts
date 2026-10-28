@@ -136,6 +136,7 @@ const ROW_COLUMNS_BASE = sql`
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredAmount', 30) END AS declared_amount,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredPayTo', 100) END AS declared_pay_to,
   left(pu.auth_nonce, 80) AS auth_nonce,
+  (pu.auth_nonce IS NOT NULL AND pu.auth_nonce <> '') AS has_auth_nonce,
   CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta->>'phase' = 'paid'
        THEN left(pu.raw_response_meta->>'contentType', 60) END AS paid_content_type,
   coalesce(jsonb_typeof(pu.raw_settlement) = 'object', false) AS receipt_present,
@@ -149,6 +150,32 @@ const ROW_COLUMNS_BASE = sql`
 /** 行の列（ROW_COLUMNS_BASE と example_input）。行の少ない問い合わせ用。 */
 const ROW_COLUMNS = sql`${ROW_COLUMNS_BASE},
   ${EXAMPLE_INPUT} AS example_input`;
+
+/** 配達フィードの L1 窓 JOIN 用: 分類に要る列（endpoint e と pu の JOIN 前提）。 */
+export const feedL1WindowClassifyColumnsSql = sql`
+  coalesce(e.method, 'GET') AS method,
+  ${SCHEMA_MIN} AS schema_min,
+  e.declared_input AS declared_input,
+  ${META_MIN} AS meta_min,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND (pu.raw_response_meta->>'status') ~ '^[0-9]{3}$'
+       THEN (pu.raw_response_meta->>'status')::int END AS unpaid_status,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN pu.raw_response_meta->>'selection' END AS selection,
+  pu.settlement_verify_reason,
+  to_char(pu.settlement_verified_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS settlement_verified_at,
+  ${LISTING_MAX_TIMEOUT} AS listing_max_timeout,
+  ${DECLARES_HEADERS} AS declares_headers,
+  ${PATH_TEMPLATE} AS path_template,
+  ${CHALLENGE_MIN} AS challenge_min,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredAmount', 30) END AS declared_amount,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'declaredPayTo', 100) END AS declared_pay_to,
+  (pu.auth_nonce IS NOT NULL AND pu.auth_nonce <> '') AS has_auth_nonce,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' AND pu.raw_response_meta->>'phase' = 'paid'
+       THEN left(pu.raw_response_meta->>'contentType', 60) END AS paid_content_type,
+  coalesce(jsonb_typeof(pu.raw_settlement) = 'object', false) AS receipt_present,
+  CASE WHEN jsonb_typeof(pu.raw_settlement->'success') = 'boolean' THEN (pu.raw_settlement->>'success')::boolean END AS receipt_success,
+  CASE WHEN jsonb_typeof(pu.raw_settlement) = 'object' THEN left(pu.raw_settlement->>'errorReason', 60) END AS receipt_error_reason,
+  ${EXAMPLE_INPUT} AS example_input
+`;
 
 /**
  * 出品ごとに 1 行を選ぶ問い合わせ（DISTINCT ON）の外側で example_input を足す。DISTINCT ON の中で当てると全部の行に
@@ -187,6 +214,8 @@ function str(v: unknown): string | null {
 }
 
 export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
+  const authFromCol = str(r.auth_nonce);
+  const authNonce = authFromCol ?? (r.has_auth_nonce === true || r.has_auth_nonce === "t" ? "1" : null);
   return {
     endpointId: String(r.endpoint_id),
     status: String(r.status),
@@ -212,7 +241,7 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     challenge: challengeOf(r.challenge_min),
     declaredAmount: str(r.declared_amount),
     declaredPayTo: str(r.declared_pay_to),
-    authNonce: str(r.auth_nonce),
+    authNonce,
     paidContentType: str(r.paid_content_type),
     payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
     settlementConfirmed: typeof r.settlement_confirmed === "boolean" ? r.settlement_confirmed : null,

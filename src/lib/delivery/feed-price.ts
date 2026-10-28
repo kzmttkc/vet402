@@ -7,6 +7,7 @@ import {
   BASE_USDC,
   CELO_USDC,
 } from "@/lib/observatory/x402-payer";
+import { usdcAssetForNetwork } from "@/lib/observatory/chains";
 
 const USDC_ASSETS = new Set(
   [
@@ -20,10 +21,19 @@ const USDC_ASSETS = new Set(
   ].map((a) => a.toLowerCase()),
 );
 
-export function feedPriceUsd(amount: string | null | undefined, asset: string | null | undefined): number | null {
+export function feedPriceUsd(
+  amount: string | null | undefined,
+  asset: string | null | undefined,
+  network: string | null | undefined,
+): number | null {
   if (!amount || !asset || !/^\d{1,30}$/.test(amount)) return null;
-  const a = asset.trim();
-  if (!USDC_ASSETS.has(a.toLowerCase()) && !a.toLowerCase().endsWith("usdc")) return null;
+  const a = asset.trim().toLowerCase();
+  const expected = network ? usdcAssetForNetwork(network) : null;
+  if (expected) {
+    if (a !== expected.toLowerCase()) return null;
+  } else if (!USDC_ASSETS.has(a) && !a.endsWith("usdc")) {
+    return null;
+  }
   const n = Number(amount) / 1_000_000;
   return Number.isFinite(n) ? n : null;
 }

@@ -42,6 +42,19 @@ import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts, Verified
 import { fetchL1WindowPurchaseRows, purchaseInputFromL1WindowRow } from "./l1-window-purchases";
 import type { L1Timeline } from "./rules";
 
+/** raw_response_meta.l2 → PurchaseInput（responseHash が無い行は null）。 */
+export function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.responseHash !== "string") return null;
+  return {
+    missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
+    declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
+    responseHash: o.responseHash,
+    reason: typeof o.reason === "string" ? o.reason : null,
+  };
+}
+
 export type ProbeInput = {
   probedAt: string;
   verdict: string;
@@ -173,8 +186,9 @@ function isPaidUndelivered(v: SellerRowView): boolean {
 }
 
 /** check_x402_seller の delivery と同じ L1 件数（窓の中の purchases を渡す・新しい順・sellerView 必須）。 */
-export function l1McpDeliveryCounts(
-  input: L1Input,
+export function l1CountsOf(
+  purchases: readonly PurchaseInput[],
+  endpoint: Pick<L1Input, "declaredSchema" | "method" | "declaredInput">,
   now: number = Date.now(),
 ): {
   paid_attempts: number;
@@ -183,7 +197,8 @@ export function l1McpDeliveryCounts(
   last_delivered_at: string | null;
   last_attempt_at_in_window: string | null;
 } {
-  const signed = input.purchases.filter((p) => SIGNED_STATUSES.has(p.status));
+  const input: L1Input = { purchases: [...purchases], ...endpoint };
+  const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const conclusiveSettled = signed.filter((p) => p.status === "settled" && !isInconclusive(p));
   const delivered = conclusiveSettled.filter((p) => isDelivered(p)).length;
   const timeline = l1TimelineOf(input, now);
@@ -199,6 +214,19 @@ export function l1McpDeliveryCounts(
     last_delivered_at: timeline.last_delivered_at,
     last_attempt_at_in_window: lastInWindow,
   };
+}
+
+export function l1McpDeliveryCounts(
+  input: L1Input,
+  now: number = Date.now(),
+): {
+  paid_attempts: number;
+  delivered: number;
+  settled_not_delivered: number;
+  last_delivered_at: string | null;
+  last_attempt_at_in_window: string | null;
+} {
+  return l1CountsOf(input.purchases, input, now);
 }
 
 export type SellerFactsInput = {
@@ -406,6 +434,7 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
   const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
   // 配達の述語は delivery.ts isDelivered の 1 つ（settled・2xx（202 を除く）・本文が空でない）。/sellers と同じ。
   const delivered = conclusiveSettled.filter((p) => isDelivered(p));
+  const l1Counts = l1CountsOf(purchases, input);
   // 遅延は結論のある settled だけで測る（4xx の往復は配達の遅延ではない）。
   const latencies = conclusiveSettled
     .map((p) => p.latencyMs)
@@ -471,9 +500,9 @@ export function assembleSellerFacts(input: SellerFactsInput): SellerFacts {
       fail_reason: l0Status === "fail" ? (latestProbe?.failReason ?? null) : null,
     },
     l1: {
-      n_delivered: delivered.length,
+      n_delivered: l1Counts.delivered,
       n_settled: settled.length,
-      n_attempts: signed.length,
+      n_attempts: l1Counts.paid_attempts,
       n_inconclusive: inconclusive.length,
       n_probe_error: inconclusive.length,
       p50_ms: percentile(latencies, 50),

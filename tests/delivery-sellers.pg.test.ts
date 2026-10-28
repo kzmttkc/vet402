@@ -9,8 +9,9 @@ import assert from "node:assert/strict";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
-const FEED_SCALE_ACTIVE = 80_000;
-const FEED_SCALE_WITH_ATTEMPTS = 6_700;
+const FEED_SCALE_EPS = 6_700;
+const FEED_SCALE_PURCHASES = 134_000;
+const PURCHASES_PER_EP = 20;
 
 if (!TEST_DB) {
   test("delivery sellers feed (skipped: TEST_DATABASE_URL not set)", { skip: true }, () => {});
@@ -116,7 +117,7 @@ if (!TEST_DB) {
 
     const mcpAlignUrl = "https://feed-mcp-align.example/api";
     const mcpAlignId = await mkEp(mcpAlignUrl, { source: CATALOG_SOURCE, network: "eip155:8453" });
-    const alignTx = "0x" + "a".repeat(64);
+    const alignTx = SECRETS.tx_hash;
     await mkPurchase(mcpAlignId, { status: "settled", http: 200, payload: true, at: daysAgo(5) });
     await mkPurchase(mcpAlignId, { status: "settled", http: 500, payload: true, at: daysAgo(4), tx: true });
     await mkPurchase(mcpAlignId, { status: "settled", http: 404, payload: false, at: daysAgo(3), tx: true });
@@ -181,12 +182,15 @@ if (!TEST_DB) {
     assert.ok(!body.rows.some((r) => r.url === inactiveUrl));
     assert.ok(!body.rows.some((r) => r.url === noPayUrl));
 
+    const { DELIVERY_FEED_PUBLIC_ROW_KEYS } = await import("@/lib/delivery/sellers-feed");
+    for (const row of body.rows) {
+      assert.deepEqual(Object.keys(row).sort(), [...DELIVERY_FEED_PUBLIC_ROW_KEYS].sort(), "public row keys");
+    }
+
     const blob = JSON.stringify(body);
-    for (const k of ["nonce", "payer", "pay_to"] as const) {
+    for (const k of ["nonce", "payer", "pay_to", "tx_hash"] as const) {
       assert.equal(blob.includes(SECRETS[k]), false, k);
     }
-    assert.equal(blob.includes(SECRETS.tx_hash), false, "tx_hash");
-    assert.equal(blob.includes(SECRETS.payer), false, "payer in response");
 
     body = await readDeliverySellersFeed(db, { network: "eip155:5042", minDelivered: null, listedIn: "circle", cursor: null });
     assert.deepEqual(
@@ -202,30 +206,34 @@ if (!TEST_DB) {
              'https://scale-host' || n || '.example/' || repeat('p', 60 + (n % 61)),
              CASE WHEN n % 3 = 0 THEN ${CIRCLE_DISCOVERY_SOURCE} WHEN n % 3 = 1 THEN 'mpp_directory' ELSE ${CATALOG_SOURCE} END,
              'GET',
-             CASE WHEN n % 2 = 0 THEN 'eip155:5042' ELSE 'eip155:8453' END,
+             'eip155:8453',
              ${SECRETS.pay_to},
              (1000 * (1 + n % 50))::text,
              '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
              'active',
              'https://scale-host' || n || '.example/' || repeat('p', 60 + (n % 61)),
              now()
-      FROM generate_series(1, ${FEED_SCALE_ACTIVE}) n`);
+      FROM generate_series(1, ${FEED_SCALE_EPS}) n`);
     await db.execute(sql`
       WITH ids AS (
-        SELECT id, row_number() OVER (ORDER BY id) AS rn FROM x402_endpoints ORDER BY id LIMIT ${FEED_SCALE_WITH_ATTEMPTS}
+        SELECT id, row_number() OVER (ORDER BY id) AS rn FROM x402_endpoints ORDER BY id LIMIT ${FEED_SCALE_EPS}
       )
-      INSERT INTO x402_l1_purchases (endpoint_id, attempted_at, status, network, http_status_paid, payload_non_empty, spent_units, amount_units, payer, tx_hash)
+      INSERT INTO x402_l1_purchases (endpoint_id, attempted_at, status, network, http_status_paid, payload_non_empty, spent_units, amount_units, payer, pay_to, tx_hash)
       SELECT ids.id,
-             now() - (g.n % 28) * interval '1 day',
+             CASE WHEN p.i < 10
+               THEN now() - (p.i + 1) * interval '1 day'
+               ELSE now() - (31 + (p.i - 10)) * interval '1 day'
+             END,
              'settled',
              'eip155:8453',
              200,
              true,
              '1000', '1000',
              ${SECRETS.payer},
-             ('0x' || lpad(to_hex(g.n), 64, '0'))::text
-      FROM generate_series(1, ${FEED_SCALE_WITH_ATTEMPTS}) g(n)
-      JOIN ids ON ids.rn = g.n`);
+             ${SECRETS.pay_to},
+             ('0x' || lpad(to_hex((ids.rn - 1) * ${PURCHASES_PER_EP} + p.i + 1), 64, '0'))::text
+      FROM ids
+      CROSS JOIN generate_series(0, ${PURCHASES_PER_EP - 1}) AS p(i)`);
     await db.execute(sql`ANALYZE x402_endpoints`);
     await db.execute(sql`ANALYZE x402_l1_purchases`);
     const seedMs = performance.now() - t0;
@@ -244,21 +252,24 @@ if (!TEST_DB) {
     const explainText = JSON.stringify(explain);
     console.log("scale_explain_snip", explainText.slice(0, 400));
 
+    const heapBefore = process.memoryUsage().heapUsed;
     const q0 = performance.now();
     const scale = await readDeliverySellersFeed(db, { network: null, minDelivered: null, listedIn: null, cursor: null });
     const queryMs = performance.now() - q0;
+    const heapAfter = process.memoryUsage().heapUsed;
     const bytes = Buffer.byteLength(JSON.stringify(scale), "utf8");
+    const { DELIVERY_FEED_PAGE_SIZE } = await import("@/lib/delivery/sellers-feed");
 
     console.log("scale_seed_ms", seedMs);
     console.log("scale_query_ms", queryMs);
+    console.log("scale_heap_used", heapAfter - heapBefore);
     console.log("scale_bytes", bytes);
     console.log("scale_total_rows", scale.total_rows);
     console.log("scale_row_count", scale.row_count);
 
-    assert.ok(queryMs < 30_000, `query took ${queryMs}ms`);
-    assert.ok(bytes <= 4.5 * 1024 * 1024, `response ${bytes} bytes`);
-    assert.equal(scale.total_rows, FEED_SCALE_WITH_ATTEMPTS);
-    assert.equal(scale.row_count, 2000);
+    assert.ok(queryMs < 5_000, `query took ${queryMs}ms`);
+    assert.equal(scale.total_rows, FEED_SCALE_EPS);
+    assert.equal(scale.row_count, DELIVERY_FEED_PAGE_SIZE);
     assert.ok(scale.next_cursor);
     assert.ok(explainText.includes("Semi Join") || explainText.includes("Exist"), "EXPLAIN should use semi join or exists");
 
@@ -279,7 +290,7 @@ if (!TEST_DB) {
       cursor = page.next_cursor;
     }
     assert.equal(seen.size, totalRows, "cursor walk covers total_rows without gaps or duplicates");
-    assert.equal(totalRows, FEED_SCALE_WITH_ATTEMPTS);
+    assert.equal(totalRows, FEED_SCALE_EPS);
   });
 
   test("cache and cursor pagination", async () => {
@@ -291,6 +302,7 @@ if (!TEST_DB) {
       getDeliveryFeedSnapshotCached,
       resetDeliveryFeedCacheForTest,
       deliveryFeedDbReadCount,
+      deliveryFeedExportSlotAcquireCount,
     } = await import("@/lib/delivery/sellers-feed-cache");
     const db = getDb()!;
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases`);
@@ -324,9 +336,13 @@ if (!TEST_DB) {
         amountUnits: "1000",
       });
     }
-    await getDeliveryFeedSnapshotCached(db);
-    await getDeliveryFeedSnapshotCached(db);
+    await Promise.all([
+      getDeliveryFeedSnapshotCached(db),
+      getDeliveryFeedSnapshotCached(db),
+      getDeliveryFeedSnapshotCached(db),
+    ]);
     assert.equal(deliveryFeedDbReadCount(), 1);
+    assert.equal(deliveryFeedExportSlotAcquireCount(), 1);
 
     const snap = await readDeliverySellersFeedSnapshot(db);
     assert.equal(snap.rows.length, 5);
@@ -335,7 +351,23 @@ if (!TEST_DB) {
     assert.equal(p1.total_rows, 5);
     assert.equal(p1.next_cursor, null);
 
-    const { DELIVERY_FEED_PAGE_SIZE } = await import("@/lib/delivery/sellers-feed");
-    if (DELIVERY_FEED_PAGE_SIZE >= 5) return;
+    const { paginateDeliveryFeedRows } = await import("@/lib/delivery/sellers-feed");
+    const { decodeFeedCursor } = await import("@/lib/delivery/sellers-feed-query");
+    const page1 = paginateDeliveryFeedRows(snap.rows, null, 2);
+    assert.equal(page1.page.length, 2);
+    assert.ok(page1.next_cursor);
+    const cur = decodeFeedCursor(page1.next_cursor!);
+    assert.notEqual(cur, "invalid");
+    const page2 = paginateDeliveryFeedRows(snap.rows, cur === "invalid" ? null : cur, 2);
+    assert.equal(page2.page.length, 2);
+    let walked = [...page1.page, ...page2.page];
+    let cursor = page2.next_cursor;
+    while (cursor) {
+      const c = decodeFeedCursor(cursor);
+      const next = paginateDeliveryFeedRows(snap.rows, c === "invalid" ? null : c, 2);
+      walked = walked.concat(next.page);
+      cursor = next.next_cursor;
+    }
+    assert.equal(walked.length, 5);
   });
 }

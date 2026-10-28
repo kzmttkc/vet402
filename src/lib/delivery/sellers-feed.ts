@@ -5,14 +5,15 @@
 import { sql } from "drizzle-orm";
 import type { getDb } from "@/lib/db/client";
 import { L1_WINDOW_DAYS } from "@/lib/decision/rules";
-import { l1McpDeliveryCounts, SIGNED_STATUSES, type PurchaseInput } from "@/lib/decision/seller-facts";
+import { l1CountsOf, SIGNED_STATUSES, type PurchaseInput } from "@/lib/decision/seller-facts";
 import {
   L1_WINDOW_PURCHASE_LIMIT,
   l1WindowPurchasesFeedJoinSql,
   purchaseInputFromL1WindowRow,
 } from "@/lib/decision/l1-window-purchases";
 import { toCaip2, networkFilterIds } from "@/lib/observatory/chains";
-import { listingDeclaredSchemaMinSql, readRecordSidesBatch } from "@/lib/sellers/reader";
+import { buildRecordSides } from "@/lib/sellers/board";
+import { listingDeclaredSchemaMinSql, readSellerFailureDays, toRowFacts } from "@/lib/sellers/reader";
 import { feedListedIn, type FeedListedIn } from "./listed-in";
 import { feedPriceUsd } from "./feed-price";
 import type { DeliverySellersQuery } from "./sellers-feed-query";
@@ -27,7 +28,23 @@ export const DELIVERY_FEED_METHOD_URL = "https://vet402.com/observatory/methodol
 export const DELIVERY_FEED_LICENSE = "CC-BY-4.0";
 export const DELIVERY_FEED_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 
+export const DELIVERY_FEED_PUBLIC_ROW_KEYS = [
+  "url",
+  "method",
+  "network",
+  "price_usd",
+  "listed_in",
+  "bazaar_payers_30d",
+  "paid_attempts_30d",
+  "delivered_30d",
+  "settled_not_delivered_30d",
+  "last_attempt_at_30d",
+  "last_delivered_at_30d",
+  "record_url",
+] as const;
+
 export type DeliveryFeedRow = {
+  endpoint_id: string;
   url: string;
   method: string;
   network: string | null;
@@ -42,6 +59,8 @@ export type DeliveryFeedRow = {
   record_url: string;
 };
 
+export type DeliveryFeedPublicRow = Omit<DeliveryFeedRow, "endpoint_id">;
+
 export type DeliveryFeedPayload = {
   as_of: string;
   window_days: number;
@@ -51,7 +70,7 @@ export type DeliveryFeedPayload = {
   row_count: number;
   total_rows: number;
   next_cursor: string | null;
-  rows: DeliveryFeedRow[];
+  rows: DeliveryFeedPublicRow[];
 };
 
 export type DeliveryFeedSnapshot = {
@@ -115,40 +134,57 @@ export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryF
 
   const flat = rowsOf(raw);
   const epIds = [...new Set(flat.map((r) => String(r.endpoint_id)))];
-  const sidesMap = await readRecordSidesBatch(db, epIds);
+  const failureDays = await readSellerFailureDays(db, epIds);
 
-  const byEp = new Map<string, { meta: Record<string, unknown>; purchases: Record<string, unknown>[] }>();
+  const byEp = new Map<string, { meta: Record<string, unknown>; purchases: Record<string, unknown>[]; facts: ReturnType<typeof toRowFacts>[] }>();
   for (const r of flat) {
     const id = String(r.endpoint_id);
     if (!byEp.has(id)) {
       byEp.set(id, {
         meta: r,
         purchases: [],
+        facts: [],
       });
     }
     if (r.attempted_at != null && r.attempted_at !== "") {
       byEp.get(id)!.purchases.push(r);
+      byEp.get(id)!.facts.push(toRowFacts(r));
     }
+  }
+
+  const sidesMap = new Map<string, ReturnType<typeof buildRecordSides>>();
+  for (const [id, { facts }] of byEp) {
+    sidesMap.set(id, buildRecordSides(facts, Date.now(), failureDays));
   }
 
   const rows: DeliveryFeedRow[] = [];
   const entries = [...byEp.values()];
   entries.sort((a, b) =>
     compareFeedRows(
-      { url: String(a.meta.resource_url), method: String(a.meta.method), network: str(a.meta.network) },
-      { url: String(b.meta.resource_url), method: String(b.meta.method), network: str(b.meta.network) },
+      {
+        url: String(a.meta.resource_url),
+        method: String(a.meta.method),
+        network: str(a.meta.network),
+        endpoint_id: String(a.meta.endpoint_id),
+      },
+      {
+        url: String(b.meta.resource_url),
+        method: String(b.meta.method),
+        network: str(b.meta.network),
+        endpoint_id: String(b.meta.endpoint_id),
+      },
     ),
   );
   for (const { meta, purchases: pRows } of entries) {
     const endpointId = String(meta.endpoint_id);
     const sides = sidesMap.get(endpointId);
     const purchases: PurchaseInput[] = pRows.map((r) => purchaseInputFromL1WindowRow(r, sides));
-    const counts = l1McpDeliveryCounts({
-      purchases,
+    const counts = l1CountsOf(purchases, {
       declaredSchema: asRecord(meta.declared_schema_min),
       method: str(meta.method),
       declaredInput: asRecord(meta.declared_input),
     });
+    if (counts.paid_attempts === 0) continue;
     const source = String(meta.source);
     const listed = feedListedIn(source);
     const quality = meta.quality_payers_30d;
@@ -156,10 +192,11 @@ export async function readDeliverySellersFeedSnapshot(db: Db): Promise<DeliveryF
       listed === "bazaar" ? (quality == null || quality === "" ? null : Number(quality)) : null;
     const netRaw = str(meta.network);
     rows.push({
+      endpoint_id: endpointId,
       url: String(meta.resource_url),
       method: String(meta.method),
       network: netRaw === null ? null : (toCaip2(netRaw) ?? netRaw),
-      price_usd: feedPriceUsd(str(meta.price_amount), str(meta.price_asset)),
+      price_usd: feedPriceUsd(str(meta.price_amount), str(meta.price_asset), str(meta.network)),
       listed_in: listed,
       bazaar_payers_30d: bazaarPayers,
       paid_attempts_30d: counts.paid_attempts,
@@ -192,23 +229,32 @@ function filterRows(all: DeliveryFeedRow[], query: DeliverySellersQuery): Delive
 
 export function paginateDeliveryFeedRows(
   filtered: DeliveryFeedRow[],
-  cursor: { url: string; method: string; network: string | null } | null,
+  cursor: { url: string; method: string; network: string | null; endpoint_id: string } | null,
+  pageSize: number = DELIVERY_FEED_PAGE_SIZE,
 ): { page: DeliveryFeedRow[]; next_cursor: string | null } {
   let start = 0;
   if (cursor) {
-    start = filtered.findIndex(
-      (r) => r.url === cursor.url && r.method === cursor.method && (r.network ?? null) === (cursor.network ?? null),
-    );
+    start = filtered.findIndex((r) => feedRowAfterCursor(r, cursor));
     if (start < 0) start = filtered.length;
-    else start += 1;
   }
-  const page = filtered.slice(start, start + DELIVERY_FEED_PAGE_SIZE);
+  const page = filtered.slice(start, start + pageSize);
   const last = page[page.length - 1];
   const next =
-    start + DELIVERY_FEED_PAGE_SIZE < filtered.length && last
-      ? encodeFeedCursor({ url: last.url, method: last.method, network: last.network })
+    start + pageSize < filtered.length && last
+      ? encodeFeedCursor({ url: last.url, method: last.method, network: last.network, endpoint_id: last.endpoint_id })
       : null;
   return { page, next_cursor: next };
+}
+
+function feedRowAfterCursor(r: DeliveryFeedRow, cursor: { url: string; method: string; network: string | null; endpoint_id: string }): boolean {
+  const cmp = compareFeedRows(r, cursor);
+  if (cmp !== 0) return cmp > 0;
+  return r.endpoint_id > cursor.endpoint_id;
+}
+
+export function deliveryFeedPublicRow(row: DeliveryFeedRow): DeliveryFeedPublicRow {
+  const { endpoint_id: _id, ...rest } = row;
+  return rest;
 }
 
 export function buildDeliveryFeedPayload(snapshot: DeliveryFeedSnapshot, query: DeliverySellersQuery): DeliveryFeedPayload {
@@ -224,7 +270,7 @@ export function buildDeliveryFeedPayload(snapshot: DeliveryFeedSnapshot, query: 
     row_count: page.length,
     total_rows: filtered.length,
     next_cursor,
-    rows: page,
+    rows: page.map(deliveryFeedPublicRow),
   };
 }
 

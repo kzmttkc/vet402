@@ -13,11 +13,11 @@ export type DeliverySellersQuery = {
 
 const LISTED_IN_VALUES = new Set<string>(["bazaar", "circle", "mpp"]);
 
-export type FeedCursor = { url: string; method: string; network: string | null };
+export type FeedCursor = { url: string; method: string; network: string | null; endpoint_id: string };
 
 export function compareFeedRows(
-  a: Pick<FeedCursor, "url" | "method" | "network">,
-  b: Pick<FeedCursor, "url" | "method" | "network">,
+  a: Pick<FeedCursor, "url" | "method" | "network" | "endpoint_id">,
+  b: Pick<FeedCursor, "url" | "method" | "network" | "endpoint_id">,
 ): number {
   const u = a.url.localeCompare(b.url);
   if (u !== 0) return u;
@@ -25,7 +25,9 @@ export function compareFeedRows(
   if (m !== 0) return m;
   const na = a.network ?? "";
   const nb = b.network ?? "";
-  return na.localeCompare(nb);
+  const n = na.localeCompare(nb);
+  if (n !== 0) return n;
+  return a.endpoint_id.localeCompare(b.endpoint_id);
 }
 
 export function encodeFeedCursor(c: FeedCursor): string {
@@ -37,10 +39,10 @@ export function decodeFeedCursor(raw: string): FeedCursor | "invalid" {
     const j = JSON.parse(Buffer.from(raw, "base64url").toString("utf8")) as unknown;
     if (typeof j !== "object" || j === null) return "invalid";
     const o = j as Record<string, unknown>;
-    if (typeof o.url !== "string" || typeof o.method !== "string") return "invalid";
+    if (typeof o.url !== "string" || typeof o.method !== "string" || typeof o.endpoint_id !== "string") return "invalid";
     const network = o.network === null || o.network === undefined ? null : String(o.network);
     if (network !== null && network === "") return "invalid";
-    return { url: o.url, method: o.method, network };
+    return { url: o.url, method: o.method, network, endpoint_id: o.endpoint_id };
   } catch {
     return "invalid";
   }

@@ -12,6 +12,14 @@ function db() {
   return d;
 }
 
+let feedCachedForTest: ((query: DeliverySellersQuery) => Promise<DeliveryFeedPayload>) | null = null;
+
+/** route テスト用: DB 読みを差し替える。 */
+export function setDeliveryFeedCachedForTest(loader: typeof feedCachedForTest): void {
+  feedCachedForTest = loader;
+}
+
 export function getDeliverySellersFeedCached(query: DeliverySellersQuery): Promise<DeliveryFeedPayload> {
+  if (feedCachedForTest) return feedCachedForTest(query);
   return getDeliveryFeedSnapshotCached(db()).then((snapshot) => buildDeliveryFeedPayload(snapshot, query));
 }

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
+import { exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { getDeliverySellersFeedCached } from "@/lib/delivery/cached";
+import { DeliveryFeedExportBusy } from "@/lib/delivery/sellers-feed-cache";
 import {
   DELIVERY_FEED_LICENSE,
   DELIVERY_FEED_LICENSE_URL,
@@ -22,7 +23,7 @@ const RL_WINDOW_MS = 60_000;
 const ALLOWED_QUERY = ["network", "min_delivered", "listed_in", "cursor"] as const;
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
@@ -48,9 +49,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 
-  const slot = await acquireExportSlot();
-  if (!slot.ok) return exportBusyResponse(slot, perCaller);
-
   try {
     const body = await getDeliverySellersFeedCached(parsed);
     const retrievedAt = body.as_of;
@@ -68,9 +66,10 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof DeliveryFeedExportBusy) {
+      return exportBusyResponse(error, perCaller);
+    }
     logServerErrorSafe("delivery.sellers", error);
     return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
-  } finally {
-    await slot.release();
   }
 }

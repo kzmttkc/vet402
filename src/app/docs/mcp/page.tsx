@@ -20,6 +20,7 @@ import {
   MCP_DOCS_FEED_FIELDS,
   MCP_DOCS_FEED_FILTERS,
   MCP_DOCS_FEED_INTRO,
+  MCP_DOCS_FEED_STALENESS,
   MCP_DOCS_INTRO,
   MCP_DOCS_PRIVACY,
 } from "@/lib/docs/mcp-page-text";
@@ -162,6 +163,7 @@ export default async function McpDocsPage() {
         <section id="feed" className="scroll-mt-32 space-y-3">
           <h2 className="sec-head">Delivery feed</h2>
           <p className="text-[0.84375rem] text-brand">{MCP_DOCS_FEED_INTRO}</p>
+          <p className="text-[0.84375rem] text-brand">{MCP_DOCS_FEED_STALENESS}</p>
           <TableScroll label="Delivery feed row fields">
             <table className="fact-table">
               <caption className="sr-only">Delivery feed columns</caption>

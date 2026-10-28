@@ -21,7 +21,10 @@ export const MCP_DOCS_SETTLED_NOT_DELIVERED_FEED =
   "settled_not_delivered_30d uses the same rule as check_x402_seller delivery.settled_not_delivered: payment moved on chain with no delivery, and the count excludes vet402-side rows and rows held while HTTP outcomes stay inconclusive.";
 
 export const MCP_DOCS_FEED_INTRO =
-  "GET /api/v1/delivery/sellers.json lists active listings where vet402 made at least one signed purchase attempt in the last 30 days. Each JSON row is one listing. Rows sort by url, method and network ascending. Pages hold at most 2000 rows. Use next_cursor to continue.";
+  "GET /api/v1/delivery/sellers.json lists active listings where vet402 made at least one signed purchase attempt in the last 30 days. Each JSON row is one listing. Rows sort by url, method and network ascending. Pages hold at most 200 rows. Use next_cursor to continue.";
+
+export const MCP_DOCS_FEED_STALENESS =
+  "The feed snapshot is cached in the vet402 process for 300 seconds. HTTP responses use Cache-Control public, s-maxage=300, stale-while-revalidate=600.";
 
 export const MCP_DOCS_FEED_FILTERS =
   "Filters: network (a chain id vet402 recognizes, for example eip155:8453 or solana), min_delivered (integer 0 through 100000), listed_in (bazaar, circle or mpp) and cursor (continuation token). Any other query parameter returns 400.";
@@ -63,6 +66,7 @@ export function allMcpDocsFixedText(): string[] {
     MCP_DOCS_DELIVERED_ONE_LINER,
     MCP_DOCS_SETTLED_NOT_DELIVERED_FEED,
     MCP_DOCS_FEED_INTRO,
+    MCP_DOCS_FEED_STALENESS,
     MCP_DOCS_FEED_FILTERS,
     ...MCP_DOCS_FEED_FIELDS.map((f) => f.meaning),
     "Public observatory record for this listing.",

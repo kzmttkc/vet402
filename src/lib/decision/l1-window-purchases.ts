@@ -6,26 +6,15 @@ import { sql, type SQL } from "drizzle-orm";
 import type { getDb } from "@/lib/db/client";
 import { recordRowKey } from "@/lib/sellers/board";
 import type { RecordSides } from "@/lib/sellers/board";
+import { feedL1WindowClassifyColumnsSql } from "@/lib/sellers/reader";
 import { L1_WINDOW_DAYS } from "./rules";
-import type { PurchaseInput, SellerRowView } from "./seller-facts";
+import { parseL2Detail, type PurchaseInput, type SellerRowView } from "./seller-facts";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
 export const L1_WINDOW_PURCHASE_LIMIT = 200;
 
 const WINDOW_INTERVAL = sql`(${L1_WINDOW_DAYS} * interval '1 day')`;
-
-function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
-  const o = v as Record<string, unknown>;
-  const missing = Array.isArray(o.missing) ? o.missing.filter((x): x is string => typeof x === "string") : [];
-  return {
-    missing,
-    declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
-    responseHash: typeof o.responseHash === "string" ? o.responseHash : "",
-    reason: typeof o.reason === "string" ? o.reason : null,
-  };
-}
 
 function sellerViewOfRow(r: Record<string, unknown>, sides: RecordSides | null | undefined): SellerRowView | null {
   if (!sides || typeof r.attempted_at_utc !== "string") return null;
@@ -87,34 +76,40 @@ export async function fetchL1WindowPurchaseRows(db: Db, endpointId: string): Pro
   return (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
 }
 
-/** フィード用: 複数出品の窓内 200 行（endpoint_id 付き・1 本の JOIN）。 */
+/** フィード用: 複数出品の窓内 200 行（endpoint_id 付き・分類列付き・1 本の JOIN）。 */
 export function l1WindowPurchasesFeedJoinSql(activeEpSubquery: SQL): SQL {
   return sql`
-    SELECT pu.endpoint_id::text AS endpoint_id,
-           pu.attempted_at::text AS attempted_at, pu.status, pu.latency_ms, pu.http_status_paid, pu.payload_non_empty,
-           pu.l2_schema, pu.tx_hash, pu.network,
-           to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
-           CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'contentType', 60) END AS content_type,
-           pu.raw_response_meta->'l2' AS l2_detail,
-           CASE WHEN pu.l2_schema = 'mismatch' AND jsonb_typeof(pu.raw_response_meta) = 'object' THEN left(pu.raw_response_meta->>'bodyHead', 500) END AS body_head,
-           CASE WHEN jsonb_typeof(pu.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
-             'requestBody', CASE WHEN pu.raw_response_meta ? 'requestBody' THEN
-               CASE WHEN jsonb_typeof(pu.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(pu.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
-             'requestQuery', pu.raw_response_meta->'requestQuery')) END AS request_meta,
-           pu.amount_units, pu.payer,
-           (pu.auth_nonce IS NOT NULL AND pu.auth_nonce <> '') AS has_nonce,
-           CASE WHEN pu.status = 'settle_failed' AND pu.tx_hash IS NOT NULL THEN
-             (pu.settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))))
-           END AS settlement_confirmed
+    SELECT w.endpoint_id::text AS endpoint_id,
+           w.attempted_at::text AS attempted_at, w.status, w.latency_ms, w.http_status_paid, w.payload_non_empty,
+           w.l2_schema, w.tx_hash, w.network,
+           to_char(w.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
+           CASE WHEN jsonb_typeof(w.raw_response_meta) = 'object' THEN left(w.raw_response_meta->>'contentType', 60) END AS content_type,
+           w.raw_response_meta->'l2' AS l2_detail,
+           CASE WHEN w.l2_schema = 'mismatch' AND jsonb_typeof(w.raw_response_meta) = 'object' THEN left(w.raw_response_meta->>'bodyHead', 500) END AS body_head,
+           CASE WHEN jsonb_typeof(w.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
+             'requestBody', CASE WHEN w.raw_response_meta ? 'requestBody' THEN
+               CASE WHEN jsonb_typeof(w.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(w.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
+             'requestQuery', w.raw_response_meta->'requestQuery')) END AS request_meta,
+           w.amount_units, w.payer,
+           (w.auth_nonce IS NOT NULL AND w.auth_nonce <> '') AS has_nonce,
+           CASE WHEN w.status = 'settle_failed' AND w.tx_hash IS NOT NULL THEN
+             (w.settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (w.tx_hash, lower(w.tx_hash))))
+           END AS settlement_confirmed,
+           w.method, w.schema_min, w.declared_input, w.meta_min, w.unpaid_status, w.selection, w.settlement_verify_reason,
+           w.settlement_verified_at, w.listing_max_timeout, w.declares_headers, w.path_template, w.challenge_min,
+           w.declared_amount, w.declared_pay_to, w.has_auth_nonce, w.paid_content_type, w.receipt_present, w.receipt_success,
+           w.receipt_error_reason, w.example_input
     FROM (
       SELECT pu.endpoint_id, pu.attempted_at, pu.status, pu.latency_ms, pu.http_status_paid, pu.payload_non_empty,
              pu.l2_schema, pu.tx_hash, pu.network, pu.amount_units, pu.payer, pu.auth_nonce,
-             pu.settlement_verified, pu.raw_response_meta,
+             pu.settlement_verified, pu.raw_response_meta, pu.raw_settlement,
+             ${feedL1WindowClassifyColumnsSql},
              row_number() OVER (PARTITION BY pu.endpoint_id ORDER BY pu.attempted_at DESC) AS rn
       FROM x402_l1_purchases pu
       INNER JOIN (${activeEpSubquery}) ep ON ep.id = pu.endpoint_id
+      INNER JOIN x402_endpoints e ON e.id = pu.endpoint_id
       WHERE pu.attempted_at > now() - ${WINDOW_INTERVAL}
-    ) pu
-    WHERE pu.rn <= ${L1_WINDOW_PURCHASE_LIMIT}
+    ) w
+    WHERE w.rn <= ${L1_WINDOW_PURCHASE_LIMIT}
   `;
 }
