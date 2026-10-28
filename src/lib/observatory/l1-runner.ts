@@ -102,8 +102,10 @@ import {
   chainCapNetworkSql,
   gatewayAuthWindowOk,
   gatewayCandidateInclusionSql,
+  gatewayCandidateRequestShapeSql,
   gatewayDeclaredPayTosFor,
   gatewayLeafFacts,
+  gatewayPostBodyUnknownExcludedCountSql,
   gatewayPrimaryExclusionSql,
   gatewaySignedStatus,
   hasSignableNativeArcAccept,
@@ -229,6 +231,11 @@ export type L1BatchSummary = {
    */
   laneSkippedForTime: number;
   /**
+   * Gateway レーン候補から、POST で目録が本文を宣言していない出品として SQL が外した active 行の数（2026-10-28）。
+   * 402 も取りに行かず、行も書かない（laneSkippedForTime とは別: こちらは時間ではなく形の関門）。
+   */
+  gatewayPostBodyUnknownSkipped: number;
+  /**
    * 実行の開始から候補ループに入るまでのミリ秒（2026-10-27）。鍵・停止スイッチ・台帳・レーンの別枠・
    * 候補 SQL（主・レーン枠・census / retest）の合計。ループに入る前に返った実行（旗 off・停止など）は null。
    * 10/26 12:35Z のデプロイ後に最初の購入まで 19〜20 秒から 60 秒へ延びた原因を切り分けるための計器。
@@ -263,6 +270,7 @@ export type L1BatchSummary = {
 // sellerCapped（2026-09-29 監査 5 周目）も出さない: 売り手ごとの上限で見送った件数は運用の内訳で、その 1 件の計測の事実ではない。
 // laneSkippedForTime・setupMs・attemptsByNetwork（2026-10-27）も出さない: 持ち時間の配分と準備の所要時間は運用の計器で、
 // その 1 件の計測の事実ではない（公開口は 1 件指定なのでレーン枠も census も使わない）。
+// gatewayPostBodyUnknownSkipped（2026-10-28）も出さない: Gateway レーンの形の関門の内訳。
 // primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
@@ -272,6 +280,7 @@ export type PublicL1BatchSummary = Omit<
   | "retestCandidates"
   | "sellerCapped"
   | "laneSkippedForTime"
+  | "gatewayPostBodyUnknownSkipped"
   | "setupMs"
   | "attemptsByNetwork"
   | "primaryFetchMs"
@@ -494,10 +503,10 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
  */
 export function laneNetworkPrefilterSql(lane: { chain: CappedChain; networkLike: string }): SQL {
   // Gateway の取得（networkLike は "%"）: 出品の条件は gatewayCandidateInclusionSql の existsGateway（scheme exact・
-  // network eip155:5042・extra.name GatewayWalletBatched ほか）。そのうち文字列の完全一致の 3 つだけを包含で前に置く
-  // （version は数でも '1' になるので入れない）。existsGateway が真なら必ず真。
+  // network eip155:5042・extra.name GatewayWalletBatched ほか）と POST 本文の目録宣言（gatewayCandidateRequestShapeSql）。
+  // そのうち文字列の完全一致の 3 つだけを包含で前に置く（version は数でも '1' になるので入れない）。existsGateway が真なら必ず真。
   if (lane.chain === "arc_gateway") {
-    return sql`AND e.raw_accepts @> ${JSON.stringify([{ scheme: "exact", network: ARC_CAIP2, extra: { name: "GatewayWalletBatched" } }])}::jsonb`;
+    return sql`AND e.raw_accepts @> ${JSON.stringify([{ scheme: "exact", network: ARC_CAIP2, extra: { name: "GatewayWalletBatched" } }])}::jsonb ${gatewayCandidateRequestShapeSql()}`;
   }
   if (!LANE_SECONDARY_ACCEPTS[lane.chain] || /[%_\\]/.test(lane.networkLike)) return sql``;
   return sql`AND (e.network LIKE ${lane.networkLike} OR e.raw_accepts @> ${JSON.stringify([{ network: lane.networkLike }])}::jsonb)`;
@@ -2040,6 +2049,7 @@ export async function runL1Batch(
     retestCandidates: 0,
     censusRemaining: null,
     laneSkippedForTime: 0,
+    gatewayPostBodyUnknownSkipped: 0,
     setupMs: null,
     attemptsByNetwork: {},
     primaryFetchMs: null,
@@ -2319,6 +2329,13 @@ export async function runL1Batch(
   summary.laneFloor = laneHead.counts;
   summary.laneFloorHostCapped = laneHead.hostCapped;
   summary.laneFetchMs = laneHead.fetchMs;
+  if (isArcGatewayL1Enabled()) {
+    const excludedRaw = await db.execute(gatewayPostBodyUnknownExcludedCountSql());
+    const excludedRows = (Array.isArray(excludedRaw)
+      ? excludedRaw
+      : (excludedRaw as { rows?: { n?: number }[] }).rows ?? []) as { n?: number }[];
+    summary.gatewayPostBodyUnknownSkipped = Number(excludedRows[0]?.n ?? 0);
+  }
   // 3.6 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）。L1 の購入行がまだ無い Base のホストを、
   //     そのホストで払う額（price_amount）がいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠と優先ホストの
   //     **後ろ**・主候補の残りの**前**に置く

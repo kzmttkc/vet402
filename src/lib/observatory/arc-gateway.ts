@@ -6,6 +6,7 @@
 // This module never deposits, withdraws, or broadcasts.
 
 import { sql, type SQL } from "drizzle-orm";
+import { declaredInputBodySql } from "./declared-input-summary";
 import { isAddress, keccak256, sha256, toBytes, type Account, type Hex } from "viem";
 import { chainDailyCapUnits, type CappedChain } from "./budget";
 import {
@@ -335,6 +336,25 @@ function existsGateway(): string {
   return `EXISTS (SELECT 1 FROM ${RAW_ACCEPTS} g WHERE ${GATEWAY_ACCEPT_WHERE})`;
 }
 
+/**
+ * Gateway レーンだけ: GET（method 未宣言も GET 扱い）、または目録が本文を宣言した POST だけ候補に載せる。
+ * 402 の bazaar だけの宣言は SQL 段では見えない（declared_input.body = 'declared' が目録側の印）。
+ */
+function gatewayCandidateRequestShapeWhere(): string {
+  return `(upper(coalesce(e.method, 'GET')) <> 'POST' OR ${declaredInputBodySql("e.declared_input")})`;
+}
+
+/** POST で目録の declared_input.body が empty（または無い）の Gateway 専用出品。 */
+function gatewayPostBodyUnknownWhere(): string {
+  return `(upper(coalesce(e.method, 'GET')) = 'POST' AND NOT (${declaredInputBodySql("e.declared_input")}))`;
+}
+
+/** laneNetworkPrefilterSql（arc_gateway）と gatewayCandidateInclusionSql が共有する形の絞り込み。 */
+export function gatewayCandidateRequestShapeSql(): SQL {
+  if (!isArcGatewayL1Enabled()) return sql``;
+  return sql.raw(`AND ${gatewayCandidateRequestShapeWhere()}`);
+}
+
 function sqlQuote(value: string): string {
   return value.replace(/'/g, "''");
 }
@@ -435,7 +455,25 @@ export function gatewayPrimaryExclusionSql(): SQL {
 /** Gateway lane: a Gateway accept, and no accept vet402 can sign on another chain. */
 export function gatewayCandidateInclusionSql(): SQL {
   if (!isArcGatewayL1Enabled()) return sql`AND false`;
-  return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()})`);
+  return sql.raw(
+    `AND ${existsGateway()} AND NOT (${existsOtherSignable()}) AND ${gatewayCandidateRequestShapeWhere()}`,
+  );
+}
+
+/**
+ * 旗 on のとき、Gateway 専用出品のうち POST で目録が本文を宣言していない active 行の数。
+ * レーン候補 SQL が載せない行の件数（走った回の summary.gatewayPostBodyUnknownSkipped 用）。
+ */
+export function gatewayPostBodyUnknownExcludedCountSql(): SQL {
+  if (!isArcGatewayL1Enabled()) return sql`SELECT 0::int AS n`;
+  return sql.raw(`
+    SELECT count(*)::int AS n
+    FROM x402_endpoints e
+    WHERE e.status = 'active'
+      AND ${existsGateway()}
+      AND NOT (${existsOtherSignable()})
+      AND ${gatewayPostBodyUnknownWhere()}
+  `);
 }
 
 /**

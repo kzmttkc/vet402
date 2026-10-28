@@ -508,7 +508,8 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway.ts", "if (typeof rec.maxTimeoutSeconds === \"number\" && rec.maxTimeoutSeconds > ARC_GATEWAY_MAX_TIMEOUT_SECONDS) return null;");
   once("src/lib/observatory/arc-gateway.ts", 'if (!gatewayAuthWindowOk(authorization.validBefore, nowSec)) throw new Error("gateway_validity_window");');
   once("src/lib/observatory/arc-gateway.ts", 'if (options.otherChainSignable) return { accept: null, reason: "native_present" };');
-  once("src/lib/observatory/arc-gateway.ts", "if (!isArcGatewayL1Enabled()) return sql``;");
+  once("src/lib/observatory/arc-gateway.ts", "export function gatewayPrimaryExclusionSql(): SQL {");
+  once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateRequestShapeSql(): SQL {");
   once("src/lib/observatory/arc-gateway.ts", 'if (anyOverCap) return { accept: null, reason: "over_cap" };');
   once("src/lib/observatory/arc-gateway.ts", 'body: JSON.stringify({ token: "USDC", sources: [{ depositor, domain: ARC_GATEWAY_DOMAIN }] })');
   once("src/lib/observatory/arc-gateway.ts", 'if (paid.status === 402 || paid.status >= 500) return "settle_failed"; // gateway_seller_refused');
@@ -788,6 +789,8 @@ test("旗 off の候補 SQL は Gateway の句を足さない。Base で払え�
     assert.match(exclusion, /eip155:8453/);
     assert.match(inclusion, /GatewayWalletBatched/);
     assert.match(inclusion, /eip155:8453/);
+    assert.match(inclusion, /declared_input/);
+    assert.match(inclusion, /<> 'POST'/);
     assert.equal(/\bsource\b/.test(inclusion), false);
   });
   const base = {
