@@ -231,10 +231,15 @@ export type L1BatchSummary = {
    */
   laneSkippedForTime: number;
   /**
-   * Gateway レーン候補から、POST で目録が本文を宣言していない出品として SQL が外した active 行の数（2026-10-28）。
-   * 402 も取りに行かず、行も書かない（laneSkippedForTime とは別: こちらは時間ではなく形の関門）。
+   * 目録全体の active 行のうち、Gateway 専用で POST・目録本文不明の件数（2026-10-28）。
+   * その回の候補母数ではない。問い合わせが失敗した回は null（0 と混ぜない）。
    */
-  gatewayPostBodyUnknownSkipped: number;
+  gatewayPostBodyUnknownActive: number | null;
+  /**
+   * 402 を読んだあと、Gateway + POST で live 402 が本文を宣言していないため署名前に見送った件数（2026-10-29）。
+   * gatewayPostBodyUnknownActive とは別（目録と 402 の食い違い）。
+   */
+  gatewayPostBodyUnknownSignSkipped: number;
   /**
    * 実行の開始から候補ループに入るまでのミリ秒（2026-10-27）。鍵・停止スイッチ・台帳・レーンの別枠・
    * 候補 SQL（主・レーン枠・census / retest）の合計。ループに入る前に返った実行（旗 off・停止など）は null。
@@ -270,7 +275,7 @@ export type L1BatchSummary = {
 // sellerCapped（2026-09-29 監査 5 周目）も出さない: 売り手ごとの上限で見送った件数は運用の内訳で、その 1 件の計測の事実ではない。
 // laneSkippedForTime・setupMs・attemptsByNetwork（2026-10-27）も出さない: 持ち時間の配分と準備の所要時間は運用の計器で、
 // その 1 件の計測の事実ではない（公開口は 1 件指定なのでレーン枠も census も使わない）。
-// gatewayPostBodyUnknownSkipped（2026-10-28）も出さない: Gateway レーンの形の関門の内訳。
+// gatewayPostBodyUnknownActive・gatewayPostBodyUnknownSignSkipped（2026-10-28/29）も出さない: Gateway 形の関門の内訳。
 // primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
@@ -280,7 +285,8 @@ export type PublicL1BatchSummary = Omit<
   | "retestCandidates"
   | "sellerCapped"
   | "laneSkippedForTime"
-  | "gatewayPostBodyUnknownSkipped"
+  | "gatewayPostBodyUnknownActive"
+  | "gatewayPostBodyUnknownSignSkipped"
   | "setupMs"
   | "attemptsByNetwork"
   | "primaryFetchMs"
@@ -1965,6 +1971,22 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
   return { targetsSql, censusTargetsSql, primaryExtra };
 }
 
+/** Gateway 専用・POST・目録本文不明の active 行数。DB 障害時は null。 */
+export async function queryGatewayPostBodyUnknownActive(
+  db: NonNullable<ReturnType<typeof getDb>>,
+): Promise<number | null> {
+  try {
+    const excludedRaw = await db.execute(gatewayPostBodyUnknownExcludedCountSql());
+    const excludedRows = (Array.isArray(excludedRaw)
+      ? excludedRaw
+      : (excludedRaw as { rows?: { n?: number }[] }).rows ?? []) as { n?: number }[];
+    return Number(excludedRows[0]?.n ?? 0);
+  } catch (error) {
+    logServerErrorSafe("observatory.l1.gateway_post_body_count", redactedError(error));
+    return null;
+  }
+}
+
 export async function runL1Batch(
   options: {
     limit?: number;
@@ -2049,7 +2071,8 @@ export async function runL1Batch(
     retestCandidates: 0,
     censusRemaining: null,
     laneSkippedForTime: 0,
-    gatewayPostBodyUnknownSkipped: 0,
+    gatewayPostBodyUnknownActive: null,
+    gatewayPostBodyUnknownSignSkipped: 0,
     setupMs: null,
     attemptsByNetwork: {},
     primaryFetchMs: null,
@@ -2329,12 +2352,8 @@ export async function runL1Batch(
   summary.laneFloor = laneHead.counts;
   summary.laneFloorHostCapped = laneHead.hostCapped;
   summary.laneFetchMs = laneHead.fetchMs;
-  if (isArcGatewayL1Enabled()) {
-    const excludedRaw = await db.execute(gatewayPostBodyUnknownExcludedCountSql());
-    const excludedRows = (Array.isArray(excludedRaw)
-      ? excludedRaw
-      : (excludedRaw as { rows?: { n?: number }[] }).rows ?? []) as { n?: number }[];
-    summary.gatewayPostBodyUnknownSkipped = Number(excludedRows[0]?.n ?? 0);
+  if (!onlyEndpointId && laneSelectable.get("arc_gateway") === true && isArcGatewayL1Enabled()) {
+    summary.gatewayPostBodyUnknownActive = await queryGatewayPostBodyUnknownActive(db);
   }
   // 3.6 売り手の census（2026-09-28・budget.ts CENSUS_PER_RUN）。L1 の購入行がまだ無い Base のホストを、
   //     そのホストで払う額（price_amount）がいちばん安い出品（$1 以下）で 1 件ずつ、レーン枠と優先ホストの
@@ -2687,6 +2706,7 @@ export async function runL1Batch(
         // be cheaper, so keep walking rather than break (prices vary 100x).
       } else {
         summary.skipped++;
+        if (outcome.gatewayPostBodyUnknownAtSign) summary.gatewayPostBodyUnknownSignSkipped++;
       }
     } catch (error) {
       logServerErrorSafe("observatory.l1.purchase", error);
@@ -3134,6 +3154,8 @@ async function purchaseOne(input: {
   capChain?: CappedChain | null;
   /** Gateway の残高不足のあと、別レールの accept があるので優先なしで 1 回買い直す。 */
   retryWithoutGateway?: boolean;
+  /** Gateway + POST で live 402 が本文を宣言していないため、署名前に見送った。 */
+  gatewayPostBodyUnknownAtSign?: boolean;
   /**
    * Stellar の署名前の故障で、secondary の未署名予約を消したときだけ true。
    * バッチはその候補を Base で 1 回買い直す。署名後は付けない。
@@ -3494,6 +3516,9 @@ async function purchaseOne(input: {
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
     method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
+  if (isArcGateway && method === "POST" && paidRequestBody?.source !== "declared") {
+    return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", gatewayPostBodyUnknownAtSign: true };
+  }
   // 支払い付き要求のクエリ（2026-09-20）。売り手が 402 で宣言した input.queryParams を URL に足す
   // （規則は declared-input.ts）。accept の network が許可リストに無ければ（既定）null＝URL も行も従来どおり。
   // 差し替えるのは**要求の URL だけ**: 封筒の resource.url・署名する額と宛先は candidate / accept のまま。

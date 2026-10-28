@@ -509,6 +509,7 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway.ts", 'if (!gatewayAuthWindowOk(authorization.validBefore, nowSec)) throw new Error("gateway_validity_window");');
   once("src/lib/observatory/arc-gateway.ts", 'if (options.otherChainSignable) return { accept: null, reason: "native_present" };');
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayPrimaryExclusionSql(): SQL {");
+  once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateInclusionWithoutRequestShapeSql(): SQL {");
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateRequestShapeSql(): SQL {");
   once("src/lib/observatory/arc-gateway.ts", 'if (anyOverCap) return { accept: null, reason: "over_cap" };');
   once("src/lib/observatory/arc-gateway.ts", 'body: JSON.stringify({ token: "USDC", sources: [{ depositor, domain: ARC_GATEWAY_DOMAIN }] })');

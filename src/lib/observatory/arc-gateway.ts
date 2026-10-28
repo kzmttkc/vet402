@@ -340,13 +340,22 @@ function existsGateway(): string {
  * Gateway レーンだけ: GET（method 未宣言も GET 扱い）、または目録が本文を宣言した POST だけ候補に載せる。
  * 402 の bazaar だけの宣言は SQL 段では見えない（declared_input.body = 'declared' が目録側の印）。
  */
+function coalesceCatalogDeclaresBodySql(inputExpr: string): string {
+  return `coalesce(${declaredInputBodySql(inputExpr)}, false)`;
+}
+
 function gatewayCandidateRequestShapeWhere(): string {
-  return `(upper(coalesce(e.method, 'GET')) <> 'POST' OR ${declaredInputBodySql("e.declared_input")})`;
+  return `(upper(coalesce(e.method, 'GET')) <> 'POST' OR ${coalesceCatalogDeclaresBodySql("e.declared_input")})`;
 }
 
 /** POST で目録の declared_input.body が empty（または無い）の Gateway 専用出品。 */
 function gatewayPostBodyUnknownWhere(): string {
-  return `(upper(coalesce(e.method, 'GET')) = 'POST' AND NOT (${declaredInputBodySql("e.declared_input")}))`;
+  return `(upper(coalesce(e.method, 'GET')) = 'POST' AND NOT ${coalesceCatalogDeclaresBodySql("e.declared_input")})`;
+}
+
+/** arc_gateway レーンの @> 前置き（数える問い合わせと laneNetworkPrefilterSql が共有）。 */
+function gatewayArcGatewayAcceptPrefilterWhere(): string {
+  return `e.raw_accepts @> '${JSON.stringify([{ scheme: "exact", network: ARC_CAIP2, extra: { name: "GatewayWalletBatched" } }]).replace(/'/g, "''")}'::jsonb`;
 }
 
 /** laneNetworkPrefilterSql（arc_gateway）と gatewayCandidateInclusionSql が共有する形の絞り込み。 */
@@ -460,16 +469,21 @@ export function gatewayCandidateInclusionSql(): SQL {
   );
 }
 
-/**
- * 旗 on のとき、Gateway 専用出品のうち POST で目録が本文を宣言していない active 行の数。
- * レーン候補 SQL が載せない行の件数（走った回の summary.gatewayPostBodyUnknownSkipped 用）。
- */
+/** テスト用: Gateway レーンの核（existsGateway・他レール不可）だけ。POST 本文の形は載せない。 */
+export function gatewayCandidateInclusionWithoutRequestShapeSql(): SQL {
+  if (!isArcGatewayL1Enabled()) return sql`AND false`;
+  return sql.raw(`AND ${existsGateway()} AND NOT (${existsOtherSignable()})`);
+}
+
+/** 旗 on のとき、Gateway 専用出品のうち POST で目録が本文を宣言していない active 行の数。
+ * レーン候補 SQL が載せない行の件数（走った回の summary.gatewayPostBodyUnknownActive 用）。 */
 export function gatewayPostBodyUnknownExcludedCountSql(): SQL {
   if (!isArcGatewayL1Enabled()) return sql`SELECT 0::int AS n`;
   return sql.raw(`
     SELECT count(*)::int AS n
     FROM x402_endpoints e
     WHERE e.status = 'active'
+      AND ${gatewayArcGatewayAcceptPrefilterWhere()}
       AND ${existsGateway()}
       AND NOT (${existsOtherSignable()})
       AND ${gatewayPostBodyUnknownWhere()}

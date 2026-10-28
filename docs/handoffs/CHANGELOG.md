@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-29 Gateway lane skips POST listings with no catalog body shape
+
+- **What**: The Arc Gateway lane (`arc_gateway`) no longer selects POST listings whose catalog `declared_input.body` is not the string `declared` (GET and undeclared method still qualify). The same rule is in `gatewayCandidateInclusionSql` and `laneNetworkPrefilterSql`. Active rows matching Gateway-only + POST + unknown catalog body are counted in `summary.gatewayPostBodyUnknownActive` (`number | null`; null when the count query fails or the lane is not run). After a live 402 is read, Gateway + POST without a declared body in the challenge is skipped before signing (`gatewayPostBodyUnknownSignSkipped`; no ledger row). Count SQL uses `coalesce(..., false)` on `declared_input.body` and the Gateway `@>` prefilter; it runs only when `!onlyEndpointId && laneSelectable arc_gateway`.
+- **Why**: On 2026-10-28, Gateway buys against api.aisa.one POST listings with catalog `{"body":"empty"}` paid with `{}` and returned empty payloads.
+- **Impact**: Gateway lane only. Other lanes unchanged. Public demo summary still omits the new counters. Tests: `tests/l1-gateway-post-body.pg.test.ts`, `tests/l1-gateway-post-body-count.test.ts`.
+- **Commits**: aef71528, (this entry).
+
 ## 2026-10-28 Delivery feed, /docs/mcp, and MCP registry auth file
 
 - **What**: `GET /api/v1/delivery/sellers.json` (`src/lib/delivery/sellers-feed.ts`, cached 300 s) lists active listings with at least one paid attempt in the last 30 days, with filters `network`, `min_delivered`, and `listed_in`. English page `src/app/docs/mcp/page.tsx` documents the hosted MCP server, the three tools, the feed, limits, methodology link, privacy, and contact. `public/.well-known/mcp-registry-auth` publishes the MCP registry ed25519 public key. `docs/openapi.yaml`, `docs/claims.yaml`, `LICENSE-DATA`, sitemap, and `packages/mcp-server/README.md` (link to `/docs/mcp`) are updated.

@@ -44,7 +44,8 @@ const HALTED: L1BatchSummary = {
   retestCandidates: 3,
   censusRemaining: 612,
   laneSkippedForTime: 4,
-  gatewayPostBodyUnknownSkipped: 2,
+  gatewayPostBodyUnknownActive: 2,
+  gatewayPostBodyUnknownSignSkipped: 0,
   setupMs: 61_234,
   attemptsByNetwork: { "eip155:8453": 2 },
   primaryFetchMs: 7_732,
@@ -73,7 +74,8 @@ test("publicL1Summary は census の 2 つ（censusCandidates・censusRemaining�
 test("publicL1Summary は持ち時間の計器（laneSkippedForTime・setupMs・attemptsByNetwork）を公開口へ出さない（2026-10-27）", () => {
   const out = publicL1Summary(HALTED) as Record<string, unknown>;
   assert.equal("laneSkippedForTime" in out, false);
-  assert.equal("gatewayPostBodyUnknownSkipped" in out, false, "Gateway 形の関門の内訳は公開口へ出さない（2026-10-28）");
+  assert.equal("gatewayPostBodyUnknownActive" in out, false, "Gateway 形の関門の内訳は公開口へ出さない（2026-10-28）");
+  assert.equal("gatewayPostBodyUnknownSignSkipped" in out, false);
   assert.equal("setupMs" in out, false);
   assert.equal("attemptsByNetwork" in out, false);
 });
