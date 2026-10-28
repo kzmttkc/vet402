@@ -3516,6 +3516,9 @@ async function purchaseOne(input: {
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
     method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
+  // Gateway の POST で 402 が本文を宣言していなければ、署名・予約の前に見送る（`{}` を送って払わない）。
+  // 行は書かないので、次の回も選ばれ直す。目録が declared なのに 402 が宣言しない出品は 2026-10-29 の実測で 0 件。
+  // summary.gatewayPostBodyUnknownSignSkipped が増え続けたら、no_eligible_accept の行を書いて窓から外す形に変える。
   if (isArcGateway && method === "POST" && paidRequestBody?.source !== "declared") {
     return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", gatewayPostBodyUnknownAtSign: true };
   }

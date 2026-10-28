@@ -510,6 +510,11 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway.ts", 'if (options.otherChainSignable) return { accept: null, reason: "native_present" };');
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayPrimaryExclusionSql(): SQL {");
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateInclusionWithoutRequestShapeSql(): SQL {");
+  assert.equal(
+    read("src/lib/observatory/l1-runner.ts").includes("gatewayCandidateInclusionWithoutRequestShapeSql"),
+    false,
+    "the control SQL without the POST body condition is for tests only",
+  );
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateRequestShapeSql(): SQL {");
   once("src/lib/observatory/arc-gateway.ts", 'if (anyOverCap) return { accept: null, reason: "over_cap" };');
   once("src/lib/observatory/arc-gateway.ts", 'body: JSON.stringify({ token: "USDC", sources: [{ depositor, domain: ARC_GATEWAY_DOMAIN }] })');
