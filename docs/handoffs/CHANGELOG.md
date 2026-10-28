@@ -18,7 +18,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **What**: `deliveredPredicate()` already matched `isDelivered()` after 424eeae9; this change aligns public labels and copy (`/observatory/state`, API disclaimers, methodology, claims.yaml), deduplicates hand-copied SQL in seller-facts, MCP reads, and sellers reader via `deliveredPredicate`, fixes Arc Gateway daily records to use `isDeliveryHttp` for the `delivered` flag (leaf hashes unchanged), wraps the SQL predicate in parentheses, and extends `tests/l1-held-rows.pg.test.ts` with settled rows at HTTP 202, empty-body 200, and null `payload_non_empty`.
 - **Why**: Independent review NO-SHIP: a record page counted a settled 202 as delivered while the aggregate feed did not. A 30-day production read found 36 Base rows with HTTP 202 and 1 empty 2xx; other networks had 0.
 - **Impact**: Public `l1.delivered` (and matching endpoint counts) drop by those rows. UI and API text now describe delivered as 2xx other than 202 Accepted with a non-empty body, and the state-page bucket for settled-not-delivered-not-4xx includes 202 and empty 2xx.
-- **Commits**: 424eeae9, (this branch commit).
+- **Commits**: 424eeae9, f1b9a9a4.
 
 ## 2026-10-29 Gateway lane skips POST listings with no catalog body shape
 
