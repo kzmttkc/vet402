@@ -17,8 +17,8 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 - **What**: `GET /api/v1/delivery/sellers.json` (`src/lib/delivery/sellers-feed.ts`, cached 300 s) lists active listings with at least one paid attempt in the last 30 days, with filters `network`, `min_delivered`, and `listed_in`. English page `src/app/docs/mcp/page.tsx` documents the hosted MCP server, the three tools, the feed, limits, methodology link, privacy, and contact. `public/.well-known/mcp-registry-auth` publishes the MCP registry ed25519 public key. `docs/openapi.yaml`, `docs/claims.yaml`, `LICENSE-DATA`, sitemap, and `packages/mcp-server/README.md` (link to `/docs/mcp`) are updated.
 - **Why**: Owner order 2026-10-28: public delivery feed and MCP docs for agents and registry ownership proof, without changing payment paths.
-- **Impact**: Key-less read only. Rate limit 30/min per IP on the feed. A 7,000-row fixture answers in under 30 s and about 2.7 MB locally. No deploy until review.
-- **Commits**: f208a2c9, 96bf8dc3, c0f8fd7c
+- **Impact**: Key-less read only. Rate limit 30/min per IP on the feed. Reads only the 30-day window: a 6,700-listing, 134,000-purchase fixture builds the snapshot in about 2 s locally, first read included. Against production from a laptop it took about 9 s, behind a 300 s cache with one read in flight and a stale snapshot while busy. Independent review: SHIP (round 4).
+- **Commits**: f208a2c9, 96bf8dc3, c0f8fd7c, e8bee08f, 909b7635, f0271758
 
 ## 2026-10-28 Hosted MCP entry at https://vet402.com/mcp (P1, waiting for deploy)
 
