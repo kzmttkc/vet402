@@ -178,7 +178,11 @@ function assertAlias(fn: string, alias: string): string {
  */
 export function deliveredPredicate(alias = ""): string {
   const p = assertAlias("deliveredPredicate", alias);
-  return `${p}status = 'settled' AND ${p}http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}`;
+  // isDelivered と同じ: 202 と本文が空と記録された行は外す（2026-10-29 まで SQL だけ 202 を数えていた）。
+  return (
+    `${p}status = 'settled' AND ${p}http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}` +
+    ` AND ${p}http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND ${p}payload_non_empty IS DISTINCT FROM false`
+  );
 }
 
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;

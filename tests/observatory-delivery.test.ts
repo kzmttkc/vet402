@@ -18,6 +18,7 @@ import {
   DELIVERED_HTTP_MAX,
   DELIVERED_HTTP_MIN,
   deliveredPredicate,
+  ACCEPTED_NOT_DONE_HTTP,
   isDelivered,
 } from "@/lib/observatory/delivery";
 
@@ -54,6 +55,15 @@ test("SQL 述語は同じ定数から組まれる（TS と SQL で境界が食�
   const p = deliveredPredicate("p");
   assert.ok(p.includes(`p.status = 'settled'`), p);
   assert.ok(p.includes(`p.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}`), p);
+});
+
+test("SQL 述語も isDelivered と同じく 202 と本文が空と記録された行を外す（2026-10-29: ページの delivered に 202 が入っていた）", () => {
+  const p = deliveredPredicate("p");
+  assert.ok(p.includes(`p.http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP}`), p);
+  assert.ok(p.includes(`p.payload_non_empty IS DISTINCT FROM false`), p);
+  assert.equal(isDelivered({ status: "settled", httpStatusPaid: ACCEPTED_NOT_DONE_HTTP }), false);
+  assert.equal(isDelivered({ status: "settled", httpStatusPaid: 200, payloadNonEmpty: false }), false);
+  assert.equal(isDelivered({ status: "settled", httpStatusPaid: 200, payloadNonEmpty: null }), true);
 });
 
 test("別名なしの述語は列名だけを使う（同じ表を FROM 直下で数えるとき用）", () => {
