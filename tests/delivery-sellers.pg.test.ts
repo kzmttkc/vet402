@@ -115,12 +115,47 @@ if (!TEST_DB) {
     const baseCircleId = await mkEp(baseCircleUrl, { source: CIRCLE_DISCOVERY_SOURCE, network: "eip155:8453" });
     await mkPurchase(baseCircleId, { status: "settled", http: 200, payload: true, at: daysAgo(2) });
 
+    const mcpAlignUrl = "https://feed-mcp-align.example/api";
+    const mcpAlignId = await mkEp(mcpAlignUrl, { source: CATALOG_SOURCE, network: "eip155:8453" });
+    const alignTx = "0x" + "a".repeat(64);
+    await mkPurchase(mcpAlignId, { status: "settled", http: 200, payload: true, at: daysAgo(5) });
+    await mkPurchase(mcpAlignId, { status: "settled", http: 500, payload: true, at: daysAgo(4), tx: true });
+    await mkPurchase(mcpAlignId, { status: "settled", http: 404, payload: false, at: daysAgo(3), tx: true });
+    await db.insert(schema.x402L1Purchases).values({
+      endpointId: mcpAlignId,
+      attemptedAt: daysAgo(2),
+      status: "settle_failed",
+      network: "eip155:8453",
+      httpStatusPaid: 502,
+      payloadNonEmpty: false,
+      authNonce: SECRETS.nonce,
+      payer: SECRETS.payer,
+      payTo: SECRETS.pay_to,
+      txHash: alignTx,
+      amountUnits: "7000",
+      spentUnits: "7000",
+      asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      settlementVerified: true,
+    });
+    await mkPurchase(mcpAlignId, { status: "settled", http: 202, payload: true, at: daysAgo(1), tx: true });
+
     let body = await readDeliverySellersFeed(db, { network: null, minDelivered: null, listedIn: null });
     const mixed = body.rows.find((r) => r.url === mixedUrl);
     assert.ok(mixed, "mixed row");
     assert.equal(mixed.delivered_30d, 1);
     assert.equal(mixed.settled_not_delivered_30d, 1);
     assert.equal(mixed.paid_attempts_30d, 3);
+
+    const align = body.rows.find((r) => r.url === mcpAlignUrl);
+    assert.ok(align, "mcp align row");
+    const { loadSellerFacts } = await import("@/lib/decision/seller-facts");
+    const { l1BasisOf } = await import("@/lib/decision/rules");
+    const loaded = await loadSellerFacts(mcpAlignId);
+    assert.ok(loaded, "loadSellerFacts");
+    const basis = l1BasisOf(loaded!.facts, { l1Timeline: loaded!.l1Timeline, l1NotCounted: loaded!.l1NotCounted });
+    assert.equal(align!.delivered_30d, loaded!.facts.l1.n_delivered, "delivered vs MCP");
+    assert.equal(align!.paid_attempts_30d, loaded!.facts.l1.n_attempts, "paid_attempts vs MCP");
+    assert.equal(align!.settled_not_delivered_30d, basis.n_paid_undelivered, "settled_not_delivered vs MCP");
 
     assert.ok(!body.rows.some((r) => r.url === oldUrl));
     assert.ok(!body.rows.some((r) => r.url === inactiveUrl));

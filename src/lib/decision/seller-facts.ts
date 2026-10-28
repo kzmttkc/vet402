@@ -168,8 +168,49 @@ export function notCountedReasonOf(v: SellerRowView, p: PurchaseInput): NotCount
  * お金が動いて届かなかった行（l1_paid_not_delivered の材料）。vet402 の側・判定保留（held_reason）は入れない。
  * このうち売り手の側（確定）の行だけが BLOCK の根拠になる（rules.ts L1_PAID_UNDELIVERED_BLOCK）。
  */
-function isPaidUndelivered(v: SellerRowView): boolean {
+export function isPaidUndelivered(v: SellerRowView): boolean {
   return v.money === "moved" && !v.delivered && v.bucket !== "vet402" && v.held === null;
+}
+
+/** check_x402_seller の delivery と同じ L1 件数（窓の中の purchases を渡す・新しい順）。 */
+export function l1McpDeliveryCounts(
+  input: L1Input,
+  opts?: { lastAttemptAt?: string | null; now?: number },
+): {
+  paid_attempts: number;
+  delivered: number;
+  settled_not_delivered: number;
+  last_delivered_at: string | null;
+  last_attempt_at_in_window: string | null;
+} {
+  const now = opts?.now ?? Date.now();
+  const factsInput: SellerFactsInput = {
+    probes: [],
+    purchases: input.purchases,
+    settlements30d: { raw: 0, real: 0, test: 0, uniquePayersReal: 0 },
+    payees: [],
+    declaredSchema: input.declaredSchema ?? null,
+    method: input.method,
+    declaredInput: input.declaredInput,
+    lastAttemptAt: opts?.lastAttemptAt ?? null,
+    lastSignedAttemptAt: input.lastSignedAttemptAt,
+    lastDeliveredAt: input.lastDeliveredAt,
+  };
+  const facts = assembleSellerFacts(factsInput);
+  const timeline = l1TimelineOf(input, now);
+  let lastInWindow: string | null = null;
+  for (const p of input.purchases) {
+    if (!SIGNED_STATUSES.has(p.status)) continue;
+    const iso = toIsoUtc(p.attemptedAt) ?? p.attemptedAt;
+    if (lastInWindow === null || epoch(iso) > epoch(lastInWindow)) lastInWindow = iso;
+  }
+  return {
+    paid_attempts: facts.l1.n_attempts,
+    delivered: facts.l1.n_delivered,
+    settled_not_delivered: timeline.n_paid_undelivered,
+    last_delivered_at: timeline.last_delivered_at,
+    last_attempt_at_in_window: lastInWindow,
+  };
 }
 
 export type SellerFactsInput = {

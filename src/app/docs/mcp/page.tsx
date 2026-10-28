@@ -21,6 +21,7 @@ import {
   MCP_DOCS_GROK_BOT,
   MCP_DOCS_INTRO,
   MCP_DOCS_PRIVACY,
+  MCP_DOCS_SETTLED_NOT_DELIVERED_FEED,
 } from "@/lib/docs/mcp-page-text";
 import { TOOL_TEXT } from "@/lib/mcp/text";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
@@ -58,7 +59,7 @@ const FEED_FIELDS: { name: string; meaning: string }[] = [
   { name: "bazaar_payers_30d", meaning: "Bazaar quality payers in the last 30 days, or null outside Bazaar." },
   { name: "paid_attempts_30d", meaning: "Paid attempts vet402 signed in the last 30 days." },
   { name: "delivered_30d", meaning: "Delivered purchases in that window." },
-  { name: "settled_not_delivered_30d", meaning: "Settled rows that did not meet the delivered predicate." },
+  { name: "settled_not_delivered_30d", meaning: MCP_DOCS_SETTLED_NOT_DELIVERED_FEED },
   { name: "last_attempt_at", meaning: "Latest paid attempt timestamp (UTC ISO8601)." },
   { name: "last_delivered_at", meaning: "Latest delivered attempt timestamp, if any." },
   { name: "record_url", meaning: "Public observatory record for this listing." },

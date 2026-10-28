@@ -20,6 +20,9 @@ export const MCP_DOCS_DELIVERED_ONE_LINER =
 
 export const MCP_DOCS_CONTACT = "support@vet402.com";
 
+export const MCP_DOCS_SETTLED_NOT_DELIVERED_FEED =
+  "settled_not_delivered_30d uses the same rule as check_x402_seller delivery.settled_not_delivered: payment moved on chain with no delivery, and the count excludes vet402-side rows and rows held while HTTP outcomes stay inconclusive.";
+
 /** plain-english 検査用。ページに載る固定文を全部返す。 */
 export function allMcpDocsFixedText(): string[] {
   return [
@@ -27,5 +30,6 @@ export function allMcpDocsFixedText(): string[] {
     MCP_DOCS_GROK_BOT,
     MCP_DOCS_PRIVACY,
     MCP_DOCS_DELIVERED_ONE_LINER,
+    MCP_DOCS_SETTLED_NOT_DELIVERED_FEED,
   ];
 }
