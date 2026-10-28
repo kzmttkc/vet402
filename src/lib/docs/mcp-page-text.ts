@@ -3,7 +3,7 @@
 // ============================================================
 
 export const MCP_DOCS_INTRO =
-  "The hosted MCP server at https://vet402.com/mcp returns what vet402 recorded when it paid x402 listings: when each attempt happened, which chain it used, whether content came back, and the transaction hash of each settled purchase. " +
+  "The hosted MCP server at https://vet402.com/mcp returns what vet402 recorded when it paid x402 listings: when each attempt happened, which chain it used, whether content came back, and the transaction hash where vet402 recorded one. " +
   "The endpoint is read only, needs no key, and costs nothing to call.";
 
 export const MCP_DOCS_CONNECT_CURSOR =
