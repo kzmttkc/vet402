@@ -66,9 +66,10 @@ test("SQL 述語も isDelivered と同じく 202 と本文が空と記録され�
   assert.equal(isDelivered({ status: "settled", httpStatusPaid: 200, payloadNonEmpty: null }), true);
 });
 
-test("SQL 述語は括弧で包まれ、deliveredPredicate が seller-facts の唯一の正典", () => {
+test("SQL 述語は coalesce(..., false) で包まれ、deliveredPredicate が seller-facts の唯一の正典", () => {
   const p = deliveredPredicate("p");
-  assert.ok(p.startsWith("(") && p.endsWith(")"), p);
+  // NOT(述語) で HTTP が NULL の行が落ちないように、NULL を false にする（readEndpointsWithUndeliveredL1）。
+  assert.ok(p.startsWith("coalesce((") && p.endsWith("), false)"), p);
   assert.equal(deliveredPredicate(), deliveredPredicate(""));
 });
 
