@@ -2222,3 +2222,17 @@ claims:
     check: null
     why_unverifiable: "静的な文で、カナリアの式（JSON の path op literal）で当てられない。tests/fixtures/arc-gateway-batch-r2.json と tests/fixtures/arc-gateway-batch-r3.json が実物の tx と期待値。tests/review-84-public-text.test.ts が方法論の節の tx・行数・額・エクスプローラの URL をその fixture から描いて当てる。tests/arc-gateway.test.ts が calldata の購入元の減額を expectedDebit に当てる。"
     verified_at: 2026-10-26
+  - id: delivery_feed_lists_paid_active_listings
+    surface: src/app/api/v1/delivery/sellers.json/route.ts
+    quote: "GET /api/v1/delivery/sellers.json"
+    means: "鍵なし JSON フィードが、直近 30 日に vet402 が払った試行のある active 出品を 1 行 1 出品で返す"
+    check: null
+    why_unverifiable: "契約は tests/openapi-route-parity.test.ts と tests/delivery-sellers.pg.test.ts が固定する"
+    verified_at: 2026-10-28
+  - id: docs_mcp_hosted_entry
+    surface: src/app/docs/mcp/page.tsx
+    quote: "Hosted MCP server"
+    means: "/docs/mcp が hosted MCP の入口・tool・配達フィード・枠を英語で説明する"
+    check: null
+    why_unverifiable: "文書面の主張。tests/mcp-plain-english.test.ts と tests/delivery-feed-surface.test.ts が固定する"
+    verified_at: 2026-10-28

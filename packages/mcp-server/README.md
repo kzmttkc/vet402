@@ -14,8 +14,8 @@ npm install -g @vet402/mcp-server   # optional — the configs below use npx
 
 Since 2026-10-28 vet402 also runs an MCP server on the web at
 **`https://vet402.com/mcp`** (Streamable HTTP, stateless, read only, free, no
-key). Nothing to install and no key to set: point any MCP client that speaks
-Streamable HTTP at the URL.
+key). Full setup, tools, the delivery feed, and limits:
+**[https://vet402.com/docs/mcp](https://vet402.com/docs/mcp)**.
 
 ```json
 { "mcpServers": { "vet402": { "type": "http", "url": "https://vet402.com/mcp" } } }

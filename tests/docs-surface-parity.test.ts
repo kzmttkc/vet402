@@ -214,3 +214,9 @@ test("MCP README の check_resource_decision 行が policy の入力に触れて
   assert.ok(row, "check_resource_decision の行が無い");
   assert.ok(row.includes("amountUsd") && row.includes("caller_policy"), "policy の入力と caller_policy に触れていない");
 });
+
+test("MCP README の Hosted 節が /docs/mcp を指す", () => {
+  const readme = read("packages/mcp-server/README.md");
+  assert.match(readme, /## Hosted endpoint/);
+  assert.ok(readme.includes("https://vet402.com/docs/mcp"), "hosted 節に /docs/mcp が無い");
+});

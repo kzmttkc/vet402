@@ -32,7 +32,7 @@ const PAID_LIST = sql.join(
   sql`, `,
 );
 /** 届いた（delivery.ts の isDelivered と同じ述語: settled・2xx・202 でない・本文が空でない）。 */
-const DELIVERED = sql`(pu.status = 'settled' AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}
+export const DELIVERED = sql`(pu.status = 'settled' AND coalesce(pu.http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}
   AND pu.http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP} AND pu.payload_non_empty IS NOT FALSE, false))`;
 
 function toPurchase(r: Record<string, unknown>): L1PurchaseOut {

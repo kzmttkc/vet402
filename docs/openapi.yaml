@@ -1203,6 +1203,70 @@ paths:
         "503":
           description: Store unavailable, or another export is running (`export_busy`, with `Retry-After`)
 
+  /api/v1/delivery/sellers.json:
+    get:
+      operationId: getDeliverySellersFeed
+      tags: [Observatory]
+      summary: Delivery feed — one row per active listing vet402 paid in the last 30 days (JSON)
+      description: |
+        Key-less JSON feed of active listings with at least one paid attempt in
+        the last 30 days (same paid-attempt set as the observatory ledger).
+        Rows sort by URL. License CC-BY-4.0 (`x-vet402-license`, `Link`
+        rel=license and rel=describedby). Filters: `network` (CAIP-2),
+        `min_delivered` (0–100000), `listed_in` (`bazaar`, `circle`, `mpp`).
+        Any other query returns 400. 30 requests per minute per IP.
+        CDN cache up to 300 seconds.
+      security: []
+      parameters:
+        - in: query
+          name: network
+          schema: { type: string }
+          description: CAIP-2 network id (for example `eip155:5042`).
+        - in: query
+          name: min_delivered
+          schema: { type: integer, minimum: 0, maximum: 100000 }
+        - in: query
+          name: listed_in
+          schema: { type: string, enum: [bazaar, circle, mpp] }
+      responses:
+        "200":
+          description: Delivery feed envelope with `rows`
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [as_of, window_days, method_url, license, license_url, row_count, rows]
+                properties:
+                  as_of: { type: string, format: date-time }
+                  window_days: { type: integer }
+                  method_url: { type: string, format: uri }
+                  license: { type: string }
+                  license_url: { type: string, format: uri }
+                  row_count: { type: integer }
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - url
+                        - method
+                        - network
+                        - price_usd
+                        - listed_in
+                        - bazaar_payers_30d
+                        - paid_attempts_30d
+                        - delivered_30d
+                        - settled_not_delivered_30d
+                        - last_attempt_at
+                        - last_delivered_at
+                        - record_url
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          description: Rate limited
+        "503":
+          description: Store unavailable
+
   /api/v1/graph/payto/{address}:
     get:
       operationId: getPayToGraph

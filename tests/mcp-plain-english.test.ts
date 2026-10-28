@@ -83,3 +83,8 @@ test("規則の文と disclaimer（セミコロン・ダッシュを含む）を
   assert.ok(!joined.includes(DECISION_DISCLAIMER));
   assert.ok(!/L0\u2013L2/.test(joined));
 });
+
+test("/docs/mcp の固定文が決まりを守る", async () => {
+  const { allMcpDocsFixedText } = await import("@/lib/docs/mcp-page-text");
+  assert.deepEqual(violations(allMcpDocsFixedText()), []);
+});

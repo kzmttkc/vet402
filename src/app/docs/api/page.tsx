@@ -395,6 +395,33 @@ const endpoints: Endpoint[] = [
     response: `host,endpoint_id,resource_key,outcome,fix_mode,side_label,confirmed_seller,held_reason,latest_attempted_at,latest_status,latest_network,latest_http_status_paid,purchase_id,in_ledger_export,attribution_review
 api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02:29Z,settled,eip155:8453,200,c4d4b20f-…,true,`,
   },
+  {
+    method: "GET",
+    path: "/api/v1/delivery/sellers.json",
+    note: "Delivery feed — one row per active listing with at least one paid attempt in the last 30 days. Key-less, 30/min, cached up to 300 seconds. CC-BY-4.0. Filters: network (CAIP-2), min_delivered (0–100000), listed_in (bazaar | circle | mpp). See /docs/mcp#feed.",
+    response: `{
+  "as_of": "2026-10-28T12:00:00Z",
+  "window_days": 30,
+  "method_url": "https://vet402.com/observatory/methodology",
+  "license": "CC-BY-4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "row_count": 1,
+  "rows": [{
+    "url": "https://api.example.com/v1/data",
+    "method": "GET",
+    "network": "eip155:8453",
+    "price_usd": 0.007,
+    "listed_in": "bazaar",
+    "bazaar_payers_30d": 12,
+    "paid_attempts_30d": 3,
+    "delivered_30d": 2,
+    "settled_not_delivered_30d": 0,
+    "last_attempt_at": "2026-10-27T00:00:00Z",
+    "last_delivered_at": "2026-10-26T00:00:00Z",
+    "record_url": "https://vet402.com/observatory/e/00000000-0000-0000-0000-000000000001"
+  }]
+}`,
+  },
   // 2026-10-24: paths: にある公開窓口で、上のカードに path が無かったもの。
   // /api/v1/guarantee/quote は paths に無い（休眠中の金融商品）。ここにも載せない。
   {

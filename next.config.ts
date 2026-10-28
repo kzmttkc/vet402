@@ -53,6 +53,10 @@ const nextConfig: NextConfig = {
         source: "/llms.txt",
         headers: [{ key: "Cache-Control", value: "public, max-age=3600" }],
       },
+      {
+        source: "/.well-known/mcp-registry-auth",
+        headers: [{ key: "Content-Type", value: "text/plain; charset=utf-8" }],
+      },
     ];
   },
   async rewrites() {
