@@ -68,7 +68,10 @@ if (!TEST_DB) {
     const rows: RowSpec[] = [
       { key: "t-get.example/g", method: "GET", di: { query: "empty", body: "empty" }, candidate: true, countsAsUnknown: false },
       { key: "t-null-method.example/g", method: null, di: { query: "empty", body: "empty" }, candidate: true, countsAsUnknown: false },
-      { key: "t-put.example/p", method: "PUT", di: { query: "empty", body: "empty" }, candidate: true, countsAsUnknown: false },
+      { key: "t-put.example/p", method: "PUT", di: { query: "empty", body: "empty" }, candidate: false, countsAsUnknown: false },
+      { key: "t-delete.example/d", method: "DELETE", di: { query: "empty", body: "empty" }, candidate: false, countsAsUnknown: false },
+      { key: "t-head.example/h", method: "HEAD", di: { query: "empty", body: "empty" }, candidate: false, countsAsUnknown: false },
+      { key: "t-get-lower.example/g", method: "get", di: { query: "empty", body: "empty" }, candidate: true, countsAsUnknown: false },
       { key: "t-empty-method.example/g", method: "", di: { query: "empty", body: "empty" }, candidate: true, countsAsUnknown: false },
       { key: "t-post-decl.example/p", method: "POST", di: { query: "empty", body: "declared" }, candidate: true, countsAsUnknown: false },
       { key: "t-post-lower.example/p", method: "post", di: { query: "empty", body: "declared" }, candidate: true, countsAsUnknown: false },

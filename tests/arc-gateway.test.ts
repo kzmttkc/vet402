@@ -796,7 +796,8 @@ test("旗 off の候補 SQL は Gateway の句を足さない。Base で払え�
     assert.match(inclusion, /GatewayWalletBatched/);
     assert.match(inclusion, /eip155:8453/);
     assert.match(inclusion, /declared_input/);
-    assert.match(inclusion, /<> 'POST'/);
+    assert.match(inclusion, /= 'GET'/);
+    assert.equal(inclusion.includes("<> 'POST'"), false);
     assert.equal(/\bsource\b/.test(inclusion), false);
   });
   const base = {

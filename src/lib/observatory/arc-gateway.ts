@@ -337,7 +337,7 @@ function existsGateway(): string {
 }
 
 /**
- * Gateway レーンだけ: GET（method 未宣言も GET 扱い）、または目録が本文を宣言した POST だけ候補に載せる。
+ * Gateway レーンだけ: GET（method 未宣言・空も GET 扱い）、または目録が本文を宣言した POST だけ候補に載せる。DELETE・PUT・HEAD などは載せない。
  * 402 の bazaar だけの宣言は SQL 段では見えない（declared_input.body = 'declared' が目録側の印）。
  */
 function coalesceCatalogDeclaresBodySql(inputExpr: string): string {
@@ -345,7 +345,9 @@ function coalesceCatalogDeclaresBodySql(inputExpr: string): string {
 }
 
 function gatewayCandidateRequestShapeWhere(): string {
-  return `(upper(coalesce(e.method, 'GET')) <> 'POST' OR ${coalesceCatalogDeclaresBodySql("e.declared_input")})`;
+  // 2026-10-30: POST でない GET 以外の出品（DELETE・PUT・HEAD など）も外す。api.aisa.one の DELETE 2 件が候補に残っていた。
+  const method = `upper(coalesce(nullif(e.method, ''), 'GET'))`;
+  return `(${method} = 'GET' OR (${method} = 'POST' AND ${coalesceCatalogDeclaresBodySql("e.declared_input")}))`;
 }
 
 /** POST で目録の declared_input.body が empty（または無い）の Gateway 専用出品。 */
