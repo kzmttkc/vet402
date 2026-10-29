@@ -352,7 +352,7 @@ function gatewayCandidateRequestShapeWhere(): string {
 
 /** POST で目録の declared_input.body が empty（または無い）の Gateway 専用出品。 */
 function gatewayPostBodyUnknownWhere(): string {
-  return `(upper(coalesce(e.method, 'GET')) = 'POST' AND NOT ${coalesceCatalogDeclaresBodySql("e.declared_input")})`;
+  return `(upper(coalesce(nullif(e.method, ''), 'GET')) = 'POST' AND NOT ${coalesceCatalogDeclaresBodySql("e.declared_input")})`;
 }
 
 /** arc_gateway レーンの @> 前置き（数える問い合わせと laneNetworkPrefilterSql が共有）。 */
@@ -478,7 +478,8 @@ export function gatewayCandidateInclusionWithoutRequestShapeSql(): SQL {
 }
 
 /** 旗 on のとき、Gateway 専用出品のうち POST で目録が本文を宣言していない active 行の数。
- * レーン候補 SQL が載せない行の件数（走った回の summary.gatewayPostBodyUnknownActive 用）。 */
+ * レーン候補 SQL が本文の宣言の無さで載せない行の件数（走った回の summary.gatewayPostBodyUnknownActive 用）。
+ * DELETE・PUT・HEAD など method で外れる行はこの数に入らない。 */
 export function gatewayPostBodyUnknownExcludedCountSql(): SQL {
   if (!isArcGatewayL1Enabled()) return sql`SELECT 0::int AS n`;
   return sql.raw(`

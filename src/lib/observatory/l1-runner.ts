@@ -509,7 +509,7 @@ const LANE_SECONDARY_ACCEPT_FILTER: Partial<Record<CappedChain, SQL>> = {
  */
 export function laneNetworkPrefilterSql(lane: { chain: CappedChain; networkLike: string }): SQL {
   // Gateway の取得（networkLike は "%"）: 出品の条件は gatewayCandidateInclusionSql の existsGateway（scheme exact・
-  // network eip155:5042・extra.name GatewayWalletBatched ほか）と POST 本文の目録宣言（gatewayCandidateRequestShapeSql）。
+  // network eip155:5042・extra.name GatewayWalletBatched ほか）と method・POST 本文の目録宣言（gatewayCandidateRequestShapeSql: GET か、目録が本文を宣言した POST だけ）。
   // そのうち文字列の完全一致の 3 つだけを包含で前に置く（version は数でも '1' になるので入れない）。existsGateway が真なら必ず真。
   if (lane.chain === "arc_gateway") {
     return sql`AND e.raw_accepts @> ${JSON.stringify([{ scheme: "exact", network: ARC_CAIP2, extra: { name: "GatewayWalletBatched" } }])}::jsonb ${gatewayCandidateRequestShapeSql()}`;
@@ -3163,7 +3163,8 @@ async function purchaseOne(input: {
   retryBase?: boolean;
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
-  const method = (candidate.method ?? "GET").toUpperCase();
+  // 空の method は GET（SQL の候補の条件 nullif(e.method, '') と揃える。'' のままだと Request が投げる）。
+  const method = (candidate.method || "GET").toUpperCase();
   const startedAt = Date.now();
   const isSolana = candidate.network === SOLANA_MAINNET_CAIP2;
   // 旗 OFF では Stellar として扱わない。origin/main と同じく EVM の selectAccept へ落とす
@@ -3521,6 +3522,10 @@ async function purchaseOne(input: {
   // summary.gatewayPostBodyUnknownSignSkipped が増え続けたら、no_eligible_accept の行を書いて窓から外す形に変える。
   if (isArcGateway && method === "POST" && paidRequestBody?.source !== "declared") {
     return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", gatewayPostBodyUnknownAtSign: true };
+  }
+  // Gateway は GET と POST だけを買う（候補 SQL の gatewayCandidateRequestShapeWhere と同じ規則の二重の守り・2026-10-30）。
+  if (isArcGateway && method !== "GET" && method !== "POST") {
+    return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
   }
   // 支払い付き要求のクエリ（2026-09-20）。売り手が 402 で宣言した input.queryParams を URL に足す
   // （規則は declared-input.ts）。accept の network が許可リストに無ければ（既定）null＝URL も行も従来どおり。

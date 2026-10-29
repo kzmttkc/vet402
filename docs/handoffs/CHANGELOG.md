@@ -18,7 +18,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - **What**: `gatewayCandidateRequestShapeWhere()` in `src/lib/observatory/arc-gateway.ts` now admits a listing only when its method is GET (null or empty method counts as GET, any case) or POST with `declared_input.body = 'declared'`. Before, any method other than POST passed, so DELETE, PUT and HEAD listings stayed selectable.
 - **Why**: Two api.aisa.one DELETE listings were still in the Gateway candidate set on 2026-10-29. A paid DELETE with an empty request is not a fair test of delivery, and the 10/29 Gateway recount (9 of 10 delivered, all GET) is the shape the Arc give-back report uses.
 - **Impact**: Gateway candidates shrink by the non-GET, non-POST rows. Other lanes are untouched (the clause is only in the Gateway inclusion SQL). `tests/l1-gateway-post-body.pg.test.ts` now lists PUT, DELETE and HEAD as non-candidates and lowercase `get` as a candidate.
-- **Commits**: this commit.
+- **Commits**: 09e54340 (rebased on push), plus the follow-up: a Gateway pre-sign skip for any method other than GET or POST (a second guard if the SQL ever breaks), and an empty `method` now counts as GET in `l1-runner.ts`, `l0-probe.ts` and `safe-fetch.ts` (it used to throw `'' is not a valid HTTP method` after selection, before paying).
 
 ## 2026-10-30 Surface canary asks the MCP by id for HEAD and other non-GET/POST listings
 

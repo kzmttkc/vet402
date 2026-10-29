@@ -312,7 +312,7 @@ export async function safeFetch(
     throw new UnsafeTargetError("unsafe_scheme", input);
   }
 
-  let method = (init.method ?? "GET").toUpperCase();
+  let method = (init.method || "GET").toUpperCase();
   let body = init.body;
   let headers = new Headers(init.headers);
 

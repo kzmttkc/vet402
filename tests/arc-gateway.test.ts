@@ -516,6 +516,8 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
     "the control SQL without the POST body condition is for tests only",
   );
   once("src/lib/observatory/arc-gateway.ts", "export function gatewayCandidateRequestShapeSql(): SQL {");
+  once("src/lib/observatory/l1-runner.ts", 'if (isArcGateway && method !== "GET" && method !== "POST") {');
+  once("src/lib/observatory/l1-runner.ts", 'const method = (candidate.method || "GET").toUpperCase();');
   once("src/lib/observatory/arc-gateway.ts", 'if (anyOverCap) return { accept: null, reason: "over_cap" };');
   once("src/lib/observatory/arc-gateway.ts", 'body: JSON.stringify({ token: "USDC", sources: [{ depositor, domain: ARC_GATEWAY_DOMAIN }] })');
   once("src/lib/observatory/arc-gateway.ts", 'if (paid.status === 402 || paid.status >= 500) return "settle_failed"; // gateway_seller_refused');

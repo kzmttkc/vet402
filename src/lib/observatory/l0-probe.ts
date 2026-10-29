@@ -262,7 +262,7 @@ export async function probeEndpoint(
   // §6.1: 「GET および、掲載が POST のみなら POST」。宣言が無い Resource は GET で
   // 測る。2026-08 までは「推測しない」として unverified にしていたが、仕様 §17
   // （食い違えば実装を直す）に従い GET を既定にした。本番の該当は active 2 件。
-  const method = (target.method ?? "GET").toUpperCase();
+  const method = (target.method || "GET").toUpperCase();
   const UA = options.recheck
     ? "vet402-observatory-l0-recheck/1.0 (+https://vet402.com/observatory/methodology)"
     : "vet402-observatory-l0/1.0 (+https://vet402.com/observatory/methodology)";
