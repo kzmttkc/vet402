@@ -3524,6 +3524,7 @@ async function purchaseOne(input: {
     return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", gatewayPostBodyUnknownAtSign: true };
   }
   // Gateway は GET と POST だけを買う（候補 SQL の gatewayCandidateRequestShapeWhere と同じ規則の二重の守り・2026-10-30）。
+  // ここは無払いの最初の要求の後なので、SQL が破れたときは無払いの要求が一度だけ売り手に届く（お金は動かない）。
   if (isArcGateway && method !== "GET" && method !== "POST") {
     return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
   }
