@@ -226,7 +226,12 @@ async function main() {
         if (!body.recommendation) throw new Error("no recommendation in the body");
         return body;
       });
-      const canonical = decision.ok === true ? decision.value.subject?.canonical_url : undefined;
+      // MCP の url の問いは /resolve を method なしで引き、GET → POST の順にしか当たらない（src/lib/resolve/lookup.ts）。
+      // HEAD・DELETE などの出品を url で問うと「目録に無い」になるので、その出品は resource_id で問う（2026-10-30
+      // storage.mpp.tempo.xyz/:key+ の HEAD で mcp_* が 6 件とも赤になった誤検知）。
+      const subjectMethod = decision.ok === true ? (decision.value.subject?.method ?? "GET").toUpperCase() : "GET";
+      const canonical =
+        decision.ok === true && (subjectMethod === "GET" || subjectMethod === "POST") ? decision.value.subject?.canonical_url : undefined;
       const mcp = await surface("mcp", c.resourceKey, async () =>
         mcpView(await resourceDecision(canonical ? { url: canonical } : { resourceId: rid }, { role: "payer" })),
       );

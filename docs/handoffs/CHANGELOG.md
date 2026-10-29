@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-30 Surface canary asks the MCP by id for HEAD and other non-GET/POST listings
+
+- **What**: `scripts/surface-consistency-canary.ts` passes the MCP surface a `resourceId` instead of the canonical URL when the decision subject's method is not GET or POST.
+- **Why**: The 2026-10-30 manual re-run (run 40953780542) went red with 6 `mcp_*` discrepancies on one listing, `storage.mpp.tempo.xyz/:key+` (HEAD). The MCP url lookup calls `/resolve` without a method, which tries GET then POST only (`src/lib/resolve/lookup.ts`), so a HEAD-only listing comes back `resource_uncatalogued`. The surfaces agree. The probe was asking the wrong question. The earlier red (run 40853877621, `x402-apis.pages.dev/v1/inflation` latest_row_side) did not repeat on the re-run, which points to cache age.
+- **Impact**: No public surface changes. Open question for after 11/5 (MCP freeze): whether `check_resource_decision` with a url should fall back to a single non-GET/POST listing at that exact URL instead of answering uncatalogued.
+- **Commits**: this commit.
+
 ## 2026-10-29 Delivered definition parity (202, empty 2xx, public copy)
 
 - **What**: The SQL `deliveredPredicate()` now matches `isDelivered()`: settled, 2xx other than 202 Accepted, and `payload_non_empty` not false. It returns `coalesce((...), false)` so `NOT(predicate)` keeps settled rows with a NULL HTTP status on the not-delivered side. The hand-copied predicates in seller-facts, MCP reads and the sellers reader now call it. Public copy (`/observatory/state`, state and purchases API text, methodology, llms.txt, llms-full.txt, FAQ, openapi, home chain table headers "Delivered" and "Paid, not delivered", claims.yaml) says delivered is 2xx other than 202 Accepted, with a non-empty body. The state-page row for settled, not delivered and not 4xx now names 202 and empty 2xx. Arc Gateway daily records use `isDeliveryHttp` for the `delivered` flag (leaf hashes unchanged). `tests/l1-held-rows.pg.test.ts` covers settled rows at 202, empty 200 and null payload.
