@@ -14,7 +14,7 @@ export const MCP_DOCS_PRIVACY =
   "vet402 counts MCP calls by client kind. The usage counts do not include raw URLs, IP addresses or User-Agent strings. The rate limit keeps the caller's IP for a short time, as the privacy policy says.";
 
 export const MCP_DOCS_DELIVERED_ONE_LINER =
-  "Delivered means a purchase row where vet402 settled on chain and then received a 2xx response other than 202 Accepted with a body not recorded as empty, as defined at the methodology page.";
+  "Delivered means a purchase row where vet402 settled on chain and then received a 2xx response other than 202 Accepted, with a body not recorded as empty, as defined at the methodology page.";
 
 export const MCP_DOCS_CONTACT = "support@vet402.com";
 

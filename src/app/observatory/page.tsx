@@ -357,7 +357,7 @@ export default async function ObservatoryPage({
                     L1 delivered ·<br /> settled / attempts
                     <span className="sr-only">
                       {" "}
-                      (delivered: a settled purchase whose paid request answered HTTP 2xx other than 202 Accepted with a
+                      (delivered: a settled purchase whose paid request answered HTTP 2xx other than 202 Accepted, with a
                       non-empty body; settled: the transfer re-read
                       on-chain; attempts: paid attempts)
                     </span>

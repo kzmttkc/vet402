@@ -4303,23 +4303,23 @@ components:
             not move when vet402 signed nothing or the transaction the
             seller named was not found; otherwise it is not yet known. The
             outcome is one of: delivered (settled on-chain, then a 2xx other
-            than 202 Accepted with a non-empty body); pending (not yet known
-            whether money moved: a receipt awaiting on-chain verification, a
-            2xx naming a transaction, or a signed attempt that failed less
-            than 90 minutes ago while vet402 links late settlements; the
-            ledger status is left as recorded); seller (the seller's side:
-            vet402 can show from the row that the failure was not its own,
-            and such a failure, of any kind, was seen at the listing on 2 or
-            more different UTC days); vet402 (vet402's side: its wallet was
-            short, it did not send the declared input, or one of its own
-            limits or errors); unsorted (not sorted: held for vet402's own
-            request shape, no charge taken, a paid answer with no result in
-            it, seen on one UTC day so far, or vet402 cannot show the
-            failure was not its own); not_bought (vet402 did not sign a
-            payment, so it is not a purchase result). An attempt counts for
-            or against the seller only when it delivered or is on the
-            seller's side; every other signed attempt is left out with an
-            l1_not_counted_* code (l1_not_counted_held counts both kinds
+            than 202 Accepted, with a non-empty body); pending (not yet
+            known whether money moved: a receipt awaiting on-chain
+            verification, a 2xx naming a transaction, or a signed attempt
+            that failed less than 90 minutes ago while vet402 links late
+            settlements; the ledger status is left as recorded); seller (the
+            seller's side: vet402 can show from the row that the failure was
+            not its own, and such a failure, of any kind, was seen at the
+            listing on 2 or more different UTC days); vet402 (vet402's side:
+            its wallet was short, it did not send the declared input, or one
+            of its own limits or errors); unsorted (not sorted: held for
+            vet402's own request shape, no charge taken, a paid answer with
+            no result in it, seen on one UTC day so far, or vet402 cannot
+            show the failure was not its own); not_bought (vet402 did not
+            sign a payment, so it is not a purchase result). An attempt
+            counts for or against the seller only when it delivered or is on
+            the seller's side; every other signed attempt is left out with
+            an l1_not_counted_* code (l1_not_counted_held counts both kinds
             together: held, a row with a held_reason in the ledger export,
             and a receipt awaiting on-chain verification that brought a
             result, whose held_reason is empty). L1: after the last delivery
