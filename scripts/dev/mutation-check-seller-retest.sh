@@ -98,7 +98,7 @@ run_expect_fail "seller request body mismatch" "body mismatch is not signed"
 git checkout -- src/lib/observatory/l1-runner.ts
 
 # 13. Public listing counts
-perl -i '' 's/AND \${notSellerRetestRequestSourceSql()}//' src/lib/observatory/reader.ts
+perl -i -pe 's/ AND \$\{notSellerRetestRequestSourceSql\(\)\}//g' src/lib/observatory/reader.ts
 run_expect_fail "public observatory counts exclude seller_retest" "public observatory counts exclude"
 git checkout -- src/lib/observatory/reader.ts
 
