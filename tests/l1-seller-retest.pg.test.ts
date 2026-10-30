@@ -583,6 +583,53 @@ if (!TEST_DB) {
     assert.ok(rows.every((r) => r.authNonce === null));
   });
 
+  /** 依頼の POST（catalog[1]）に、402 が別の本文を宣言したときの 1 回の実行。支払い付きの要求の本文を返す。 */
+  const runWithDeclaredBody = async (declaredJson: string) => {
+    await seedOnlyPending([catalog[1]!.id]);
+    const url = srq.resolveSellerRetestUrl(catalog[1]!.url, PAYER);
+    state.set(url, { paid: false, bodyDeclJson: declaredJson });
+    const paidBodies: string[] = [];
+    const capture = async (u: string, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      if (u === url && (headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT"))) paidBodies.push(String(init?.body));
+      return fetchImpl(u, init);
+    };
+    const summary = await runSeller({ fetchImpl: capture });
+    return { summary, paidBodies, rows: await rowsForRequest(catalog[1]!.id) };
+  };
+
+  test("body key order only: seller request is signed and pays with the request-list body", async () => {
+    const expected = catalog[1]!.body!;
+    assert.equal(expected, '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["latest",false]}');
+    // 本番の Goldsky と同じ形: 中身は同じでキーの順番だけ違う。
+    const { summary, paidBodies, rows } = await runWithDeclaredBody(
+      '{"params":["latest",false],"id":1,"method":"eth_getBlockByNumber","jsonrpc":"2.0"}',
+    );
+    assert.equal(summary.attempted, 1, JSON.stringify(rows.map((r) => r.rawResponseMeta)));
+    assert.equal(await paidRowsFor(catalog[1]!.id), 1);
+    assert.ok(rows.every((r) => (r.rawResponseMeta as { reason?: string })?.reason !== "seller_request_body_mismatch"));
+    assert.deepEqual(paidBodies, [expected], "the paid POST carries the request-list body byte for byte");
+  });
+
+  test("body value differs: seller request is not signed (id, method, params content, array order, number vs string)", async () => {
+    for (const declared of [
+      '{"jsonrpc":"2.0","id":2,"method":"eth_getBlockByNumber","params":["latest",false]}',
+      '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":["latest",false]}',
+      '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["earliest",false]}',
+      '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":[false,"latest"]}',
+      '{"jsonrpc":"2.0","id":"1","method":"eth_getBlockByNumber","params":["latest",false]}',
+    ]) {
+      const { summary, paidBodies, rows } = await runWithDeclaredBody(declared);
+      assert.equal(summary.attempted, 0, declared);
+      assert.equal(paidBodies.length, 0, declared);
+      assert.ok(
+        rows.some((r) => (r.rawResponseMeta as { reason?: string })?.reason === "seller_request_body_mismatch"),
+        declared,
+      );
+      assert.ok(rows.every((r) => r.authNonce === null), declared);
+    }
+  });
+
   test("public observatory counts exclude seller_retest_request listings", async () => {
     const { getObservatoryStats } = await import("@/lib/observatory/reader");
     await truncateAll();

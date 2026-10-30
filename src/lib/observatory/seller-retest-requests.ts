@@ -185,7 +185,8 @@ export const SELLER_RETEST_TEST_REQUESTS: readonly SellerRetestRequest[] = Array
         ? `https://mock-seller-retest.example/route/query?address=${SELLER_RETEST_PAYER_PLACEHOLDER}`
         : `https://mock-seller-retest.example/route/${n}`,
     method: isPost ? ("POST" as const) : ("GET" as const),
-    ...(isPost ? { body: '{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}' } : {}),
+    // テスト用の POST は配列の中身と順番まで照合できる本文（本番の Goldsky の依頼は eth_blockNumber・params []）。
+    ...(isPost ? { body: '{"jsonrpc":"2.0","id":1,"method":"eth_getBlockByNumber","params":["latest",false]}' } : {}),
     network: BASE_CAIP2,
     payTo,
     expiresOn: "2027-01-01",

@@ -120,6 +120,8 @@ P_CONC="concurrent claim: two auth-slot claims"
 P_NO402="no_402 seller request: same day"
 P_ENABLED="ENABLED=0 skips lane"
 P_BODY="body mismatch is not signed"
+P_BODY_ORDER="body key order only: seller request is signed"
+P_BODY_VALUE="body value differs: seller request is not signed"
 P_STATS="public observatory counts exclude"
 P_HALT="B2 halt after claim"
 P_SWEEP="B2 orphan sweep"
@@ -129,7 +131,7 @@ P_RULE="L0 rule-change reprobe excludes"
 P_OVERVIEW="observatory overview list and count"
 P_CHAIN="chain scope counts exclude"
 ALL=("$P_ORDINARY" "$P_CENSUS" "$P_RETEST" "$P_L0" "$P_ARB" "$P_NET" "$P_CAP" "$P_EXP" "$P_CONC" "$P_NO402" "$P_ENABLED"
-     "$P_BODY" "$P_STATS" "$P_HALT" "$P_SWEEP" "$P_RESOLVE" "$P_PRIO" "$P_RULE" "$P_OVERVIEW" "$P_CHAIN")
+     "$P_BODY" "$P_BODY_ORDER" "$P_BODY_VALUE" "$P_STATS" "$P_HALT" "$P_SWEEP" "$P_RESOLVE" "$P_PRIO" "$P_RULE" "$P_OVERVIEW" "$P_CHAIN")
 
 echo "== baseline (no patch)"
 JOINED="$(IFS='|'; echo "${ALL[*]}")"
@@ -199,7 +201,11 @@ mutate "6-day window counts failed unsigned rows again" "$P_NO402" "$L1" \
 mutate "ENABLED off variants reduced to \"false\"" "$P_ENABLED" "$SRQ" \
   's/return v === "false" \|\| v === "0" \|\| v === "off" \|\| v === "no";/return v === "false";/'
 mutate "POST body check condition forced false" "$P_BODY" "$L1" \
-  's/const sellerBodyMismatch = /const sellerBodyMismatch = false \&\& /'
+  's/const sellerBodyMismatch =\s*/const sellerBodyMismatch = false \&\& /'
+mutate "POST body check condition forced false -> value variants" "$P_BODY_VALUE" "$L1" \
+  's/const sellerBodyMismatch =\s*/const sellerBodyMismatch = false \&\& /'
+mutate "POST body JSON normalisation dropped (byte comparison again)" "$P_BODY_ORDER" "$L1" \
+  's/!sellerRequestBodiesEqual\(candidate\.sellerRequestUnpaid\.body, declared\.body\)/declared.body !== candidate.sellerRequestUnpaid.body/'
 mutate "public stats exclusion removed" "$P_STATS" "$READER" 's/ AND \$\{notSellerRetestRequestSourceSql\(\)\}//g'
 mutate "B2 release treats only NULL as unsigned" "$P_HALT" "$L1" \
   's/const releaseUnsignedWhere = unsignedAuthNonceSql\(\);/const releaseUnsignedWhere = sql`auth_nonce IS NULL`;/'
