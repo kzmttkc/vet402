@@ -55,14 +55,14 @@ run_expect_fail "L0 c1 excludes seller_retest" "L0 c1 tier excludes"
 git checkout -- src/lib/observatory/coverage.ts
 
 # 5. Network filter for selectAccept (Arbitrum wall)
-perl -i -0pe 's/const challengeForSelect = candidate\.sellerRequest\n    \? \{ \.\.\.challenge, accepts: challenge\.accepts\.filter\(\(a\) => a\.network === candidate\.sellerRequest!\.network\) \}\n    : challenge;/const challengeForSelect = challenge;/s' src/lib/observatory/l1-runner.ts
+sed -i '' 's/a\.network === candidate\.sellerRequest!\.network/a.network !== candidate.sellerRequest!.network/' src/lib/observatory/l1-runner.ts
 run_expect_fail "sign on request network (Arbitrum ON)" "Arbitrum lane prefers"
 git checkout -- src/lib/observatory/l1-runner.ts
 
 # 6. Network missing accept
-perl -i -0pe 's/const challengeForSelect = candidate\.sellerRequest\n    \? \{ \.\.\.challenge, accepts: challenge\.accepts\.filter\(\(a\) => a\.network === candidate\.sellerRequest!\.network\) \}\n    : challenge;/const challengeForSelect = challenge;/s' src/lib/observatory/l1-runner.ts
+sed -i '' 's/a\.network === gate\.network/a.network !== gate.network/' src/lib/observatory/seller-retest.ts
 run_expect_fail "network accept missing" "network accept missing"
-git checkout -- src/lib/observatory/l1-runner.ts
+git checkout -- src/lib/observatory/seller-retest.ts
 
 # 7. Per-run cap
 perl -i -pe 's/export const SELLER_RETEST_MAX_PER_RUN = 10;/export const SELLER_RETEST_MAX_PER_RUN = 999;/' src/lib/observatory/seller-retest-requests.ts
@@ -75,7 +75,19 @@ run_expect_fail "expired request not bought" "expired seller request"
 git checkout -- src/lib/observatory/seller-retest.ts
 
 # 9. One-shot DB guard (claim always ok)
-perl -i -0pe 's/export async function claimSellerRequestAuthSlot\([\s\S]*?\n\}/export async function claimSellerRequestAuthSlot(): Promise<{ ok: true }> {\n  return { ok: true };\n}/' src/lib/observatory/seller-retest.ts
+git apply <<'PATCH'
+diff --git a/src/lib/observatory/seller-retest.ts b/src/lib/observatory/seller-retest.ts
+--- a/src/lib/observatory/seller-retest.ts
++++ b/src/lib/observatory/seller-retest.ts
+@@ -108,6 +108,7 @@ export async function claimSellerRequestAuthSlot(
+   rowId: string,
+   sellerRequestId: string,
+ ): Promise<SellerRequestAuthClaim> {
++  return { ok: true };
+   const presign = `presign:${rowId}`;
+   try {
+     const raw = await db.execute(sql`
+PATCH
 run_expect_fail "concurrent runL1Batch one payment" "concurrent runL1Batch"
 git checkout -- src/lib/observatory/seller-retest.ts
 
