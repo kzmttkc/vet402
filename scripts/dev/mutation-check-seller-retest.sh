@@ -76,8 +76,10 @@ run_expect_fail "expired request not bought" "expired seller request"
 git checkout -- src/lib/observatory/seller-retest.ts src/lib/observatory/seller-retest-requests.ts
 
 # 9. One-shot DB guard (partial unique index)
+sed -i '' 's/await db.execute(sql.raw(SELLER_INDEX_SQL));/void SELLER_INDEX_SQL;/' "$PG_FILE"
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP INDEX IF EXISTS x402_l1_purchases_seller_request_id_auth_unique"
 run_expect_fail "concurrent runL1Batch one payment" "concurrent runL1Batch"
+git checkout -- "$PG_FILE"
 psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/sql/2026-10-30-seller-retest-request-id-unique.sql
 
 # 10. Once per UTC day retry gate
