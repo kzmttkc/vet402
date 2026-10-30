@@ -138,6 +138,7 @@ import {
   claimSellerRequestAuthSlot,
   completedSellerRequestIds,
   pendingSellerRetestRequests,
+  sellerRequestAccepts,
   sellerRequestIdsAttemptedToday,
   sellerResponseHeadersOf,
   sellerRetestCatalogForBatch,
@@ -146,7 +147,7 @@ import {
   type SellerRequestGate,
   type SellerRequestUnpaid,
 } from "./seller-retest";
-import { notSellerRetestRequestSourceSql, resolveSellerRetestUrl, sellerRetestLaneEnabled } from "./seller-retest-requests";
+import { notSellerRetestRequestSourceSql, resolveSellerRetestUrl, sellerRetestLaneEnabled, unsignedAuthNonceSql } from "./seller-retest-requests";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -1225,8 +1226,15 @@ async function reserveSpend(input: {
    * 上限に収めた JSON。null / 省略なら列を書かない。金の条件（WHERE）には関わらない。
    */
   challenge402?: Record<string, unknown> | null;
+  /**
+   * 売り手依頼の 1 回きり買い直し（2026-10-30 差し戻し2）: 窓の重複判定に、資格情報を出した（auth_nonce のある）行だけを数える。
+   * 402 が取れなかった・合わなかった・署名前に後始末した行で 6 日締め出さない。1 回きりは完了の判定
+   * （completedSellerRequestIds）・枠取り（claimSellerRequestAuthSlot）・部分一意索引が守る。省略時は従来どおり全行。
+   */
+  dupCredentialOnly?: boolean;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
+  const dupCredentialWhere = input.dupCredentialOnly === true ? sql`AND pu.auth_nonce IS NOT NULL` : sql``;
   const metaJson = input.meta ? JSON.stringify(input.meta) : null;
   // 予約と同じ 1 文で書く。この INSERT が落ちれば予約も無い＝署名しない（auth_nonce の UPDATE が落ちたら
   // 有料の要求を出さないのと同じ側に倒す: 記録の無い支払いを出さない）。
@@ -1267,6 +1275,7 @@ async function reserveSpend(input: {
         SELECT 1 FROM x402_l1_purchases pu
         WHERE pu.endpoint_id = ${endpointId}::uuid
           AND pu.attempted_at > now() - make_interval(days => ${windowDays})
+          ${dupCredentialWhere}
       ) AS taken
     ), first_day AS (
       -- 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。候補 SQL がバッチ開始時に
@@ -1441,17 +1450,21 @@ export async function sweepOrphanedInFlight(
   db: NonNullable<ReturnType<typeof getDb>>,
   olderThanMinutes: number = ORPHAN_IN_FLIGHT_MINUTES,
 ): Promise<number> {
+  // 2026-10-30 差し戻し2（B2）: 依頼レーンの署名前の枠の印（auth_nonce = presign:<id>）も未署名。印は NULL に戻す
+  // （SET の右辺はすべて更新前の行を読むので、CASE の判定は印が消える前の値で決まる）。
+  const sweepUnsigned = unsignedAuthNonceSql();
   const raw = await db.execute(sql`
     UPDATE x402_l1_purchases
-    SET status = CASE WHEN auth_nonce IS NULL THEN 'request_error' ELSE 'settle_failed' END,
-        spent_units = CASE WHEN auth_nonce IS NULL THEN '0' ELSE spent_units END,
+    SET status = CASE WHEN ${sweepUnsigned} THEN 'request_error' ELSE 'settle_failed' END,
+        spent_units = CASE WHEN ${sweepUnsigned} THEN '0' ELSE spent_units END,
+        auth_nonce = CASE WHEN ${sweepUnsigned} THEN NULL ELSE auth_nonce END,
         raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
           'phase', 'sweep',
           'reason', 'orphaned_in_flight',
-          'note', CASE WHEN auth_nonce IS NULL
+          'note', CASE WHEN ${sweepUnsigned}
             THEN 'reserved; no payment credential left vet402 (auth_nonce never written), so the reservation was released'
             ELSE 'reserved and possibly signed; the runner died before the outcome was written' END,
-          'credentialSent', auth_nonce IS NOT NULL,
+          'credentialSent', NOT ${sweepUnsigned},
           'sweptAt', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
         )
     WHERE status = 'in_flight'
@@ -1489,15 +1502,18 @@ export async function resolveReservationAsFailed(
   rowId: string,
   error: unknown,
 ): Promise<"settle_failed" | "request_error"> {
+  // 2026-10-30 差し戻し2（B2）: 署名前の枠の印（presign:）も未署名（sweepOrphanedInFlight と同じ扱い・印は NULL に戻す）。
+  const resolveUnsigned = unsignedAuthNonceSql();
   try {
     const raw = await db.execute(sql`
       UPDATE x402_l1_purchases
-      SET status = CASE WHEN auth_nonce IS NULL THEN 'request_error' ELSE 'settle_failed' END,
-          spent_units = CASE WHEN auth_nonce IS NULL THEN '0' ELSE spent_units END,
+      SET status = CASE WHEN ${resolveUnsigned} THEN 'request_error' ELSE 'settle_failed' END,
+          spent_units = CASE WHEN ${resolveUnsigned} THEN '0' ELSE spent_units END,
+          auth_nonce = CASE WHEN ${resolveUnsigned} THEN NULL ELSE auth_nonce END,
           raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object(
             'phase', 'post_reservation',
             'reason', 'threw_after_reservation',
-            'credentialSent', auth_nonce IS NOT NULL,
+            'credentialSent', NOT ${resolveUnsigned},
             'error', ${pgSafeText(redactForLog(error))}::text,
             -- 原因（SQLSTATE と本文・2026-09-29）。error は drizzle の包みの先頭 300 文字で、原因は途中で切れていた。
             'cause', ${JSON.stringify(dbErrorCause(error))}::jsonb
@@ -1533,13 +1549,16 @@ export async function releaseUnsignedReservation(
   retryDelaysMs: readonly number[] = [0, 200, 1_000],
 ): Promise<boolean> {
   let lastError: unknown = null;
+  // 2026-10-30 差し戻し2（B2）: 依頼レーンの署名前の枠の印（auth_nonce = presign:<id>）の行も未署名として戻し、印を消す
+  // （残すと一意索引と枠取りがその依頼を期限まで塞ぐ）。
+  const releaseUnsignedWhere = unsignedAuthNonceSql();
   for (const delay of retryDelaysMs) {
     if (delay > 0) await new Promise((r) => setTimeout(r, delay));
     try {
       await db
         .update(x402L1Purchases)
-        .set({ status: outcome.status, spentUnits: "0", rawResponseMeta: outcome.rawResponseMeta })
-        .where(and(eq(x402L1Purchases.id, rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)));
+        .set({ status: outcome.status, spentUnits: "0", authNonce: null, rawResponseMeta: outcome.rawResponseMeta })
+        .where(and(eq(x402L1Purchases.id, rowId), eq(x402L1Purchases.status, "in_flight"), releaseUnsignedWhere));
       return true;
     } catch (error) {
       lastError = error;
@@ -3486,10 +3505,8 @@ async function purchaseOne(input: {
     }
     if (method === "POST" && candidate.sellerRequestUnpaid?.body) {
       const declared = declaredRequestBody({ bodyText: firstBody, headers: first.headers });
-      if (
-        declared?.source === "declared" &&
-        declared.body !== candidate.sellerRequestUnpaid.body
-      ) {
+      const sellerBodyMismatch = declared?.source === "declared" && declared.body !== candidate.sellerRequestUnpaid.body;
+      if (sellerBodyMismatch) {
         await record({
           status: "no_eligible_accept",
           rawResponseMeta: tagMeta({
@@ -3504,8 +3521,9 @@ async function purchaseOne(input: {
     }
   }
 
+  // 署名する accept は依頼の network だけ（レーンの優先や壁の並びで別のチェーンに払わない）。
   const challengeForSelect = candidate.sellerRequest
-    ? { ...challenge, accepts: challenge.accepts.filter((a) => a.network === candidate.sellerRequest!.network) }
+    ? { ...challenge, accepts: sellerRequestAccepts(challenge.accepts, candidate.sellerRequest) }
     : challenge;
 
   const mppSelection = isTempo
@@ -3898,6 +3916,8 @@ async function purchaseOne(input: {
     ...(isArcGateway ? { capChain: "arc_gateway" as const } : {}),
     // census の初回購入だけ census の枠（2026-09-29・既定は同じ 120）。retest・主候補・レーンは従来の枠。
     ...(candidate.selection === "census" ? { firstPurchaseQuota: censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA) } : {}),
+    // 売り手依頼（2026-10-30 差し戻し2）: 前日以前の未署名の行（402 が取れなかった等）で窓を塞がない。
+    ...(candidate.sellerRequest ? { dupCredentialOnly: true } : {}),
   });
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {

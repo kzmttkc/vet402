@@ -25,6 +25,22 @@ export function notSellerRetestRequestSourceSql(): SQL {
   return sql`e.source <> ${SELLER_RETEST_REQUEST_SOURCE}`;
 }
 
+/**
+ * 依頼レーンの「署名前の枠」の印（claimSellerRequestAuthSlot が auth_nonce に書く `presign:<rowId>`）。
+ * 署名の直後に本物の nonce で上書きされる。この印のままの行は資格情報を一度も出していない。
+ */
+export const SELLER_REQUEST_PRESIGN_PREFIX = "presign:";
+
+/**
+ * x402_l1_purchases の行が「資格情報を出していない」条件（2026-10-30 差し戻し2・B2）。
+ * auth_nonce が NULL か、依頼レーンの署名前の枠の印（presign:）。予約の解放・孤児の掃除・失敗の確定の
+ * 3 か所がこれで未署名を判定し、印の行は auth_nonce を NULL に戻して普通の未署名の予約と同じ結果にする。
+ * 列は修飾しない（各 UPDATE の対象表の auth_nonce）。
+ */
+export function unsignedAuthNonceSql(): SQL {
+  return sql`(auth_nonce IS NULL OR auth_nonce LIKE ${`${SELLER_REQUEST_PRESIGN_PREFIX}%`})`;
+}
+
 export type SellerRetestRequest = {
   /** 台帳 raw_response_meta.sellerRequestId に残す安定 ID。 */
   id: string;

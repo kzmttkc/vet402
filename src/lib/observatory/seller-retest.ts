@@ -7,8 +7,10 @@
 import { eq, sql } from "drizzle-orm";
 import { canonicalUrl, endpointHash, payeeId, resourceId } from "@/lib/ids/canonical";
 import { x402Endpoints } from "@/lib/db/schema";
+import { utcDayStart } from "@/lib/db/utc-day";
 import { normalizeResourceKey } from "./catalog-source";
 import {
+  SELLER_REQUEST_PRESIGN_PREFIX,
   SELLER_RETEST_MAX_PER_RUN,
   SELLER_RETEST_REQUEST_SOURCE,
   resolveSellerRetestUrl,
@@ -63,7 +65,7 @@ export async function completedSellerRequestIds(db: NonNullable<ReturnType<typeo
     FROM x402_l1_purchases pu
     WHERE pu.raw_response_meta->>'sellerRequestId' IS NOT NULL
       AND pu.auth_nonce IS NOT NULL
-      AND pu.auth_nonce NOT LIKE 'presign:%'
+      AND pu.auth_nonce NOT LIKE ${`${SELLER_REQUEST_PRESIGN_PREFIX}%`}
   `);
   const list = (Array.isArray(rows) ? rows : ((rows as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])) as Record<
     string,
@@ -76,7 +78,23 @@ export async function completedSellerRequestIds(db: NonNullable<ReturnType<typeo
   );
 }
 
-/** UTC 日のうちに sellerRequestId 付きの行を書いた依頼（402 失敗も含む・1 日 1 回の再試行用）。 */
+/**
+ * 予約を取った後に、署名せずに後始末した行（2026-10-30 差し戻し2）。停止スイッチ（halted）、署名前の解放
+ * （phase pre_sign）、孤児の掃除（phase sweep）、予約後の例外の確定（phase post_reservation）。402 は取れていて
+ * 資格情報は出していないので、その依頼は次の実行でまた買える（その日の「取りに行った」には数えない）。
+ */
+export function sellerRequestReservationReleasedSql(alias: "pu"): ReturnType<typeof sql> {
+  return sql.raw(
+    `(${alias}.status = 'halted' OR coalesce(${alias}.raw_response_meta->>'phase', '') IN ('pre_sign', 'sweep', 'post_reservation'))`,
+  );
+}
+
+/**
+ * その UTC 日に 402 を取りに行って、予約の前で止まった依頼（402 が取れない・合わない・上限で断った等。
+ * 1 日 1 回の再試行用）。記録は既存の台帳の行（record() が書く sellerRequestId 付きの行）で、
+ * 予約の後に後始末した行（sellerRequestReservationReleasedSql）は数えない。進行中の予約（in_flight）は数える
+ * （同じ依頼を並行の実行が取りに行かない）。
+ */
 export async function sellerRequestIdsAttemptedToday(
   db: NonNullable<ReturnType<typeof import("@/lib/db/client").getDb>>,
 ): Promise<Set<string>> {
@@ -84,7 +102,9 @@ export async function sellerRequestIdsAttemptedToday(
     SELECT DISTINCT pu.raw_response_meta->>'sellerRequestId' AS id
     FROM x402_l1_purchases pu
     WHERE pu.raw_response_meta->>'sellerRequestId' IS NOT NULL
-      AND pu.attempted_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
+      -- UTC 日の始まりは utcDayStart の 1 か所（naive timestamp の比較は接続の TimeZone でずれる）。
+      AND pu.attempted_at >= ${utcDayStart()}
+      AND NOT ${sellerRequestReservationReleasedSql("pu")}
   `);
   const list = (Array.isArray(rows) ? rows : ((rows as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])) as Record<
     string,
@@ -108,7 +128,7 @@ export async function claimSellerRequestAuthSlot(
   rowId: string,
   sellerRequestId: string,
 ): Promise<SellerRequestAuthClaim> {
-  const presign = `presign:${rowId}`;
+  const presign = `${SELLER_REQUEST_PRESIGN_PREFIX}${rowId}`;
   try {
     const raw = await db.execute(sql`
       UPDATE x402_l1_purchases pu
@@ -179,6 +199,11 @@ export function sellerRequestUnpaidOf(req: SellerRetestRequest, payerAddress: st
 export type SellerRequest402Verdict =
   | { ok: true; amountUnits: bigint; payTo: string }
   | { ok: false; reason: string; detail?: Record<string, unknown> };
+
+/** 署名する accept を依頼の network だけに絞る（Arbitrum 等のレーンが ON でも依頼の network で払う）。 */
+export function sellerRequestAccepts<T extends { network: string }>(accepts: readonly T[], gate: SellerRequestGate): T[] {
+  return accepts.filter((a) => a.network === gate.network);
+}
 
 export function validateSellerRequest402(challenge: ParsedChallenge, gate: SellerRequestGate): SellerRequest402Verdict {
   const expected = normalizedEvmPayTo(gate.expectedPayTo);
