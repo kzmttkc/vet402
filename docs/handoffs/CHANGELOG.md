@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-31 Seller-request POST body check compares JSON, not key order
+
+- **What**: The seller-request lane compares the request-list POST body with the 402's declared body by normalised JSON equality when both parse (`sellerRequestBodiesEqual` in `src/lib/observatory/seller-retest.ts`: object key order ignored, array order and number/string kept distinct). If either side is not JSON, the bytes must match as before. The paid request still sends the request-list body unchanged.
+- **Why**: On production the Goldsky `POST https://edge.goldsky.com/standard/evm/8453` request was refused as `seller_request_body_mismatch`: the 402 declared `{"id":1,"jsonrpc":"2.0","method":"eth_blockNumber","params":[]}` and the list holds `{"jsonrpc":"2.0","id":1,"method":"eth_blockNumber","params":[]}` (same content, different key order).
+- **Impact**: No SQL. The request is retried on the next UTC day by the existing once-per-day rule. Tests: `tests/l1-seller-retest.pg.test.ts` ("body key order only", "body value differs"), `scripts/dev/mutation-check-seller-retest.sh` (byte-comparison patch).
+- **Commits**: this entry.
+
 ## 2026-10-30 CDP Bazaar catalog sync reads with a resumable cursor (design v5, phase 1)
 
 - **What**: `/api/cron/catalog-sync` now calls `runCatalogCursorCall` (`src/lib/observatory/catalog-cursor.ts`) instead of `syncCatalog()`. Each run takes a lease on the cursor row (`x402_catalog_cursors`, one UPDATE, 290s), reads from `next_offset` for up to 200s with 3 pages in flight, upserts each page as it arrives (`last_seen_at`, `last_seen_pass`), saves the cursor after each page, and closes the pass when it passes the catalog total (`x402_catalog_passes`; a pass with more than 5% unreadable pages is marked weak). A closed pass writes that day's cdp snapshot so `latestSnapshot` and Circle's sibling view stay current. vercel.json: catalog-sync is 12 once-a-day crons, 00:05 to 22:05 UTC every 2 hours (35 crons in total). A 36h watchdog (`observatory.catalog-cursor.pass_stale`) and the public `cdpBazaarIngestStale` field judge freshness from the last strong pass, not from `max(last_seen_at)`. L1 skips cdp_bazaar rows not seen for 36h.

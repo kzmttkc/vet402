@@ -140,6 +140,7 @@ import {
   completedSellerRequestIds,
   pendingSellerRetestRequests,
   sellerRequestAccepts,
+  sellerRequestBodiesEqual,
   sellerRequestIdsAttemptedToday,
   sellerResponseHeadersOf,
   sellerRetestCatalogForBatch,
@@ -3514,7 +3515,9 @@ async function purchaseOne(input: {
     }
     if (method === "POST" && candidate.sellerRequestUnpaid?.body) {
       const declared = declaredRequestBody({ bodyText: firstBody, headers: first.headers });
-      const sellerBodyMismatch = declared?.source === "declared" && declared.body !== candidate.sellerRequestUnpaid.body;
+      // キーの順番だけ違う JSON は同じ本文（sellerRequestBodiesEqual）。送る本文は下の paidRequestBody で依頼の body のまま。
+      const sellerBodyMismatch =
+        declared?.source === "declared" && !sellerRequestBodiesEqual(candidate.sellerRequestUnpaid.body, declared.body);
       if (sellerBodyMismatch) {
         await record({
           status: "no_eligible_accept",

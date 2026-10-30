@@ -200,6 +200,37 @@ export type SellerRequest402Verdict =
   | { ok: true; amountUnits: bigint; payTo: string }
   | { ok: false; reason: string; detail?: Record<string, unknown> };
 
+/** JSON の値の深い等しさ。オブジェクトはキーの順番を問わない。配列は順番を区別する。数値と文字列は区別する。 */
+function jsonValuesEqual(a: unknown, b: unknown): boolean {
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return Object.is(a, b);
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => jsonValuesEqual(v, b[i]));
+  }
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const ak = Object.keys(ao);
+  if (ak.length !== Object.keys(bo).length) return false;
+  return ak.every((k) => Object.prototype.hasOwnProperty.call(bo, k) && jsonValuesEqual(ao[k], bo[k]));
+}
+
+/**
+ * 依頼の POST 本文と 402 が宣言した本文が同じか（2026-10-31・本番の Goldsky で宣言がキーの順番だけ違った）。
+ * 両方が JSON として読めるときは正規化した JSON の等しさ（jsonValuesEqual）、どちらかが読めなければバイト列の一致。
+ * 払うときに送る本文はこの判定に関係なく依頼リストの body のまま。
+ */
+export function sellerRequestBodiesEqual(expected: string, declared: string): boolean {
+  let e: unknown;
+  let d: unknown;
+  try {
+    e = JSON.parse(expected);
+    d = JSON.parse(declared);
+  } catch {
+    return expected === declared;
+  }
+  return jsonValuesEqual(e, d);
+}
+
 /** 署名する accept を依頼の network だけに絞る（Arbitrum 等のレーンが ON でも依頼の network で払う）。 */
 export function sellerRequestAccepts<T extends { network: string }>(accepts: readonly T[], gate: SellerRequestGate): T[] {
   return accepts.filter((a) => a.network === gate.network);
