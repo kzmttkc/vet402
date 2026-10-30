@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
     // Production ignores attacker-controlled maxBlocks (RPC burn); use a fixed cap.
     //
     // 2026-10-31: 1 回に読む量を決めるのは、もう maxBlocks ではなく時間の予算
-    // （src/lib/indexer/segmented-scan.ts: 180 秒を過ぎたら新しい区切りを始めない・230 秒で
-    // 読みかけの区切りを捨てる）。区切りごとに書いて checkpoint するので、予算で止まった回も
+    // （src/lib/indexer/segmented-scan.ts: 170 秒を過ぎたら新しい区切りを始めない・200 秒で
+    // 読みかけの区切りを捨てる・270 秒で書き込みの次の文を始めない）。区切りごとに書いて checkpoint するので、予算で止まった回も
     // 進んだ分は残る。以前の 250,000 ブロックを全部読んでから書く形は、10/8 以降 Transfer が
     // 20,000 ブロックに数十万件ある区間で 300 秒に収まらず、毎回殺されて 1 ブロックも残らなかった。
     // maxBlocks は 1 回の RPC の上限としてだけ残す（1,000,000 ブロック = Base の約 23 日）。

@@ -7,6 +7,11 @@ import { runIdentityIndexes } from "../src/lib/indexer/identity-index-run";
 async function main() {
   const maxBlocks = Number(process.argv[2] ?? 1_000_000);
   const { status, body, failures } = await runIdentityIndexes({ maxBlocks: BigInt(maxBlocks) });
+  if (!("caughtUp" in body)) {
+    // 別の回（cron など）が lease を持っている、または lease を確かめられなかった。
+    console.log(JSON.stringify(body));
+    process.exit(status === 200 ? 0 : 1);
+  }
 
   console.log("Identity indexes run complete");
   console.log(`  owner blocks:      ${body.fromBlock ?? "?"} → ${body.toBlock ?? "?"} (+${body.blocksAdvanced.owner})`);

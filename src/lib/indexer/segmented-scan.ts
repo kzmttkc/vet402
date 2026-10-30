@@ -29,24 +29,33 @@ import { redactSecretsForLog } from "@/lib/util/log-safe";
 export const DEFAULT_SEGMENT_BLOCKS = 20_000n;
 
 /**
- * 時間の上限 2 つ。cron の maxDuration は 300 秒（src/app/api/cron/index-owners/route.ts）。
+ * 時間の上限 3 つ。cron の maxDuration は 300 秒（src/app/api/cron/index-owners/route.ts）。
+ * 300 秒でプラットフォームに殺されると応答も最後の checkpoint も消えるので、全部その手前で自分から止まる。
  *
- *  - DEFAULT_TIME_BUDGET_MS（180 秒）: これを過ぎたら新しい区切りを始めない。
- *  - DEFAULT_HARD_STOP_MS（230 秒）: 読んでいる途中の区切りも、ここで待つのをやめて捨てる。
+ *  - DEFAULT_TIME_BUDGET_MS（170 秒）: これを過ぎたら新しい区切りを始めない。
+ *  - DEFAULT_HARD_STOP_MS（200 秒）: 読んでいる途中の区切りも、ここで待つのをやめて捨てる。
  *    getLogsChunked に渡す期限は「次の要求を出さない」だけで、出してしまった 1 要求は transport の
  *    timeout 20 秒 × 最大 4 回まで返らないことがあるので、壁時計でも切る（withDeadline）。
+ *  - DEFAULT_WRITE_DEADLINE_MS（270 秒）: 書き込みはここで次の文を始めない（走っている文は待つ）。
+ *    書き終わらなかった区切りは checkpoint を進めずに応答を返す（stoppedBy: "write_deadline"）。
+ *    次の回が同じ区切りを読み直す。
  *
- * feedback-indexer（200 / 250 秒）より 20 秒ずつ早いのは、所有者索引の 1 区切りの書き込みが
- * 重いから（読み終えた後に最大 10 万件ぶんの upsert / delete。500 行ずつ・4 本並列で数十秒）。
- * 230 秒で読み終えた区切りの書き込みと checkpoint に、300 秒まで 70 秒を残す。
+ * 書き込みに残る時間は 270 − 200 = 70 秒以上。所有者索引の最も重い区切り（10/31 手元実測で
+ * 18.5 万 agentId）の書き込みは 1,000 行ずつ・4 本並列・upsert の段と delete の段で 94 往復。
+ * 手元の Postgres で 18.5 万 agentId を全部 wipe して 1 行ずつ残す形（最も重い形）を測ると 370 文で 5.7〜8.0 秒
+ * （10/31・3 回）。70 秒はその 8.7 倍で、Neon HTTP なら 1 往復 0.74 秒（文の実行込み）まで耐える。
+ * 270 秒の後に残るのは走っている文の終わり・checkpoint・応答で、300 秒まで 30 秒ある。
  */
-export const DEFAULT_TIME_BUDGET_MS = 180_000;
-export const DEFAULT_HARD_STOP_MS = 230_000;
+export const DEFAULT_TIME_BUDGET_MS = 170_000;
+export const DEFAULT_HARD_STOP_MS = 200_000;
+export const DEFAULT_WRITE_DEADLINE_MS = 270_000;
 
 export type SegmentedScanOptions = {
   segmentBlocks?: bigint;
   timeBudgetMs?: number;
   hardStopMs?: number;
+  /** 書き込みで次の文を始めてよい経過時間（ms）。既定 DEFAULT_WRITE_DEADLINE_MS。 */
+  writeDeadlineMs?: number;
   now?: () => number;
   /** 呼び手がすでに測り始めた時刻（2 つの索引を同じ持ち時間で回すとき）。既定は呼んだ時の now()。 */
   startedAt?: number;
@@ -70,7 +79,7 @@ export type SegmentedScanResult = {
   /** 最後に読み終えて書き終えたブロック。1 区切りも終わらなかった回は無い（throw する）。 */
   scannedTo: bigint;
   segments: number;
-  /** 途中で止まったときだけ: `time_budget`・`hard_stop`・`rpc:<読み先の言い分>`。 */
+  /** 途中で止まったときだけ: `time_budget`・`hard_stop`・`write_deadline`・`rpc:<読み先の言い分>`。 */
   stoppedBy?: string;
 };
 
@@ -88,8 +97,11 @@ export async function runSegmentedScan<R>(input: {
   options?: SegmentedScanOptions;
   /** [from, maxTo] を読む。RPC の失敗・期限切れはここで投げる。 */
   read: (from: bigint, maxTo: bigint, clock: ScanClock) => Promise<SegmentRead<R>>;
-  /** 読んだ区切りを書く。ここで投げたものは run ごと投げる。 */
-  write: (read: SegmentRead<R>) => Promise<void>;
+  /**
+   * 読んだ区切りを書く。shouldStop() が true になったら次の文を始めずに DeadlineExceededError を投げる
+   * （その区切りは checkpoint を進めずに止まる）。それ以外に投げたものは run ごと投げる。
+   */
+  write: (read: SegmentRead<R>, control: { shouldStop: () => boolean }) => Promise<void>;
   /** 書き終えた区切りの最後のブロックを checkpoint にする。 */
   checkpoint: (lastBlock: bigint) => Promise<void>;
 }): Promise<SegmentedScanResult> {
@@ -99,6 +111,7 @@ export async function runSegmentedScan<R>(input: {
     options?.segmentBlocks !== undefined && options.segmentBlocks > 0n ? options.segmentBlocks : DEFAULT_SEGMENT_BLOCKS;
   const timeBudgetMs = options?.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const hardStopMs = options?.hardStopMs ?? DEFAULT_HARD_STOP_MS;
+  const writeDeadlineMs = options?.writeDeadlineMs ?? DEFAULT_WRITE_DEADLINE_MS;
   const t0 = options?.startedAt ?? now();
 
   const clock: ScanClock = {
@@ -135,7 +148,17 @@ export async function runSegmentedScan<R>(input: {
       throw new Error(`segmented_scan_bad_last_block:${read.lastBlock}:${cursor}-${maxTo}`);
     }
 
-    await input.write(read);
+    try {
+      await input.write(read, { shouldStop: () => now() - t0 >= writeDeadlineMs });
+    } catch (error) {
+      // 期限で書き終わらなかった区切り: checkpoint は前のまま、応答は返す（関数ごと殺されない）。
+      // 書けた分は残るが、どれも何度書いても同じ結果の文で、次の回が同じ区切りを書き直す。
+      if (error instanceof DeadlineExceededError) {
+        stoppedBy = "write_deadline";
+        break;
+      }
+      throw error;
+    }
     await input.checkpoint(read.lastBlock);
     segments++;
     cursor = read.lastBlock + 1n;

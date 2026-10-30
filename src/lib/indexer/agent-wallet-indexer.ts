@@ -143,8 +143,8 @@ export async function indexAgentWallets(
       // 区切りの中は最後の WalletSet が勝つ。区切りをまたぐ貼り替えは、後の区切りが後で書くので後が勝つ。
       return { lastBlock: maxTo, payload: { pairs: latestWalletPerAgent(logs), events: logs.length } };
     },
-    write: async ({ payload }) => {
-      await upsertAgentWallets(payload.pairs);
+    write: async ({ payload }, control) => {
+      await upsertAgentWallets(payload.pairs, { shouldStop: control.shouldStop });
       walletSetEvents += payload.events;
       upserted += payload.pairs.length;
     },

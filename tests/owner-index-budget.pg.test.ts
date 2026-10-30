@@ -17,6 +17,9 @@
 //   5. 区切りの途中で壁時計の上限を越えたら、その区切りは書かずに捨てる（checkpoint は前の区切りの終わり）
 //   6. 1 区切りの件数が多すぎるときは、読む窓の終わり（= ブロックの境目）で区切りを閉じる
 //   7. cron の応答（2 つを同じ持ち時間で回す）に、進んだブロック数・予算で止まったか・caughtUp が出る
+//   8. 書き込みの期限を越えた区切りは checkpoint を進めずに応答を返す（レビュー L-1）
+//   9. getLogs が返らなくても、壁時計の上限（withDeadline）で待つのをやめる（レビュー L-4）
+//  10. 同時に走るのは 1 本だけ（job_leases の lease。レビュー M-2）
 //
 // RPC は tests/helpers/fake-identity-rpc.ts の偽物（INDEXER_RPC_URL をそこへ向ける。viem・chunked-logs・
 // multicall は実物）。DB は TEST_DATABASE_URL の実 Postgres。時計は偽物で、getLogs を 1 回受けるごとに進む。
@@ -117,10 +120,12 @@ beforeEach(async () => {
     INSERT INTO indexer_checkpoints (scope, last_block, chain_tip_at_run)
     VALUES ('identity_registry', ${START.toString()}::bigint, ${START.toString()}::bigint),
            ('identity_registry_wallets', ${START.toString()}::bigint, ${START.toString()}::bigint)`);
+  await db.execute(sql`DELETE FROM job_leases WHERE name = 'index-owners'`);
   rpc.calls.length = 0;
   rpc.onGetLogs = () => {
     clock += MS_PER_GETLOGS;
   };
+  rpc.hangGetLogs = () => false;
   clock = 0;
 });
 
@@ -154,7 +159,7 @@ test("owner: a budget worth one segment advances exactly one segment and says th
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 30_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     deps: { now },
   } as never)) as unknown as Record<string, unknown>;
 
@@ -177,7 +182,7 @@ test("wallet: a budget worth one segment advances exactly one segment and says t
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 15_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     deps: { now },
   } as never)) as unknown as Record<string, unknown>;
 
@@ -207,7 +212,7 @@ test("owner: a write that dies midway leaves the checkpoint before that segment;
   };
 
   await assert.rejects(
-    indexOwnerAgents({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, deps: failing } as never),
+    indexOwnerAgents({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, deps: failing } as never),
     /db write failed/,
   );
   assert.equal(await checkpoint("identity_registry"), START + SEG - 1n, "落ちた区切りの前のまま");
@@ -217,7 +222,7 @@ test("owner: a write that dies midway leaves the checkpoint before that segment;
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 1_000_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     deps: { now },
   } as never)) as unknown as Record<string, unknown>;
 
@@ -232,7 +237,7 @@ test("owner: a write that dies midway leaves the checkpoint before that segment;
 test("both reach the tip: caughtUp, both checkpoints at the tip, and the rows match the chain", { skip }, async () => {
   const { indexOwnerAgents } = await import("@/lib/indexer/owner-indexer");
   const { indexAgentWallets } = await import("@/lib/indexer/agent-wallet-indexer");
-  const opts = { maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, deps: { now } };
+  const opts = { maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, deps: { now } };
 
   const owner = (await indexOwnerAgents(opts as never)) as unknown as Record<string, unknown>;
   const wallet = (await indexAgentWallets(opts as never)) as unknown as Record<string, unknown>;
@@ -266,7 +271,7 @@ test("owner and wallet advance differently: each checkpoint is its own, and the 
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 70_000, // 40 秒の区切りを 2 つ
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     deps: { now },
   } as never)) as unknown as Record<string, unknown>;
   clock = 0;
@@ -274,7 +279,7 @@ test("owner and wallet advance differently: each checkpoint is its own, and the 
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 1_000_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     deps: { now },
   } as never)) as unknown as Record<string, unknown>;
 
@@ -287,7 +292,7 @@ test("owner and wallet advance differently: each checkpoint is its own, and the 
   assert.equal(await warmAgentResolveTail(5_000), "unavailable");
 
   clock = 0;
-  await indexOwnerAgents({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, deps: { now } } as never);
+  await indexOwnerAgents({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, deps: { now } } as never);
   assert.equal(await checkpoint("identity_registry"), TIP);
   assert.equal(await warmAgentResolveTail(5_000), "indexed_only");
 });
@@ -323,7 +328,7 @@ test("owner: a segment with too many events is closed at the end of a read windo
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 5_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     readWindowBlocks: 4_000n,
     maxSegmentEvents: 4,
     deps: { now },
@@ -342,7 +347,7 @@ test("owner: a segment with too many events is closed at the end of a read windo
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 1_000_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     readWindowBlocks: 4_000n,
     maxSegmentEvents: 4,
     deps: { now },
@@ -357,7 +362,7 @@ test("cron runner: both indexes share one time budget and the body says how far 
     maxBlocks: 250_000n,
     segmentBlocks: SEG,
     timeBudgetMs: 50_000,
-    hardStopMs: 1_000_000,
+    hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000,
     now,
   });
   assert.equal(stopped.status, 200);
@@ -377,11 +382,135 @@ test("cron runner: both indexes share one time budget and the body says how far 
   assert.equal(body.walletIndex.toBlock, walletCp!.toString());
 
   clock = 0;
-  const done = await runIdentityIndexes({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, now });
+  const done = await runIdentityIndexes({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, now });
   const doneBody = done.body as Record<string, unknown>;
   assert.equal(doneBody.ok, true);
   assert.equal(doneBody.caughtUp, true);
   assert.equal(doneBody.stoppedByBudget, false);
   assert.equal(await checkpoint("identity_registry"), TIP);
   assert.equal(await checkpoint("identity_registry_wallets"), TIP);
+});
+
+test("owner: a segment whose writes cross the write deadline is not checkpointed, and the run still answers", { skip }, async () => {
+  const { indexOwnerAgents } = await import("@/lib/indexer/owner-indexer");
+  const writer = await import("@/lib/db/owner-index-writer");
+  let segment = 0;
+  const result = (await indexOwnerAgents({
+    maxBlocks: 250_000n,
+    segmentBlocks: SEG,
+    timeBudgetMs: 1_000_000,
+    hardStopMs: 1_000_000,
+    writeDeadlineMs: 500_000,
+    deps: {
+      now,
+      // 区切り 2 の書き込みを始める時点で、時計が書き込みの期限を越えている。本物の書き手に期限を渡す。
+      applyChanges: async (changes: Parameters<typeof writer.applyOwnerAgentChanges>[0], options?: Parameters<typeof writer.applyOwnerAgentChanges>[1]) => {
+        if (segment++ === 1) clock += 1_000_000;
+        return writer.applyOwnerAgentChanges(changes, options);
+      },
+    },
+  } as never)) as unknown as Record<string, unknown>;
+
+  assert.equal(result.partial, true);
+  assert.equal(result.stoppedBy, "write_deadline");
+  assert.equal(result.toBlock, (START + SEG - 1n).toString());
+  assert.equal(await checkpoint("identity_registry"), START + SEG - 1n, "書き終わらなかった区切りの前のまま");
+  assert.deepEqual(await ownerRows(), [`${B}:1`, `${C}:2`, `${G}:6`].sort(), "区切り 2 の文は 1 つも始めていない");
+});
+
+async function leaseRow(): Promise<{ holder: string; expired: boolean } | null> {
+  const { getDb } = await import("@/lib/db/client");
+  const { sql } = await import("drizzle-orm");
+  const res = await getDb()!.execute(
+    sql`SELECT holder::text AS holder, expires_at <= now() AS expired FROM job_leases WHERE name = 'index-owners'`,
+  );
+  const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { holder: string; expired: boolean }[];
+  return rows[0] ?? null;
+}
+
+test("lease: two runs at once — one runs, the other answers lease_held and reads and writes nothing", { skip }, async () => {
+  const { runIdentityIndexes } = await import("@/lib/indexer/identity-index-run");
+  const opts = { maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, now };
+  const [a, b] = await Promise.all([runIdentityIndexes(opts), runIdentityIndexes(opts)]);
+  const bodies = [a.body, b.body] as Record<string, unknown>[];
+
+  const skipped = bodies.filter((x) => x.skipped === "lease_held");
+  const ran = bodies.filter((x) => x.skipped === undefined);
+  assert.equal(skipped.length, 1, JSON.stringify(bodies.map((x) => x.skipped ?? x.caughtUp)));
+  assert.equal(ran.length, 1);
+  assert.equal(skipped[0]!.ok, true);
+  assert.equal(ran[0]!.caughtUp, true);
+  // 走らなかった方は 1 つも読んでいない（同じ範囲を 2 度読んだ要求が無い）。
+  const keys = rpc.calls.map((c) => `${c.kind}:${c.from}`);
+  assert.equal(new Set(keys).size, keys.length, "同じ範囲を 2 本が読んだ");
+  assert.deepEqual(await ownerRows(), EXPECTED_OWNER_ROWS);
+  assert.deepEqual(await walletRows(), EXPECTED_WALLET_ROWS);
+  assert.equal(await leaseRow(), null, "走った方は終わりに自分の lease を解放した");
+});
+
+test("lease: a lease held by someone else is not taken or released; once it expires the next run takes it", { skip }, async () => {
+  const { runIdentityIndexes } = await import("@/lib/indexer/identity-index-run");
+  const { getDb } = await import("@/lib/db/client");
+  const { sql } = await import("drizzle-orm");
+  const db = getDb()!;
+  const other = "11111111-1111-4111-8111-111111111111";
+  await db.execute(sql`
+    INSERT INTO job_leases (name, holder, acquired_at, expires_at)
+    VALUES ('index-owners', ${other}::uuid, now(), now() + interval '300 seconds')`);
+  const opts = { maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 1_000_000, now };
+
+  const held = await runIdentityIndexes(opts);
+  assert.deepEqual(held.body, { ok: true, skipped: "lease_held" });
+  assert.equal(rpc.calls.length, 0, "何も読んでいない");
+  assert.equal(await checkpoint("identity_registry"), START, "何も書いていない");
+  assert.deepEqual(await leaseRow(), { holder: other, expired: false }, "持ち主でない側は解放しない");
+
+  // 期限が切れた lease（殺された回の残り）は次の回が取る。
+  await db.execute(sql`UPDATE job_leases SET expires_at = now() - interval '1 second' WHERE name = 'index-owners'`);
+  const taken = await runIdentityIndexes(opts);
+  assert.equal((taken.body as Record<string, unknown>).caughtUp, true);
+  assert.equal(await checkpoint("identity_registry"), TIP);
+  assert.equal(await leaseRow(), null);
+});
+
+test("lease: a run whose lease expired and was taken over does not release the new holder's lease", { skip }, async () => {
+  const { acquireLeaseFailClosed } = await import("@/lib/cron/lease-fail-closed");
+  const { IDENTITY_INDEX_LEASE, IDENTITY_INDEX_LEASE_TTL_SECONDS } = await import("@/lib/indexer/identity-index-run");
+  const { getDb } = await import("@/lib/db/client");
+  const { sql } = await import("drizzle-orm");
+  const first = await acquireLeaseFailClosed(IDENTITY_INDEX_LEASE, IDENTITY_INDEX_LEASE_TTL_SECONDS);
+  assert.equal(first.acquired, true);
+  await getDb()!.execute(sql`UPDATE job_leases SET expires_at = now() - interval '1 second' WHERE name = 'index-owners'`);
+  const second = await acquireLeaseFailClosed(IDENTITY_INDEX_LEASE, IDENTITY_INDEX_LEASE_TTL_SECONDS);
+  assert.equal(second.acquired, true);
+  const secondHolder = (await leaseRow())!.holder;
+
+  if (first.acquired) await first.release();
+  assert.deepEqual(await leaseRow(), { holder: secondHolder, expired: false }, "古い持ち主の解放は新しい lease を消さない");
+  if (second.acquired) await second.release();
+  assert.equal(await leaseRow(), null);
+});
+
+test("owner: a getLogs that never answers is abandoned by the wall clock and the earlier segment stays", { skip }, async () => {
+  const { indexOwnerAgents } = await import("@/lib/indexer/owner-indexer");
+  // 区切り 1 = getLogs 40 回 = 偽の 40 秒。上限 40.5 秒なら、区切り 2 の最初の読み取りに残るのは実時間 0.5 秒。
+  // その要求に偽の RPC は答えない。withDeadline が 0.5 秒で発火しなければ、viem の timeout（20 秒 × 4 回）まで待つ。
+  // このファイルの最後に置く: 答えなかった要求は viem が 20 秒後に打ち直し、時計と rpc.calls を動かすので、
+  // 後ろに別のテストがあると混ざる（node --test はファイルごとに別のプロセスなので、ファイルの外には漏れない）。
+  rpc.hangGetLogs = (call) => call.from >= START + SEG;
+  const started = Date.now();
+  const result = (await indexOwnerAgents({
+    maxBlocks: 250_000n,
+    segmentBlocks: SEG,
+    timeBudgetMs: 1_000_000,
+    hardStopMs: 40_500,
+    deps: { now },
+  } as never)) as unknown as Record<string, unknown>;
+  const elapsed = Date.now() - started;
+
+  assert.equal(result.partial, true);
+  assert.equal(result.stoppedBy, "hard_stop");
+  assert.ok(elapsed < 10_000, `壁時計で切れていない: ${elapsed}ms`);
+  assert.equal(await checkpoint("identity_registry"), START + SEG - 1n);
+  assert.deepEqual(await ownerRows(), [`${B}:1`, `${C}:2`, `${G}:6`].sort());
 });

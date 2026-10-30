@@ -7,7 +7,11 @@ import {
   OWNER_INDEX_CHECKPOINT,
   setIndexerCheckpoint,
 } from "@/lib/db/owner-index";
-import { applyOwnerAgentChanges, type OwnerAgentChanges } from "@/lib/db/owner-index-writer";
+import {
+  applyOwnerAgentChanges,
+  type OwnerAgentChanges,
+  type OwnerWriteOptions,
+} from "@/lib/db/owner-index-writer";
 import { mapWithConcurrency } from "@/lib/util/concurrency";
 import { logServerInfoSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 import { runSegmentedScan, type ScanClock, type SegmentedScanOptions } from "./segmented-scan";
@@ -259,7 +263,7 @@ export function ownerChangesForSegment(
 /** テストの差し替え口。本番は全部既定（実 RPC・実 DB・Date.now）。 */
 export type OwnerIndexDeps = {
   now: () => number;
-  applyChanges: (changes: OwnerAgentChanges) => Promise<void>;
+  applyChanges: (changes: OwnerAgentChanges, options?: OwnerWriteOptions) => Promise<void>;
 };
 
 type OwnerSegment = {
@@ -383,9 +387,9 @@ export async function indexOwnerAgents(
         },
       };
     },
-    write: async ({ lastBlock, payload }) => {
+    write: async ({ lastBlock, payload }, control) => {
       const writeStarted = now();
-      await applyChanges(payload.changes);
+      await applyChanges(payload.changes, { shouldStop: control.shouldStop });
       // 区切りごとの内訳（どこで時間を使っているかを本番のログで読めるように）。
       logServerInfoSafe(
         "owner-indexer.segment",

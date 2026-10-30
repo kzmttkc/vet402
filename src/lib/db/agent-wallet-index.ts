@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import type { Address } from "viem";
 import { getDb } from "./client";
 import { agents, ownerAgents } from "./schema";
+import { DeadlineExceededError } from "@/lib/util/deadline";
 
 /**
  * wallet→agent 索引（2026-08-13）。
@@ -61,13 +62,18 @@ export async function upsertAgentWallet(agentId: bigint, wallet: Address): Promi
  * ON CONFLICT が同じ行を 2 度更新できずに落ちるので、呼び手は agentId ごとに 1 件へ畳んでから渡す
  * （latestWalletPerAgent）。ここでも念のため後の方を残して畳む。
  */
-export async function upsertAgentWallets(pairs: readonly { agentId: bigint; wallet: Address }[]): Promise<void> {
+export async function upsertAgentWallets(
+  pairs: readonly { agentId: bigint; wallet: Address }[],
+  options?: { shouldStop?: () => boolean },
+): Promise<void> {
   const db = getDb();
   if (!db || pairs.length === 0) return;
   const latest = new Map<string, { agentId: bigint; wallet: string }>();
   for (const p of pairs) latest.set(p.agentId.toString(), { agentId: p.agentId, wallet: p.wallet.toLowerCase() });
   const rows = [...latest.values()];
   for (let i = 0; i < rows.length; i += 500) {
+    // 期限を過ぎたら次の文を始めない（segmented-scan.ts の書き込みの期限）。
+    if (options?.shouldStop?.()) throw new DeadlineExceededError("agent-wallet-index", 0);
     const now = new Date();
     await db
       .insert(agents)

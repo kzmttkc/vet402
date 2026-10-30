@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Address } from "viem";
 import { getDb } from "./client";
 import { ownerAgents } from "./schema";
+import { DeadlineExceededError } from "@/lib/util/deadline";
 
 /** Trusted indexer write path — never called from live API scoring. */
 export async function upsertOwnerAgent(owner: Address, agentId: bigint): Promise<void> {
@@ -61,9 +62,11 @@ export type OwnerAgentChanges = {
  *
  * 10 月の Base には 20,000 ブロックに Transfer が 28〜44 万件ある所がある（10/31 実測）。
  * 1 件ずつ 2〜3 文（Neon HTTP の 1 往復 150〜300ms）では、1 区切りが何時間もかかる。
- * 1,000 行ずつにまとめ、agentId の重ならない束を 4 本並べて投げる。最も濃い区切り（手元の実測で
- * 18.5 万 agentId）でも 370 文 ÷ 4 本 ≒ 93 往復 ≒ 30 秒弱に収まり、segmented-scan.ts が
- * 読み終えた後に残す 70 秒の中で書き終わる。1 文の引数は最大 3,000 個（Postgres の上限は 65,535）。
+ * 1,000 行ずつにまとめ、4 本並べて投げる（upsert の段 → delete の段の 2 段。applyOwnerAgentChanges）。
+ * 最も濃い区切り（手元の実測で 18.5 万 agentId）で upsert 185 文 + delete 185 文 = 4 本並列で 94 往復。
+ * 手元の Postgres で 5.7〜8.0 秒（10/31 実測）。segmented-scan.ts は読み終えてから書き込みの期限まで
+ * 70 秒を残すので、その 8.7 倍・1 往復 0.74 秒まで耐える。超えた区切りは checkpoint を進めずに止まる。
+ * 1 文の引数は最大 3,000 個（Postgres の上限は 65,535）。
  */
 const OWNER_WRITE_BATCH = 1_000;
 const OWNER_WRITE_CONCURRENCY = 4;
@@ -122,55 +125,79 @@ export async function removeAgentsFromIndexExcept(
   await db.delete(ownerAgents).where(where);
 }
 
+/** 書き込みを途中でやめるための合図（2026-10-31 レビュー L-1）。 */
+export type OwnerWriteOptions = {
+  /** true を返したら、次の文を始めずに DeadlineExceededError を投げる（走っている文は待つ）。 */
+  shouldStop?: () => boolean;
+};
+
+/**
+ * 束を最大 OWNER_WRITE_CONCURRENCY 本ずつ並べて流す。1 本でも落ちたら、残りの束を始めずに、
+ * 走っている束が終わるのを待ってから最初の失敗を投げる（投げた後に書き込みが続かないように）。
+ */
+async function runTasks(tasks: (() => Promise<void>)[], options: OwnerWriteOptions | undefined): Promise<void> {
+  let next = 0;
+  let firstError: unknown;
+  await Promise.all(
+    Array.from({ length: Math.min(OWNER_WRITE_CONCURRENCY, tasks.length) }, async () => {
+      while (firstError === undefined && next < tasks.length) {
+        if (options?.shouldStop?.()) {
+          firstError ??= new DeadlineExceededError("owner-index-writer", 0);
+          break;
+        }
+        const task = tasks[next++]!;
+        try {
+          await task();
+        } catch (error) {
+          firstError ??= error;
+        }
+      }
+    }),
+  );
+  if (firstError !== undefined) throw firstError;
+}
+
 /**
  * 区切り 1 つぶんの変更を書く。neon-http では transaction が使えないので、途中で落ちうる。
  * 落ちても次の回が同じ区切りを読み直して同じ変更を作り直す（どの文も何度書いても同じ結果）。
  *
- * 順序: **残す行を先に書き、消すのは後**。途中で落ちたとき、残るのは「古い候補が余分にある」
- * 側の誤りだけにする。owner_agents は wallet→agent 解決の候補でしかなく、確定はオンチェーンの
- * 束縛照合がするので、余分な候補は答えを変えない。逆（先に消す）だと、落ちてから次の回までの間、
- * 実在のエージェントが候補から消える（素のウォレットとして採点される＝fail-open 側）。
+ * 順序は 2 段: **残す行の upsert を全部書き終えてから、消す文を始める**。upsert が 1 本でも落ちたら、
+ * 消す文は 1 つも走らない（2026-10-31 レビュー M-1: 初版は upsert の束と delete の束を同じ並びで
+ * 並べていたので、別の束の upsert が落ちても delete は走り、agent の行が 0 本になる形を実 DB で再現された）。
+ *
+ * 途中で落ちたときに残るのは「古い候補が余分にある」側の誤りだけにする。owner_agents は
+ * wallet→agent 解決の候補でしかなく、確定はオンチェーンの束縛照合がするので、余分な候補は
+ * resolver の答えを変えない。countAgentsByOwner（所有者が持つエージェントの数）は余分な行の分だけ
+ * 多く数えるが、これは所有数を水増しする向き＝採点では慎重な側に倒れる。逆（先に消す）だと、落ちてから
+ * 次の回までの間、実在のエージェントが候補から消える（素のウォレットとして採点される＝fail-open 側）。
  */
-export async function applyOwnerAgentChanges(changes: OwnerAgentChanges): Promise<void> {
+export async function applyOwnerAgentChanges(changes: OwnerAgentChanges, options?: OwnerWriteOptions): Promise<void> {
   const db = getDb();
   if (!db) return;
 
   const wipeSet = new Set(changes.wipe.map((id) => id.toString()));
-  // agentId の重ならない束に分ける。束の中は「upsert → wipe の delete」の順を守り、束どうしは並べてよい。
-  const byId = new Map<string, { upserts: { owner: Address; agentId: bigint }[] }>();
+  const keepById = new Map<string, { owner: Address; agentId: bigint }[]>();
   for (const p of changes.upserts) {
+    if (!wipeSet.has(p.agentId.toString())) continue;
     const key = p.agentId.toString();
-    const entry = byId.get(key) ?? { upserts: [] };
-    entry.upserts.push(p);
-    byId.set(key, entry);
+    keepById.set(key, [...(keepById.get(key) ?? []), p]);
   }
-  const upsertOnly = changes.upserts.filter((p) => !wipeSet.has(p.agentId.toString()));
   const wipeIds = [...wipeSet].map((id) => BigInt(id));
 
-  const tasks: (() => Promise<void>)[] = [];
-  for (const batch of chunk(upsertOnly, OWNER_WRITE_BATCH)) tasks.push(() => upsertOwnerAgents(batch));
-  for (const batch of chunk(changes.deletePairs, OWNER_WRITE_BATCH)) tasks.push(() => deleteOwnerAgentPairs(batch));
-  for (const ids of chunk(wipeIds, OWNER_WRITE_BATCH)) {
-    tasks.push(async () => {
-      const keep = ids.flatMap((id) => byId.get(id.toString())?.upserts ?? []);
-      await upsertOwnerAgents(keep);
-      await removeAgentsFromIndexExcept(ids, keep);
-    });
-  }
+  // 1 段目: 残す行を全部（wipe しない agentId の分も、wipe する agentId に残す分も）。
+  await runTasks(
+    chunk(changes.upserts, OWNER_WRITE_BATCH).map((batch) => () => upsertOwnerAgents(batch)),
+    options,
+  );
 
-  // 1 本が落ちたら、ほかの本も次の文を始めない（呼び手が throw を受けた後に書き込みが続かないように）。
-  let next = 0;
-  let failed = false;
-  await Promise.all(
-    Array.from({ length: Math.min(OWNER_WRITE_CONCURRENCY, tasks.length) }, async () => {
-      while (!failed && next < tasks.length) {
-        try {
-          await tasks[next++]!();
-        } catch (error) {
-          failed = true;
-          throw error;
-        }
-      }
-    }),
+  // 2 段目: 消す。1 段目が全部通ったときだけここに来る。
+  await runTasks(
+    [
+      ...chunk(changes.deletePairs, OWNER_WRITE_BATCH).map((batch) => () => deleteOwnerAgentPairs(batch)),
+      ...chunk(wipeIds, OWNER_WRITE_BATCH).map((ids) => () =>
+        removeAgentsFromIndexExcept(ids, ids.flatMap((id) => keepById.get(id.toString()) ?? [])),
+      ),
+    ],
+    options,
   );
 }

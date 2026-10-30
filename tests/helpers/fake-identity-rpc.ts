@@ -63,6 +63,8 @@ export type FakeRpc = {
   calls: GetLogsCall[];
   /** eth_getLogs を 1 回受けるたびに呼ぶ（テストの時計を進める）。 */
   onGetLogs: (call: GetLogsCall) => void;
+  /** true を返した eth_getLogs には、いつまでも答えない（close で接続ごと切る）。 */
+  hangGetLogs: (call: GetLogsCall) => boolean;
   close: () => Promise<void>;
 };
 
@@ -103,7 +105,8 @@ function encodeLog(log: FakeLog, logIndex: number, registry: Address) {
 
 export async function startFakeIdentityRpc(chain: FakeChain, registry: Address): Promise<FakeRpc> {
   const calls: GetLogsCall[] = [];
-  const rpc: FakeRpc = { url: "", calls, onGetLogs: () => {}, close: async () => {} };
+  const rpc: FakeRpc = { url: "", calls, onGetLogs: () => {}, hangGetLogs: () => false, close: async () => {} };
+  const HANG = Symbol("hang");
 
   function handle(req: { id: unknown; method: string; params?: unknown[] }): unknown {
     const ok = (result: unknown) => ({ jsonrpc: "2.0", id: req.id, result });
@@ -121,6 +124,7 @@ export async function startFakeIdentityRpc(chain: FakeChain, registry: Address):
         const call = { kind, from, to };
         calls.push(call);
         rpc.onGetLogs(call);
+        if (rpc.hangGetLogs(call)) return HANG;
         // logIndex はブロックの中の並び順（全種類を通した順）。
         const out = [];
         const perBlock = new Map<bigint, number>();
@@ -159,12 +163,17 @@ export async function startFakeIdentityRpc(chain: FakeChain, registry: Address):
     request.on("end", () => {
       const parsed = JSON.parse(body);
       const answer = Array.isArray(parsed) ? parsed.map(handle) : handle(parsed);
+      if (answer === HANG || (Array.isArray(answer) && answer.includes(HANG))) return; // 答えない
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify(answer));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   rpc.url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  rpc.close = () => new Promise<void>((resolve) => server.close(() => resolve()));
+  rpc.close = () =>
+    new Promise<void>((resolve) => {
+      server.close(() => resolve());
+      server.closeAllConnections();
+    });
   return rpc;
 }
