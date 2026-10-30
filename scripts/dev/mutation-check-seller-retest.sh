@@ -71,8 +71,9 @@ git checkout -- src/lib/observatory/seller-retest-requests.ts
 
 # 8. Expiry
 perl -i -pe 's/return todayUtc <= req\.expiresOn;/return true;/' src/lib/observatory/seller-retest.ts
+perl -i -pe 's/export const SELLER_RETEST_MAX_PER_RUN = 10;/export const SELLER_RETEST_MAX_PER_RUN = 999;/' src/lib/observatory/seller-retest-requests.ts
 run_expect_fail "expired request not bought" "expired seller request"
-git checkout -- src/lib/observatory/seller-retest.ts
+git checkout -- src/lib/observatory/seller-retest.ts src/lib/observatory/seller-retest-requests.ts
 
 # 9. One-shot DB guard (claim always ok)
 git apply <<'PATCH'
