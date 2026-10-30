@@ -42,6 +42,7 @@ const HALTED: L1BatchSummary = {
   xrplLaneClosed: null,
   censusCandidates: 7,
   retestCandidates: 3,
+  sellerRequestCandidates: 0,
   censusRemaining: 612,
   laneSkippedForTime: 4,
   gatewayPostBodyUnknownActive: 2,

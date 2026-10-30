@@ -33,7 +33,7 @@ import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { utcDayStart } from "@/lib/db/utc-day";
-import { x402L1Purchases } from "@/lib/db/schema";
+import { x402Endpoints, x402L1Purchases } from "@/lib/db/schema";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped, readBodyCappedDetailed } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
@@ -133,6 +133,18 @@ import {
 } from "./mpp-payer";
 // L2（宣言との一致）の判定と、支払い付き応答の本文の読み取り上限（2026-09-29・l2-check.ts）。
 import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, liveOutputExampleHash, liveOutputExampleOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
+import {
+  buildSellerRetestCandidate,
+  completedSellerRequestIds,
+  pendingSellerRetestRequests,
+  sellerResponseHeadersOf,
+  sellerRetestCatalogForBatch,
+  utcDateString,
+  validateSellerRequest402,
+  type SellerRequestGate,
+  type SellerRequestUnpaid,
+} from "./seller-retest";
+import { resolveSellerRetestUrl, sellerRetestLaneEnabled } from "./seller-retest-requests";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -218,6 +230,10 @@ export type L1BatchSummary = {
    */
   retestCandidates: number;
   /**
+   * 売り手依頼の 1 回きり買い直し（2026-10-30）から、このバッチで処理しようとした依頼の数（上限 10・census/retest とは別）。
+   */
+  sellerRequestCandidates: number;
+  /**
    * バッチ開始時点の、未購入の Base ホスト数: active で Base の accept を持つ行のホスト名（ポート無視）のうち、
    * L1 の購入行がまだ 1 件も無いもの。$1 超の出品しか無い・L0 不合格・price_amount が無いなど、census が
    * 選べないホストも含む（＝census の残り件数ではなく、まだ 1 行も無い売り手の数）。
@@ -283,6 +299,7 @@ export type PublicL1BatchSummary = Omit<
   | "censusCandidates"
   | "censusRemaining"
   | "retestCandidates"
+  | "sellerRequestCandidates"
   | "sellerCapped"
   | "laneSkippedForTime"
   | "gatewayPostBodyUnknownActive"
@@ -339,6 +356,9 @@ type Candidate = {
    * （export の列は増やさない）。
    */
   selection: CensusSelection | null;
+  /** 売り手依頼の 1 回きり買い直し（2026-10-30）: 402 照合と sellerRequestId。 */
+  sellerRequest?: SellerRequestGate;
+  sellerRequestUnpaid?: SellerRequestUnpaid;
   /**
    * カタログの raw_accepts が宣言した XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo（2026-09-18）。
    * Base が先頭の行を XRPL の accept で買うとき、壁の payTo はこの宣言と完全一致でなければ払わない
@@ -1125,7 +1145,7 @@ export function sellerDomainOf(resourceUrl: string): string {
 }
 
 /** census 系の候補の出どころ（raw_response_meta.selection の値）。 */
-export type CensusSelection = "census" | "retest";
+export type CensusSelection = "census" | "retest" | "seller_request";
 
 /** 宣言本文を送り始めた時刻（正典は request-body.ts・既存の呼び手のための再公開）。 */
 export { DECLARED_BODY_SENT_SINCE } from "./request-body";
@@ -2069,6 +2089,7 @@ export async function runL1Batch(
     xrplLaneClosed: null,
     censusCandidates: 0,
     retestCandidates: 0,
+    sellerRequestCandidates: 0,
     censusRemaining: null,
     laneSkippedForTime: 0,
     gatewayPostBodyUnknownActive: null,
@@ -2495,6 +2516,120 @@ export async function runL1Batch(
   // 買わずに飛ばして、持ち時間を Base の主候補に回す。並びは変えない（時間で飛ばすだけ）。
   const laneTimeLimitMs = batchBudgetMs * laneTimeShare();
   summary.setupMs = now() - runStartedAt;
+
+  // 3.7 売り手依頼の 1 回きり買い直し（2026-10-30）。Base の主候補ループの前に、依頼リストだけを
+  // 最大 SELLER_RETEST_MAX_PER_RUN 件（census / retest の枠とは別）。playground の 1 件指定では走らない。
+  if (!onlyEndpointId && sellerRetestLaneEnabled()) {
+    const completedSeller = await completedSellerRequestIds(db);
+    const sellerPending = pendingSellerRetestRequests(sellerRetestCatalogForBatch(), completedSeller, utcDateString());
+    summary.sellerRequestCandidates = sellerPending.length;
+    for (const req of sellerPending) {
+      const paidBudgetMsSeller = timeoutMs;
+      if (!canStartAnotherPurchase(deadline.remaining(), timeoutMs, paidBudgetMsSeller)) {
+        summary.stoppedForDeadline = true;
+        break;
+      }
+      if (
+        cappedPayTos.has(normalizedPayTo(req.payTo)) ||
+        cappedHosts.has(censusHostOf(laneHostOf(resolveSellerRetestUrl(req.url, account.address)))) ||
+        cappedDomains.has(sellerDomainOf(resolveSellerRetestUrl(req.url, account.address)))
+      ) {
+        summary.skipped++;
+        summary.sellerCapped++;
+        continue;
+      }
+      try {
+        const { id: endpointId, extras } = await buildSellerRetestCandidate(db, req, account.address);
+        const epRows = await db.select().from(x402Endpoints).where(eq(x402Endpoints.id, endpointId)).limit(1);
+        const ep = epRows[0];
+        if (!ep) continue;
+        const candidate: Candidate = {
+          ...rowToCandidate({
+            id: ep.id,
+            resource_url: ep.resourceUrl,
+            method: ep.method,
+            price_amount: ep.priceAmount,
+            pay_to: ep.payTo,
+            network: ep.network,
+            declared_schema: ep.declaredSchema,
+            is_priority: false,
+            is_mature: false,
+            settled_networks: [],
+            failed_networks: [],
+            xrpl_declared_pay_tos: [],
+            arc_declared_accepts: null,
+            celo_declared_accepts: null,
+            bnb_declared_accepts: null,
+            arbitrum_declared_accepts: null,
+            avalanche_declared_accepts: null,
+            stellar_declared_pay_tos: [],
+          }),
+          selection: extras.selection,
+          sellerRequest: extras.sellerRequest,
+          sellerRequestUnpaid: extras.sellerRequestUnpaid,
+        };
+        const purchaseInput = {
+          candidate,
+          xrplLanePreferred: false,
+          stellarLanePreferred: false,
+          arcGatewayPreferred: false,
+          account,
+          solanaKeypair,
+          getSolanaBlockhash,
+          xrplPayer,
+          xrplWallet,
+          getXrplSigningInputs,
+          stellarPayer,
+          stellarAddress: stellarAccount?.address ?? null,
+          createStellarPayment,
+          fetchImpl,
+          timeoutMs,
+          celoPaidTimeoutMs,
+          db,
+          spentToday,
+          payerFunds,
+          onPayerUnfunded,
+          tempoEnabled: false,
+          mppxCharge: options.mppxCharge,
+          readArcGatewayAvailable,
+          commitArcGateway,
+          signArcGateway: options.signArcGateway ?? signArcGatewayPayment,
+        };
+        const outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
+        spentToday += outcome.spent;
+        summary.spentUnitsTotal = String(BigInt(summary.spentUnitsTotal) + outcome.spent);
+        if (outcome.kind === "attempted") {
+          summary.attempted++;
+          const attemptNetwork = outcome.network ?? "unknown";
+          summary.attemptsByNetwork[attemptNetwork] = (summary.attemptsByNetwork[attemptNetwork] ?? 0) + 1;
+          if (outcome.settled) summary.settled++;
+          else if (outcome.status === "delivered_no_receipt") summary.deliveredNoReceipt++;
+          else summary.settleFailed++;
+        } else if (outcome.kind === "halted") {
+          summary.halted = true;
+          summary.haltReason = outcome.haltReason ?? null;
+          summary.disabledReason = "spending_halted";
+          break;
+        } else if (outcome.kind === "budget_denied") {
+          summary.budgetDenied++;
+        } else if (outcome.kind === "seller_capped" && outcome.sellerCap) {
+          summary.skipped++;
+          summary.sellerCapped++;
+          if (outcome.sellerCap.scope === "payto") cappedPayTos.add(outcome.sellerCap.payTo);
+          else if (outcome.sellerCap.scope === "host") cappedHosts.add(outcome.sellerCap.host);
+          else cappedDomains.add(outcome.sellerCap.domain);
+        } else if (outcome.kind === "payer_unfunded") {
+          // 依頼 1 件だけ見送り。他の依頼と主候補は続ける。
+        } else {
+          summary.skipped++;
+        }
+        if (summary.halted) break;
+      } catch (error) {
+        logServerErrorSafe("observatory.l1.seller_retest", redactedError(error));
+        summary.skipped++;
+      }
+    }
+  }
 
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
@@ -3191,9 +3326,13 @@ async function purchaseOne(input: {
         ? (stellarAddress ?? "stellar_key_missing")
         : account.address.toLowerCase();
 
-  // census / retest の候補（2026-09-28）なら、この候補について書く行の raw_response_meta に selection を残す。
-  // census でなければ null で、tagMeta は受け取った値をそのまま返す（従来の行と 1 バイトも変わらない）。
-  const selectionMeta = candidate.selection ? { selection: candidate.selection } : null;
+  // census / retest / seller_request の候補（2026-09-28 / 2026-10-30）なら、この候補について書く行の raw_response_meta に selection を残す。
+  const selectionMeta = candidate.selection
+    ? {
+        selection: candidate.selection,
+        ...(candidate.sellerRequest ? { sellerRequestId: candidate.sellerRequest.id } : {}),
+      }
+    : null;
   const tagMeta = <T,>(meta: T): T | Record<string, unknown> =>
     selectionMeta
       ? { ...(typeof meta === "object" && meta !== null && !Array.isArray(meta) ? (meta as Record<string, unknown>) : {}), ...selectionMeta }
@@ -3257,10 +3396,13 @@ async function purchaseOne(input: {
   // export（2026-09-16 取得・30 日）で無払いが 402 にならなかった行（no_402）は 24 行／約 6,700 行。
   let first: Response;
   let firstBody = "";
+  const unpaidUrl = candidate.sellerRequestUnpaid?.url ?? candidate.resourceUrl;
+  const unpaidBody =
+    candidate.sellerRequestUnpaid?.body ?? (method === "POST" ? "{}" : undefined);
   const firstController = new AbortController();
   const firstTimer = setTimeout(() => firstController.abort(), timeoutMs);
   try {
-    first = await fetchImpl(candidate.resourceUrl, {
+    first = await fetchImpl(unpaidUrl, {
       method,
       signal: firstController.signal,
       redirect: "follow",
@@ -3271,7 +3413,7 @@ async function purchaseOne(input: {
         ...(isTempo ? { "accept-payment": "tempo/charge" } : {}),
         ...(method === "POST" ? { "content-type": "application/json" } : {}),
       },
-      ...(method === "POST" ? { body: "{}" } : {}),
+      ...(method === "POST" ? { body: unpaidBody } : {}),
     }, { httpsOnly: true });
     firstBody = await readBodyCapped(first, 16_000);
   } catch (error) {
@@ -3318,6 +3460,21 @@ async function purchaseOne(input: {
       },
     });
     return { kind: "skipped", settled: false, spent: 0n };
+  }
+
+  if (candidate.sellerRequest) {
+    const gate = validateSellerRequest402(challenge, candidate.sellerRequest);
+    if (!gate.ok) {
+      await record({
+        status: "no_eligible_accept",
+        rawResponseMeta: tagMeta({
+          phase: "unpaid",
+          reason: gate.reason,
+          ...(gate.detail ?? {}),
+        }),
+      });
+      return { kind: "skipped", settled: false, spent: 0n };
+    }
   }
 
   const mppSelection = isTempo
@@ -4321,6 +4478,12 @@ async function purchaseOne(input: {
       ...(paidRequestUrl ? { requestQuery: paidRequestUrl.source } : {}),
       ...(paidRequestUrl?.query != null
         ? { requestQuerySha256: createHash("sha256").update(paidRequestUrl.query, "utf8").digest("hex") }
+        : {}),
+      ...(paid
+        ? (() => {
+            const h = sellerResponseHeadersOf(paid.headers);
+            return h ? { responseHeaders: h } : {};
+          })()
         : {}),
       // census / retest の候補から来た行（2026-09-28）。どちらでもなければ鍵ごと無い。
       ...(selectionMeta ?? {}),
