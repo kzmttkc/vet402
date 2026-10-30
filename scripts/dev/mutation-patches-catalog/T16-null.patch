@@ -1,0 +1,13 @@
+diff --git a/src/lib/observatory/catalog-sync.ts b/src/lib/observatory/catalog-sync.ts
+index c7a3a1ae..32852794 100644
+--- a/src/lib/observatory/catalog-sync.ts
++++ b/src/lib/observatory/catalog-sync.ts
+@@ -192,7 +192,7 @@ const CDP_LISTED_ROW_SQL = sql`(
+   -- accepts_by_source に cdp の鍵が無い行では -> が NULL になり、式全体が NULL になる（NOT NULL は偽扱いで行が外れる）。
+   -- coalesce で false に倒す（2026-10-30 再点検: Circle だけの行が日次の突き合わせから全部外れていた）。
+   -- CASE で順番を決める（AND は評価の順を約束しないので、配列でない値に jsonb_array_length を当てて落ちうる）。
+-  OR coalesce(CASE WHEN jsonb_typeof(accepts_by_source -> ${CATALOG_SOURCE}) = 'array' THEN jsonb_array_length(accepts_by_source -> ${CATALOG_SOURCE}) > 0 END, false)
++  OR (jsonb_typeof(accepts_by_source -> ${CATALOG_SOURCE}) = 'array' AND jsonb_array_length(accepts_by_source -> ${CATALOG_SOURCE}) > 0) -- MUTATION T16-null: NULL for rows without a cdp key
+ )`;
+ 
+ function hasSiblingSlice(bySource: unknown, sibling: string): boolean {

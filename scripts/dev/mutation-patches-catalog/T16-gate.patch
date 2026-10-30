@@ -1,0 +1,13 @@
+diff --git a/src/lib/observatory/catalog-sync.ts b/src/lib/observatory/catalog-sync.ts
+index c7a3a1ae..dc7f1561 100644
+--- a/src/lib/observatory/catalog-sync.ts
++++ b/src/lib/observatory/catalog-sync.ts
+@@ -843,7 +843,7 @@ export async function syncCatalog(
+   // 突き合わせの開始は origin/main と同じ（読み込んだ兄弟の不在が証明できるとき）。第1段の X1 の守り（Circle の同期で cdp の
+   // 不在を証明済みにしない）は持ち主の移動と slice の扱いだけに効かせ、ここでは読み込んだ値を使う。閉じるのは cdp に載る印の
+   // 無い行だけ（CDP_LISTED_ROW_SQL）。cdp の完全な snapshot が一度も無いあいだは、origin/main と同じく走らない。
+-  if (sibling && result.complete && loadedSibling.absenceProven) {
++  if (sibling && result.complete && (siblingListing.absenceProven || cdpSiblingUnproven)) { // MUTATION T16-gate: run without proven cdp absence
+     const flippedRaw = await db.execute(sql`
+       UPDATE x402_endpoints
+       SET status = 'delisted', delisted_at = now()
