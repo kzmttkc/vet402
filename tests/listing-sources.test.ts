@@ -56,7 +56,7 @@ test("同期時刻は vercel.json の crons と一致する", () => {
 
 test("cron の経路は、その出どころの取り込みを呼ぶ", () => {
   const expected: Record<string, RegExp> = {
-    cdp_bazaar: /await syncCatalog\(\)/,
+    cdp_bazaar: /await runCatalogCursorCall\(\)/,
     mpp_directory: /await syncMppDirectory\(\)/,
     circle_discovery: /await syncCircleDiscovery\(\)/,
   };
@@ -147,7 +147,8 @@ test("FAQ の節は出どころ・時刻・条件・POST の扱いを書く（�
   assert.match(a, /declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator/);
   assert.match(a, /can still be left out by CDP/);
   assert.match(a, /Circle x402 discovery/);
-  assert.match(a, /The syncs of that catalog start at 01:00 and 13:00 UTC/);
+  assert.match(a, /The syncs of that catalog are scheduled roughly two hours apart, at 00:05, 02:05, /);
+  assert.match(a, /continues from the page where the previous sync stopped/);
   assert.match(a, /A sync that stops early adds the pages it read and not the rest/);
   assert.match(a, /decided by CDP's index, not by vet402/);
   assert.match(a, /does not read the PayAI discovery list as listings/);

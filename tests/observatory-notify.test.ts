@@ -64,9 +64,12 @@ if (!TEST_DB) {
       });
 
     // day 1: both listed; day 2: both vanish → two delisted events.
+    // 2026-10-30（設計 v5 第1段）: cdp_bazaar の行は閉じないので、閉じ方が origin/main のままの circle_discovery の目録で事象を作る
+    // （この試験が見るのは通知で、どの目録の閉じ方かではない）。
     await syncCatalog({
       fetchResult: { items: [mk(1), mk(2)], totalCount: 2, fetchedCount: 2, complete: true },
       today: "2026-08-14",
+      source: "circle_discovery",
     });
     // Watcher claims svc1's payTo only (note: parseCatalogItem lowercases).
     await db
@@ -75,6 +78,7 @@ if (!TEST_DB) {
     await syncCatalog({
       fetchResult: { items: [], totalCount: 0, fetchedCount: 0, complete: true },
       today: "2026-08-15",
+      source: "circle_discovery",
     });
 
     const dispatched: { apiKeyId: string; event: string; payload: unknown }[] = [];

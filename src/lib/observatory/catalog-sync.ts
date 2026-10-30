@@ -177,12 +177,27 @@ function composeAccepts(input: {
   return { rawAccepts: unionAccepts(siblingSlice, incoming), acceptsBySource: by };
 }
 
+/**
+ * 第1段（2026-10-30 設計 v5）: cdp_bazaar に載る行は閉じない。載る行 = cdp が持ち主・カーソルが一度でも見た
+ * （last_seen_pass がある）・cdp の accepts の slice を持つ。circle_discovery だけの行の閉じ方は origin/main のまま。
+ * 下の SQL と同じ判定（docs/catalog-staleness-contract.md 4.2 の「cdp に載る行」）。
+ */
+function isCdpListedRow(row: { source: string; lastSeenPass: number | null; acceptsBySource: unknown }): boolean {
+  return row.source === CATALOG_SOURCE || row.lastSeenPass !== null || hasSiblingSlice(row.acceptsBySource, CATALOG_SOURCE);
+}
+
+const CDP_LISTED_ROW_SQL = sql`(
+  source = ${CATALOG_SOURCE}
+  OR last_seen_pass IS NOT NULL
+  OR (jsonb_typeof(accepts_by_source -> ${CATALOG_SOURCE}) = 'array' AND jsonb_array_length(accepts_by_source -> ${CATALOG_SOURCE}) > 0)
+)`;
+
 function hasSiblingSlice(bySource: unknown, sibling: string): boolean {
   const rec = asRecord(bySource);
   return Array.isArray(rec?.[sibling]) && (rec?.[sibling] as unknown[]).length > 0;
 }
 
-type SiblingListing = { keys: Set<string>; latestComplete: boolean; absenceProven: boolean };
+export type SiblingListing = { keys: Set<string>; latestComplete: boolean; absenceProven: boolean };
 
 /**
  * 兄弟の「載っている」集合。最新が完全ならその鍵だけ。不完全なら、直前の完全な
@@ -327,6 +342,8 @@ export async function syncCatalog(
       qualityCalls30d: x402Endpoints.qualityCalls30d,
       resourceUrl: x402Endpoints.resourceUrl,
       resourceId: x402Endpoints.resourceId,
+      lastSeenPass: x402Endpoints.lastSeenPass,
+      acceptsBySource: x402Endpoints.acceptsBySource,
     })
     .from(x402Endpoints)
     .where(eq(x402Endpoints.source, source));
@@ -334,6 +351,7 @@ export async function syncCatalog(
     knownRows.map((r) => [r.resourceKey, { status: r.status, qualityCalls30d: r.qualityCalls30d }]),
   );
   const idByKey = new Map(knownRows.map((r) => [r.resourceKey, r.id]));
+  const knownRowByKey = new Map(knownRows.map((r) => [r.resourceKey, r]));
 
   // ---- previous snapshot: the latest STRICTLY BEFORE today ----
   const prevSnapshot = await db
@@ -419,6 +437,11 @@ export async function syncCatalog(
     currentQuality: new Map(result.items.map((i) => [i.resourceKey, i.qualityCalls30d])),
   }).filter((event) => {
     if (event.eventType !== "delisted") return true;
+    // 第1段: cdp_bazaar に載る行は閉じない。cdp の同期が「無い」と判定した鍵は、持ち主がどちらでも cdp に載っていた行。
+    if (source === CATALOG_SOURCE) return false;
+    const ownRow = knownRowByKey.get(event.resourceKey);
+    if (ownRow && isCdpListedRow({ source, lastSeenPass: ownRow.lastSeenPass, acceptsBySource: ownRow.acceptsBySource })) return false;
+    if (sibling === CATALOG_SOURCE && siblingRows.has(event.resourceKey)) return false;
     if (siblingListing.keys.has(event.resourceKey)) return false;
     const sib = siblingRows.get(event.resourceKey);
     const own = knownEndpoints.get(event.resourceKey);
@@ -786,7 +809,8 @@ export async function syncCatalog(
   }
   // 不在が証明でき、鍵が兄弟の集合に無いとき、持ち主が兄弟でも行を delist する。
   // 最新が不完全でも、直前の完全な snapshot 以降の取得の和に無ければ閉じる。
-  if (sibling && siblingListing.absenceProven && delistedKeys.length > 0) {
+  // 第1段: 兄弟が cdp_bazaar なら、その行は cdp に載る行なので閉じない。
+  if (sibling && sibling !== CATALOG_SOURCE && siblingListing.absenceProven && delistedKeys.length > 0) {
     const extraKeys = delistedKeys.filter((key) => {
       const row = siblingRows.get(key);
       return row !== undefined && row.status !== "delisted" && !siblingListing.keys.has(key);
@@ -810,6 +834,7 @@ export async function syncCatalog(
       SET status = 'delisted', delisted_at = now()
       WHERE status = 'active'
         AND source IN (${CATALOG_SOURCE}, ${CIRCLE_DISCOVERY_SOURCE})
+        AND NOT ${CDP_LISTED_ROW_SQL}
         AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...currentKeys])}::jsonb)))
         AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...siblingListing.keys])}::jsonb)))
       RETURNING id, resource_key
@@ -940,4 +965,315 @@ export async function syncCatalog(
     skipped,
     events: recordedEvents,
   };
+}
+
+// ============================================================
+// カーソルの 1 ページ（2026-10-30 設計 v5 の 1・docs/catalog-staleness-contract.md 4.1 の 5）。
+//
+// runCatalogCursorCall がページを読むたびに呼ぶ。syncCatalog の cdp_bazaar の upsert と同じ列・同じ共有行の扱い
+// （accepts_by_source・持ち主・持ち主の移動・別名）で書き、last_seen_at は差し込んだ clock の時刻、last_seen_pass は
+// いまの周回の番号にする。閉じることはしない（第1段では cdp の行を閉じない。snapshot の差分も取らない）。
+// relisted（delisted だった行が見えた）と settle_drop（30 日の呼び出し数が 70% 以上落ちた）は今と同じに書く。
+// 複数文のトランザクションは使わない（本番は neon-http）。どの文も単独で正しい。
+// ============================================================
+
+export type CursorPageContext = {
+  /** 差し込んだ clock の今。last_seen_at とイベントの日付に使う。 */
+  now: Date;
+  /** いまの周回の番号（x402_catalog_cursors.pass_seq）。 */
+  passSeq: number;
+  /** Circle の「載っている」集合。呼び出しごとに loadCursorCircleListing で 1 回読む。 */
+  circle: SiblingListing;
+};
+
+export type CursorPageSummary = { upserted: number; skipped: number; events: number };
+
+/** Circle の「載っている」集合（syncCatalog の兄弟の読み方と同じ）。 */
+export async function loadCursorCircleListing(): Promise<SiblingListing> {
+  const db = getDb();
+  if (!db) throw new Error("DATABASE_URL is not configured");
+  return loadSiblingListing(db, CIRCLE_DISCOVERY_SOURCE);
+}
+
+function cursorIdsOf(item: ParsedCatalogItem) {
+  const c = canonicalUrl(item.resourceUrl);
+  return {
+    canonicalUrl: c?.url ?? null,
+    resourceId: resourceId(item.method ?? "GET", item.resourceUrl),
+    endpointHash: endpointHash(item.resourceUrl),
+    payeeId: item.payTo && item.network ? payeeId(item.network, item.payTo) : null,
+    undeclaredQuery: c?.undeclaredQuery ?? null,
+  };
+}
+
+export async function upsertCatalogCursorPage(
+  pageItems: readonly ParsedCatalogItem[],
+  ctx: CursorPageContext,
+): Promise<CursorPageSummary> {
+  const db = getDb();
+  if (!db) throw new Error("DATABASE_URL is not configured");
+  const source = CATALOG_SOURCE;
+  const sibling = CIRCLE_DISCOVERY_SOURCE;
+  const seenAt = sql`${ctx.now.toISOString()}::timestamptz`;
+  const detectedOn = ctx.now.toISOString().slice(0, 10);
+
+  const byKey = new Map<string, ParsedCatalogItem>();
+  for (const item of pageItems) if (item.resourceKey && !byKey.has(item.resourceKey)) byKey.set(item.resourceKey, item);
+  if (byKey.size === 0) return { upserted: 0, skipped: 0, events: 0 };
+  const keys = [...byKey.keys()];
+
+  const existingRows = await db
+    .select({
+      id: x402Endpoints.id,
+      resourceKey: x402Endpoints.resourceKey,
+      source: x402Endpoints.source,
+      status: x402Endpoints.status,
+      rawAccepts: x402Endpoints.rawAccepts,
+      acceptsBySource: x402Endpoints.acceptsBySource,
+      qualityCalls30d: x402Endpoints.qualityCalls30d,
+      qualityPayers30d: x402Endpoints.qualityPayers30d,
+      qualityLastCalledAt: x402Endpoints.qualityLastCalledAt,
+      declaredInput: x402Endpoints.declaredInput,
+      resourceUrl: x402Endpoints.resourceUrl,
+      resourceId: x402Endpoints.resourceId,
+    })
+    .from(x402Endpoints)
+    .where(and(inArray(x402Endpoints.source, [...SHARED_SOURCES]), inArray(x402Endpoints.resourceKey, keys)));
+  type Existing = (typeof existingRows)[number];
+  const ownRows = new Map<string, Existing>();
+  const circleRows = new Map<string, Existing>();
+  for (const row of existingRows) (row.source === source ? ownRows : circleRows).set(row.resourceKey, row);
+
+  const ownItems: ParsedCatalogItem[] = [];
+  const sharedItems: ParsedCatalogItem[] = [];
+  const transferItems: ParsedCatalogItem[] = [];
+  for (const item of byKey.values()) {
+    if (!circleRows.has(item.resourceKey)) ownItems.push(item);
+    else if (ctx.circle.absenceProven && !ctx.circle.keys.has(item.resourceKey)) transferItems.push(item);
+    else sharedItems.push(item);
+  }
+  const keepSiblingSlice = (key: string, existingBySource: unknown): boolean =>
+    ctx.circle.keys.has(key) || (!ctx.circle.absenceProven && hasSiblingSlice(existingBySource, sibling));
+
+  // relisted・settle_drop（delisted は出さない: prevKeys は空、currentComplete は false）。
+  const events: CatalogDiffEvent[] = computeCatalogDiff({
+    prevKeys: new Set<string>(),
+    currentKeys: new Set(ownItems.map((i) => i.resourceKey)),
+    currentComplete: false,
+    knownEndpoints: new Map<string, KnownEndpointState>(
+      [...ownRows.values()].map((r) => [r.resourceKey, { status: r.status, qualityCalls30d: r.qualityCalls30d }]),
+    ),
+    currentQuality: new Map(ownItems.map((i) => [i.resourceKey, i.qualityCalls30d])),
+  });
+  for (const item of [...sharedItems, ...transferItems]) {
+    if (circleRows.get(item.resourceKey)?.status === "delisted") {
+      events.push({ resourceKey: item.resourceKey, eventType: "relisted", prevValue: { status: "delisted" }, newValue: { status: "active" } });
+    }
+  }
+
+  let upserted = 0;
+  let skipped = 0;
+  const skip = (key: string, error: unknown) => {
+    skipped++;
+    logServerErrorSafe("observatory.catalog-cursor.row_skipped", new Error(`${key}: ${error instanceof Error ? error.message : String(error)}`));
+  };
+
+  const updateShared = async (rowId: string, item: ParsedCatalogItem, existingBySource: unknown, existingRaw: unknown) => {
+    const stored = composeAccepts({ existingBySource, existingRaw, incoming: item.rawAccepts, source, sibling, keepSibling: true });
+    await db
+      .update(x402Endpoints)
+      .set({
+        rawAccepts: stored.rawAccepts,
+        acceptsBySource: stored.acceptsBySource,
+        status: "active",
+        delistedAt: null,
+        lastSeenAt: seenAt,
+        lastSeenPass: ctx.passSeq,
+      })
+      .where(eq(x402Endpoints.id, rowId));
+  };
+
+  const upsertOwn = async (chunk: ParsedCatalogItem[]) => {
+    await db
+      .insert(x402Endpoints)
+      .values(
+        chunk.map((item) => {
+          const prior = ownRows.get(item.resourceKey);
+          const stored = composeAccepts({
+            existingBySource: prior?.acceptsBySource,
+            existingRaw: prior?.rawAccepts,
+            incoming: item.rawAccepts,
+            source,
+            sibling,
+            keepSibling: keepSiblingSlice(item.resourceKey, prior?.acceptsBySource),
+          });
+          return {
+            resourceKey: item.resourceKey,
+            resourceUrl: item.resourceUrl,
+            source,
+            method: item.method,
+            network: item.network,
+            payTo: item.payTo,
+            priceAmount: item.priceAmount,
+            priceAsset: item.priceAsset,
+            description: item.description,
+            declaredSchema: item.declaredSchema,
+            declaredInput: item.declaredInput ?? null,
+            qualityCalls30d: item.qualityCalls30d,
+            qualityPayers30d: item.qualityPayers30d,
+            qualityLastCalledAt: item.qualityLastCalledAt,
+            rawAccepts: stored.rawAccepts,
+            acceptsBySource: stored.acceptsBySource,
+            firstSeenAt: seenAt,
+            lastSeenAt: seenAt,
+            lastSeenPass: ctx.passSeq,
+            ...cursorIdsOf(item),
+          };
+        }),
+      )
+      .onConflictDoUpdate({
+        target: [x402Endpoints.resourceKey, x402Endpoints.source],
+        set: {
+          resourceUrl: sql`excluded.resource_url`,
+          method: sql`excluded.method`,
+          network: sql`excluded.network`,
+          payTo: sql`excluded.pay_to`,
+          priceAmount: sql`excluded.price_amount`,
+          priceAsset: sql`excluded.price_asset`,
+          description: sql`excluded.description`,
+          declaredSchema: sql`excluded.declared_schema`,
+          declaredInput: sql`excluded.declared_input`,
+          qualityCalls30d: sql`excluded.quality_calls_30d`,
+          qualityPayers30d: sql`excluded.quality_payers_30d`,
+          qualityLastCalledAt: sql`excluded.quality_last_called_at`,
+          rawAccepts: sql`excluded.raw_accepts`,
+          acceptsBySource: sql`excluded.accepts_by_source`,
+          canonicalUrl: sql`excluded.canonical_url`,
+          resourceId: sql`excluded.resource_id`,
+          endpointHash: sql`excluded.endpoint_hash`,
+          payeeId: sql`excluded.payee_id`,
+          undeclaredQuery: sql`excluded.undeclared_query`,
+          lastSeenAt: sql`excluded.last_seen_at`,
+          lastSeenPass: sql`excluded.last_seen_pass`,
+          status: sql`'active'`,
+          delistedAt: sql`null`,
+        },
+      });
+    upserted += chunk.length;
+  };
+
+  /** 一意の衝突（同じ鍵の行を Circle の同期が先に作った）なら共有行として書く。 */
+  const mergeIntoShared = async (item: ParsedCatalogItem): Promise<boolean> => {
+    const found = await db
+      .select({ id: x402Endpoints.id, status: x402Endpoints.status, rawAccepts: x402Endpoints.rawAccepts, acceptsBySource: x402Endpoints.acceptsBySource })
+      .from(x402Endpoints)
+      .where(and(eq(x402Endpoints.resourceKey, item.resourceKey), inArray(x402Endpoints.source, [...SHARED_SOURCES])))
+      .limit(1);
+    const row = found[0];
+    if (!row) return false;
+    await updateShared(row.id, item, row.acceptsBySource, row.rawAccepts);
+    return true;
+  };
+
+  if (ownItems.length > 0) {
+    try {
+      await upsertOwn(ownItems);
+    } catch {
+      for (const item of ownItems) {
+        try {
+          await upsertOwn([item]);
+        } catch (rowError) {
+          if (isUniqueViolationError(rowError)) {
+            try {
+              if (await mergeIntoShared(item)) {
+                upserted++;
+                continue;
+              }
+            } catch (mergeError) {
+              skip(item.resourceKey, mergeError);
+              continue;
+            }
+          }
+          skip(item.resourceKey, rowError);
+        }
+      }
+    }
+  }
+
+  for (const item of sharedItems) {
+    const row = circleRows.get(item.resourceKey)!;
+    try {
+      await updateShared(row.id, item, row.acceptsBySource, row.rawAccepts);
+      upserted++;
+    } catch (rowError) {
+      skip(item.resourceKey, rowError);
+    }
+  }
+
+  // Circle の不在が証明でき、Circle の集合に無い鍵は、持ち主を cdp へ移す（syncCatalog と同じ規則）。
+  const movedAliases: { aliasId: string; resourceId: string }[] = [];
+  for (const item of transferItems) {
+    const row = circleRows.get(item.resourceKey)!;
+    const stored = composeAccepts({ existingBySource: null, existingRaw: null, incoming: item.rawAccepts, source, sibling, keepSibling: false });
+    const ids = cursorIdsOf(item);
+    try {
+      await db
+        .update(x402Endpoints)
+        .set({
+          source,
+          resourceUrl: item.resourceUrl,
+          method: item.method,
+          network: item.network,
+          payTo: item.payTo,
+          priceAmount: item.priceAmount,
+          priceAsset: item.priceAsset,
+          description: item.description,
+          declaredSchema: item.declaredSchema,
+          declaredInput: declaredInputForMove(item.declaredInput, row.declaredInput),
+          qualityCalls30d: item.qualityCalls30d ?? row.qualityCalls30d ?? null,
+          qualityPayers30d: item.qualityPayers30d ?? row.qualityPayers30d ?? null,
+          qualityLastCalledAt: item.qualityLastCalledAt ?? row.qualityLastCalledAt ?? null,
+          rawAccepts: stored.rawAccepts,
+          acceptsBySource: stored.acceptsBySource,
+          ...ids,
+          lastSeenAt: seenAt,
+          lastSeenPass: ctx.passSeq,
+          status: "active",
+          delistedAt: null,
+        })
+        .where(eq(x402Endpoints.id, row.id));
+      upserted++;
+      if (row.resourceId && ids.resourceId && row.resourceId !== ids.resourceId) {
+        movedAliases.push({ aliasId: row.resourceId, resourceId: ids.resourceId });
+      }
+    } catch (rowError) {
+      skip(item.resourceKey, rowError);
+    }
+  }
+
+  // イベント（行は今回より前からある。新しい行にイベントは無い）。
+  const idByKey = new Map<string, string>();
+  for (const row of existingRows) idByKey.set(row.resourceKey, row.id);
+  const eventRows = events.flatMap((e) => {
+    const endpointId = idByKey.get(e.resourceKey);
+    return endpointId ? [{ endpointId, eventType: e.eventType, detectedOn, prevValue: e.prevValue, newValue: e.newValue }] : [];
+  });
+  if (eventRows.length > 0) await db.insert(x402DelistingEvents).values(eventRows);
+
+  // 別名（新しい行・URL か resource_id が変わった行・持ち主を移した行）。
+  try {
+    if (movedAliases.length > 0) await db.insert(x402ResourceAliases).values(movedAliases).onConflictDoNothing();
+    const aliasSources = [...ownItems, ...transferItems].flatMap((item) => {
+      const ids = cursorIdsOf(item);
+      if (!ids.canonicalUrl || !ids.resourceId) return [];
+      const prev = ownRows.get(item.resourceKey);
+      if (!transferItems.includes(item) && prev && prev.resourceUrl === item.resourceUrl && prev.resourceId === ids.resourceId) return [];
+      return [{ resource_id: ids.resourceId, method: item.method ?? "GET", resource_url: item.resourceUrl }];
+    });
+    await writeResourceAliases(db, aliasSources);
+  } catch (aliasError) {
+    logServerErrorSafe("observatory.catalog-cursor.aliases", aliasError);
+  }
+
+  return { upserted, skipped, events: eventRows.length };
 }

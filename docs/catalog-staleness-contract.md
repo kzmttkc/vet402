@@ -16,7 +16,7 @@
 
 | 段 | 入れる設計 | 合格の基準（テスト） | 変異の確かめ |
 |---|---|---|---|
-| 第1段 | 1（カーソル）・3（cron）・4（見張り）・5（L1） | T01・T02・T03・T12・T13・**T14** が通る | `mutation-check-catalog.sh 1`（T01 T02 T03 T12 T13 のパッチ） |
+| 第1段 | 1（カーソル）・3（cron）・4（見張り）・5（L1） | T01・T02・T03・T12・T13・**T14** が通る | `mutation-check-catalog.sh 1`（T01 T02 T03 T12 T13 T14 のパッチ） |
 | 第2段 | 2（閉じる）・6 | T01〜T13 が通る | `mutation-check-catalog.sh 2`（T01〜T13、T07 は 2 本） |
 
 - 第1段では **cdp_bazaar の行を閉じる処理を全部止める**（`closeCatalogListings` は cdp の行を 1 件も閉じない。circle_discovery だけの行は origin/main のまま閉じる）。
@@ -124,6 +124,9 @@ cdp と circle は `resource_key` で 1 行なので、**circle が持ち主の�
   `WITH f AS (UPDATE x402_endpoints SET status = 'delisted', delisted_at = $now WHERE id = ANY($ids) AND status = 'active' RETURNING id) INSERT INTO x402_delisting_events (…) SELECT … FROM f RETURNING …`。
   イベントは RETURNING で返った行にだけ書く。`closedIds` と `eventsWritten` もその RETURNING から作る。
 - 第1段: cdp に載る行は 1 件も閉じない（`candidates = 0`）。circle だけの行は origin/main のまま。
+- 第1段の実装（2026-10-30）: circle だけの行の閉じ方は、origin/main のコードのまま `syncCatalog` の中に残し、`closeCatalogListings` へは寄せていない（寄せるのは第2段）。
+  そのかわり `syncCatalog` の閉じる経路（snapshot の差分・兄弟の行を倒す分・日次の突き合わせ）の全部で「cdp に載る行」を外す
+  （`isCdpListedRow` と `CDP_LISTED_ROW_SQL`。cdp_bazaar の同期が出す delisted は全部捨てる）。一度でもカーソルが見た行（`last_seen_pass` がある）は、第1段では閉じない。
 
 T07・T08 はテストが対象の行の行ロックを持ち、2 本の閉じる回を両方とも上の UPDATE で待たせてから放す。上の 3 つの決まり（行ロックを取らない候補・直列にしない・RETURNING だけ）が守られていれば、決定的に 1 本だけが閉じる。
 
@@ -147,6 +150,13 @@ T07・T08 はテストが対象の行の行ロックを持ち、2 本の閉じ�
 - Circle（`source = 'circle_discovery'`）の upsert・snapshot・relisted・settle_drop・別名は今のまま。閉じるのだけ 4.2 を通す。tests/observatory-sync.test.ts の Circle の期待は変えない。
 - cdp_bazaar の取得は cron から `runCatalogCursorCall` に移る。`syncCatalog({ source: 'cdp_bazaar', fetchResult })` の snapshot の差分で cdp の行を閉じる経路は残さない（tests/observatory-sync.test.ts の、cdp の snapshot の差分で閉じることを期待する子テストは変わる。どれを「Circle のテスト」とみなすかは最終報告に挙げる）。
 - MPP（`mpp_directory`）は今のまま。
+
+### 4.3.1 周回を閉じたときの snapshot（第1段で決めた）
+
+周回を閉じたら、その周回で見えた鍵（`last_seen_pass = その周回`）を `x402_catalog_snapshots` に 1 行書く（日付は閉じた時刻の UTC 日、
+`total_count` は周回の total、`fetched_count` は見えた鍵の数、`complete` は強い周回なら true）。鍵の集合は DB の中で作る（10 万件を HTTP で運ばない）。
+同じ日にもう完全な行があれば弱い周回で上書きしない。理由は 2 つ: 公開の `latestSnapshot` の件数を止めないため、Circle の同期が読む
+「cdp がいま載せている鍵」（`loadSiblingListing`）を古いまま凍らせないため（凍ると、cdp が載せている行の持ち主を Circle が取り、cdp の accepts を外す）。
 
 ### 4.4 `checkCatalogPassFreshness({ now }): Promise<CatalogPassFreshness>`（catalog-cursor.ts）
 
@@ -206,7 +216,7 @@ bash scripts/dev/mutation-check-catalog.sh 1   # 第1段
 bash scripts/dev/mutation-check-catalog.sh 2   # 第2段
 ```
 
-- パッチの置き場と名前: `scripts/dev/mutation-patches-catalog/<ID>[-<名前>].patch`。第1段は `T01 T02 T03 T12 T13`、第2段は `T01 T02 T03 T04 T05 T06 T07-b T07-events T08 T09 T10 T11 T12 T13`。名前の先頭 3 文字が回すテスト（`--test-name-pattern '^T07 '`）。
+- パッチの置き場と名前: `scripts/dev/mutation-patches-catalog/<ID>[-<名前>].patch`。第1段は `T01 T02 T03 T12 T13 T14`（T14 は「第1段で cdp の行を閉じる」）、第2段は `T01 T02 T03 T04 T05 T06 T07-b T07-events T08 T09 T10 T11 T12 T13`。名前の先頭 3 文字が回すテスト（`--test-name-pattern '^T07 '`）。
 - **パッチの中身は実装者が書く**（実装ができるまで「どの行を壊すか」が決まらないため）。中身は上の「壊すべき部分」の表のとおり、1 パッチ 1 つの変更。`git diff` の形で、`git apply` で当たること。`tests/` と `scripts/dev/` を触るパッチはスクリプトが FAIL にする。
 - スクリプトの判定: (0) 追跡ファイルに差分があれば FAIL。(a) パッチなしで対象のテストが全部通らなければ FAIL で止まる。(b) パッチを 1 つずつ当て、そのテストだけを回す。(c) その ID のテストが 1 件以上走り、そのうち **assert で落ちた（`ERR_ASSERTION`）** ものが 1 件以上なら PASS。0 件・読み込みや構文の失敗・not implemented や SQL の例外だけで落ちた・全部通った は FAIL（パッチは振る舞いを変えるもので、テストを読み込めなくするものではない）。(d) 戻して `git diff --exit-code`。全部 PASS のときだけ終了コード 0。
 - `ONLY="T03 T13"` で一部だけ回せる（手元の確かめ用。合格の判定には全部を回す）。

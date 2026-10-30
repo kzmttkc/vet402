@@ -798,7 +798,7 @@ claims:
     verified_at: 2026-09-04
   - id: operations_daily_catalog_sync_l0_probes
     surface: src/app/operations/page.tsx
-    quote: "Daily catalog sync, L0 probes, budget-capped L1 purchases, metrics rollup, and the"
+    quote: "Catalog sync (runs roughly two hours apart), L0 probes, budget-capped L1 purchases, metrics rollup, and the"
     means: "カタログ同期・L0・L1・ロールアップ・ハッシュ鎖が人手なしで定時実行される"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -871,7 +871,7 @@ claims:
     verified_at: 2026-09-04
   - id: lp_payment_wall_answer_a_valid
     surface: src/app/page.tsx
-    quote: "payment wall answer a valid 402. The catalog is re-fetched daily; endpoints are"
+    quote: "payment wall answer a valid 402. The catalog is read in runs roughly two hours apart; endpoints are"
     means: "LP のカタログ節。プローブは毎日ではなくローリング。7日カバレッジが 100% 未満であることが「rolling」表記の根拠で、100% に達したらこの文言は逆に過小申告になる（2026-08-13 の事故文言はここにあった）"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1708,13 +1708,9 @@ claims:
     check: null
     why_unverifiable: "履歴の残存は集計 GET の数値ではなく、エンドポイント個別ページ（/observatory/e/[id]）の行の有無。id は日々入れ替わるのでカナリアの式（path op literal）で安定して書けない"
     verified_at: 2026-09-19
-  - id: method_catalog_refetched_daily_with_reported_total
-    surface: src/app/observatory/methodology/page.tsx
-    quote: "The public discovery catalog is re-fetched daily, and every fetch is compared with the catalog&apos;s own reported total for that day"
-    means: "カタログの再取得は出どころごと。括弧の 2 回は Bazaar（cron catalog-sync が 0 1 * * * と 0 13 * * *）。MPP directory は 01:30 UTC の 1 回（cron catalog-sync-aux が 30 1 * * *）。Circle x402 discovery も同じ aux の回（01:30 UTC）。新しい cron は足していない。directory から消えた行の delist は次の完全な 01:30 UTC まで来ない。Circle の目録から消えた行も、その目録の次の完全な取得まで delist しない。もう一方の目録がまだ載せている鍵は delist にしない。不完全な取得は、その取得の鍵と、直前の完全な取得以降の各取得の鍵を載っているものとして数える。その読みで両方の目録に無い active 行は、前日の差分を逃しても delist する。自分の取得が不完全な日は突き合わせをしない。snapshot の complete 列が false のときは件数が揃っていても不完全。取得件数とカタログ自身の申告総数は latestSnapshot として公開する。同じ日に完全なスナップショットがあるとき、後の不完全な実行はそれを置き換えない。取得が欠けた日は、その取得からは delisting の判定をしない"
-    check: null
-    why_unverifiable: "カナリアの式（path op literal）では『日次であること』を検査できない——`latestSnapshot.fetchedCount > 0` は取得が何日止まっても古い値で真を返すので、この主張を見ていない check になる。Bazaar の 2 回は vercel.json の cron `catalog-sync`（0 1 * * * と 0 13 * * *）、MPP directory と Circle x402 discovery の 1 回は同じ `catalog-sync-aux`（30 1 * * *）。tests/llms-txt-current.test.ts の timesFor が両 path の時刻を Freshness と突き合わせる。取得が欠けた日に delisting を判定しない規則は src/lib/observatory/catalog-diff.ts と tests/observatory-diff.test.ts が固定する（「an endpoint present yesterday and absent today is delisted — only on a complete fetch」）。共有行は相手の目録が載せているあいだ落とさず、自分の取得が不完全な日は突き合わせをしない。兄弟の集合は最新の完全な取得以降の各取得の鍵である（src/lib/observatory/catalog-sync.ts、tests/observatory-sync.test.ts）。"
-    verified_at: 2026-10-26
+  # 2026-10-30（設計 v5 第1段）: method_catalog_refetched_daily_with_reported_total を外した。§4 の冒頭は
+  # 「Bazaar は約 2 時間おきの回で続きから読む・いまは Bazaar の掲載を delisted にしない」に書き直し、断定語
+  # （daily / every）が無くなった。時刻は tests/llms-txt-current.test.ts・tests/listing-sources.test.ts が vercel.json と突き合わせる。
   - id: method_l1_refuses_unless_every_condition_holds
     surface: src/app/observatory/methodology/page.tsx
     quote: "refuse to proceed unless every one of these holds:"

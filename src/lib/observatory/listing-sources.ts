@@ -36,7 +36,7 @@ export type ListingSource = {
   name: string;
   url: string;
   protocol: "x402" | "mpp";
-  /** 取り込みの cron が始まる時刻（UTC・HH:MM）。vercel.json と一致する。途中で止まった回は読めたページだけ入れる（catalog-sync.ts）。 */
+  /** 取り込みの cron が始まる時刻（UTC・HH:MM）。vercel.json と一致する。途中で止まった回は読めたページだけ入れる（Bazaar は次の回がその続きから読む・catalog-cursor.ts）。 */
   sync_times_utc: string[];
 };
 
@@ -46,7 +46,8 @@ export const LISTING_SOURCES: readonly ListingSource[] = [
     name: "CDP Bazaar discovery catalog",
     url: CATALOG_URL,
     protocol: "x402",
-    sync_times_utc: ["01:00", "13:00"],
+    // 約 2 時間おき（2026-10-30 設計 v5 の 3）。1 回の呼び出しは前の回の続きから読む（catalog-cursor.ts）。
+    sync_times_utc: ["00:05", "02:05", "04:05", "06:05", "08:05", "10:05", "12:05", "14:05", "16:05", "18:05", "20:05", "22:05"],
   },
   {
     source: "mpp_directory",

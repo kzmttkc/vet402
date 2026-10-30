@@ -72,7 +72,7 @@ test("訂正ログの件数を llms.txt に書き止めない", () => {
 test("鮮度の宣言がある（更新頻度・キャッシュ窓・取得日の義務）", () => {
   assert.ok(LLMS.includes("## Freshness"), "Freshness 節が無い");
   const section = LLMS.slice(LLMS.indexOf("## Freshness"), LLMS.indexOf("## Legal"));
-  for (const needle of ["01:00 UTC", "10:30 UTC", "12:00 UTC", "14:00 UTC", "retrievedAt"]) {
+  for (const needle of ["00:05 UTC", "10:30 UTC", "12:00 UTC", "14:00 UTC", "retrievedAt"]) {
     assert.ok(section.includes(needle), `Freshness 節に ${needle} が無い`);
   }
 });

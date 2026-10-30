@@ -25,6 +25,7 @@
 //  4. One purchase per endpoint per sweep window (default 6 days) — the
 //     weekly-sweep cadence emerges from the daily budget, not from a queue.
 // ============================================================
+import { CATALOG_SOURCE } from "./catalog-source";
 import { L1_CELO_PAID_TIMEOUT_MS, L1_REQUEST_TIMEOUT_MS, l1PaidTimeoutMs } from "./l1-timing";
 import { answerShapeOf } from "./answer-shape";
 import { sortAnswerShapeCaught, sortAnswerShapeFromRun } from "./answer-shape-sort";
@@ -911,7 +912,7 @@ export const L1_BATCH_BUDGET_MS = 210_000;
 
 /**
  * L0 の目録の同期でこの時間見えていない cdp_bazaar の active 行は L1 の候補にしない（2026-10-30 設計 v5 の 5・
- * docs/catalog-staleness-contract.md）。circle_discovery・mpp_directory は対象外。候補 SQL への組み込みは実装で入る。
+ * docs/catalog-staleness-contract.md）。circle_discovery・mpp_directory は対象外。l1TargetsSqlBuilders の targetsSql が使う。
  */
 export const CDP_BAZAAR_L1_FRESH_HOURS = 36;
 
@@ -1851,6 +1852,8 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
       -- （purchaseOne の isL1PurchasableListing と同じ条件）。平文 http の 402 は経路上で payTo を差し替えられる。
       AND e.pay_to IS NOT NULL AND e.pay_to <> ''
       AND lower(e.resource_url) LIKE 'https://%'
+      -- L0 の目録の同期で 36 時間見えていない cdp_bazaar の行は候補にしない（2026-10-30 設計 v5 の 5）。circle・mpp は今のまま。
+      AND (e.source <> ${CATALOG_SOURCE} OR e.last_seen_at > now() - make_interval(hours => ${CDP_BAZAAR_L1_FRESH_HOURS}))
       -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
       -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
       ${sellerCapExclusionSql()}`;

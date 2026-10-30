@@ -753,7 +753,7 @@ export default async function Home() {
             body={
               <>
                 Every endpoint in the public discovery catalog: is it still listed, and does its
-                payment wall answer a valid 402. The catalog is re-fetched daily; endpoints are
+                payment wall answer a valid 402. The catalog is read in runs roughly two hours apart; endpoints are
                 probed on a rolling schedule
                 {coverage && coverage.pct !== null
                   ? `. ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days (page read ${coverage.readAt}). The response at ${SITE_URL}/api/v1/observatory/state carries its own retrievedAt. This page reuses that shared read for up to ${PUBLIC_READ_REVALIDATE} seconds`

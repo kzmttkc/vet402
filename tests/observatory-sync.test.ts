@@ -79,28 +79,30 @@ if (!TEST_DB) {
       assert.equal(snapshots[0].fetchedCount, 3);
     });
 
-    await t.test("day 2: svc2 vanishes on a COMPLETE fetch → delisted event + status flip", async () => {
+    // 第1段（2026-10-30 設計 v5）: cdp_bazaar の行は snapshot の差分で閉じない（閉じる規則は catalog-cursor.ts の
+    // closeCatalogListings だけ。第1段では cdp の行を閉じない）。origin/main では svc2 はここで delisted だった。
+    await t.test("day 2: svc2 vanishes on a COMPLETE fetch → phase 1 keeps the cdp row active, no delisted event", async () => {
       const summary = await syncCatalog({
         fetchResult: fetchResultOf([item(1), item(3)]),
         today: "2026-08-15",
       });
       const delisted = summary.events.filter((e) => e.eventType === "delisted");
-      assert.equal(delisted.length, 1);
-      assert.equal(delisted[0].resourceKey, "svc2.example/api");
+      assert.equal(delisted.length, 0);
       const rows = await db.select().from(schema.x402Endpoints);
       const svc2 = rows.find((r) => r.resourceKey === "svc2.example/api")!;
-      assert.equal(svc2.status, "delisted");
-      assert.ok(svc2.delistedAt);
+      assert.equal(svc2.status, "active");
+      assert.equal(svc2.delistedAt, null);
     });
 
-    await t.test("day 2 re-run: idempotent — no duplicate delisted event", async () => {
+    await t.test("day 2 re-run: idempotent — no delisted event", async () => {
       const summary = await syncCatalog({
         fetchResult: fetchResultOf([item(1), item(3)]),
         today: "2026-08-15",
       });
       assert.equal(summary.events.length, 0);
       const events = await db.select().from(schema.x402DelistingEvents);
-      assert.equal(events.filter((e) => e.eventType === "delisted").length, 1);
+      // 第1段: cdp の行は閉じないので delisted の事象は 0（origin/main では day 2 の 1 行）。
+      assert.equal(events.filter((e) => e.eventType === "delisted").length, 0);
     });
 
     await t.test("day 3 incomplete fetch: svc3 missing but NO delisting is recorded", async () => {
@@ -114,14 +116,14 @@ if (!TEST_DB) {
       assert.equal(svc3.status, "active", "fetch gap must not delist");
     });
 
-    await t.test("day 4: svc2 comes back → relisted, status restored", async () => {
+    await t.test("day 4: svc2 comes back → still active (phase 1 never delisted it, so no relisted event)", async () => {
       const summary = await syncCatalog({
         fetchResult: fetchResultOf([item(1), item(2), item(3)]),
         today: "2026-08-17",
       });
+      // 第1段: day 2 で閉じていないので relisted も出ない（origin/main では relisted が 1 件）。
       const relisted = summary.events.filter((e) => e.eventType === "relisted");
-      assert.equal(relisted.length, 1);
-      assert.equal(relisted[0].resourceKey, "svc2.example/api");
+      assert.equal(relisted.length, 0);
       const rows = await db.select().from(schema.x402Endpoints);
       const svc2 = rows.find((r) => r.resourceKey === "svc2.example/api")!;
       assert.equal(svc2.status, "active");
@@ -391,10 +393,12 @@ if (!TEST_DB) {
       await syncCatalog({ fetchResult: pack([cdp]), today: "2026-11-10", source: "cdp_bazaar" });
       await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "cdp_bazaar" });
       const morning = await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "circle_discovery" });
-      assert.equal(morning.events.filter((e) => e.eventType === "delisted").length, 1);
+      // 第1段: この行は cdp の accepts の slice を持つ「cdp に載る行」なので閉じない（origin/main では 1 行）。
+      assert.equal(morning.events.filter((e) => e.eventType === "delisted").length, 0);
       const afternoon = await syncCatalog({ fetchResult: pack([]), today: "2026-11-11", source: "cdp_bazaar" });
       assert.equal(afternoon.events.filter((e) => e.eventType === "delisted").length, 0);
-      assert.equal(await delistCount(), 1);
+      assert.equal(await delistCount(), 0);
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active");
     });
 
     await t.test("持ち主を移し、accepts は積み上がらない", async () => {
@@ -453,8 +457,9 @@ if (!TEST_DB) {
       await syncCatalog({ fetchResult: pack([otherCdp]), today: "2026-12-03", source: "cdp_bazaar" });
       assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active", "Circle の完全な取得がまだ無い");
       const summary = await syncCatalog({ fetchResult: pack([otherCircle]), today: "2026-12-03", source: "circle_discovery" });
-      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "delisted");
-      assert.equal(summary.events.filter((e) => e.eventType === "delisted" && e.resourceKey === cdp.resourceKey).length, 1);
+      // 第1段: 持ち主が cdp_bazaar の行は日次の突き合わせでも閉じない（origin/main ではここで delisted）。
+      assert.equal((await rowsFor(cdp.resourceKey))[0]?.status, "active");
+      assert.equal(summary.events.filter((e) => e.eventType === "delisted" && e.resourceKey === cdp.resourceKey).length, 0);
     });
 
     await t.test("今日の不完全なページで見た鍵は突き合わせで落とさない", async () => {

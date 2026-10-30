@@ -36,9 +36,9 @@ Two invariants:
 
 ```mermaid
 flowchart TD
-    CAT[CDP Bazaar public catalog] -->|daily sync| SYNC[catalog-sync.ts<br/>snapshots + diff]
+    CAT[CDP Bazaar public catalog] -->|cursor runs ~2h apart| SYNC[catalog-cursor.ts + catalog-sync.ts<br/>resumable cursor, passes]
     SYNC --> EP[(x402_endpoints)]
-    SYNC -->|complete fetch only| DELIST[(x402_delisting_events)]
+    SYNC -->|Circle / MPP complete fetch only;<br/>no Bazaar delisting in phase 1| DELIST[(x402_delisting_events)]
     EP -->|daily batch| L0[l0-probe.ts<br/>SSRF-guarded live probe]
     L0 --> PROBES[(x402_l0_probes)]
     PROBES -->|2-consecutive-fail<br/>publication gate| PUB[publishedVerdict<br/>pass / fail / unverified]
@@ -181,7 +181,7 @@ flowchart LR
 
 - **Next.js 16 App Router** on Vercel; PostgreSQL on Neon (`vouch` database —
   the name is asserted by `scripts/db-preflight.ts` before any schema push).
-- **Crons / background jobs**: daily catalog sync + L0 probe batch, L1
+- **Crons / background jobs**: catalog sync (Bazaar cursor about every 2 hours) + L0 probe batch, L1
   purchase batch, chain indexers (funders, owners, feedback, outcomes),
   log purge. All emit into the same Postgres.
 - **Self-hosting**: `docker compose up` brings up Postgres + the app

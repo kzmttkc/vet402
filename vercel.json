@@ -38,11 +38,51 @@
     },
     {
       "path": "/api/cron/catalog-sync",
-      "schedule": "0 1 * * *"
+      "schedule": "5 0 * * *"
     },
     {
       "path": "/api/cron/catalog-sync",
-      "schedule": "0 13 * * *"
+      "schedule": "5 2 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 4 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 6 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 8 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 10 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 12 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 14 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 16 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 18 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 20 * * *"
+    },
+    {
+      "path": "/api/cron/catalog-sync",
+      "schedule": "5 22 * * *"
     },
     {
       "path": "/api/cron/catalog-sync-aux",

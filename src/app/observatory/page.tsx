@@ -448,7 +448,7 @@ export default async function ObservatoryPage({
             payment wall answer a valid <code>402</code> challenge. The probe uses the HTTP method
             the listing declares when that method is GET, POST, HEAD, or DELETE, and GET when the
             listing declares no method or a method outside that set. Two failures in a row on that
-            probe can be published as fail. The catalog is re-fetched daily. Endpoints are probed on a rolling
+            probe can be published as fail. The Bazaar catalog is read in runs roughly two hours apart, each continuing where the previous run stopped. Endpoints are probed on a rolling
             schedule. A probed row shows the probe time under Last probed, after the L1 column. A
             row that has not been probed shows no probe time. The L0 cell is the payment-wall
             measurement alone. The L1 cell counts real purchases whose transfer vet402 re-read
@@ -502,8 +502,9 @@ export default async function ObservatoryPage({
           (Figure 1) include delisted entries; the Catalog column says which are still listed. The{" "}
           <em>active</em> count under Figure 1 is a different figure from the catalog total on the snapshot
           line: it counts endpoint rows on record whose catalog status is still <code>active</code>. That
-          status is set when a fetch lists the endpoint and flipped to <code>delisted</code> only by the
-          daily diff against the previous day&apos;s snapshot on a complete fetch, so it is carried over from
+          status is set when a read lists the endpoint. A Bazaar listing is not flipped to <code>delisted</code> at
+          present. A listing in the MPP directory or the Circle x402 discovery, and in no other catalog, is flipped by the
+          daily diff against the previous day&apos;s snapshot on a complete fetch. The status is carried over from
           earlier days rather than re-read from the snapshot line, and the two need not agree.
         </p>
         <p className="doc-p">

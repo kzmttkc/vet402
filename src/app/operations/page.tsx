@@ -58,7 +58,7 @@ export default function OperationsPage() {
           <span>What runs without a human</span>
         </h2>
         <p className="doc-p">
-          Daily catalog sync, L0 probes, budget-capped L1 purchases, metrics rollup, and the
+          Catalog sync (runs roughly two hours apart), L0 probes, budget-capped L1 purchases, metrics rollup, and the
           ledger hash chain run on schedule with no human in the loop.{" "}
           <strong>Verify:</strong> the cadence is visible in the data itself —{" "}
           <code>/api/v1/observatory/history</code> shows daily rows;{" "}

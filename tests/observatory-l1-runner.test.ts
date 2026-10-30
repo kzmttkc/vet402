@@ -892,7 +892,9 @@ if (!TEST_DB) {
         assert.equal(summary.settled, 1);
         assert.equal(signedUnits, 1_000_000n, "署名口へ渡す額は 7 桁の stroops");
         assert.equal(signedAsset, STELLAR_USDC_SAC);
-        const rows = await db.select().from(schema.x402L1Purchases);
+        // 2026-10-30（設計 v5 第1段）: cdp_bazaar の行は完全な取得でも閉じないので、前の子テストの出品も active のまま候補に残る
+        // （origin/main ではこの syncCatalog が他の出品を delisted にしていた）。Stellar の出品の購入行だけを見る。
+        const rows = (await db.select().from(schema.x402L1Purchases)).filter((r) => r.network === STELLAR_PUBNET_CAIP2);
         assert.equal(rows.length, 1);
         assert.equal(rows[0].status, "settle_claimed", "購入バッチはチェーン照合の前なので settle_claimed。summary.settled は形式の通った申告");
         assert.equal(rows[0].network, STELLAR_PUBNET_CAIP2);

@@ -33,14 +33,18 @@ test("llms.txt の観測所の文は probed daily を含まず、メソッド・
   assert.match(line, /A row that has not been probed shows no probe time/);
 });
 
-test("Freshness のカタログ再取得は Bazaar が 01:00 UTC と 13:00 UTC、MPP directory が 01:30 UTC の 1 回", () => {
+// 2026-10-30（設計 v5 第1段）: Bazaar は 01:00・13:00 の 2 回から、約 2 時間おき（00:05〜22:05 UTC の 12 回）に続きから読む形へ。
+test("Freshness のカタログ再取得は Bazaar が約 2 時間おき（00:05〜22:05 UTC）、MPP directory が 01:30 UTC の 1 回", () => {
   const llms = read("public/llms.txt");
   const section = llms.slice(llms.indexOf("## Freshness"), llms.indexOf("## Legal"));
   const line = section.split("\n").find((l) => l.startsWith("- Catalog sync"));
   assert.ok(line, "Catalog sync の行が無い");
-  assert.match(line, /01:00 UTC/);
-  assert.match(line, /13:00 UTC/);
-  assert.match(line, /Both runs refetch the Bazaar catalog/);
+  assert.match(line, /00:05 UTC/);
+  assert.match(line, /22:05 UTC/);
+  assert.match(line, /roughly two hours apart/);
+  assert.match(line, /continues from the page where the previous run stopped/);
+  assert.match(line, /A Bazaar listing is not marked delisted at present/);
+  assert.equal(/Both runs refetch the Bazaar catalog|01:00 UTC and 13:00 UTC/.test(line), false);
   assert.match(line, /The MPP directory is fetched once a day, at 01:30 UTC/);
   assert.match(line, /not judged delisted until the next complete 01:30 UTC fetch/);
   assert.equal(/not judged delisted until the next 01:30 UTC fetch/.test(line), false);
@@ -78,7 +82,8 @@ test("方法論 §9 は索引の昇格、request_error でファイルから外�
   assert.match(sec, /more than\s+366 days before retrieval/);
   assert.equal(src.includes("probing with a guessed method reports false deaths"), false);
   assert.match(src, /the request uses GET/);
-  assert.match(src, /for that day \(01:00 UTC and 13:00 UTC for the Bazaar catalog\)/);
+  assert.match(src, /read in runs scheduled roughly two hours apart \(00:05 UTC to 22:05 UTC\)/);
+  assert.match(src, /A Bazaar listing is not marked delisted at present/);
   assert.match(src, /A later incomplete run does not replace a complete snapshot of that day/);
   assert.equal(src.includes("short day is visible"), false);
   assert.match(src, /The MPP directory is fetched once a day, at 01:30 UTC/);

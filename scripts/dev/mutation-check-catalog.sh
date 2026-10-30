@@ -18,7 +18,7 @@
 #
 # 使い方:
 #   eval "$(/path/to/setup_test_db.sh "$PWD" vet402_test_catalog5)"   # TEST_DATABASE_URL を入れる
-#   bash scripts/dev/mutation-check-catalog.sh 1    # 第1段: T01 T02 T03 T12 T13 のパッチが要る
+#   bash scripts/dev/mutation-check-catalog.sh 1    # 第1段: T01 T02 T03 T12 T13 T14 のパッチが要る
 #   bash scripts/dev/mutation-check-catalog.sh 2    # 第2段: T01〜T13（T07 は 2 本）のパッチが要る
 # 終了コード: 全部 PASS のときだけ 0。
 # ============================================================
@@ -26,7 +26,7 @@ set -uo pipefail
 
 PHASE="${1:-}"
 case "$PHASE" in
-  1) REQUIRED=(T01 T02 T03 T12 T13) ;;
+  1) REQUIRED=(T01 T02 T03 T12 T13 T14) ;;
   2) REQUIRED=(T01 T02 T03 T04 T05 T06 T07-b T07-events T08 T09 T10 T11 T12 T13) ;;
   *) echo "usage: [ONLY='T13 T07-b'] $0 <1|2>   (1 = 第1段, 2 = 第2段)" >&2; exit 2 ;;
 esac

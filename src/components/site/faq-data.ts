@@ -113,7 +113,7 @@ export const FAQS: FaqItem[] = [
     question: "Why is my endpoint not listed?",
     answer:
       `vet402 lists an x402 endpoint when the endpoint is in the ${BAZAAR.name} (${BAZAAR.url}). ` +
-      `The syncs of that catalog start at ${syncTimesText(BAZAAR.sync_times_utc)}. A sync reads the catalog page by page. A sync that stops early adds the pages it read and not the rest. ` +
+      `The syncs of that catalog are scheduled roughly two hours apart, at ${syncTimesText(BAZAAR.sync_times_utc)}. A sync can start later within its scheduled hour. A sync reads the catalog page by page and continues from the page where the previous sync stopped. A sync that stops early adds the pages it read and not the rest. ` +
       `So your route appears on vet402 after a sync that reads the page with your route. ` +
       `vet402 also reads the ${CIRCLE.name} (${CIRCLE.url}). The sync of that catalog starts at ${syncTimesText(CIRCLE.sync_times_utc)}. ` +
       `For Tempo, vet402 also reads the MPP directory (${MPP.url}), with a sync that starts at ${syncTimesText(MPP.sync_times_utc)}. ` +

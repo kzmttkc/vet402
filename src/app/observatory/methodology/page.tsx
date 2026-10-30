@@ -630,12 +630,14 @@ export default async function ObservatoryMethodologyPage() {
           <span>Delisting detection</span>
         </h2>
         <p className="doc-p">
-          The public discovery catalog is re-fetched daily, and every fetch is compared with the
-          catalog&apos;s own reported total for that day (01:00 UTC and 13:00 UTC for the Bazaar catalog). Both counts are published as{" "}
-          <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A later incomplete run does not replace a complete snapshot of that day. The MPP directory is fetched once a day, at 01:30 UTC.
+          The Bazaar catalog is read in runs scheduled roughly two hours apart (00:05 UTC to 22:05 UTC). Each run
+          continues from the page where the previous run stopped, so one full read of the catalog takes several runs.
+          When a full read closes, the listings it saw and the catalog&apos;s own reported total are published as{" "}
+          <code>latestSnapshot</code> (<code>fetchedCount</code> and <code>totalCount</code>). A read in which more than 5% of the pages could not be read is marked incomplete. A later incomplete run does not replace a complete snapshot of that day.
+          A Bazaar listing is not marked delisted at present, and that includes a listing that is also in the Circle x402 discovery. The rules below apply to the MPP directory and the Circle x402 discovery. The MPP directory is fetched once a day, at 01:30 UTC.
           A listing that leaves the MPP directory is not judged delisted until the next complete 01:30 UTC fetch.
           The Circle x402 discovery is fetched at 01:30 UTC, on the same run. A listing that leaves the Circle x402 discovery is not judged delisted until the next complete fetch of that catalog.
-          A key that another catalog still lists is not recorded as delisted. An incomplete fetch counts the keys in that fetch and the keys in each fetch since the previous complete fetch. A key absent from both catalogs on that reading is recorded as delisted even when an earlier day missed it.
+          A key that another catalog still lists is not recorded as delisted. An incomplete fetch counts the keys in that fetch and the keys in each fetch since the previous complete fetch.
           An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
           <code>delisted</code>, with the before/after values kept on the event, unless another catalog still lists that key. On any day

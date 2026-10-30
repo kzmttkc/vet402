@@ -126,7 +126,7 @@ export default async function PlaygroundPage() {
           </Link>{" "}
           performs over the public catalog. On that Observatory measurement, two failures in a row
           on that probe can be published as fail. Demo probes are not written into the public
-          register. The catalog itself is re-fetched daily. The probes run
+          register. The catalog itself is read in runs roughly two hours apart. The probes run
           on a rolling schedule rather than sweeping every endpoint every day
           {coverage && coverage.pct !== null ? (
             <>
