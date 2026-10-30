@@ -939,6 +939,11 @@ export type CatalogSnapshot = {
    * NULL は列ができる前の行。Bazaar の fetchedCount はその周回で見えた行の数（重複を畳んだ後）で、総数を下回りうる。
    */
   complete?: boolean | null;
+  /**
+   * Bazaar だけ: カーソルが周回を 1 つでも閉じたか。false のあいだ（導入直後）、最新の cdp の snapshot は旧の同期が書いた行で、
+   * complete は周回の強弱ではない。Bazaar 以外は undefined。
+   */
+  cursorPassCompleted?: boolean;
 };
 
 /** 1 チェーン分の L1 実測。settledNonceBound + settledAmountPayeeOnly = settled。 */
@@ -967,14 +972,18 @@ export type L1ChainStats = {
  */
 export async function getCdpBazaarIngestFreshness(
   options: { now?: Date } = {},
-): Promise<{ lastStrongPassAt: string | null; stale: boolean }> {
+): Promise<{ lastStrongPassAt: string | null; stale: boolean; passCompleted: boolean }> {
   const db = getDb();
-  if (!db) return { lastStrongPassAt: null, stale: false };
+  if (!db) return { lastStrongPassAt: null, stale: false, passCompleted: false };
   try {
     const f = await readCdpPassFreshness(db, options.now ?? new Date());
-    return { lastStrongPassAt: f.lastStrongPassCompletedAt ? toIsoUtc(f.lastStrongPassCompletedAt) : null, stale: f.stale };
+    return {
+      lastStrongPassAt: f.lastStrongPassCompletedAt ? toIsoUtc(f.lastStrongPassCompletedAt) : null,
+      stale: f.stale,
+      passCompleted: f.lastPassCompletedAt !== null,
+    };
   } catch (error) {
-    if (isMissingSchemaError(error)) return { lastStrongPassAt: null, stale: false };
+    if (isMissingSchemaError(error)) return { lastStrongPassAt: null, stale: false, passCompleted: false };
     throw error;
   }
 }
@@ -1345,6 +1354,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     const snap = latestBySource.get(CATALOG_SOURCE) ?? null;
     // 公開の鮮度の欄（設計 v5 の 4）。max(last_seen_at) ではなく、最後に閉じた強い周回で決める。
     const freshness = await getCdpBazaarIngestFreshness();
+    const cdpSnap = latestBySource.get(CATALOG_SOURCE);
+    if (cdpSnap) cdpSnap.cursorPassCompleted = freshness.passCompleted;
 
     return {
       l1,

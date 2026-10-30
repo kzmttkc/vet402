@@ -132,7 +132,7 @@ export default async function ObservatoryPage({
                   Bazaar catalog snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
                   <span
-                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. For the Bazaar, fetched is the number of listings seen in the latest full read, counted once per endpoint key. A full read is spread over several runs about two hours apart, and a listing that moves within the catalog's order during a read can be missed by that read, so fetched can sit below the reported total. /observatory/state says whether that read was a strong pass or a weak pass (more than 5% of its pages unreadable). The register also lists endpoints from the MPP directory and the Circle x402 discovery, which are fetched separately. /observatory/state prints each catalog's own as-of line. See section 2.`}
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. For the Bazaar, fetched is the number of listings seen in the latest full read, counted once per endpoint key. A full read is spread over several runs about two hours apart, a listing that moves within the catalog's order during a read can be missed by that read, and a strong pass can still leave up to 5% of its pages unread, so fetched can sit below the reported total. /observatory/state says whether that read was a strong pass or a weak pass (more than 5% of its pages unreadable). The register also lists endpoints from the MPP directory and the Circle x402 discovery, which are fetched separately. /observatory/state prints each catalog's own as-of line. See section 2.`}
                   >
                     · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
                     {overview.latestSnapshot.totalCount.toLocaleString()}
@@ -499,8 +499,9 @@ export default async function ObservatoryPage({
         <p className="doc-p">
           <strong>Snapshot line.</strong> For the Bazaar, <em>fetched</em> is the number of listings seen in the
           latest full read, counted once per endpoint key; <em>catalog</em> is the total the catalog reports about
-          itself. A full read is spread over several runs, and a listing that moves within the catalog&apos;s order during
-          the read can be missed by it, so fetched can sit below the catalog total. /observatory/state marks each full
+          itself. A full read is spread over several runs, a listing that moves within the catalog&apos;s order during
+          the read can be missed by it, and a strong pass can still leave up to 5% of its pages unread, so fetched can sit
+          below the catalog total. /observatory/state marks each full
           read as a strong pass or a weak pass (more than 5% of its pages unreadable). For the MPP directory and the
           Circle x402 discovery, a fetch below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
           (Figure 1) include delisted entries; the Catalog column says which are still listed. The{" "}

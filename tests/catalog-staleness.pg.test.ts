@@ -836,4 +836,42 @@ if (!TEST_DB) {
     assert.equal(await h.statusOf(Q), "delisted", "同じ入力で Circle だけの行が閉じていない");
     assert.equal(await h.delistEventsFor(Q), 1);
   });
+
+  // ==========================================================
+  test("T16 phase1: Circle だけの行は、Circle の不完全な日を挟んでも origin/main と同じ日に日次の突き合わせで閉じる（古い完全な cdp の snapshot がある・無いの両方。両方に載る行は閉じない）", { timeout: 300_000 }, async () => {
+    // 2026-10-30 再点検（zz-cmp2 の形）。CDP_LISTED_ROW_SQL が Circle だけの行で NULL になり、突き合わせから全部外れていた。
+    // 突き合わせの開始は origin/main と同じ（cdp の完全な snapshot が一度も無ければ走らない）。第2段で T14・T15 と一緒に置き換える。
+    const m = await load();
+    const h = helpers(m);
+    const cdp = (k: string) => m.parseCatalogItem(cdpItem({ resource: `https://t16-${k}.example/api` }));
+    const circle = (k: string) =>
+      m.parseCatalogItem({ resource: `https://t16-${k}.example/api`, metadata: { method: "GET", description: "circle" }, accepts: [{ ...baseAccept, amount: "2000" }] });
+    const pack = (items: ReturnType<typeof cdp>[], complete: boolean, total?: number) => ({ items, totalCount: total ?? items.length, fetchedCount: items.length, complete });
+    const day = (n: number) => `2031-02-${String(n).padStart(2, "0")}`;
+    // 本番と同じく cdp の旧の同期は毎日不完全（80,000 件で止まる形）。Circle の D3 は不完全（q と z がその日に抜ける）。
+    const cdpDays: Record<number, string[]> = { 2: ["s", "t", "v"], 3: ["s", "t", "v"], 4: ["t", "v"], 5: ["t"], 6: [], 7: [] };
+    const circleDays: Record<number, string[]> = { 2: ["q", "r", "s", "t", "w", "z"], 3: ["r", "s", "t", "w", "v"], 4: ["r", "t", "w", "v"], 5: ["r", "w"], 6: ["r"], 7: ["r"] };
+    const run = async (withOldComplete: boolean) => {
+      await h.truncate();
+      if (withOldComplete) await m.syncCatalog({ fetchResult: pack([cdp("s"), cdp("v")], true), today: day(1), source: CDP });
+      for (let d = 2; d <= 7; d++) {
+        if (d === 2) await m.syncCatalog({ fetchResult: pack(circleDays[d].map(circle), true), today: day(d), source: CIRCLE });
+        await m.syncCatalog({ fetchResult: pack(cdpDays[d].map(cdp), false, 100), today: day(d), source: CDP });
+        if (d !== 2) await m.syncCatalog({ fetchResult: pack(circleDays[d].map(circle), d !== 3, d === 3 ? 99 : undefined), today: day(d), source: CIRCLE });
+      }
+      const evs = rowsOf<{ k: string; d: string }>(
+        await m.db.execute(m.sql`
+          SELECT e.resource_key AS k, ev.detected_on::text AS d FROM x402_delisting_events ev JOIN x402_endpoints e ON e.id = ev.endpoint_id
+          WHERE ev.event_type = 'delisted' ORDER BY 1, 2`),
+      );
+      return evs.map((e) => `${e.k.replace(/^t16-/, "").replace(/\.example\/api$/, "")}@${e.d.slice(8, 10)}`);
+    };
+    // origin/main と同じ日: 古い完全な snapshot が無いと突き合わせは走らず、差分で w だけが 6 日目に閉じる。
+    assert.deepEqual(await run(false), ["w@06"], "古い完全な cdp の snapshot が無い状態で、origin/main と閉じる行・日が違う");
+    assert.equal(await h.statusOf("https://t16-q.example/api"), "active");
+    // 古い完全な snapshot があると、Circle の不完全な D3 に抜けた q と z を 4 日目の突き合わせで閉じる（origin/main と同じ）。
+    assert.deepEqual(await run(true), ["q@04", "w@06", "z@04"], "古い完全な cdp の snapshot がある状態で、origin/main と閉じる行・日が違う");
+    // 両方に載る行（s・t・v）は閉じない（第1段: cdp に載る行）。
+    for (const k of ["s", "t", "v"]) assert.equal(await h.statusOf(`https://t16-${k}.example/api`), "active", `${k}: cdp に載る共有の行が閉じた`);
+  });
 }

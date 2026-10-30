@@ -189,7 +189,10 @@ function isCdpListedRow(row: { source: string; lastSeenPass: number | null; acce
 const CDP_LISTED_ROW_SQL = sql`(
   source = ${CATALOG_SOURCE}
   OR last_seen_pass IS NOT NULL
-  OR (jsonb_typeof(accepts_by_source -> ${CATALOG_SOURCE}) = 'array' AND jsonb_array_length(accepts_by_source -> ${CATALOG_SOURCE}) > 0)
+  -- accepts_by_source に cdp の鍵が無い行では -> が NULL になり、式全体が NULL になる（NOT NULL は偽扱いで行が外れる）。
+  -- coalesce で false に倒す（2026-10-30 再点検: Circle だけの行が日次の突き合わせから全部外れていた）。
+  -- CASE で順番を決める（AND は評価の順を約束しないので、配列でない値に jsonb_array_length を当てて落ちうる）。
+  OR coalesce(CASE WHEN jsonb_typeof(accepts_by_source -> ${CATALOG_SOURCE}) = 'array' THEN jsonb_array_length(accepts_by_source -> ${CATALOG_SOURCE}) > 0 END, false)
 )`;
 
 function hasSiblingSlice(bySource: unknown, sibling: string): boolean {
@@ -837,9 +840,10 @@ export async function syncCatalog(
   // 日次の突き合わせ。自分の取得が完全な日だけ行う。両方の不在が証明でき、
   // どちらの集合にも無い active 行を閉じる。不完全な日は判定しない。
   const reconcileEvents: CatalogDiffEvent[] = [];
-  // 第1段: Circle の同期の突き合わせは、cdp の不在の証明を待たずに走らせる。閉じてよいのは cdp に載る印の無い行だけ
-  // （CDP_LISTED_ROW_SQL で外す）なので、cdp の不在は判定に要らない。origin/main の Circle だけの行の閉じ方を保つ。
-  if (sibling && result.complete && (siblingListing.absenceProven || cdpSiblingUnproven)) {
+  // 突き合わせの開始は origin/main と同じ（読み込んだ兄弟の不在が証明できるとき）。第1段の X1 の守り（Circle の同期で cdp の
+  // 不在を証明済みにしない）は持ち主の移動と slice の扱いだけに効かせ、ここでは読み込んだ値を使う。閉じるのは cdp に載る印の
+  // 無い行だけ（CDP_LISTED_ROW_SQL）。cdp の完全な snapshot が一度も無いあいだは、origin/main と同じく走らない。
+  if (sibling && result.complete && loadedSibling.absenceProven) {
     const flippedRaw = await db.execute(sql`
       UPDATE x402_endpoints
       SET status = 'delisted', delisted_at = now()
@@ -847,7 +851,7 @@ export async function syncCatalog(
         AND source IN (${CATALOG_SOURCE}, ${CIRCLE_DISCOVERY_SOURCE})
         AND NOT ${CDP_LISTED_ROW_SQL}
         AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...currentKeys])}::jsonb)))
-        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...siblingListing.keys])}::jsonb)))
+        AND NOT (resource_key IN (SELECT jsonb_array_elements_text(${JSON.stringify([...loadedSibling.keys])}::jsonb)))
       RETURNING id, resource_key
     `);
     const flipped = (Array.isArray(flippedRaw) ? flippedRaw : ((flippedRaw as unknown as { rows?: unknown[] }).rows ?? [])) as {

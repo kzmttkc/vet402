@@ -17,6 +17,9 @@ export const PASS_STALE_ALERT_HOURS = 36;
 
 export type PassFreshness = { lastStrongPassCompletedAt: Date | null; stale: boolean };
 
+/** カーソルが周回を 1 つでも閉じたか（弱い周回を含む）。閉じる前の最新の cdp の snapshot は旧の同期が書いた行。 */
+export type CursorPassState = PassFreshness & { lastPassCompletedAt: Date | null };
+
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
 function rowsOf<T>(raw: unknown): T[] {
@@ -38,16 +41,17 @@ export function passFreshnessOf(input: { lastStrongPassCompletedAt: Date | null;
 }
 
 /** カーソルの行を読んで判定する（ログは出さない）。 */
-export async function readCdpPassFreshness(db: Db, now: Date): Promise<PassFreshness> {
-  const rows = rowsOf<{ last_strong: unknown; created_at: unknown }>(
+export async function readCdpPassFreshness(db: Db, now: Date): Promise<CursorPassState> {
+  const rows = rowsOf<{ last_strong: unknown; last_pass: unknown; created_at: unknown }>(
     await db.execute(sql`
-      SELECT last_strong_pass_completed_at AS last_strong, created_at
+      SELECT last_strong_pass_completed_at AS last_strong, last_pass_completed_at AS last_pass, created_at
       FROM x402_catalog_cursors WHERE source = ${CATALOG_SOURCE}`),
   );
   const row = rows[0];
-  return passFreshnessOf({
+  const freshness = passFreshnessOf({
     lastStrongPassCompletedAt: asDate(row?.last_strong),
     cursorCreatedAt: asDate(row?.created_at),
     now,
   });
+  return { ...freshness, lastPassCompletedAt: asDate(row?.last_pass) };
 }
