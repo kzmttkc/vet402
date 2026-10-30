@@ -493,7 +493,7 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/arc-gateway.ts", 'if (paid === null) return "settle_failed"; // gateway_no_seller_response');
   once("src/lib/observatory/arc-gateway.ts", 'if (claimedSettlement) return "settle_claimed"; // gateway_receipt_not_settled');
   once("src/lib/observatory/l1-runner.ts", "const claimedTx = isArcGateway ? null :");
-  once("src/lib/observatory/l1-runner.ts", "nativeArcSignable: hasSignableNativeArcAccept(challenge.accepts)");
+  once("src/lib/observatory/l1-runner.ts", "nativeArcSignable: hasSignableNativeArcAccept(challengeForSelect.accepts)");
   once("src/lib/observatory/l1-runner.ts", 'if (!laneOpen("arc_gateway")) return []');
   once("src/lib/observatory/l1-runner.ts", 'const gatewayExclusions: SQL[] = laneExclusionChains.filter((x) => x.chain !== "arc")');
   once("src/lib/settlements/recover-late.ts", "AND coalesce(pu.raw_response_meta->>'circleGatewayRail', '') <> 'true'");
