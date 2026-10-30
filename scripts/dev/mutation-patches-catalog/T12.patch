@@ -1,0 +1,20 @@
+diff --git a/src/lib/observatory/reader.ts b/src/lib/observatory/reader.ts
+index 75e88716..ea214b9f 100644
+--- a/src/lib/observatory/reader.ts
++++ b/src/lib/observatory/reader.ts
+@@ -962,8 +962,13 @@ export async function getCdpBazaarIngestFreshness(
+   const db = getDb();
+   if (!db) return { lastStrongPassAt: null, stale: false };
+   try {
+-    const f = await readCdpPassFreshness(db, options.now ?? new Date());
+-    return { lastStrongPassAt: f.lastStrongPassCompletedAt ? toIsoUtc(f.lastStrongPassCompletedAt) : null, stale: f.stale };
++    // MUTATION T12: judge the public field by max(last_seen_at) of active cdp rows
++    void readCdpPassFreshness;
++    const now = options.now ?? new Date();
++    const raw = await db.execute(sql`SELECT max(last_seen_at) AS m FROM x402_endpoints WHERE source = ${CATALOG_SOURCE} AND status = 'active'`);
++    const m = ((Array.isArray(raw) ? raw : (raw as unknown as { rows: { m: unknown }[] }).rows)[0] as { m: unknown } | undefined)?.m;
++    const last = m ? new Date(String(m instanceof Date ? m.toISOString() : m)) : null;
++    return { lastStrongPassAt: null, stale: last !== null && now.getTime() - last.getTime() >= 36 * 3_600_000 };
+   } catch (error) {
+     if (isMissingSchemaError(error)) return { lastStrongPassAt: null, stale: false };
+     throw error;

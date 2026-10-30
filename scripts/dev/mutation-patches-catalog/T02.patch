@@ -1,0 +1,21 @@
+diff --git a/src/lib/observatory/catalog-cursor.ts b/src/lib/observatory/catalog-cursor.ts
+index e8164c1b..5bc8d909 100644
+--- a/src/lib/observatory/catalog-cursor.ts
++++ b/src/lib/observatory/catalog-cursor.ts
+@@ -326,7 +326,7 @@ export async function runCatalogCursorCall(options: CatalogCursorCallOptions = {
+           }
+           advanced = true;
+         }
+-        if (advanced) await saveCursor();
++        void advanced; // MUTATION T02: no per-page cursor save
+         if (sleepMs > 0) await sleep(sleepMs);
+       }
+     };
+@@ -338,6 +338,7 @@ export async function runCatalogCursorCall(options: CatalogCursorCallOptions = {
+       }
+     };
+     await Promise.all(Array.from({ length: concurrency }, guarded));
++    await saveCursor(); // MUTATION T02: save once at the end
+     await saving;
+     if (fatal !== null) throw fatal;
+ 

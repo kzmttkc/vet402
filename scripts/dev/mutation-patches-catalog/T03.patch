@@ -1,0 +1,13 @@
+diff --git a/src/lib/observatory/catalog-cursor.ts b/src/lib/observatory/catalog-cursor.ts
+index e8164c1b..e290d680 100644
+--- a/src/lib/observatory/catalog-cursor.ts
++++ b/src/lib/observatory/catalog-cursor.ts
+@@ -184,7 +184,7 @@ export async function runCatalogCursorCall(options: CatalogCursorCallOptions = {
+       SET lease_until = ${at(new Date(startedAt.getTime() + CATALOG_CURSOR_LEASE_SECONDS * 1000))},
+           lease_holder = ${holder}::uuid,
+           updated_at = ${at(startedAt)}
+-      WHERE source = ${source} AND (lease_until IS NULL OR lease_until <= ${at(startedAt)})
++      WHERE source = ${source} -- MUTATION T03: lease condition removed
+       RETURNING next_offset, pass_seq, pass_started_at, pass_pages_read, pass_pages_failed`),
+   );
+   if (leased.length === 0) return { skipped: "leased" };

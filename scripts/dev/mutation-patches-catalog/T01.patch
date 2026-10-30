@@ -1,0 +1,13 @@
+diff --git a/src/lib/observatory/catalog-cursor.ts b/src/lib/observatory/catalog-cursor.ts
+index e8164c1b..f4d42722 100644
+--- a/src/lib/observatory/catalog-cursor.ts
++++ b/src/lib/observatory/catalog-cursor.ts
+@@ -202,7 +202,7 @@ export async function runCatalogCursorCall(options: CatalogCursorCallOptions = {
+ 
+   try {
+     const passSeq = Number(leased[0].pass_seq);
+-    const startOffset = Number(leased[0].next_offset);
++    const startOffset = 0; // MUTATION T01: ignore the saved cursor
+     const passStartedAt = asDate(leased[0].pass_started_at) ?? startedAt;
+     let passPagesRead = Number(leased[0].pass_pages_read);
+     let passPagesFailed = Number(leased[0].pass_pages_failed);
