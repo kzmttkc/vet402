@@ -55,3 +55,26 @@ export async function upsertAgentWallet(agentId: bigint, wallet: Address): Promi
       },
     });
 }
+
+/**
+ * 複数行の upsert（2026-10-31）。1 文 = 最大 500 行。同じ agentId が 2 回入ると
+ * ON CONFLICT が同じ行を 2 度更新できずに落ちるので、呼び手は agentId ごとに 1 件へ畳んでから渡す
+ * （latestWalletPerAgent）。ここでも念のため後の方を残して畳む。
+ */
+export async function upsertAgentWallets(pairs: readonly { agentId: bigint; wallet: Address }[]): Promise<void> {
+  const db = getDb();
+  if (!db || pairs.length === 0) return;
+  const latest = new Map<string, { agentId: bigint; wallet: string }>();
+  for (const p of pairs) latest.set(p.agentId.toString(), { agentId: p.agentId, wallet: p.wallet.toLowerCase() });
+  const rows = [...latest.values()];
+  for (let i = 0; i < rows.length; i += 500) {
+    const now = new Date();
+    await db
+      .insert(agents)
+      .values(rows.slice(i, i + 500).map((r) => ({ agentId: r.agentId, wallet: r.wallet, lastIndexed: now })))
+      .onConflictDoUpdate({
+        target: agents.agentId,
+        set: { wallet: sql`excluded.wallet`, lastIndexed: now },
+      });
+  }
+}
