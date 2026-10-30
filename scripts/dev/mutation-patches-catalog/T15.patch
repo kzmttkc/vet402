@@ -1,0 +1,13 @@
+diff --git a/src/lib/observatory/catalog-sync.ts b/src/lib/observatory/catalog-sync.ts
+index 91ef079e..ff424bee 100644
+--- a/src/lib/observatory/catalog-sync.ts
++++ b/src/lib/observatory/catalog-sync.ts
+@@ -372,7 +372,7 @@ export async function syncCatalog(
+   // 第1段（2026-10-30 点検 X1）: Circle の同期では、cdp の兄弟の不在を証明済みとして扱わない。カーソルの周回の snapshot は
+   // 読めないページ（5% まで）と並びのずれの読み落としを許すので、「cdp に無い」の証明には使えない。証明済みとして使うと、
+   // cdp が載せている行の持ち主を Circle へ移して cdp の accepts を消し、cdp に載る印が無くなった行を次の日に閉じる。
+-  const cdpSiblingUnproven = sibling === CATALOG_SOURCE;
++  const cdpSiblingUnproven = false; // MUTATION T15: treat the cdp sibling's absence as proven again
+   const siblingListing: SiblingListing = cdpSiblingUnproven ? { ...loadedSibling, absenceProven: false } : loadedSibling;
+   const siblingRows = new Map<string, SiblingIdentity>();
+   if (sibling) {
