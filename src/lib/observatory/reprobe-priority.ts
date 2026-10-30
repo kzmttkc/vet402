@@ -22,6 +22,7 @@ import { needsRuleChangeReprobeSql } from "./l0-rule-change";
 import { SETTLEMENT_WINDOW_DAYS } from "./coverage";
 import { REPROBE_MIN_INTERVAL_MS } from "./l0-rule-change-reprobe";
 import { notPathTemplateSql } from "./path-template";
+import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { registeredDomainOf } from "./registered-domain";
 import {
   DISPUTE_PRIORITY_DAYS,
@@ -274,6 +275,8 @@ export function reprobePrioritySql(limit: number, formTable: boolean, offset = 0
       ) cls ON true
       WHERE e.status = 'active'
         AND ${notPathTemplateSql()}
+        -- 売り手依頼の行（2026-10-30）は L0 の優先の再プローブにも載せない（L0 の層と同じ共通の条件）。
+        AND ${notSellerRetestRequestSourceSql()}
         AND cls.priority_class IS NOT NULL
         AND (latest.probed_at IS NULL OR latest.probed_at < now() - make_interval(mins => ${PRIORITY_MIN_PROBE_AGE_MINUTES}))
     ), ranked AS (

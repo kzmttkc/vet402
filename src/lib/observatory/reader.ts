@@ -160,7 +160,10 @@ export async function getObservatoryOverview(
     END
   )`;
   // q・network・l1 のあと。合格率の pass / fail / unverified / withdrawn はここで取る。verdict は表の行と頁の総数だけ。
+  // 売り手依頼の行（2026-10-30）は観測所の一覧と件数に載せない（購入は /sellers と公開の行に普通どおり出る）。
+  const overviewSellerExclusion = notSellerRetestRequestSourceSql();
   const scopeFilters = sql`
+    AND ${overviewSellerExclusion}
     ${like ? sql`AND e.resource_key ILIKE ${like}` : sql``}
     ${
       networkList
@@ -1448,9 +1451,11 @@ export async function getChainScope(): Promise<ChainScope> {
   const db = getDb();
   if (!db) return { testnetEndpoints: 0, unclassified: [] };
   try {
+    // 売り手依頼の行（2026-10-30）はチェーン別の件数にも数えない（§1 の総数と同じ母集団）。
+    const chainScopeSellerExclusion = notSellerRetestRequestSourceSql();
     const raw = await db.execute(sql`
       SELECT e.network, count(*)::int AS n FROM x402_endpoints e
-      WHERE ${operatorExclusionPredicate("e")}
+      WHERE ${operatorExclusionPredicate("e")} AND ${chainScopeSellerExclusion}
       GROUP BY e.network
     `);
     const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { network: string | null; n: number }[];

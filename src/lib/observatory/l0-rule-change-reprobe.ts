@@ -14,6 +14,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, probeEndpoint, type ProbeResult, type ProbeTarget } from "./l0-probe";
 import {
@@ -58,7 +59,8 @@ export async function selectRuleChangeTargets(limit: number): Promise<RuleChange
           ORDER BY q.probed_at DESC LIMIT ${MIN_CONSECUTIVE_FAILS_TO_PUBLISH}
         ) k
       ) r ON true
-      WHERE e.status = 'active' AND ${needsRuleChangeReprobeSql("e")}
+      -- 売り手依頼の行（2026-10-30）は旧規則の測り直しにも載せない（L0 の層と同じ共通の条件）。
+      WHERE e.status = 'active' AND ${notSellerRetestRequestSourceSql()} AND ${needsRuleChangeReprobeSql("e")}
       ORDER BY r.last_probed_at ASC, e.first_seen_at ASC
       LIMIT ${limit}
     `),
