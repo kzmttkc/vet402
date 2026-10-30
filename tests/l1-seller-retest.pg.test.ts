@@ -486,6 +486,12 @@ if (!TEST_DB) {
     });
 
     await t.test("concurrent runL1Batch: each seller request pays at most once", async () => {
+      await db.execute(sql.raw(SELLER_INDEX_SQL));
+      const idx = await db.execute(sql`
+        SELECT 1 FROM pg_class c
+        WHERE c.relname = 'x402_l1_purchases_seller_request_id_auth_unique' AND c.relkind = 'i'
+      `);
+      assert.equal(rowsOf(idx).length, 1, "seller request auth unique index must exist");
       await seedOnlyPending(catalog[0]!.id);
       state.clear();
       const url0 = resolveSellerRetestUrl(catalog[0]!.url, PAYER);
