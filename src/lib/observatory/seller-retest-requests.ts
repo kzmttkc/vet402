@@ -4,6 +4,7 @@
 // 目録に無い URL でも、依頼ごとに 1 回だけ Base で買う。完了・期限・402 の照合は
 // seller-retest.ts と l1-runner.ts が行う。ここは版管理された依頼の正典だけ。
 // ============================================================
+import { sql, type SQL } from "drizzle-orm";
 import { BASE_CAIP2, BASE_USDC } from "./x402-payer";
 
 /** x402_endpoints.source — 目録同期（cdp_bazaar / circle_discovery）の diff・reconcile 対象外。 */
@@ -16,7 +17,13 @@ export const SELLER_RETEST_MAX_PER_RUN = 10;
 export const SELLER_RETEST_PAYER_PLACEHOLDER = "__VET402_BASE_PAYER__";
 export const SELLER_RETEST_USDC_PLACEHOLDER = "__BASE_USDC__";
 /** Base の固定ブロック番号（feeds blocks 系）。 */
-export const SELLER_RETEST_BASE_BLOCK_NUMBER = "22000000";
+/** Base head に近い固定値（2026-10-30 時点の head ≈ 53,279,184）。 */
+export const SELLER_RETEST_BASE_BLOCK_NUMBER = "53279000";
+
+/** L0 候補・L1 候補（依頼レーン以外）から seller_retest_request 行を外す共通条件（x402_endpoints e）。 */
+export function notSellerRetestRequestSourceSql(): SQL {
+  return sql`e.source <> ${SELLER_RETEST_REQUEST_SOURCE}`;
+}
 
 export type SellerRetestRequest = {
   /** 台帳 raw_response_meta.sellerRequestId に残す安定 ID。 */
@@ -148,14 +155,14 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
 ];
 
 /** テスト専用の短いリスト（本番依頼と同じ規則・模擬ホスト・9 件）。 */
-export const SELLER_RETEST_TEST_REQUESTS: readonly SellerRetestRequest[] = Array.from({ length: 9 }, (_, i) => {
+export const SELLER_RETEST_TEST_REQUESTS: readonly SellerRetestRequest[] = Array.from({ length: 11 }, (_, i) => {
   const n = i + 1;
   const payTo = `0x${n.toString(16).padStart(40, "0")}`;
   const isPost = n === 2;
   return {
     id: `test-seller-retest-${n}`,
     requestedOn: "2026-10-30",
-    sellerDomain: "mock-seller-retest.example",
+    sellerDomain: `mock-seller-retest-${n}.example`,
     url: isPost
       ? `https://mock-seller-retest.example/route/post-${n}`
       : n === 3
@@ -170,16 +177,37 @@ export const SELLER_RETEST_TEST_REQUESTS: readonly SellerRetestRequest[] = Array
   };
 });
 
+/** 期限切れ（runL1Batch テスト用・依頼レーンのみ）。 */
+export const SELLER_RETEST_TEST_EXPIRED: SellerRetestRequest = {
+  id: "test-seller-retest-expired",
+  requestedOn: "2026-10-30",
+  sellerDomain: "mock-seller-retest-expired.example",
+  url: "https://mock-seller-retest.example/route/expired",
+  method: "GET",
+  network: BASE_CAIP2,
+  payTo: "0x00000000000000000000000000000000000000ee",
+  expiresOn: "2020-01-01",
+  amountUnits: "5000",
+};
+
 export function sellerRetestRequestCatalog(): readonly SellerRetestRequest[] {
-  if (process.env.OBSERVATORY_SELLER_RETEST_TEST_LIST === "1") return SELLER_RETEST_TEST_REQUESTS;
+  if (process.env.OBSERVATORY_SELLER_RETEST_TEST_LIST === "1")
+    return [...SELLER_RETEST_TEST_REQUESTS, SELLER_RETEST_TEST_EXPIRED];
   return SELLER_RETEST_REQUESTS;
+}
+
+function sellerRetestExplicitlyDisabled(): boolean {
+  const raw = process.env.OBSERVATORY_SELLER_RETEST_ENABLED?.trim();
+  if (!raw) return false;
+  const v = raw.toLowerCase();
+  return v === "false" || v === "0" || v === "off" || v === "no";
 }
 
 /** 依頼リストの処理（2026-10-30）。テストでは OBSERVATORY_SELLER_RETEST_TEST_LIST=1 のときだけ動く。本番 cron は既定 on。 */
 export function sellerRetestLaneEnabled(): boolean {
-  if (process.env.OBSERVATORY_SELLER_RETEST_ENABLED === "false") return false;
+  if (sellerRetestExplicitlyDisabled()) return false;
   if (process.env.OBSERVATORY_SELLER_RETEST_TEST_LIST === "1") return true;
-  if (process.env.OBSERVATORY_SELLER_RETEST_ENABLED === "true") return true;
+  if (process.env.OBSERVATORY_SELLER_RETEST_ENABLED?.trim().toLowerCase() === "true") return true;
   return process.env.NODE_ENV === "production";
 }
 

@@ -13,12 +13,14 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
-## 2026-10-30 Seller-requested one-shot L1 retests (Goldsky feeds)
+## 2026-10-30 Seller-requested one-shot L1 retests (Goldsky feeds, fix round)
 
-- **What**: Versioned request list (`src/lib/observatory/seller-retest-requests.ts`) drives up to 10 Base purchases per L1 batch before the ordinary candidate walk, separate from census/retest. Off-catalog URLs upsert `x402_endpoints` with `source = seller_retest_request`. Each run fetches 402, requires matching payTo and network accept, and enforces existing per-purchase and daily budget gates. Ledger rows use `raw_response_meta.selection = "seller_request"` and `sellerRequestId`; paid responses may record `x-goldsky-x402-balance` under `responseHeaders`.
-- **Why**: Goldsky asked vet402 to re-buy nine plain-USDC Base routes not fully listed in CDP/Circle discovery; seller-initiated “fix and re-buy” is the PMF line and should not be ad hoc.
-- **Impact**: Catalog sync reconcile still only touches `cdp_bazaar` and `circle_discovery`, so `seller_retest_request` rows are not delisted by diff. No SQL migration. Production list includes the nine `edge.goldsky.com` routes; tests set `OBSERVATORY_SELLER_RETEST_TEST_LIST=1`.
+- **What**: Seller-request rows (`source = seller_retest_request`) are excluded from ordinary L1 candidate SQL, census/retest, and L0 tier walks via `notSellerRetestRequestSourceSql()`. The lane fixes Base signing when other rails are preferred, enforces request POST bodies against 402 declarations, caps 10/run with DB one-shot guard (`claimSellerRequestAuthSlot` + partial unique index on `sellerRequestId` where `auth_nonce IS NOT NULL`), retries failed 402 fetches at most once per UTC day until expiry, and omits those endpoints from observatory public listing counts (purchases still publish normally).
+- **Why**: After the first fix, seller-request endpoints stayed in the primary L1 walk and were repurchased every sweep window; they must only be bought through the versioned request list.
+- **Impact**: Apply `scripts/sql/2026-10-30-seller-retest-request-id-unique.sql` once on production (additive index only). `OBSERVATORY_SELLER_RETEST_ENABLED` accepts `false`/`0`/`off`/`no` (case-insensitive). Tests: `OBSERVATORY_SELLER_RETEST_TEST_LIST=1`, `tests/l1-seller-retest.pg.test.ts`, `scripts/dev/mutation-check-seller-retest.sh`.
 - **Commits**: this entry.
+
+## 2026-10-30 Gateway lane buys GET (and catalog-declared POST) only
 
 - **What**: `gatewayCandidateRequestShapeWhere()` in `src/lib/observatory/arc-gateway.ts` now admits a listing only when its method is GET (null or empty method counts as GET, any case) or POST with `declared_input.body = 'declared'`. Before, any method other than POST passed, so DELETE, PUT and HEAD listings stayed selectable.
 - **Why**: Two api.aisa.one DELETE listings were still in the Gateway candidate set on 2026-10-29. A paid DELETE with an empty request is not a fair test of delivery, and the 10/29 Gateway recount (9 of 10 delivered, all GET) is the shape the Arc give-back report uses.

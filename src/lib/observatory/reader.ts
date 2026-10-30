@@ -28,6 +28,7 @@ import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publicProbeWord, publishedVerdict } f
 import { l0ReasonDetail, type L0ProbeDetail } from "./l0-reasons";
 import { isOperatorPayTo } from "./operator";
 import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatchPredicate } from "./operator-sql";
+import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { chainIdentity, chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate, judgedSettledCount } from "./delivery";
 import { l2ReadingOf } from "./l2-check";
@@ -990,7 +991,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
 
   // vet402's own endpoint(s) never pad the aggregate — a measurer is not a
   // neutral third party in its own numbers. Empty denylist → no-op.
-  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")} AND ${notSellerRetestRequestSourceSql()}`;
 
   try {
     // Publication-gated verdict per endpoint, computed in SQL with the same
@@ -1366,7 +1367,7 @@ export async function getObservatoryStatsByChain(
   // 2026-09-19 独立レビュー W1: §1 の総数だけが運営自身の endpoint を外していて、
   // このチェーン別集計は外していなかった（同じ頁の 2 表が別の母集団を数えていた）。
   // 述語は operator-sql.ts の 1 本を通す——写経を増やすと同じ写し忘れがまた起きる。
-  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")} AND ${notSellerRetestRequestSourceSql()}`;
 
   try {
     const raw = await db.execute(sql`
@@ -1507,7 +1508,7 @@ export async function getCoverageShare(): Promise<CoverageShare> {
       FROM x402_endpoints e
       -- 2026-09-19 再レビュー V1: ここだけ母集団が 4 つ目として残っていた。
       -- coverage7d は「カタログのどれだけを測れているか」なので、分母は §1 と同じ集合。
-      WHERE ${operatorExclusionPredicate("e")}
+      WHERE ${operatorExclusionPredicate("e")} AND ${notSellerRetestRequestSourceSql()}
     `);
     const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
       active: number;
@@ -1602,7 +1603,7 @@ const EMPTY_UNVERIFIED: UnverifiedBreakdown = {
 export async function getUnverifiedBreakdown(): Promise<UnverifiedBreakdown> {
   const db = getDb();
   if (!db) return EMPTY_UNVERIFIED;
-  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")}`;
+  const operatorExclusion = sql`WHERE ${operatorExclusionPredicate("e")} AND ${notSellerRetestRequestSourceSql()}`;
   try {
     const raw = await db.execute(sql`
       WITH latest AS (

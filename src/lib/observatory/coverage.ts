@@ -17,6 +17,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
+import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "./l0-rule-change";
 import { KEYED_CALLER_HASH_PREFIX } from "@/lib/decision/lookup-caller";
 
@@ -145,6 +146,11 @@ export function l0TierWhere(tier: "c1" | "c2", daily = true): SQL {
     SELECT 1 FROM ${lookupCallersSql()} lc
     WHERE lc.callers >= ${LOOKUP_CALLERS_C2_THRESHOLD} AND lc.days >= ${LOOKUP_DAYS_C2_THRESHOLD})`;
   return sql`e.status = 'active' AND ${notPathTemplateSql()} AND (${attributedWithinWindowSql(daily)} OR ${lookups})`;
+}
+
+/** L0 プローブ候補（c1/c2/all の tier 句 + 依頼行の除外）。L1 の l1TierWhere には混ぜない（lazyPrimary の CTE に source 列が無い）。 */
+export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
+  return sql`${l0TierWhere(tier, daily)} AND ${notSellerRetestRequestSourceSql()}`;
 }
 
 /**

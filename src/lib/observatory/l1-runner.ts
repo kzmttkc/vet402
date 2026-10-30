@@ -135,8 +135,10 @@ import {
 import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, liveOutputExampleHash, liveOutputExampleOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
 import {
   buildSellerRetestCandidate,
+  claimSellerRequestAuthSlot,
   completedSellerRequestIds,
   pendingSellerRetestRequests,
+  sellerRequestIdsAttemptedToday,
   sellerResponseHeadersOf,
   sellerRetestCatalogForBatch,
   utcDateString,
@@ -144,7 +146,7 @@ import {
   type SellerRequestGate,
   type SellerRequestUnpaid,
 } from "./seller-retest";
-import { resolveSellerRetestUrl, sellerRetestLaneEnabled } from "./seller-retest-requests";
+import { notSellerRetestRequestSourceSql, resolveSellerRetestUrl, sellerRetestLaneEnabled } from "./seller-retest-requests";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -1819,6 +1821,7 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
       -- Tempo（MPP・2026-09-17 レビュー #4）: directory は受取先を載せない。L0 が生きた challenge から
       -- 学習した pay_to を持つ行だけを L1 候補にする（受取先を知らない相手に署名しない）。
       AND (e.source <> 'mpp_directory' OR e.pay_to IS NOT NULL)
+      AND ${notSellerRetestRequestSourceSql()}
       -- 2026-09-29 監査 5 周目（中）: 全チェーンで、カタログが pay_to を宣言した https の出品だけを買う
       -- （purchaseOne の isL1PurchasableListing と同じ条件）。平文 http の 402 は経路上で payTo を差し替えられる。
       AND e.pay_to IS NOT NULL AND e.pay_to <> ''
@@ -2521,7 +2524,13 @@ export async function runL1Batch(
   // 最大 SELLER_RETEST_MAX_PER_RUN 件（census / retest の枠とは別）。playground の 1 件指定では走らない。
   if (!onlyEndpointId && sellerRetestLaneEnabled()) {
     const completedSeller = await completedSellerRequestIds(db);
-    const sellerPending = pendingSellerRetestRequests(sellerRetestCatalogForBatch(), completedSeller, utcDateString());
+    const attemptedToday = await sellerRequestIdsAttemptedToday(db);
+    const sellerPending = pendingSellerRetestRequests(
+      sellerRetestCatalogForBatch(),
+      completedSeller,
+      utcDateString(),
+      attemptedToday,
+    );
     summary.sellerRequestCandidates = sellerPending.length;
     for (const req of sellerPending) {
       const paidBudgetMsSeller = timeoutMs;
@@ -3475,7 +3484,29 @@ async function purchaseOne(input: {
       });
       return { kind: "skipped", settled: false, spent: 0n };
     }
+    if (method === "POST" && candidate.sellerRequestUnpaid?.body) {
+      const declared = declaredRequestBody({ bodyText: firstBody, headers: first.headers });
+      if (
+        declared?.source === "declared" &&
+        declared.body !== candidate.sellerRequestUnpaid.body
+      ) {
+        await record({
+          status: "no_eligible_accept",
+          rawResponseMeta: tagMeta({
+            phase: "unpaid",
+            reason: "seller_request_body_mismatch",
+            expectedBody: candidate.sellerRequestUnpaid.body,
+            declaredBody: declared?.body ?? null,
+          }),
+        });
+        return { kind: "skipped", settled: false, spent: 0n };
+      }
+    }
   }
+
+  const challengeForSelect = candidate.sellerRequest
+    ? { ...challenge, accepts: challenge.accepts.filter((a) => a.network === candidate.sellerRequest!.network) }
+    : challenge;
 
   const mppSelection = isTempo
     ? selectMppChallenge(mppChallenges, { declaredAmount: candidate.priceAmount, declaredPayTo: candidate.payTo })
@@ -3486,8 +3517,8 @@ async function purchaseOne(input: {
   // 封筒は v2 だけ（正本に v1 の形が無い）。
   const xrplSecondary =
     xrplLanePreferred && !isXrplPrimary && !isSolana && !isTempo && xrplPayer && xrplWallet
-      ? challenge.x402Version === 2
-        ? xrplPayer.selectXrplSecondaryAccept(challenge.accepts, {
+      ? challengeForSelect.x402Version === 2
+        ? xrplPayer.selectXrplSecondaryAccept(challengeForSelect.accepts, {
             declaredAmount: candidate.priceAmount,
             declaredNetwork: candidate.network,
             declaredPayTo: candidate.payTo,
@@ -3510,8 +3541,8 @@ async function purchaseOne(input: {
   // 行の raw_response_meta.stellarLane に残す。封筒は v2 だけ。
   const stellarSecondary =
     stellarLanePreferred && !isStellarPrimary && !isSolana && !isTempo && !isXrpl && stellarPayer && stellarAddress
-      ? challenge.x402Version === 2
-        ? stellarPayer.selectStellarAccept(challenge.accepts, {
+      ? challengeForSelect.x402Version === 2
+        ? stellarPayer.selectStellarAccept(challengeForSelect.accepts, {
             declaredAmount: candidate.priceAmount,
             declaredPayTo: candidate.payTo,
             declaredPayTos: candidate.stellarDeclaredPayTos,
@@ -3533,7 +3564,7 @@ async function purchaseOne(input: {
   const stellarSelection = stellarSecondary?.accept
     ? stellarSecondary
     : isStellar
-      ? stellarPayer!.selectStellarAccept(challenge.accepts, {
+      ? stellarPayer!.selectStellarAccept(challengeForSelect.accepts, {
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
         })
@@ -3542,9 +3573,9 @@ async function purchaseOne(input: {
   // 署名できる accept が他に無いときの拒否だけ行に残す。
   const gatewayPick =
     arcGatewayPreferred && !isSolana && !isTempo && !isXrpl && !isStellar
-      ? selectArcGatewayAccept(challenge.accepts, {
-          nativeArcSignable: hasSignableNativeArcAccept(challenge.accepts),
-          otherChainSignable: hasSignableOtherRailAccept(challenge.accepts),
+      ? selectArcGatewayAccept(challengeForSelect.accepts, {
+          nativeArcSignable: hasSignableNativeArcAccept(challengeForSelect.accepts),
+          otherChainSignable: hasSignableOtherRailAccept(challengeForSelect.accepts),
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
           declaredNetwork: candidate.network,
@@ -3555,8 +3586,8 @@ async function purchaseOne(input: {
     gatewayPick &&
     !gatewayPick.accept &&
     gatewayPick.reason !== "native_present" &&
-    !hasSignableOtherRailAccept(challenge.accepts) &&
-    !hasSignableNativeArcAccept(challenge.accepts)
+    !hasSignableOtherRailAccept(challengeForSelect.accepts) &&
+    !hasSignableNativeArcAccept(challengeForSelect.accepts)
   ) {
     await record({
       status: gatewayPick.reason,
@@ -3578,17 +3609,17 @@ async function purchaseOne(input: {
     : stellarSelection !== null
     ? stellarSelection
     : isSolana
-    ? selectSolanaAccept(challenge.accepts, {
+    ? selectSolanaAccept(challengeForSelect.accepts, {
         declaredAmount: candidate.priceAmount,
         declaredPayTo: candidate.payTo,
         payerAddress: solanaKeypair?.publicKey.toBase58() ?? null,
       })
     : isXrplPrimary
-      ? xrplPayer!.selectXrplAccept(challenge.accepts, {
+      ? xrplPayer!.selectXrplAccept(challengeForSelect.accepts, {
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
         })
-      : selectAccept(challenge.accepts, {
+      : selectAccept(challengeForSelect.accepts, {
           declaredAmount: candidate.priceAmount,
           declaredPayTo: candidate.payTo,
           // 宣言額はカタログの先頭 accept（e.network）の値。別チェーンの accept とは比べない。
@@ -3673,7 +3704,11 @@ async function purchaseOne(input: {
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
-    method === "POST" ? declaredRequestBody({ bodyText: firstBody, headers: first.headers }) : null;
+    method === "POST"
+      ? candidate.sellerRequestUnpaid?.body
+        ? { body: candidate.sellerRequestUnpaid.body, source: "declared" }
+        : declaredRequestBody({ bodyText: firstBody, headers: first.headers })
+      : null;
   // Gateway の POST で 402 が本文を宣言していなければ、署名・予約の前に見送る（`{}` を送って払わない）。
   // 行は書かないので、次の回も選ばれ直す。目録が declared なのに 402 が宣言しない出品は 2026-10-29 の実測で 0 件。
   // summary.gatewayPostBodyUnknownSignSkipped が増え続けたら、no_eligible_accept の行を書いて窓から外す形に変える。
@@ -3907,6 +3942,18 @@ async function purchaseOne(input: {
       rawResponseMeta: { reason: "daily_budget_exceeded", dailyBudgetUsd: DAILY_BUDGET_USD },
     });
     return { kind: "budget_denied", settled: false, spent: 0n };
+  }
+
+  if (candidate.sellerRequest) {
+    const claim = await claimSellerRequestAuthSlot(db, reservation.rowId, candidate.sellerRequest.id);
+    if (!claim.ok) {
+      await releaseUnsignedReservation(db, reservation.rowId, {
+        status: "request_error",
+        rawResponseMeta: tagMeta({ phase: "pre_sign", reason: "seller_request_already_claimed", detail: claim.reason }),
+      });
+      invalidateDecisionCache(candidate.id);
+      return { kind: "skipped", settled: false, spent: 0n };
+    }
   }
 
   // 2026-09-04 監査 P1-2: **予約より後は、何が飛んでも行を in_flight のまま

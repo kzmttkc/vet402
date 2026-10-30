@@ -15,7 +15,8 @@ import { x402L0Probes } from "@/lib/db/schema";
 import { probeEndpoint, type ProbeResult } from "./l0-probe";
 import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { withDailyFallback } from "@/lib/settlements/rollup";
-import { l0OrderBy, l0TierWhere } from "./coverage";
+import { l0OrderBy, l0ProbeTierWhere } from "./coverage";
+import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -92,7 +93,10 @@ export async function runL0ProbeBatch(
     tier = "all",
     priorityRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
   } = options;
-  const where = (daily: boolean) => (tier === "all" ? sql`e.status = 'active'` : l0TierWhere(tier, daily));
+  const where = (daily: boolean) =>
+    tier === "all"
+      ? sql`e.status = 'active' AND ${notSellerRetestRequestSourceSql()}`
+      : l0ProbeTierWhere(tier, daily);
   const freshness = tier === "c2" ? sql`AND (lp.last_probed_at IS NULL OR lp.last_probed_at < now() - interval '5 hours')` : sql``;
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");

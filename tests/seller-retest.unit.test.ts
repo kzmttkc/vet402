@@ -68,6 +68,6 @@ test("pendingSellerRetestRequests: expiry and completion", async () => {
   assert.equal(isSellerRetestRequestActive(req, "2026-10-30"), false);
   const pending = pendingSellerRetestRequests([{ ...req, expiresOn: "2027-01-01" }], new Set(["a"]), "2026-10-30");
   assert.equal(pending.length, 0);
-  const pending2 = pendingSellerRetestRequests([{ ...req, id: "b", expiresOn: "2027-01-01" }], new Set(), "2026-10-30", 10);
+  const pending2 = pendingSellerRetestRequests([{ ...req, id: "b", expiresOn: "2027-01-01" }], new Set(), "2026-10-30", new Set(), 10);
   assert.equal(pending2.length, 1);
 });

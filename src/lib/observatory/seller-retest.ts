@@ -63,6 +63,7 @@ export async function completedSellerRequestIds(db: NonNullable<ReturnType<typeo
     FROM x402_l1_purchases pu
     WHERE pu.raw_response_meta->>'sellerRequestId' IS NOT NULL
       AND pu.auth_nonce IS NOT NULL
+      AND pu.auth_nonce NOT LIKE 'presign:%'
   `);
   const list = (Array.isArray(rows) ? rows : ((rows as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])) as Record<
     string,
@@ -75,16 +76,77 @@ export async function completedSellerRequestIds(db: NonNullable<ReturnType<typeo
   );
 }
 
+/** UTC 日のうちに sellerRequestId 付きの行を書いた依頼（402 失敗も含む・1 日 1 回の再試行用）。 */
+export async function sellerRequestIdsAttemptedToday(
+  db: NonNullable<ReturnType<typeof import("@/lib/db/client").getDb>>,
+): Promise<Set<string>> {
+  const rows = await db.execute(sql`
+    SELECT DISTINCT pu.raw_response_meta->>'sellerRequestId' AS id
+    FROM x402_l1_purchases pu
+    WHERE pu.raw_response_meta->>'sellerRequestId' IS NOT NULL
+      AND pu.attempted_at >= date_trunc('day', now() AT TIME ZONE 'UTC')
+  `);
+  const list = (Array.isArray(rows) ? rows : ((rows as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])) as Record<
+    string,
+    unknown
+  >[];
+  return new Set(
+    list
+      .map((r) => r.id)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
+}
+
+export type SellerRequestAuthClaim = { ok: true } | { ok: false; reason: "already_claimed" | "write_failed" };
+
+/**
+ * 署名の前に sellerRequestId の auth 枠を 1 行だけ確保する（部分一意索引と併用）。
+ * auth_nonce = presign:<rowId> は完了判定に数えない（completedSellerRequestIds）。
+ */
+export async function claimSellerRequestAuthSlot(
+  db: NonNullable<ReturnType<typeof import("@/lib/db/client").getDb>>,
+  rowId: string,
+  sellerRequestId: string,
+): Promise<SellerRequestAuthClaim> {
+  const presign = `presign:${rowId}`;
+  try {
+    const raw = await db.execute(sql`
+      UPDATE x402_l1_purchases pu
+      SET auth_nonce = ${presign}
+      WHERE pu.id = ${rowId}::uuid
+        AND pu.auth_nonce IS NULL
+        AND pu.raw_response_meta->>'sellerRequestId' = ${sellerRequestId}
+        AND NOT EXISTS (
+          SELECT 1 FROM x402_l1_purchases o
+          WHERE o.raw_response_meta->>'sellerRequestId' = ${sellerRequestId}
+            AND o.auth_nonce IS NOT NULL
+            AND o.id <> ${rowId}::uuid
+        )
+      RETURNING pu.id::text AS id
+    `);
+    const list = (Array.isArray(raw) ? raw : ((raw as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])) as Record<
+      string,
+      unknown
+    >[];
+    if (list[0]?.id === rowId) return { ok: true };
+    return { ok: false, reason: "already_claimed" };
+  } catch {
+    return { ok: false, reason: "write_failed" };
+  }
+}
+
 export function pendingSellerRetestRequests(
   catalog: readonly SellerRetestRequest[],
   completed: Set<string>,
   todayUtc: string,
+  attemptedToday: Set<string> = new Set(),
   limit = SELLER_RETEST_MAX_PER_RUN,
 ): SellerRetestRequest[] {
   const out: SellerRetestRequest[] = [];
   for (const req of catalog) {
     if (out.length >= limit) break;
     if (completed.has(req.id)) continue;
+    if (attemptedToday.has(req.id)) continue;
     if (!isSellerRetestRequestActive(req, todayUtc)) continue;
     out.push(req);
   }
