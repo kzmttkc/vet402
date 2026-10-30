@@ -629,6 +629,11 @@ export const x402Endpoints = pgTable(
      * catalog-sync が毎日書く。NULL は「まだ読んでいない」（判定はスキーマだけで行う）。
      */
     declaredInput: jsonb("declared_input"),
+    /**
+     * CDP Bazaar のカーソルがこの行を最後に見た周回の番号（x402_catalog_cursors.pass_seq・2026-10-30 設計 v5）。
+     * NULL = カーソルがまだ一度も見ていない（circle_discovery・mpp_directory だけの行、カーソル導入前の行）。
+     */
+    lastSeenPass: integer("last_seen_pass"),
   },
   (t) => [
     uniqueIndex("x402_endpoints_key_source_unique").on(t.resourceKey, t.source),
@@ -693,6 +698,47 @@ export const x402CatalogSnapshots = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
   },
   (t) => [uniqueIndex("x402_catalog_snapshots_date_source_unique").on(t.snapshotDate, t.source)],
+);
+
+/**
+ * CDP Bazaar の目録を続きから読むカーソル（2026-10-30 設計 v5・docs/catalog-staleness-contract.md）。目録ごとに 1 行。
+ * lease は lease_until と lease_holder の 1 文の UPDATE で原子的に取る（セッションの advisory lock は使わない）。
+ */
+export const x402CatalogCursors = pgTable("x402_catalog_cursors", {
+  source: text("source").primaryKey(),
+  /** 次に読む offset。ページを読むたびに、連続して読み終えたページの直後へ進める。 */
+  nextOffset: integer("next_offset").notNull().default(0),
+  /** いま回っている周回の番号（1 から）。周回を閉じたら +1。 */
+  passSeq: integer("pass_seq").notNull().default(1),
+  passStartedAt: timestamp("pass_started_at", { withTimezone: true }),
+  /** いまの周回で読んだページ（失敗を含む）と、そのうち読めなかったページ。周回を閉じたら 0 に戻す。 */
+  passPagesRead: integer("pass_pages_read").notNull().default(0),
+  passPagesFailed: integer("pass_pages_failed").notNull().default(0),
+  /** 最後に閉じた周回（弱い周回を含む）。 */
+  lastPassCompletedAt: timestamp("last_pass_completed_at", { withTimezone: true }),
+  /** 最後に閉じた強い周回。見張りと公開の鮮度の欄はこれで判定する。 */
+  lastStrongPassCompletedAt: timestamp("last_strong_pass_completed_at", { withTimezone: true }),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseHolder: uuid("lease_holder"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+});
+
+/** 閉じた周回の記録（2026-10-30 設計 v5）。閉じる条件 (a) は weak = false の行を数える。 */
+export const x402CatalogPasses = pgTable(
+  "x402_catalog_passes",
+  {
+    source: text("source").notNull(),
+    passSeq: integer("pass_seq").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    totalAtClose: integer("total_at_close").notNull(),
+    pagesRead: integer("pages_read").notNull(),
+    pagesFailed: integer("pages_failed").notNull(),
+    /** pages_failed / pages_read > 0.05。閉じる判定の周回に数えない。 */
+    weak: boolean("weak").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.source, t.passSeq] })],
 );
 
 /** L0 probe results — the fact timeline. Facts only; the verdict vocabulary is closed: pass | fail | unverified. */

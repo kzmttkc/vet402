@@ -292,6 +292,11 @@ export async function syncCatalog(
      * 消さない。Bazaar（既定 false）は従来どおり出どころの値で上書きする。
      */
     keepLearnedPayTo?: boolean;
+    /**
+     * 現在時刻（2026-10-30 設計 v5・docs/catalog-staleness-contract.md）。閉じる回（closeCatalogListings）に渡す now。
+     * 既定 () => new Date()。実装が入るまで読まない（殻）。
+     */
+    clock?: () => Date;
   } = {},
 ): Promise<SyncSummary> {
   const db = getDb();

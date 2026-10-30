@@ -918,6 +918,14 @@ export type ObservatoryStats = {
   latestSnapshot: CatalogSnapshot | null;
   /** source ごとの最新スナップショット（Bazaar・mpp_directory）。取得時点は面で別々に出す。 */
   catalogSnapshots: CatalogSnapshot[];
+  /**
+   * CDP Bazaar の取り込みの鮮度（2026-10-30 設計 v5・docs/catalog-staleness-contract.md）。最後に閉じた強い周回が
+   * 36 時間より前なら true（強い周回が無いときは契約書 4.4 の規則）。max(last_seen_at) では判定しない。値は getCdpBazaarIngestFreshness が決める。
+   * 実装が入るまでは省略可（殻）。実装で必須にする。
+   */
+  cdpBazaarIngestStale?: boolean;
+  /** 最後に閉じた強い周回の completed_at（ISO8601 UTC）。無ければ null。実装で必須にする。 */
+  cdpBazaarLastStrongPassAt?: string | null;
 };
 
 /** 1 カタログ source の最新取得。fetchedCount < totalCount はその source だけの不完全さ。 */
@@ -946,6 +954,18 @@ export type L1ChainStats = {
   settledNonceBound: number;
   settledAmountPayeeOnly: number;
 };
+
+/**
+ * 公開の鮮度の欄（cdpBazaarIngestStale）の判定（2026-10-30 設計 v5 の 4）。x402_catalog_cursors の
+ * last_strong_pass_completed_at で決める。getObservatoryStats はこの関数の結果をそのまま載せる。
+ * 殻（docs/catalog-staleness-contract.md）。
+ */
+export async function getCdpBazaarIngestFreshness(
+  options: { now?: Date } = {},
+): Promise<{ lastStrongPassAt: string | null; stale: boolean }> {
+  void options;
+  throw new Error("not implemented");
+}
 
 export async function getObservatoryStats(): Promise<ObservatoryStats> {
   const empty: ObservatoryStats = {

@@ -909,6 +909,12 @@ const DAILY_BUDGET_UNITS = BigInt(DAILY_BUDGET_USD) * BigInt(USDC_PER_USD);
  */
 export const L1_BATCH_BUDGET_MS = 210_000;
 
+/**
+ * L0 の目録の同期でこの時間見えていない cdp_bazaar の active 行は L1 の候補にしない（2026-10-30 設計 v5 の 5・
+ * docs/catalog-staleness-contract.md）。circle_discovery・mpp_directory は対象外。候補 SQL への組み込みは実装で入る。
+ */
+export const CDP_BAZAAR_L1_FRESH_HOURS = 36;
+
 /** 1購入あたり、2本の HTTP 以外（署名・DB・blockhash RPC）に見込む余裕。 */
 export const L1_PURCHASE_SLACK_MS = 20_000;
 
