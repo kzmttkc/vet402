@@ -122,7 +122,9 @@ export default async function ObservatoryPage({
                   {/* 2026-09-04 監査 E: 「16,260 / 16,182」は何割る何か分からず、しかも左が大きい。
                       左は catalog-source.ts の fetchedCount＝ページ横断で受け取った生件数（resource_key
                       で重複を畳む前）、右は totalCount＝カタログが pagination.total で自己申告した総数。
-                      重複 URL が正規化で 1 本に畳まれるので、生件数が総数を超えうる。語で言う。 */}
+                      重複 URL が正規化で 1 本に畳まれるので、生件数が総数を超えうる。語で言う。
+                      2026-10-30（設計 v5）: Bazaar の fetchedCount はカーソルの周回で見えた行の数（重複を畳んだ後）に変わった。
+                      総数を下回りうる。 */}
                   {/* 2026-09-19 レビュー W8: この行は Bazaar の snapshot だけを出す
                       （reader が主カタログを名指しで取るようになった）。何のカタログの
                       取得健全性かを書かないと、頁の総数（MPP ディレクトリの行も含む）の
@@ -130,7 +132,7 @@ export default async function ObservatoryPage({
                   Bazaar catalog snapshot{" "}
                   <span className="text-signal">{overview.latestSnapshot.snapshotDate}</span>{" "}
                   <span
-                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. Fetched counts raw items across pages before duplicate URLs collapse into one key, so it can exceed the reported total. The register also lists endpoints from the MPP directory and the Circle x402 discovery, which are fetched separately. /observatory/state prints each catalog's own as-of line. See section 2.`}
+                    title={`${overview.latestSnapshot.fetchedCount.toLocaleString()} entries fetched by vet402 from the CDP x402 Bazaar out of the ${overview.latestSnapshot.totalCount.toLocaleString()} that catalog reports about itself. For the Bazaar, fetched is the number of listings seen in the latest full read, counted once per endpoint key. A full read is spread over several runs about two hours apart, and a listing that moves within the catalog's order during a read can be missed by that read, so fetched can sit below the reported total. /observatory/state says whether that read was a strong pass or a weak pass (more than 5% of its pages unreadable). The register also lists endpoints from the MPP directory and the Circle x402 discovery, which are fetched separately. /observatory/state prints each catalog's own as-of line. See section 2.`}
                   >
                     · fetched {overview.latestSnapshot.fetchedCount.toLocaleString()} of catalog{" "}
                     {overview.latestSnapshot.totalCount.toLocaleString()}
@@ -495,10 +497,12 @@ export default async function ObservatoryPage({
           <em>receipt</em> on these pages is the seller&apos;s own settlement receipt.
         </p>
         <p className="doc-p">
-          <strong>Snapshot line.</strong> <em>fetched</em> is the number of raw catalog items received across
-          pages, counted before duplicate URLs collapse into one endpoint key; <em>catalog</em> is the total
-          the catalog reports about itself. Fetched can exceed the catalog total for that reason, and a fetch
-          below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
+          <strong>Snapshot line.</strong> For the Bazaar, <em>fetched</em> is the number of listings seen in the
+          latest full read, counted once per endpoint key; <em>catalog</em> is the total the catalog reports about
+          itself. A full read is spread over several runs, and a listing that moves within the catalog&apos;s order during
+          the read can be missed by it, so fetched can sit below the catalog total. /observatory/state marks each full
+          read as a strong pass or a weak pass (more than 5% of its pages unreadable). For the MPP directory and the
+          Circle x402 discovery, a fetch below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
           (Figure 1) include delisted entries; the Catalog column says which are still listed. The{" "}
           <em>active</em> count under Figure 1 is a different figure from the catalog total on the snapshot
           line: it counts endpoint rows on record whose catalog status is still <code>active</code>. That

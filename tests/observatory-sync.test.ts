@@ -254,9 +254,10 @@ if (!TEST_DB) {
       await syncCatalog({ fetchResult: pack([other(3)]), today: "2026-10-04", source: "circle_discovery" });
       shared = await rowsFor(cdpItem.resourceKey);
       assert.equal(shared.length, 1);
-      assert.equal(shared[0]?.status, "delisted", "両方の完全な snapshot から消えたら持ち主の行も delist");
-      // 10/3 の Circle は鍵を載せ、CDP の最新の完全な取得には無い。持ち主は Circle に移ってから delist する。
-      assert.equal(shared[0]?.source, "circle_discovery");
+      // 第1段（2026-10-30 点検 X1）: Circle の同期は cdp の不在を証明済みとして扱わないので、cdp が持ち主の行を Circle へ移さず、
+      // cdp に載る行は閉じない（origin/main ではここで持ち主が Circle に移ってから delisted）。Circle だけの gwOnly は今までどおり閉じる。
+      assert.equal(shared[0]?.status, "active", "第1段: cdp に載る共有の行は閉じない");
+      assert.equal(shared[0]?.source, "cdp_bazaar");
       assert.equal((await rowsFor(gwOnly.resourceKey))[0]?.status, "delisted");
 
       await syncCatalog({ fetchResult: pack([cdpItem]), today: "2026-10-05", source: "cdp_bazaar" });
@@ -375,14 +376,16 @@ if (!TEST_DB) {
         source: "circle_discovery",
       });
       row = (await rowsFor(cdp.resourceKey))[0];
-      assert.equal(row?.status, "delisted");
-      assert.equal(summary.events.filter((e) => e.eventType === "delisted").length, 1);
+      // 第1段（2026-10-30 点検 X1）: 持ち主が cdp の行は Circle の同期で Circle に移らず、閉じない（origin/main では delisted・事象 1 行）。
+      assert.equal(row?.status, "active");
+      assert.equal(row?.source, "cdp_bazaar");
+      assert.equal(summary.events.filter((e) => e.eventType === "delisted").length, 0);
       await syncCatalog({
         fetchResult: pack([circleOf("https://other.example/b", [gwAccept])]),
         today: "2026-11-04",
         source: "circle_discovery",
       });
-      assert.equal(await delistCount(), 1, "翌日も事象は増えない");
+      assert.equal(await delistCount(), 0, "翌日も事象は出ない");
     });
 
     await t.test("同じ日に 2 回走っても delisted の事象は 1 行", async () => {
@@ -596,14 +599,17 @@ if (!TEST_DB) {
       await syncCatalog({ fetchResult: pack([cdpOf("https://other-move.example/a", [baseAccept])]), today: "2027-03-02", source: "cdp_bazaar" });
       await syncCatalog({ fetchResult: pack([circle]), today: "2027-03-02", source: "circle_discovery" });
       const after = (await rowsFor(cdp.resourceKey))[0];
-      assert.equal(after?.source, "circle_discovery");
-      assert.equal(after?.method, "POST");
-      assert.equal(after?.resourceId, newId);
+      // 第1段（2026-10-30 点検 X1）: Circle の同期は cdp が持ち主の行を Circle へ移さない（origin/main では持ち主が Circle に移り、
+      // method が POST・resource_id が新しい id になって古い id が別名で解決された）。行は cdp のまま、id も変わらない。
+      assert.equal(after?.source, "cdp_bazaar");
+      assert.equal(after?.method, "GET");
+      assert.equal(after?.resourceId, oldId);
       assert.equal(after?.qualityCalls30d, 42);
       assert.equal(after?.qualityPayers30d, 7);
       assert.deepEqual(after?.declaredInput, before?.declaredInput);
+      void newId;
       const resolved = await getResource(oldId);
-      assert.equal(resolved?.resource_id, newId);
+      assert.equal(resolved?.resource_id, oldId);
       assert.equal(resolved?.observatory_id, after?.id);
     });
 

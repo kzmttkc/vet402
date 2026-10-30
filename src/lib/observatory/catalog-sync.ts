@@ -368,7 +368,12 @@ export async function syncCatalog(
       : null;
 
   const sibling = sharedSibling(source);
-  const siblingListing = sibling ? await loadSiblingListing(db, sibling) : { keys: new Set<string>(), latestComplete: false, absenceProven: false };
+  const loadedSibling = sibling ? await loadSiblingListing(db, sibling) : { keys: new Set<string>(), latestComplete: false, absenceProven: false };
+  // 第1段（2026-10-30 点検 X1）: Circle の同期では、cdp の兄弟の不在を証明済みとして扱わない。カーソルの周回の snapshot は
+  // 読めないページ（5% まで）と並びのずれの読み落としを許すので、「cdp に無い」の証明には使えない。証明済みとして使うと、
+  // cdp が載せている行の持ち主を Circle へ移して cdp の accepts を消し、cdp に載る印が無くなった行を次の日に閉じる。
+  const cdpSiblingUnproven = sibling === CATALOG_SOURCE;
+  const siblingListing: SiblingListing = cdpSiblingUnproven ? { ...loadedSibling, absenceProven: false } : loadedSibling;
   const siblingRows = new Map<string, SiblingIdentity>();
   if (sibling) {
     // Circle 側は行が少ないので id・鍵・status だけ全部読む。accepts は今回触る鍵だけ。
@@ -412,7 +417,8 @@ export async function syncCatalog(
   const transferItems: ParsedCatalogItem[] = [];
   for (const item of result.items) {
     const ownedBySibling = siblingRows.has(item.resourceKey);
-    if (ownedBySibling && siblingListing.absenceProven && !siblingListing.keys.has(item.resourceKey)) {
+    // 第1段: cdp が持ち主の行は Circle の同期で持ち主を移さない（cdpSiblingUnproven で absenceProven は false だが、ここでも止める）。
+    if (ownedBySibling && !cdpSiblingUnproven && siblingListing.absenceProven && !siblingListing.keys.has(item.resourceKey)) {
       transferItems.push(item);
     } else if (ownedBySibling) {
       sharedItems.push(item);
@@ -423,6 +429,9 @@ export async function syncCatalog(
 
   const keepSiblingSlice = (key: string, existingBySource: unknown): boolean => {
     if (!sibling) return false;
+    // 第1段: Circle の同期は、行がもう持っている cdp の accepts の slice を消さない（無い slice は作らない。
+    // accepts_by_source が NULL の旧い行に「cdp の slice」を作ると、Circle だけの行が閉じなくなる）。
+    if (cdpSiblingUnproven && hasSiblingSlice(existingBySource, sibling)) return true;
     if (siblingListing.keys.has(key)) return true;
     return !siblingListing.absenceProven && hasSiblingSlice(existingBySource, sibling);
   };
@@ -828,7 +837,9 @@ export async function syncCatalog(
   // 日次の突き合わせ。自分の取得が完全な日だけ行う。両方の不在が証明でき、
   // どちらの集合にも無い active 行を閉じる。不完全な日は判定しない。
   const reconcileEvents: CatalogDiffEvent[] = [];
-  if (sibling && result.complete && siblingListing.absenceProven) {
+  // 第1段: Circle の同期の突き合わせは、cdp の不在の証明を待たずに走らせる。閉じてよいのは cdp に載る印の無い行だけ
+  // （CDP_LISTED_ROW_SQL で外す）なので、cdp の不在は判定に要らない。origin/main の Circle だけの行の閉じ方を保つ。
+  if (sibling && result.complete && (siblingListing.absenceProven || cdpSiblingUnproven)) {
     const flippedRaw = await db.execute(sql`
       UPDATE x402_endpoints
       SET status = 'delisted', delisted_at = now()

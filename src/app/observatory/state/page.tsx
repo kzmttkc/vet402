@@ -247,9 +247,15 @@ export default async function ObservatoryStatePage() {
                 <span key={s.source} className="doc-asof">
                   {catalogSourceLabel(s.source)} as of{" "}
                   <span className="text-signal">{s.snapshotDate}</span>
-                  {s.fetchedCount >= s.totalCount
-                    ? ""
-                    : " (incomplete fetch — this catalog's figures provisional)"}
+                  {/* 2026-10-30（設計 v5）: Bazaar の snapshot はカーソルの周回で書く。fetchedCount はその周回で見えた行の数
+                      （重複を畳んだ後）なので強い周回でも総数を下回りうる。完全さは件数ではなく周回の強弱で出す。 */}
+                  {s.source === "cdp_bazaar" && s.complete === true
+                    ? " (strong pass)"
+                    : s.source === "cdp_bazaar" && s.complete === false
+                      ? " (weak pass: more than 5% of pages unreadable — this catalog's figures provisional)"
+                      : s.fetchedCount >= s.totalCount
+                        ? ""
+                        : " (incomplete fetch — this catalog's figures provisional)"}
                 </span>
               ))
             )}

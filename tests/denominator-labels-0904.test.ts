@@ -32,8 +32,11 @@ test("observatory doc-head names fetched vs catalog total in words", () => {
   const head = page.slice(page.indexOf('className="doc-head'), page.indexOf("doc-title"));
   assert.match(head, /fetched/, "the first number is called fetched");
   assert.match(head, /of catalog/, "the second number is called the catalog total");
-  // fetched > total の理由（重複 URL の正規化前の生件数）が本文で読める
-  assert.match(page, /before duplicate/i);
+  // 2026-10-30（設計 v5）: Bazaar の fetched はカーソルの周回で見えた行の数（重複を畳んだ後）に変わり、総数を下回りうる。
+  // その定義と理由が本文で読め、古い定義（重複を畳む前の生件数で総数を超えうる）は残っていない。
+  assert.match(page, /counted once per endpoint key/i);
+  assert.match(page, /can sit below the (reported|catalog) total/i);
+  assert.equal(/before duplicate/i.test(page), false);
 });
 
 test("State §3: attempts-denominator and endpoints-denominator rows carry different labels", () => {

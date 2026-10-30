@@ -934,6 +934,11 @@ export type CatalogSnapshot = {
   snapshotDate: string;
   totalCount: number;
   fetchedCount: number;
+  /**
+   * snapshot の complete 列（2026-10-30 設計 v5）。Bazaar はカーソルの周回の強弱（true = 強い周回、false = 弱い周回）。
+   * NULL は列ができる前の行。Bazaar の fetchedCount はその周回で見えた行の数（重複を畳んだ後）で、総数を下回りうる。
+   */
+  complete?: boolean | null;
 };
 
 /** 1 チェーン分の L1 実測。settledNonceBound + settledAmountPayeeOnly = settled。 */
@@ -1316,7 +1321,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     // 読むと、日数 × source で伸び続ける表を毎リクエスト舐めることになる。
     const snapRaw = await db.execute(sql`
       SELECT DISTINCT ON (source)
-             source, snapshot_date, total_count, fetched_count
+             source, snapshot_date, total_count, fetched_count, complete
       FROM x402_catalog_snapshots
       ORDER BY source, snapshot_date DESC
     `);
@@ -1325,6 +1330,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       snapshot_date: string;
       total_count: number;
       fetched_count: number;
+      complete: boolean | null;
     }[];
     const latestBySource = new Map<string, CatalogSnapshot>();
     for (const r of snapRows) {
@@ -1333,6 +1339,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         snapshotDate: String(r.snapshot_date),
         totalCount: Number(r.total_count ?? 0),
         fetchedCount: Number(r.fetched_count ?? 0),
+        complete: r.complete === null || r.complete === undefined ? null : Boolean(r.complete),
       });
     }
     const snap = latestBySource.get(CATALOG_SOURCE) ?? null;

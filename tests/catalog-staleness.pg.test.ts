@@ -791,4 +791,49 @@ if (!TEST_DB) {
     assert.equal(ev.length, 1);
     assert.equal(ev[0].detected_on, h.dayIso(BASE + DAY));
   });
+
+  // ==========================================================
+  test("T15 phase1: 導入前から cdp が持つ共有の行は、周回でそのページだけ読めず（強い周回）、Circle が載せた翌日に Circle から消えても閉じない（X1 の形。同じ入力で Circle だけの行は閉じる）", { timeout: 300_000 }, async () => {
+    // 2026-10-30 点検 X1。強い周回は読めないページ 5% までと並びのずれの読み落としを許すので、その snapshot は「cdp に無い」の
+    // 証明にならない。第1段の Circle の同期は cdp の不在を証明済みとして扱わず、cdp に載る行の持ち主を移さず cdp の slice を消さない。
+    // 第2段で T14 と一緒に T04〜T11 に置き換える。
+    const m = await load();
+    const h = helpers(m);
+    await h.truncate();
+    const X = "https://t15-x.example/api";
+    const Q = "https://t15-circle-only.example/v1";
+    const anchor = "https://t15-circle-anchor.example/v1";
+    const clock = new VirtualClock(BASE);
+    // 導入前: 旧の cdp の同期（不完全）が X を持ち、Circle も X を載せる（X は cdp が持ち主の共有の行、last_seen_pass は NULL）。
+    await m.syncCatalog({
+      fetchResult: { items: [m.parseCatalogItem(cdpItem({ resource: X }))], totalCount: 100_800, fetchedCount: 80_000, complete: false },
+      today: h.dayIso(BASE - DAY),
+      source: CDP,
+    });
+    await h.circleDay(clock, BASE - DAY + HOUR, [X, anchor]);
+    const before = rowsOf<{ source: string; last_seen_pass: number | null; by: Record<string, unknown> | null }>(
+      await m.db.execute(m.sql`SELECT source, last_seen_pass, accepts_by_source AS by FROM x402_endpoints WHERE resource_key = ${h.keyOf(X)}`),
+    )[0];
+    assert.equal(before.source, CDP, "前提: X の持ち主は cdp");
+    assert.equal(before.last_seen_pass, null, "前提: カーソルはまだ X を見ていない");
+    // 導入後の最初の周回: X のいるページ（page 7）だけ 500 を返し続ける（1/30 = 3.3% なので強い周回）。
+    const filler = entries("t15-cdp", 2_999);
+    const list = [...filler.slice(0, 700), { resource: X }, ...filler.slice(700)];
+    const api = mockCatalog(clock, () => list, { override: (offset) => (Math.floor(offset / 100) === 7 ? serverError() : null) });
+    const pass = await h.callAt(clock, BASE, api.fetchImpl, "pass 1");
+    assert.equal(pass.closedPass?.weak, false, "前提: 1/30 の読めないページは強い周回");
+    assert.equal(pass.closedPass?.pagesFailed, 1);
+    // Circle の 1 日目は X を載せ、2 日目は載せない。Circle だけの Q も 1 日目だけ載る。
+    await h.circleDay(clock, BASE + DAY, [X, Q, anchor]);
+    const mid = rowsOf<{ source: string; by: Record<string, unknown> | null }>(
+      await m.db.execute(m.sql`SELECT source, accepts_by_source AS by FROM x402_endpoints WHERE resource_key = ${h.keyOf(X)}`),
+    )[0];
+    assert.equal(mid.source, CDP, "Circle の同期が、cdp に載る行の持ち主を circle_discovery へ移した");
+    assert.ok(Array.isArray(mid.by?.[CDP]) && (mid.by?.[CDP] as unknown[]).length > 0, "Circle の同期が cdp の accepts の slice を消した");
+    await h.circleDay(clock, BASE + 2 * DAY, [anchor]);
+    assert.equal(await h.statusOf(X), "active", "Circle から消えた日に、cdp に載る共有の行が閉じた");
+    assert.equal(await h.delistEventsFor(X), 0);
+    assert.equal(await h.statusOf(Q), "delisted", "同じ入力で Circle だけの行が閉じていない");
+    assert.equal(await h.delistEventsFor(Q), 1);
+  });
 }
