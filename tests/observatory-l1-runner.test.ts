@@ -39,7 +39,7 @@ if (!TEST_DB) {
     const { BASE_USDC } = await import("@/lib/observatory/x402-payer");
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
-    const { eq, sql } = await import("drizzle-orm");
+    const { and, eq, notInArray, sql } = await import("drizzle-orm");
 
     const db = getDb()!;
     await db.execute(
@@ -435,6 +435,29 @@ if (!TEST_DB) {
           new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } }),
       });
     };
+    // 2026-10-31: 目録の第1段（e1af2e9c）から cdp_bazaar の行は完全な取得でも delisted にならない。前の子テストの出品
+    // （seller2・solseller・stellarseller1/2 など）が active のまま残り、L0 の枠（limit 5・最後に測った時刻の古い順）を食う。
+    // 直前の restoreBaseCatalog で狙いの出品がいちばん後に測られると、その子テストの L0 から漏れ、最新の判定が Base の壁で
+    // 測った fail のまま L1 の候補に入らない（CI run 41057320354: summary.settled 0 !== 1）。
+    // 各子テストの同期の直後に、その同期に載せた出品以外を候補（status = 'active'）から外す。seller1 / seller2 は
+    // restoreBaseCatalog の同期が active に戻す。UPDATE で直接外すので delisting のイベントは作られない（次の同期は relist を書く）。
+    // テストの中だけの状態で、Stellar secondary の前の TRUNCATE で消える。イベント数を検査に足すときはこれを考える。
+    const keepOnlyListings = async (resourceUrls: string[]) => {
+      await db
+        .update(schema.x402Endpoints)
+        .set({ status: "delisted", delistedAt: sql`now()` })
+        .where(and(eq(schema.x402Endpoints.status, "active"), notInArray(schema.x402Endpoints.resourceUrl, resourceUrls)));
+    };
+    // 狙いの出品が L0 で測られ、pass になったことを先に確かめる。枠から漏れたときに「買わなかった」の検査が空振りで通らないため。
+    const assertL0Pass = async (resourceUrls: string[]) => {
+      for (const url of resourceUrls) {
+        const r = await db.execute(sql`
+          SELECT p.verdict FROM x402_l0_probes p JOIN x402_endpoints e ON e.id = p.endpoint_id
+          WHERE e.resource_url = ${url} ORDER BY p.probed_at DESC LIMIT 1`);
+        const list = (Array.isArray(r) ? r : ((r as { rows?: unknown[] }).rows ?? [])) as { verdict?: string }[];
+        assert.equal(list[0]?.verdict, "pass", `L0 の最新判定が pass ではない: ${url}`);
+      }
+    };
 
     await t.test("Stellar: 旗 OFF では stellar の候補を買わない", async () => {
       const { Keypair } = await import("@stellar/stellar-sdk");
@@ -465,6 +488,7 @@ if (!TEST_DB) {
         },
         today: "2026-08-16",
       });
+      await keepOnlyListings(["https://seller1.example/api", "https://stellarseller.example/api"]);
       const stellarChallenge = JSON.stringify({
         x402Version: 2,
         accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
@@ -478,6 +502,7 @@ if (!TEST_DB) {
             headers: { "content-type": "application/json" },
           }),
       });
+      await assertL0Pass(["https://seller1.example/api", "https://stellarseller.example/api"]);
       const seen: string[] = [];
       let signed = 0;
       await runL1Batch({
@@ -545,6 +570,7 @@ if (!TEST_DB) {
           },
           today: "2026-08-16",
         });
+        await keepOnlyListings(["https://stellarseller.example/api"]);
         const stellarChallenge = JSON.stringify({
           x402Version: 2,
           accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
@@ -554,6 +580,7 @@ if (!TEST_DB) {
           concurrency: 1,
           fetchImpl: async () => new Response(stellarChallenge, { status: 402, headers: { "content-type": "application/json" } }),
         });
+        await assertL0Pass(["https://stellarseller.example/api"]);
         const seen: string[] = [];
         let signed = 0;
         await runL1Batch({
@@ -609,6 +636,7 @@ if (!TEST_DB) {
           },
           today: "2026-08-16",
         });
+        await keepOnlyListings(["https://stellarseller.example/api"]);
         const v2 = JSON.stringify({
           x402Version: 2,
           accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
@@ -622,6 +650,7 @@ if (!TEST_DB) {
           concurrency: 1,
           fetchImpl: async () => new Response(v2, { status: 402, headers: { "content-type": "application/json" } }),
         });
+        await assertL0Pass(["https://stellarseller.example/api"]);
         let signed = 0;
         await runL1Batch({
           limit: 5,
@@ -676,6 +705,7 @@ if (!TEST_DB) {
           },
           today: "2026-08-16",
         });
+        await keepOnlyListings(["https://stellarseller1.example/api", "https://stellarseller2.example/api"]);
         const challengeForUrl = (url: string) => {
           const i = /stellarseller(\d)/.exec(url)?.[1];
           const payTo = sellers[i ? Number(i) - 1 : 0];
@@ -690,6 +720,7 @@ if (!TEST_DB) {
           fetchImpl: async (url: string) =>
             new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } }),
         });
+        await assertL0Pass(["https://stellarseller1.example/api", "https://stellarseller2.example/api"]);
         let signed = 0;
         await runL1Batch({
           limit: 5,
@@ -762,6 +793,7 @@ if (!TEST_DB) {
           },
           today: "2026-08-17",
         });
+        await keepOnlyListings(["https://seller1.example/api", "https://stellarseller1.example/api", "https://stellarseller2.example/api"]);
         const challengeForUrl = (url: string) => {
           const i = /stellarseller(\d)/.exec(url)?.[1];
           if (!i) return challengeFor(url);
@@ -784,6 +816,7 @@ if (!TEST_DB) {
           fetchImpl: async (url: string) =>
             new Response(challengeForUrl(url), { status: 402, headers: { "content-type": "application/json" } }),
         });
+        await assertL0Pass(["https://seller1.example/api", "https://stellarseller1.example/api", "https://stellarseller2.example/api"]);
         const seen: { url: string; paid: boolean }[] = [];
         let signed = 0;
         const summary = await runL1Batch({
@@ -853,6 +886,7 @@ if (!TEST_DB) {
           },
           today: "2026-08-18",
         });
+        await keepOnlyListings(["https://stellarseller.example/api"]);
         const stellarChallenge = JSON.stringify({
           x402Version: 2,
           accepts: [{ scheme: "exact", network: STELLAR_PUBNET_CAIP2, amount, asset: STELLAR_USDC_SAC, payTo, maxTimeoutSeconds: 60, extra: { areFeesSponsored: true } }],
@@ -862,6 +896,7 @@ if (!TEST_DB) {
           concurrency: 1,
           fetchImpl: async () => new Response(stellarChallenge, { status: 402, headers: { "content-type": "application/json" } }),
         });
+        await assertL0Pass(["https://stellarseller.example/api"]);
         let signedUnits: bigint | null = null;
         let signedAsset: string | null = null;
         const summary = await runL1Batch({
@@ -892,8 +927,8 @@ if (!TEST_DB) {
         assert.equal(summary.settled, 1);
         assert.equal(signedUnits, 1_000_000n, "署名口へ渡す額は 7 桁の stroops");
         assert.equal(signedAsset, STELLAR_USDC_SAC);
-        // 2026-10-30（設計 v5 第1段）: cdp_bazaar の行は完全な取得でも閉じないので、前の子テストの出品も active のまま候補に残る
-        // （origin/main ではこの syncCatalog が他の出品を delisted にしていた）。Stellar の出品の購入行だけを見る。
+        // 2026-10-30（設計 v5 第1段）: cdp_bazaar の行は完全な取得でも閉じない（origin/main ではこの syncCatalog が他の出品を
+        // delisted にしていた）。上の keepOnlyListings で前の子テストの出品を候補から外したうえで、Stellar の出品の購入行だけを見る。
         const rows = (await db.select().from(schema.x402L1Purchases)).filter((r) => r.network === STELLAR_PUBNET_CAIP2);
         assert.equal(rows.length, 1);
         assert.equal(rows[0].status, "settle_claimed", "購入バッチはチェーン照合の前なので settle_claimed。summary.settled は形式の通った申告");
