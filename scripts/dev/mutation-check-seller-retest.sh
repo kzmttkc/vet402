@@ -76,6 +76,7 @@ run_expect_fail "expired request not bought" "expired seller request"
 git checkout -- src/lib/observatory/seller-retest.ts src/lib/observatory/seller-retest-requests.ts
 
 # 9. One-shot DB guard (claim always ok)
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP INDEX IF EXISTS x402_l1_purchases_seller_request_id_auth_unique"
 git apply <<'PATCH'
 diff --git a/src/lib/observatory/seller-retest.ts b/src/lib/observatory/seller-retest.ts
 --- a/src/lib/observatory/seller-retest.ts
@@ -91,6 +92,7 @@ diff --git a/src/lib/observatory/seller-retest.ts b/src/lib/observatory/seller-r
 PATCH
 run_expect_fail "concurrent runL1Batch one payment" "concurrent runL1Batch"
 git checkout -- src/lib/observatory/seller-retest.ts
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/sql/2026-10-30-seller-retest-request-id-unique.sql
 
 # 10. Once per UTC day retry gate
 perl -i -pe 's/if \(attemptedToday\.has\(req\.id\)\) continue;/if (false \&\& attemptedToday.has(req.id)) continue;/' src/lib/observatory/seller-retest.ts
