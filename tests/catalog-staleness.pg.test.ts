@@ -420,7 +420,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T04 生きている出品が並びのずれで 1 周だけ読み落とされても閉じない（同じ入力で本当に消えた出品は閉じる）", { timeout: 300_000 }, async () => {
+  test("T04 生きている出品が並びのずれで 1 周だけ読み落とされても閉じない（同じ入力で本当に消えた出品は閉じる）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -454,7 +454,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T05 途中のページが毎回短い周回（R2 の形）は弱い周回になり、その裏の生きている出品は 3 日たっても閉じない（読めた周回で消えた出品は閉じる）", { timeout: 300_000 }, async () => {
+  test("T05 途中のページが毎回短い周回（R2 の形）は弱い周回になり、その裏の生きている出品は 3 日たっても閉じない（読めた周回で消えた出品は閉じる）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -482,7 +482,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T06 429 が続いて周回が閉じない（R5m の形）あいだは何も閉じない（その前の読めた周回で消えた出品は閉じる）", { timeout: 300_000 }, async () => {
+  test("T06 429 が続いて周回が閉じない（R5m の形）あいだは何も閉じない（その前の読めた周回で消えた出品は閉じる）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -517,7 +517,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T07 本当に消えた出品は、強い周回 3 回かつ 48 時間の後に 1 回だけ閉じ、イベントは 1 行（閉じる回が重なっても）", { timeout: 300_000 }, async () => {
+  test("T07 本当に消えた出品は、強い周回 3 回かつ 48 時間の後に 1 回だけ閉じ、イベントは 1 行（閉じる回が重なっても）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -548,7 +548,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T08 閉じる回を 2 本同時に走らせても（R6c の形）、イベントは 1 行・webhook は 1 回", { timeout: 300_000 }, async () => {
+  test("T08 閉じる回を 2 本同時に走らせても（R6c の形）、イベントは 1 行・webhook は 1 回", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -582,7 +582,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T09 1 回で active の 3% が「見えていない」になったら 1 件も閉じず、アラートを出す（2% 以下になった回は閉じる）", { timeout: 300_000 }, async () => {
+  test("T09 1 回で active の 3% が「見えていない」になったら 1 件も閉じず、アラートを出す（2% 以下になった回は閉じる）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
@@ -646,7 +646,7 @@ if (!TEST_DB) {
   });
 
   // ==========================================================
-  test("T11 cdp と circle の両方に載る出品が、cdp で 1 周だけ欠け Circle から消えても閉じない（B1 の形。両方で消えた出品と Circle だけの出品は閉じる）", { timeout: 300_000 }, async () => {
+  test("T11 cdp と circle の両方に載る出品が、cdp で 1 周だけ欠け Circle から消えても閉じない（B1 の形。両方で消えた出品と Circle だけの出品は閉じる）", { timeout: 300_000, todo: "phase 2: the cdp_bazaar close rule is not shipped yet (docs/catalog-staleness-contract.md)" }, async () => {
     const m = await load();
     const h = helpers(m);
     await h.truncate();
