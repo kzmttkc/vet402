@@ -27,7 +27,10 @@ export const metadata: Metadata = pageMetadata({
   path: "/decisions",
 });
 
-export const revalidate = 600;
+// NOT CACHED, ON PURPOSE (2026-10-31). This used to be `revalidate = 600`. The root layout reads headers()
+// for the CSP nonce, a Dynamic API that forces per-request rendering, so the build has listed /decisions as
+// dynamic ("ƒ") and the number never took effect (same cleanup as /observatory/e/[id]/page.tsx).
+export const dynamic = "force-dynamic";
 
 const DECISION_LABEL: Record<string, string> = {
   refused_price_mismatch: "REFUSED — wall demanded more than declared",

@@ -58,20 +58,20 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 ## Primary
 
 - https://vet402.com/ — the memo: problem, verification levels, what is live, what is still being built
-- https://vet402.com/observatory. The L0 register. The catalog is re-fetched on the schedule in Freshness. Endpoints are probed on a rolling schedule, not as a sweep of the catalog on one day. A probe uses the HTTP method the listing declares when the listing declares GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set. Two failures in a row on that probe can be published as fail. The share of active endpoints with a probe from the last 7 days is coverage7d on https://vet402.com/api/v1/observatory/state (activeEndpoints, measuredLast7d, pct). pct is null when activeEndpoints is 0. A published verdict is pass, fail, or unverified. When a probe has run, the Last probed column shows that time. The L1 column sits between the verdict and Last probed. A row that has not been probed shows no probe time.
+- https://vet402.com/observatory: the L0 register. The catalog is re-fetched on the schedule in Freshness. Endpoints are probed on a rolling schedule, not as a sweep of the catalog on one day. A probe uses the HTTP method the listing declares when the listing declares GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set. Two failures in a row on that probe can be published as fail. The share of active endpoints with a probe from the last 7 days is coverage7d on https://vet402.com/api/v1/observatory/state (activeEndpoints, measuredLast7d, pct). pct is null when activeEndpoints is 0. A published verdict is pass, fail, or unverified. When a probe has run, the Last probed column shows that time. The L1 column sits between the verdict and Last probed. A row that has not been probed shows no probe time.
 - https://vet402.com/observatory/state — aggregate rates for the whole observed catalog, broken out by chain
 - https://vet402.com/observatory/methodology — full definitions for L0 Liveness, L1 Settle-through and L2 Conformance: what each level measures, what it cannot measure, and the publication gate that keeps one bad sample from branding an endpoint dead
 - https://vet402.com/docs/api — API reference, including copy-paste curl commands that need no key
-- https://vet402.com/docs/mcp. The hosted MCP server at https://vet402.com/mcp returns what vet402 recorded when it paid x402 listings. It is read only, needs no key, and costs nothing to call.
+- https://vet402.com/docs/mcp: the hosted MCP server at https://vet402.com/mcp. It returns what vet402 recorded when it paid x402 listings, is read only, needs no key, and costs nothing to call.
 - https://vet402.com/accuracy — public accuracy ledger: past verdicts, outcomes, and misfire rate
 - https://vet402.com/leaderboard — register of recently verified subjects, ranked
 - https://vet402.com/payee — verify a payee, or look one up
 - https://vet402.com/corrections — every correction issued to a published result, and what does not count as one
 - https://vet402.com/operator-log — public, append-only record of every global operator override (network-wide blacklist), with the address, stated reason, and date; customer-private lists never appear here
 - https://vet402.com/faq — x402, ERC-8004, and how scoring works
-- https://vet402.com/x402/stablecoin-payments. How an AI agent pays an x402 API with a stablecoin, often USDC.
-- https://vet402.com/x402/check-a-seller. How to check an x402 seller before paying.
-- https://vet402.com/x402/chains. Purchase results by chain, from the same ledger as the observatory.
+- https://vet402.com/x402/stablecoin-payments: how an AI agent pays an x402 API with a stablecoin, often USDC.
+- https://vet402.com/x402/check-a-seller: how to check an x402 seller before paying.
+- https://vet402.com/x402/chains: purchase results by chain, from the same ledger as the observatory.
 - https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
 - https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification
 - https://vet402.com/blog/rss.xml — the same posts as RSS

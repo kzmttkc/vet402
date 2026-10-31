@@ -242,16 +242,22 @@ export function webPageJsonLd(input: { name: string; description: string; path: 
 
 /**
  * 機械可読な API 記述。url は人間の参照頁、documentation は仕様。
- * 既定は docs/api と OpenAPI。2026-10-31: /docs/mcp も同じ型で path と documentation を渡す。
+ * 既定は docs/api と OpenAPI。2026-10-31: /docs/mcp も同じ型で path を渡す。
+ * documentation に null を渡すと省く（仕様が url と同じ頁にしか無いとき、同じ URL を 2 度書かない）。
  */
-export function webApiJsonLd(input: { name: string; description: string; path?: string; documentation?: string }) {
+export function webApiJsonLd(input: {
+  name: string;
+  description: string;
+  path?: string;
+  documentation?: string | null;
+}) {
   return {
     "@context": "https://schema.org",
     "@type": "WebAPI" as const,
     name: input.name,
     description: input.description,
     url: `${SITE_URL}${input.path ?? "/docs/api"}`,
-    documentation: `${SITE_URL}${input.documentation ?? "/openapi.yaml"}`,
+    ...(input.documentation === null ? {} : { documentation: `${SITE_URL}${input.documentation ?? "/openapi.yaml"}` }),
     provider: publisherOrg(),
     termsOfService: `${SITE_URL}/legal/terms`,
     inLanguage: "en",

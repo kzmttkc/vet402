@@ -64,11 +64,12 @@ export default async function McpDocsPage() {
     { name: "Hosted MCP", path: "/docs/mcp" },
   ]);
   // 2026-10-31 SEO: the page carried only a BreadcrumbList. Same WebAPI shape as /docs/api, pointing at this page.
+  // No documentation: the only reference is this page, which is already url.
   const webApi = webApiJsonLd({
     name: "vet402 hosted MCP server",
     description: MCP_DOCS_BLURB,
     path: "/docs/mcp",
-    documentation: "/docs/mcp",
+    documentation: null,
   });
 
   return (

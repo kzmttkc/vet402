@@ -22,7 +22,7 @@ const UNVERIFIED =
 
 test("llms.txt の観測所の文は probed daily を含まず、メソッド・fail・pct・未プローブを実装どおりに書く", () => {
   const llms = read("public/llms.txt");
-  const line = llms.split("\n").find((l) => l.includes("https://vet402.com/observatory. The L0 register"));
+  const line = llms.split("\n").find((l) => l.includes("https://vet402.com/observatory: the L0 register"));
   assert.ok(line, "観測所の行が無い");
   assert.equal(/\bprobed daily\b/i.test(line), false);
   assert.match(line, /GET, POST, HEAD, or DELETE/);

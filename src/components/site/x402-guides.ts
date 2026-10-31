@@ -82,10 +82,11 @@ function headlineOf(row: LaneChain, publicName: string): string {
 }
 
 // 2026-10-31 SEO: the description was the headline plus CAIP-2 (45 to 100 characters, measured on production).
-// It now says what vet402 measures on that chain and the pinned asset, from the page's own two lead sentences.
-// The Tempo lead already names the Machine Payments Protocol, so the separate gloss is gone.
-function descriptionOf(lead: readonly [string, string], caip2: string): string {
-  const text = `${lead[0]} ${lead[1]} CAIP-2 ${caip2}.`;
+// It now says what vet402 measures on that chain and the asset it settles in, from the page's own lead
+// sentences and the lane's asset. A lead that names who settles (XRPL: the t54 facilitator) keeps that fact.
+function descriptionOf(lead: readonly [string, string], asset: string, caip2: string): string {
+  const via = lead[1].match(/settlement goes through (.+)\.$/)?.[1];
+  const text = `${lead[0].replace(/\.$/, "")}, settled in ${asset}${via ? ` through ${via}` : ""} (CAIP-2 ${caip2}).`;
   if (text.length > 160) throw new Error(`x402 guide description is ${text.length} characters for ${caip2}`);
   return text;
 }
@@ -112,7 +113,7 @@ export const GUIDE_CHAINS: GuideChain[] = SUPPORTED_CHAINS.filter((row): row is 
       reread: facts.reread,
       lead,
       title: headline,
-      description: descriptionOf(lead, caip2),
+      description: descriptionOf(lead, row.asset, caip2),
     };
   },
 );

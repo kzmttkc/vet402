@@ -38,9 +38,13 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // 2026-10-31 SEO/LLMO: Next.js streams generateMetadata into <body> for any user agent outside its
   // HTML-limited list, and that list does not name curl, GPTBot, ClaudeBot or PerplexityBot. Measured on
-  // production that day with curl -sL: 6 of 40 /observatory/e/{id} pages had no title, description,
-  // canonical or OG in <head>. Those readers do not run JavaScript, so every user agent gets blocking
-  // metadata. Pinned by tests/seo-aeo-llmo-1031.test.ts.
+  // production that day with curl -sL: in 40-page samples of /observatory/e/{id}, 6 to 9 pages
+  // (intermittent) had no title, description, canonical or OG in <head>. Those readers do not run
+  // JavaScript, so every request that sends a User-Agent gets blocking metadata. A request with no
+  // User-Agent still gets streaming metadata (Next.js checks the UA before this pattern).
+  // If cacheComponents is turned on, /.*/ makes every request bypass the static shell (blocking metadata
+  // cannot be served from a prerendered shell); revisit this line first. Both are pinned by
+  // tests/seo-aeo-llmo-1031.test.ts.
   htmlLimitedBots: /.*/,
   turbopack: {
     root: process.cwd(),

@@ -987,7 +987,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             </code>
             . The <code className="text-brand-deep">vouch_</code> prefix and the{" "}
             <code className="text-brand-deep">VOUCH_API_KEY</code> variable keep the old name (the
-            product was called Vouch until August 2026), so existing keys and configs keep working.
+            product was called Vouch until August 2026), so existing keys and configs still work.
           </p>
           {/* 2026-08-13 監査是正 #3: 散文の旧名（Vouch）は vet402 へ統一したが、
               発行済みのキー接頭辞と webhook のヘッダ名は動いている連携を壊すので
