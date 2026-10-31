@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { pageMetadata } from "@/lib/seo";
+import { headers } from "next/headers";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 import { formatUsdcUnits } from "@/lib/util/usd";
 import { getDecisionFeed } from "@/lib/observatory/decisions";
 import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
@@ -16,10 +18,12 @@ import { explorerTxUrl } from "@/lib/observatory/chains";
  * （export.csv に tx_hash が無い）ので、額は「賭けた額」であって失った額ではない。
  */
 
+const DECISIONS_DESCRIPTION =
+  "Every decision the daily verifier actually made with its own funds: refusals before signing and outcomes after paying, settled receipts and attempts that did not settle alike.";
+
 export const metadata: Metadata = pageMetadata({
   title: "Decisions — pay or refuse, with real money",
-  description:
-    "Every decision the daily verifier actually made with its own funds: refusals before signing and outcomes after paying, settled receipts and attempts that did not settle alike.",
+  description: DECISIONS_DESCRIPTION,
   path: "/decisions",
 });
 
@@ -44,11 +48,20 @@ const DECISION_LABEL: Record<string, string> = {
 const DECISION_WINDOW_DAYS = 30;
 
 export default async function DecisionsPage() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // 2026-10-31 SEO: this page carried no structured data. BreadcrumbList and WebPage, from the same title and description.
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Decisions", path: "/decisions" },
+  ]);
+  const webPage = webPageJsonLd({ name: "Decisions", description: DECISIONS_DESCRIPTION, path: "/decisions" });
   const feed = await getDecisionFeed(DECISION_WINDOW_DAYS);
   const backtest = await computeSpendGuardBacktest().catch(() => null);
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+      <script type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }} />
+      <script type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }} />
       <article className="sheet sheet-wide">
         <WideColumn />
         <div className="doc-head">

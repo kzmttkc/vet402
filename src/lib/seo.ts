@@ -240,15 +240,18 @@ export function webPageJsonLd(input: { name: string; description: string; path: 
   };
 }
 
-/** docs/api の機械可読な API 記述。url は人間の参照頁、documentation は OpenAPI。 */
-export function webApiJsonLd(input: { name: string; description: string }) {
+/**
+ * 機械可読な API 記述。url は人間の参照頁、documentation は仕様。
+ * 既定は docs/api と OpenAPI。2026-10-31: /docs/mcp も同じ型で path と documentation を渡す。
+ */
+export function webApiJsonLd(input: { name: string; description: string; path?: string; documentation?: string }) {
   return {
     "@context": "https://schema.org",
     "@type": "WebAPI" as const,
     name: input.name,
     description: input.description,
-    url: `${SITE_URL}/docs/api`,
-    documentation: `${SITE_URL}/openapi.yaml`,
+    url: `${SITE_URL}${input.path ?? "/docs/api"}`,
+    documentation: `${SITE_URL}${input.documentation ?? "/openapi.yaml"}`,
     provider: publisherOrg(),
     termsOfService: `${SITE_URL}/legal/terms`,
     inLanguage: "en",

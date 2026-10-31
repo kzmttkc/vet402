@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { pageMetadata } from "@/lib/seo";
+import { headers } from "next/headers";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 
 /**
  * /operations — AI運営企業の透明性ページ（C11/15）。
@@ -9,16 +11,27 @@ import { pageMetadata } from "@/lib/seo";
  * 確かめる手段を必ず併記する。
  */
 
+const OPERATIONS_DESCRIPTION =
+  "vet402 is operated day-to-day by an AI under human approval gates for money and external actions. This page states how, with the means to verify each claim.";
+
 export const metadata: Metadata = pageMetadata({
   title: "Operations — an AI-operated verifier, verifiably",
-  description:
-    "vet402 is operated day-to-day by an AI under human approval gates for money and external actions. This page states how, with the means to verify each claim.",
+  description: OPERATIONS_DESCRIPTION,
   path: "/operations",
 });
 
-export default function OperationsPage() {
+export default async function OperationsPage() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // 2026-10-31 SEO: this page carried no structured data. BreadcrumbList and WebPage, from the same title and description.
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Operations", path: "/operations" },
+  ]);
+  const webPage = webPageJsonLd({ name: "Operations", description: OPERATIONS_DESCRIPTION, path: "/operations" });
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+      <script type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }} />
+      <script type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }} />
       <article className="sheet">
         <div className="doc-head doc-head-compact">
           <div className="doc-head-col">

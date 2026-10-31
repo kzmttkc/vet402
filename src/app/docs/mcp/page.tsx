@@ -31,14 +31,16 @@ import {
   MCP_SELLER_PER_MIN,
 } from "@/lib/mcp/public-limits";
 import { TOOL_TEXT } from "@/lib/mcp/text";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
 
+const MCP_DOCS_BLURB =
+  "Streamable HTTP MCP at https://vet402.com/mcp and the delivery feed at /api/v1/delivery/sellers.json. Keyless reads.";
+
 export const metadata: Metadata = pageMetadata({
   title: "Hosted MCP server",
-  description:
-    "Streamable HTTP MCP at https://vet402.com/mcp and the delivery feed at /api/v1/delivery/sellers.json. Keyless reads.",
+  description: MCP_DOCS_BLURB,
   path: "/docs/mcp",
 });
 
@@ -61,6 +63,13 @@ export default async function McpDocsPage() {
     { name: "API reference", path: "/docs/api" },
     { name: "Hosted MCP", path: "/docs/mcp" },
   ]);
+  // 2026-10-31 SEO: the page carried only a BreadcrumbList. Same WebAPI shape as /docs/api, pointing at this page.
+  const webApi = webApiJsonLd({
+    name: "vet402 hosted MCP server",
+    description: MCP_DOCS_BLURB,
+    path: "/docs/mcp",
+    documentation: "/docs/mcp",
+  });
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
@@ -70,6 +79,12 @@ export default async function McpDocsPage() {
         nonce={nonce}
         suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+      />
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(webApi) }}
       />
 
       <DocsToc items={TOC} />

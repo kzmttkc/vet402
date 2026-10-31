@@ -14,6 +14,7 @@ import { KEYLESS_READ_STOP, keylessDecisionPerMinute, keylessRatesSentence, keyl
 import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
+import { API_DOCS_ANSWER } from "@/lib/docs/api-page-text";
 import { inviteRequired } from "@/lib/dashboard/signup-core";
 import { DECISION_RULES_TEXT, METHOD_LIMIT_TEXT, VERDICT_DOCS } from "@/lib/decision/rules-text";
 import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
@@ -795,6 +796,8 @@ export default async function ApiDocsPage() {
         </div>
 
         <div className="space-y-3">
+        {/* 2026-10-31 AEO: 冒頭が目次と認証の文で、「vet402 とは何か」「払う前にどう確かめるか」に答える文が無かった。 */}
+        <p className="text-brand">{API_DOCS_ANSWER}</p>
         {/* 2026-09-28 監査: Base URL が break-all で「https://vet」「402.com」と語の途中で
             折れていた。URL は 1 つの要素のまま折り返さない（375px 幅でも 1 行に収まる長さ）。 */}
         {/* 2026-09-29.3（監査 6 周目）: 冒頭が「Bearer API key」で、鍵なしで答える判定と resolve が鍵必須に読めた。 */}
@@ -983,8 +986,8 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
               Authorization: Bearer vouch_live_…
             </code>
             . The <code className="text-brand-deep">vouch_</code> prefix and the{" "}
-            <code className="text-brand-deep">VOUCH_API_KEY</code> variable keep vet402&apos;s former
-            name (Vouch) so existing keys and configs keep working.
+            <code className="text-brand-deep">VOUCH_API_KEY</code> variable keep the old name (the
+            product was called Vouch until August 2026), so existing keys and configs keep working.
           </p>
           {/* 2026-08-13 監査是正 #3: 散文の旧名（Vouch）は vet402 へ統一したが、
               発行済みのキー接頭辞と webhook のヘッダ名は動いている連携を壊すので

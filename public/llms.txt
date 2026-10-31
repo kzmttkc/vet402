@@ -62,6 +62,7 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 - https://vet402.com/observatory/state — aggregate rates for the whole observed catalog, broken out by chain
 - https://vet402.com/observatory/methodology — full definitions for L0 Liveness, L1 Settle-through and L2 Conformance: what each level measures, what it cannot measure, and the publication gate that keeps one bad sample from branding an endpoint dead
 - https://vet402.com/docs/api — API reference, including copy-paste curl commands that need no key
+- https://vet402.com/docs/mcp. The hosted MCP server at https://vet402.com/mcp returns what vet402 recorded when it paid x402 listings. It is read only, needs no key, and costs nothing to call.
 - https://vet402.com/accuracy — public accuracy ledger: past verdicts, outcomes, and misfire rate
 - https://vet402.com/leaderboard — register of recently verified subjects, ranked
 - https://vet402.com/payee — verify a payee, or look one up

@@ -988,8 +988,8 @@ export default async function Home() {
               </a>
               . The PDF states the raw totals and dates them as Artemis Analytics data as of April 21,
               2026. The live
-              article page returned HTTP 500 for part of September 2026 and answered HTTP 200 again
-              when rechecked on 2026-09-29.
+              article page returned HTTP 500 on some checks before 2026-09-29 and answered HTTP 200
+              again when rechecked on 2026-09-29.
             </dd>
           </div>
         </dl>

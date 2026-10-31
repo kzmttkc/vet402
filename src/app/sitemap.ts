@@ -17,10 +17,13 @@ const REV_2026_09_05 = "2026-09-05";
 // 2026-10-26 SEO/GEO: 本文・表題・回答頁を足した頁だけ。legal / ethonline / rwa / tokyo は上げない。
 const REV_2026_10_26 = "2026-10-26";
 
+// 2026-10-31 SEO/AEO: / (a dated sentence) and /docs/api (the opening answer, the key-prefix sentence).
+const REV_2026_10_31 = "2026-10-31";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 1 },
-    { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE_URL}/`, lastModified: REV_2026_10_31, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_31, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/docs/mcp`, lastModified: "2026-10-28", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE_URL}/leaderboard`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.7 },
@@ -79,12 +82,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     // 上の規則どおり載せなかった。/ の doc-head から導線を付けたので、同じ規則で足す。
     { url: `${SITE_URL}/ethonline`, lastModified: "2026-09-09", changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/blog`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
-    {
-      url: `${SITE_URL}/blog/rss.xml`,
-      lastModified: SITE_REVISION,
-      changeFrequency: "weekly",
-      priority: 0.4,
-    },
+    // 2026-10-31: /blog/rss.xml was listed here. It is a feed, not a page (no description, canonical or OG),
+    // so it left the page sitemap. Every page still links it as <link rel="alternate" type="application/rss+xml">
+    // (pageMetadata) and the footer links it.
     { url: `${SITE_URL}/signup`, lastModified: SITE_REVISION, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/legal/terms`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE_URL}/legal/privacy`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },

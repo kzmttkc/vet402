@@ -36,6 +36,12 @@ const nextConfig: NextConfig = {
   // and a product that sells itself as a trust layer should not volunteer
   // fingerprinting hints it does not have to.
   poweredByHeader: false,
+  // 2026-10-31 SEO/LLMO: Next.js streams generateMetadata into <body> for any user agent outside its
+  // HTML-limited list, and that list does not name curl, GPTBot, ClaudeBot or PerplexityBot. Measured on
+  // production that day with curl -sL: 6 of 40 /observatory/e/{id} pages had no title, description,
+  // canonical or OG in <head>. Those readers do not run JavaScript, so every user agent gets blocking
+  // metadata. Pinned by tests/seo-aeo-llmo-1031.test.ts.
+  htmlLimitedBots: /.*/,
   turbopack: {
     root: process.cwd(),
   },

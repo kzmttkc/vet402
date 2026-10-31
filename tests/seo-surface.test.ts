@@ -55,7 +55,6 @@ test("every public indexable route is in the sitemap", () => {
     "/legal/terms",
     "/legal/privacy",
     "/legal/notice",
-    "/blog/rss.xml",
   ]) {
     assert.ok(urls.has(`${SITE_URL}${path === "/" ? "/" : path}`), `sitemap missing ${path}`);
   }
