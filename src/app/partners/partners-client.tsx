@@ -35,6 +35,7 @@ export default function PartnersClient() {
       <label className="block text-[0.84375rem]">
         <span className="doc-caption block">Email</span>
         <input
+          data-clarity-mask="true"
           type="email"
           className="doc-input mt-1 w-full"
           value={email}
@@ -44,7 +45,7 @@ export default function PartnersClient() {
       </label>
       <label className="block text-[0.84375rem]">
         <span className="doc-caption block">Interest</span>
-        <select className="doc-input mt-1" value={interest} onChange={(e) => setInterest(e.target.value)}>
+        <select data-clarity-mask="true" className="doc-input mt-1" value={interest} onChange={(e) => setInterest(e.target.value)}>
           <option value="design_partner">Design partner (agent builder / endpoint operator)</option>
           <option value="premium_data">Premium data access (when it exists)</option>
           <option value="other">Other</option>
@@ -53,6 +54,7 @@ export default function PartnersClient() {
       <label className="block text-[0.84375rem]">
         <span className="doc-caption block">What are you building? (optional)</span>
         <input
+          data-clarity-mask="true"
           type="text"
           className="doc-input mt-1 w-full"
           value={note}

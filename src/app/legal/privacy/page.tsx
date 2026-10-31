@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { PrivacyChoices } from "@/components/site/ClarityConsent";
 
 // 2026-08-13 [m2] の続き: /legal/notice にだけ固有 title を付け、同じ legal/
 // 配下の terms と privacy を取り残していた。template が " | vet402" を付けるので、
@@ -36,7 +37,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 26, 2026</span>
+              Revision: <span className="text-signal">October 31, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -47,7 +48,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-8">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 26, 2026</p>
+        <p className="doc-note text-center">Last updated: October 31, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -236,10 +237,15 @@ export default async function PrivacyPage() {
               <strong>Legal obligation</strong> (Art. 6(1)(c)) — keeping billing and tax records for
               the period the law requires.
             </li>
+            {/* 2026-10-31: Microsoft Clarity を入れたので「同意に頼る処理は無い」は偽になる。EEA・UK・スイスの同意を書く。 */}
             <li>
-              <strong>Consent</strong> (Art. 6(1)(a)) — we do not currently rely on consent for any
-              processing (our analytics is cookieless and needs none). If that ever changes we will
-              ask for it separately and you will be able to withdraw it.
+              <strong>Consent</strong> (Art. 6(1)(a)): session analytics with Microsoft Clarity for
+              visitors in the EEA, the UK and Switzerland. vet402 asks for it separately on a banner,
+              and you can withdraw it at any time (see{" "}
+              <a className="doc-link" href="#session-analytics">
+                session analytics
+              </a>
+              ). Traffic statistics with Plausible are cookieless and need no consent.
             </li>
           </ul>
         </section>
@@ -329,7 +335,12 @@ export default async function PrivacyPage() {
           <p>
             We use the providers below to run the service. Each processes only the data its function
             needs, under its own data-processing terms. We do not sell personal data, and we do not
-            share it with anyone for their own marketing.
+            share it with anyone for their own marketing. Microsoft, for Clarity, also acts as a
+            controller of what it receives in its own right; see{" "}
+            <a className="doc-link" href="#session-analytics">
+              session analytics
+            </a>
+            .
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
@@ -447,6 +458,16 @@ export default async function PrivacyPage() {
               </a>{" "}
               below.
             </li>
+            {/* 2026-10-31 オーナー承認: Microsoft Clarity（NEXT_PUBLIC_CLARITY_PROJECT_ID）。中身は #session-analytics。 */}
+            <li>
+              <strong>Microsoft Clarity</strong> (Microsoft Corporation, United States). Session
+              recordings and heatmaps of how pages are used, with page text masked. It receives what is
+              described under{" "}
+              <a className="doc-link" href="#session-analytics">
+                session analytics
+              </a>
+              , and for visitors in the EEA, the UK and Switzerland only after they accept.
+            </li>
             <li>
               <strong>GitHub</strong> (United States) — hosts vet402&apos;s public source code and
               issue tracker. If you open an issue or pull request there, it is published under your
@@ -466,17 +487,28 @@ export default async function PrivacyPage() {
             It is strictly necessary for authentication, so under the ePrivacy
             Directive it needs no consent banner; analytics is cookieless. This
             section states that plainly rather than leaving it implied. */}
+        {/* 2026-10-31: Clarity の _clck / _clsk と、選択を覚える vet402_analytics_consent を足した。
+            ログインの cookie の記述は変えていない。 */}
         <section className="space-y-2">
           <h2 className="sec-head">Cookies</h2>
           <p>
-            We use one cookie, and only after you log in to the dashboard: a strictly-necessary
-            session cookie that keeps you signed in. It is set{" "}
+            vet402 sets its sign-in cookie only after you log in to the dashboard: a
+            strictly-necessary session cookie that keeps you signed in. It is set{" "}
             <code className="text-brand-deep">httpOnly</code>,{" "}
             <code className="text-brand-deep">secure</code>, and{" "}
             <code className="text-brand-deep">sameSite=strict</code>, and it is used for nothing but
-            authentication. Because it is strictly necessary, it needs no consent. We set no
-            advertising or cross-site tracking cookies, and our analytics (Plausible) is cookieless,
-            so there is no consent banner to click through.
+            authentication. Because it is strictly necessary, it needs no consent.
+          </p>
+          <p>
+            vet402 also sets <code className="text-brand-deep">vet402_analytics_consent</code> to
+            remember your answer under Privacy choices, and Microsoft Clarity sets{" "}
+            <code className="text-brand-deep">_clck</code> and{" "}
+            <code className="text-brand-deep">_clsk</code> when it runs. These are described under{" "}
+            <a className="doc-link" href="#session-analytics">
+              session analytics
+            </a>
+            . vet402 sets no advertising cookies and tells Clarity that advertising storage is denied.
+            Plausible is cookieless.
           </p>
         </section>
 
@@ -500,6 +532,11 @@ export default async function PrivacyPage() {
             </li>
             <li>
               <strong>European Union (Germany)</strong> — traffic statistics (Plausible).
+            </li>
+            <li>
+              <strong>United States and other countries where Microsoft runs Azure</strong>: session
+              analytics (Microsoft Clarity). Microsoft does not publish a single storage region for
+              Clarity.
             </li>
             <li>
               <strong>Japan</strong> — the support inbox is read, and the service is operated, from
@@ -547,7 +584,8 @@ export default async function PrivacyPage() {
         </section>
 
         {/* 2026-09-29 監査 4 周目: 電気通信事業法 27 条の 12（外部送信規律）。CSP の connect-src は
-            'self' と plausible.io だけ（src/proxy.ts）なので、ブラウザから第三者へ送る先は Plausible 1 つ。 */}
+            'self' と plausible.io だけ（src/proxy.ts）なので、ブラウザから第三者へ送る先は Plausible 1 つ。
+            2026-10-31: Clarity の Project ID がある時は *.clarity.ms と c.bing.com が加わる。送る先は 2 つ。 */}
         <section id="external-transmission" className="scroll-mt-24 space-y-2">
           <h2 className="sec-head">Information your browser sends to a third party</h2>
           <p>
@@ -559,10 +597,96 @@ export default async function PrivacyPage() {
             and browser user-agent with the request. According to Plausible&apos;s published data
             policy, it uses them only to count unique visitors with a daily-changing hash and to
             derive the country, browser and device type, and does not store the IP address. We use
-            the result for aggregate traffic statistics only. Plausible sets no cookie. This is the
-            only third party our pages send information to from your browser; Stripe receives your
-            details only on its own checkout and portal pages.
+            the result for aggregate traffic statistics only. Plausible sets no cookie.
           </p>
+          <p>
+            When session analytics runs, your browser also sends information to Microsoft Clarity,
+            as described under{" "}
+            <a className="doc-link" href="#session-analytics">
+              session analytics
+            </a>{" "}
+            below. Plausible and Microsoft Clarity are the only third parties vet402&apos;s pages send
+            information to from your browser. Stripe receives your details only on its own checkout
+            and portal pages.
+          </p>
+        </section>
+
+        {/* 2026-10-31 オーナー承認: Microsoft Clarity。取るものは Microsoft の公式の説明
+            （learn.microsoft.com/clarity: clarity-data・clarity-cookies・faq・consent-mode）に沿う。
+            同意の扱いは src/lib/clarity.ts（EEA・UK・スイス・国不明は Accept まで読み込まない）。
+            マスクは Strict（Clarity の Settings > Masking）と data-clarity-mask。 */}
+        <section id="session-analytics" className="scroll-mt-24 space-y-2">
+          <h2 className="sec-head">Session analytics (Microsoft Clarity)</h2>
+          <p>
+            vet402 uses Microsoft Clarity, a service of Microsoft Corporation, to see where pages are
+            hard to use: which links are clicked, how far a page is scrolled, and where people stop.
+            When it runs, your browser loads a script from <code>www.clarity.ms</code> and sends
+            Clarity what Microsoft describes as the interactions on the page (mouse movements,
+            clicks, scrolling, window resizing, text selection and input events), how the page is
+            rendered (the layout and structure of its elements), page events such as page size and
+            visibility, script errors and performance measures, the address of the page and the
+            referring page, and your device type, browser, operating system and screen size.
+            Microsoft also receives your IP address with each request and uses it to estimate your
+            country. Clarity turns this into session replays and heatmaps that vet402 reads in the
+            Clarity dashboard.
+          </p>
+          <p>
+            <strong>Masking.</strong> vet402 runs Clarity in its Strict masking mode, so the text on
+            the page is replaced with placeholder characters before it leaves your browser. Clarity
+            always masks what you type into input boxes and dropdowns. On top of that, vet402 marks
+            the API key shown at sign-up and in the dashboard, the wallet addresses in dashboard
+            lookups and lists, and the sign-up, login, search, lookup and notification fields with
+            Clarity&apos;s <code>data-clarity-mask</code> attribute. vet402 does not send Clarity
+            your email address, your API key or your account ID.
+          </p>
+          <p>
+            <strong>Cookies.</strong> When Clarity runs, it sets two first-party cookies on
+            vet402.com: <code>_clck</code>, which keeps a pseudonymous Clarity user ID, and{" "}
+            <code>_clsk</code>, which joins the pages of one visit into one recording. Microsoft
+            lists further cookies on its own domains (CLID, MUID, MR, SM and ANONCHK), some of which
+            Microsoft uses for advertising. vet402 tells Clarity that advertising storage is denied
+            for every visitor. vet402 also sets <code>vet402_analytics_consent</code>, a first-party
+            cookie that remembers your answer (granted or denied) for 180 days and holds nothing
+            else.
+          </p>
+          <p>
+            <strong>Visitors in the European Economic Area, the United Kingdom and
+            Switzerland.</strong> If your request appears to come from one of these places, or if
+            vet402 cannot tell where it comes from, Clarity is not loaded and nothing is recorded
+            until you choose Accept on the banner at the bottom of the page. If you choose Decline,
+            Clarity stays off. vet402 relies on your consent for this (GDPR and UK GDPR Art.
+            6(1)(a)). You can withdraw it at any time under Privacy choices below, which does not
+            undo recording made before you withdrew it.
+          </p>
+          <p>
+            <strong>Visitors everywhere else.</strong> Clarity runs by default, because session
+            analytics is how vet402 finds and fixes what is hard to use. You can turn it off at any
+            time under Privacy choices below. If your browser sends a Global Privacy Control signal,
+            vet402 treats it as Decline and does not load Clarity. Microsoft also offers its own
+            opt-out for Clarity through the Digital Advertising Alliance at{" "}
+            <a className="doc-link" href="https://optout.aboutads.info/">
+              optout.aboutads.info
+            </a>
+            .
+          </p>
+          <p>
+            <strong>Retention and Microsoft&apos;s own use.</strong> Clarity keeps recordings for 30
+            days, and keeps favorited recordings and a random sample of recordings for up to 9 months.
+            Microsoft stores Clarity data in its Azure cloud and is a controller of the data it
+            receives in its own right, which it handles under the{" "}
+            <a className="doc-link" href="https://www.microsoft.com/privacy/privacystatement">
+              Microsoft Privacy Statement
+            </a>
+            . Choosing Decline after you accepted removes Clarity&apos;s cookies from your browser
+            and stops recording on the open page.
+          </p>
+          <div id="privacy-choices" className="scroll-mt-24 space-y-2">
+            <p>
+              <strong>Privacy choices.</strong> Open the banner again to accept or decline session
+              analytics. Your answer applies to this browser.
+            </p>
+            <PrivacyChoices />
+          </div>
         </section>
 
         {/* 2026-08-14 (legal compliance audit): the highest-risk area for this

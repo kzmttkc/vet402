@@ -191,6 +191,7 @@ export default async function ObservatoryPage({
             <label className="block min-w-0 basis-full text-[0.84375rem] sm:basis-auto sm:flex-1">
               <span className="doc-caption block">Contains</span>
               <input
+                data-clarity-mask="true"
                 name="q"
                 type="search"
                 defaultValue={query.q ?? ""}
@@ -200,6 +201,7 @@ export default async function ObservatoryPage({
             <label className="block text-[0.84375rem]">
               <span className="doc-caption block">L0</span>
               <select
+                data-clarity-mask="true"
                 name="verdict"
                 defaultValue={query.verdict ?? ""}
                 className="doc-input mt-1 max-sm:text-[1.0625rem]"
@@ -214,6 +216,7 @@ export default async function ObservatoryPage({
             <label className="block min-w-0 flex-1 text-[0.84375rem] sm:min-w-[16ch] sm:flex-none">
               <span className="doc-caption block">Network</span>
               <input
+                data-clarity-mask="true"
                 name="network"
                 defaultValue={query.network ?? ""}
                 placeholder="eip155:8453"

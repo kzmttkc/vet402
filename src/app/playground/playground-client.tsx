@@ -77,6 +77,7 @@ export default function PlaygroundClient({ candidates }: { candidates: Playgroun
         <label className="block min-w-0 flex-1 text-[0.84375rem]">
           <span className="doc-caption block">Endpoint (from the live catalog)</span>
           <select
+            data-clarity-mask="true"
             className="doc-input mt-1 w-full"
             value={selected}
             onChange={(e) => {

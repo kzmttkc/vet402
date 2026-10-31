@@ -20,6 +20,7 @@
 
 import Link from "next/link";
 import { Wordmark } from "@/components/site/Wordmark";
+import { clarityProjectId } from "@/lib/clarity";
 
 // 2026-09-02 Takeshi「フッターのバランスが悪い。本当に必要なものだけ残し、配置と内容を最適化」。
 // それまでは Index 11 / Operator 6 / Cite 2 の 3 列で、左だけが長い索引だった。
@@ -79,6 +80,10 @@ const SMALL_PRINT_LINKS = [
   { label: "Commercial disclosure", href: "/legal/notice#commercial-transactions" },
   { label: "Relationships", href: "/legal/notice#relationships" },
   { label: "Contact", href: "/legal/notice#contact" },
+  // 2026-10-31 Microsoft Clarity の同意を後から変える入口。ID がある時だけ出す。
+  ...(clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID)
+    ? [{ label: "Privacy choices", href: "/legal/privacy#privacy-choices" }]
+    : []),
   { label: "RSS", href: "/blog/rss.xml" },
   { label: "llms.txt", href: "/llms.txt" },
 ];

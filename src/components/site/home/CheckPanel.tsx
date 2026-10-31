@@ -51,6 +51,7 @@ export function CheckPanel({ example }: { example: HomeExample | null }) {
         </label>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <input
+            data-clarity-mask="true"
             id="home-seller-q"
             name="q"
             aria-describedby="home-seller-q-help"

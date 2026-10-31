@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSellersPath, sellersRateLimitResponse } from "@/lib/sellers/page-limit";
 import { invalidPayeeAddressHtml, isMalformedPayeePath } from "@/lib/payee/invalid-address-page";
+import { clarityCspSources, clarityProjectId, isHtmlPagePath } from "@/lib/clarity";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -44,16 +45,23 @@ export async function proxy(request: NextRequest) {
   }
   const nonce = generateNonce();
 
+  // 2026-10-31 Microsoft Clarity: Project ID がある時の HTML 頁にだけ読み込み先を足す。
+  // API・CSV・MCP・ファイルの応答の CSP は今のまま（src/lib/clarity.ts の isHtmlPagePath）。
+  const clarity =
+    clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID) && isHtmlPagePath(request.nextUrl.pathname)
+      ? clarityCspSources()
+      : null;
+
   const cspDirectives = [
     `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ""}${clarity ? ` ${clarity.script}` : ""}`,
     `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data:`,
+    `img-src 'self' data:${clarity ? ` ${clarity.img}` : ""}`,
     `font-src 'self' data:`,
     // https://plausible.io: 2026-07-22 全社日次反応レポート向け計装。script自体は
     // strict-dynamic下でNextのnonce付きランタイムからの動的挿入として許可されるが、
     // ビーコン送信(fetch/XHR)は connect-src が別途governs するため明示許可が必須。
-    `connect-src 'self' https://plausible.io${isDev ? " ws: wss:" : ""}`,
+    `connect-src 'self' https://plausible.io${clarity ? ` ${clarity.connect}` : ""}${isDev ? " ws: wss:" : ""}`,
     `frame-src 'none'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,

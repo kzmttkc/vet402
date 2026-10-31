@@ -98,6 +98,7 @@ export default function DashboardLookupPage() {
         <label className="block space-y-1.5 text-[0.84375rem]">
           <span className="font-medium text-zinc-800">Payee wallet</span>
           <input
+            data-clarity-mask="true"
             value={wallet}
             onChange={(event) => setWallet(event.target.value)}
             placeholder="0x..."
@@ -107,6 +108,7 @@ export default function DashboardLookupPage() {
         <label className="block space-y-1.5 text-[0.84375rem]">
           <span className="font-medium text-zinc-800">Payer agent ID (optional)</span>
           <input
+            data-clarity-mask="true"
             value={agentId}
             onChange={(event) => setAgentId(event.target.value)}
             placeholder="Leave blank to score the payee"
@@ -134,7 +136,7 @@ export default function DashboardLookupPage() {
             <h3 className="text-[1.0625rem] font-semibold">Payee score</h3>
             <Badge value={result.recommendation} />
           </div>
-          <dl className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
+          <dl data-clarity-mask="true" className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
             <Item label="Payee" value={result.payee} />
             <Item label="Score" value={String(result.score)} />
             <Item label="Data depth" value={result.dataDepth} />
@@ -167,7 +169,7 @@ export default function DashboardLookupPage() {
             <h3 className="text-[1.0625rem] font-semibold">Payer score</h3>
             <Badge value={result.recommendation} />
           </div>
-          <dl className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
+          <dl data-clarity-mask="true" className="grid gap-3 text-[0.84375rem] sm:grid-cols-2">
             <Item label="Agent ID" value={result.agentId} />
             <Item label="Trust score" value={String(result.trustScore)} />
             <Item label="Wallet" value={result.wallet ?? "—"} />

@@ -105,7 +105,7 @@ export default function DashboardKeysPage() {
       )}
 
       <div className="dash-card-flush">
-        <table className="dash-table">
+        <table data-clarity-mask="true" className="dash-table">
           <thead>
             <tr>
               <th className="dash-th">Name</th>
@@ -170,7 +170,7 @@ export default function DashboardKeysPage() {
       {newKey && (
         <div className="dash-card border-amber-200 bg-amber-50 text-[0.84375rem] text-amber-900">
           <p className="font-medium">New API key (copy now — shown once):</p>
-          <code className="mt-2 block break-all font-mono text-xs">{newKey}</code>
+          <code data-clarity-mask="true" className="mt-2 block break-all font-mono text-xs">{newKey}</code>
         </div>
       )}
     </div>

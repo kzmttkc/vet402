@@ -133,6 +133,7 @@ export default function RecordSubscribe({
           <span className="doc-caption block">Email</span>
         </label>
         <input
+          data-clarity-mask="true"
           ref={emailRef}
           id={`${uid}-email`}
           type="email"
@@ -159,6 +160,7 @@ export default function RecordSubscribe({
             <span className="doc-caption block">What is wrong with this record</span>
           </label>
           <textarea
+            data-clarity-mask="true"
             ref={reasonRef}
             id={`${uid}-reason`}
             name="reason"
@@ -190,6 +192,7 @@ export default function RecordSubscribe({
         <label>
           Website
           <input
+            data-clarity-mask="true"
             type="text"
             name="website"
             tabIndex={-1}

@@ -128,6 +128,7 @@ export default function DashboardListsPage() {
 
       <form onSubmit={addEntry} className="dash-card grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <input
+          data-clarity-mask="true"
           value={wallet}
           onChange={(event) => setWallet(event.target.value)}
           placeholder="0x..."
@@ -135,6 +136,7 @@ export default function DashboardListsPage() {
           required
         />
         <select
+          data-clarity-mask="true"
           value={listType}
           onChange={(event) => setListType(event.target.value as "whitelist" | "blacklist")}
           className="dash-select"
@@ -150,6 +152,7 @@ export default function DashboardListsPage() {
       <form onSubmit={importCsv} className="dash-card space-y-3">
         <h3 className="text-[0.84375rem] font-medium text-zinc-800">CSV import</h3>
         <textarea
+          data-clarity-mask="true"
           value={csv}
           onChange={(event) => setCsv(event.target.value)}
           placeholder={"wallet,list_type\n0x...,whitelist"}
@@ -163,7 +166,7 @@ export default function DashboardListsPage() {
       </form>
 
       <div className="dash-card-flush">
-        <table className="dash-table">
+        <table data-clarity-mask="true" className="dash-table">
           <thead>
             <tr>
               <th className="dash-th">Wallet</th>

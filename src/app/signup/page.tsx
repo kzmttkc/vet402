@@ -166,7 +166,7 @@ export default function SignupPage() {
             Copy this key now. <strong>It will not be shown again.</strong> You are signed in to the
             dashboard.
           </p>
-          <code className="mt-4 block break-all border border-dashed border-brand-lift bg-paper px-4 py-3 text-[0.84375rem] text-brand-deep">
+          <code data-clarity-mask="true" className="mt-4 block break-all border border-dashed border-brand-lift bg-paper px-4 py-3 text-[0.84375rem] text-brand-deep">
             {apiKey}
           </code>
 
@@ -187,11 +187,13 @@ export default function SignupPage() {
               （送信ボタンが disabled で、キーボード利用者はここへ来られなかった）。
               docs と同じ CodeBlock に寄せる。鍵を配る画面なのでコピーボタンが
               付くこと自体も効く。 */}
-          <CodeBlock
-            className="mt-4"
-            label="curl: read a resource decision"
-            code={curlExample}
-          />
+          <div data-clarity-mask="true">
+            <CodeBlock
+              className="mt-4"
+              label="curl: read a resource decision"
+              code={curlExample}
+            />
+          </div>
           <p className="doc-p">
             Prefer the browser? Open a public{" "}
             <Link href={`/payee/${SAMPLE_WALLET}`} className="doc-link">
@@ -294,6 +296,7 @@ export default function SignupPage() {
           {/* autoComplete (WCAG 1.3.5 Identify Input Purpose) — lets the browser
               and assistive tech fill known values instead of retyping them. */}
           <input
+            data-clarity-mask="true"
             type="email"
             name="email"
             autoComplete="email"
@@ -306,6 +309,7 @@ export default function SignupPage() {
         <label className="block space-y-2 text-[0.84375rem]">
           <span className="doc-caption block">Name (optional)</span>
           <input
+            data-clarity-mask="true"
             name="name"
             autoComplete="name"
             className="doc-input text-[1.0625rem]"
@@ -316,6 +320,7 @@ export default function SignupPage() {
           <label className="block space-y-2 text-[0.84375rem]">
             <span className="doc-caption block">Invite code</span>
             <input
+              data-clarity-mask="true"
               name="inviteCode"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
@@ -336,6 +341,7 @@ export default function SignupPage() {
           className="flex min-h-11 cursor-pointer items-center gap-3 text-[0.84375rem] text-brand"
         >
           <input
+            data-clarity-mask="true"
             id="accept-terms"
             name="acceptedTerms"
             type="checkbox"

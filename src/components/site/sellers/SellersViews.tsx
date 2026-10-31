@@ -193,7 +193,7 @@ function SearchForm({ q }: { q: string }) {
         <label className="block min-w-0 basis-full text-[0.84375rem] sm:basis-auto sm:flex-1">
           <span className="doc-caption block">Your domain</span>
           {/* 17px: iOS Safari は 16px 未満の入力欄にフォーカスすると頁を拡大する。階段に 16px は無い（2026-09-28 監査、2026-10-22 に 17px）。 */}
-          <input name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1 text-[1.0625rem]" />
+          <input data-clarity-mask="true" name="q" type="search" defaultValue={q} placeholder="api.example.com" className="doc-input mt-1 text-[1.0625rem]" />
         </label>
         <button type="submit" className={buttonClass({ size: "sm" })}>
           Find

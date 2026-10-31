@@ -2006,11 +2006,18 @@ claims:
     verified_at: 2026-09-29
   - id: legal_r4_privacy_plausible_only_third_party
     surface: src/app/legal/privacy/page.tsx
-    quote: "This is the only third party our pages send information to from your browser"
-    means: "ブラウザから第三者へ送る先は Plausible だけ（電気通信事業法の外部送信の表示）"
+    quote: "Plausible and Microsoft Clarity are the only third parties vet402&apos;s pages send information to from your browser"
+    means: "ブラウザから第三者へ送る先は Plausible と（Project ID がある時の）Microsoft Clarity だけ（電気通信事業法の外部送信の表示）"
     check: null
-    why_unverifiable: "ブラウザの挙動の記述。根拠は src/proxy.ts の CSP（connect-src 'self' https://plausible.io、img-src / font-src は 'self' data: のみ）。第三者の送信先を足すなら CSP とこの文を同時に直す"
-    verified_at: 2026-09-29
+    why_unverifiable: "ブラウザの挙動の記述。根拠は src/proxy.ts の CSP（connect-src 'self' https://plausible.io、NEXT_PUBLIC_CLARITY_PROJECT_ID がある HTML 頁だけ https://*.clarity.ms https://c.bing.com を足す。img-src も同じ 2 つだけ）と tests/clarity-consent.test.ts。第三者の送信先を足すなら CSP とこの文を同時に直す。2026-10-31 Clarity を足して改訂"
+    verified_at: 2026-10-31
+  - id: privacy_clarity_inputs_always_masked
+    surface: src/app/legal/privacy/page.tsx
+    quote: "Clarity always masks what you type into input boxes and dropdowns"
+    means: "Clarity は入力欄とドロップダウンの中身をどの masking mode でも伏せる（Microsoft の公式の説明）"
+    check: null
+    why_unverifiable: "第三者のスクリプトの挙動。根拠は learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-masking の「Content in the input boxes is masked in all modes」。vet402 側では tests/clarity-consent.test.ts が全入力欄の data-clarity-mask を固定する"
+    verified_at: 2026-10-31
   - id: legal_r4_terms_l1_dispute_l0_only
     surface: src/app/legal/terms/page.tsx
     quote: "the signed route re-runs the L0 probe only"

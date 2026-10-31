@@ -119,6 +119,7 @@ function LoginForm({ redirectError }: { redirectError: string | null }) {
         <label className="block space-y-2 text-[0.84375rem]">
           <span className="font-medium text-zinc-700">API key</span>
           <input
+            data-clarity-mask="true"
             type="password"
             name="apiKey"
             autoComplete="current-password"

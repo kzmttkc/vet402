@@ -140,10 +140,10 @@ export default async function UsageMonthlyPage({
         </p>
         <form method="get" action="/usage/monthly" className="doc-p">
           <label>
-            Chain <input name="chain" defaultValue={chainRaw} />
+            Chain <input data-clarity-mask="true" name="chain" defaultValue={chainRaw} />
           </label>
           <label>
-            Month <input name="month" defaultValue={monthRaw} placeholder="YYYY-MM" />
+            Month <input data-clarity-mask="true" name="month" defaultValue={monthRaw} placeholder="YYYY-MM" />
           </label>
           <button type="submit">Show counts</button>
         </form>

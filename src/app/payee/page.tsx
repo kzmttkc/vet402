@@ -154,6 +154,7 @@ export default async function PayeeIndexPage({
           </label>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <input
+              data-clarity-mask="true"
               id="address"
               name="address"
               type="text"
