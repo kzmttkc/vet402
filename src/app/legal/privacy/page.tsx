@@ -199,7 +199,7 @@ export default async function PrivacyPage() {
                 session analytics
               </a>
               ): how pages are used, such as clicks, scrolling and page layout, with page text,
-              images and form fields masked. The page address and title are not masked.
+              images and form fields masked (the page address and title are not masked)
             </li>
           </ul>
         </section>

@@ -262,15 +262,34 @@ for (const pathname of ["/rwa", "/rwa/x", "/tokyo", "/ethonline"]) {
 }
 
 for (const start of ["/observatory/confirm", "/tokyo"]) {
-  test(`L2: ${start} から始まった文書（CSP に Clarity が無い）は、その後の頁でもタグを入れず帯も出さない`, async () => {
+  test(`L2: ${start} から始まった文書（CSP に Clarity が無い）は、その後の頁でもタグを入れない`, async () => {
     freshPage(start);
     await mount({ consentRequired: false, pathname: start });
     assert.equal(clarityScripts().length, 0);
     await mount({ consentRequired: false, pathname: "/" });
     assert.equal(clarityScripts().length, 0);
     await mount({ consentRequired: true, pathname: "/faq" });
-    assert.equal(Boolean(banner()), false);
+    assert.equal(clarityScripts().length, 0);
     assert.equal(typeof win.clarity, "undefined");
+  });
+
+  test(`最終点検 2: ${start} から始まった文書でも Change privacy choices が帯を開き、Accept は読み直して効かせる`, async () => {
+    freshPage(start);
+    dom.window.document.cookie = "vet402_analytics_consent=denied; Path=/";
+    await mount({ consentRequired: false, pathname: start });
+    await mount({ consentRequired: false, initialChoice: "denied", pathname: "/legal/privacy" });
+    assert.equal(Boolean(banner()), false);
+    await act(async () => dom.window.dispatchEvent(new dom.window.Event(PRIVACY_CHOICES_EVENT)));
+    assert.ok(banner(), "banner opens");
+    await click("Accept");
+    assert.equal(reloads, 1, "reloads to a document whose CSP allows Clarity");
+    assert.equal(clarityScripts().length, 0);
+    assert.match(dom.window.document.cookie, /vet402_analytics_consent=granted/);
+    // Decline は読み込んでいないので読み直さない。
+    await act(async () => dom.window.dispatchEvent(new dom.window.Event(PRIVACY_CHOICES_EVENT)));
+    await click("Decline");
+    assert.equal(reloads, 1);
+    assert.match(dom.window.document.cookie, /vet402_analytics_consent=denied/);
   });
 }
 
@@ -286,7 +305,7 @@ test("L3: 同じ区画の中の遷移（再マウントなし）: /observatory/c
   await mount({ consentRequired: true, pathname: "/observatory/confirm" });
   assert.equal(Boolean(banner()), false);
   await rerender({ consentRequired: true, pathname: "/observatory" });
-  assert.equal(Boolean(banner()), false);
+  // 帯は出てよい（Accept は読み直して効かせる）。この文書ではタグを入れない。
   assert.equal(clarityScripts().length, 0);
 });
 

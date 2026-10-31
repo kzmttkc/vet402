@@ -11,6 +11,7 @@
  *   Clarity のまま移ってきたら頁を読み直す。
  * - 凍結面（/rwa・/tokyo・/ethonline）: 帯もタグも出さないだけ（読み直さない）。
  * - トークンの頁か凍結面から始まった文書は、CSP に Clarity が無いので、その文書の間はタグを入れない。
+ *   帯と Privacy choices はその文書でも動き、Accept は頁を読み直して効かせる。
  * - 撤回（読み込み済みでの Decline）は consentv2 を呼ばず、cookie に denied を書いた直後に読み直す。
  *   読み直した denied の頁で _clck・_clsk を最上位ドメインとホスト名の両方で期限切れにする。
  * - root template に置くので、頁を移るたびにマウントし直す。server から来る国と cookie は最初の
@@ -106,6 +107,11 @@ function expireClarityCookies() {
 
 const noopSubscribe = () => () => {};
 
+/** この文書の CSP に Clarity の読み込み先があるか（除外の頁から始まった文書には無い）。 */
+function cspAllowsClarity(): boolean {
+  return !clarityExcludedPath(documentStartPath);
+}
+
 type Props = {
   projectId: string | null;
   consentRequired: boolean;
@@ -160,23 +166,18 @@ export function ClarityConsentView({
       return;
     }
     if (excluded) return;
-    // 除外の頁から始まった文書は CSP に Clarity が無い。この文書の間は読み込まない。
-    if (clarityExcludedPath(documentStartPath)) return;
     const choice = currentChoice(initialChoice);
     if (choice === "denied" && !clarityLoaded(win)) expireClarityCookies();
     const plan = clarityPlan({ consentRequired, choice, gpc: gpc || browserGpc() });
-    if (plan.load) startClarity(browserEnv(), projectId);
+    // 除外の頁から始まった文書は CSP に Clarity が無い。この文書の間は読み込まない
+    // （帯と Privacy choices は動く。Accept は頁を読み直して効かせる）。
+    if (plan.load && cspAllowsClarity()) startClarity(browserEnv(), projectId);
     const open = () => setBanner(true);
     window.addEventListener(PRIVACY_CHOICES_EVENT, open);
     return () => window.removeEventListener(PRIVACY_CHOICES_EVENT, open);
   }, [projectId, consentRequired, initialChoice, gpc, excluded, tokenPage, doReload]);
 
-  const visible =
-    mounted &&
-    Boolean(projectId) &&
-    !excluded &&
-    !clarityExcludedPath(documentStartPath) &&
-    banner;
+  const visible = mounted && Boolean(projectId) && !excluded && banner;
 
   // 帯と同じ高さの余白を body の下に置く（帯が出ている間だけ）。
   useEffect(() => {
@@ -207,7 +208,9 @@ export function ClarityConsentView({
       const win = window as unknown as ClarityWin;
       if (choice === "granted") {
         if (gpc || browserGpc()) return;
-        startClarity(browserEnv(), projectId);
+        // この文書の CSP に Clarity が無ければ、読み直した頁（通常の CSP）で読み込む。
+        if (!cspAllowsClarity()) doReload();
+        else startClarity(browserEnv(), projectId);
         return;
       }
       if (clarityLoaded(win)) {

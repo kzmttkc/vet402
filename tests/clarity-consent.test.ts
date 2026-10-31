@@ -143,6 +143,16 @@ test("clarityCookieExpiries: _clck・_clsk をホスト名だけと最上位ド�
     "_clsk=; Max-Age=0; Path=/; Domain=.vet402.com",
   ]);
   assert.ok(clarityCookieExpiries("www.vet402.com").includes("_clck=; Max-Age=0; Path=/; Domain=.vet402.com"));
+  // ホスト名の後ろからたどれる 2 段以上の全部のドメイン（最終点検 1）
+  assert.deepEqual(clarityCookieExpiries("a.b.x.vercel.app").filter((c) => c.startsWith("_clck")), [
+    "_clck=; Max-Age=0; Path=/",
+    "_clck=; Max-Age=0; Path=/; Domain=.a.b.x.vercel.app",
+    "_clck=; Max-Age=0; Path=/; Domain=.b.x.vercel.app",
+    "_clck=; Max-Age=0; Path=/; Domain=.x.vercel.app",
+    "_clck=; Max-Age=0; Path=/; Domain=.vercel.app",
+  ]);
+  assert.equal(clarityCookieExpiries("a.b.x.vercel.app").length, 10);
+  assert.equal(clarityCookieExpiries("a.b.x.vercel.app").some((c) => c.endsWith("Domain=.app")), false);
   // localhost と IP は domain を付けない。
   assert.deepEqual(clarityCookieExpiries("localhost"), ["_clck=; Max-Age=0; Path=/", "_clsk=; Max-Age=0; Path=/"]);
   assert.deepEqual(clarityCookieExpiries("127.0.0.1"), ["_clck=; Max-Age=0; Path=/", "_clsk=; Max-Age=0; Path=/"]);
@@ -447,7 +457,8 @@ test("privacy: 独立点検の英語の直し（逐語）と、Data we collect �
     "deletes the _clck and _clsk cookies on vet402.com and stops recording. Cookies that Microsoft set on its own domains stay until they expire or you clear them.",
     "vet402 asks for it on a banner at the bottom of the page,",
     // 再点検の英語（逐語）
-    "(Microsoft Clarity; details under session analytics ): how pages are used, such as clicks, scrolling and page layout, with page text, images and form fields masked. The page address and title are not masked.",
+    // "Data we collect" の他の項目と同じく句点無しの 1 文（最終点検 3）
+    "(Microsoft Clarity; details under session analytics ): how pages are used, such as clicks, scrolling and page layout, with page text, images and form fields masked (the page address and title are not masked) </li>",
     "Clarity does not run on the two pages that notification emails link to, because their addresses carry a token.",
     "You can withdraw it at any time under Privacy choices below. Withdrawing does not affect recording made before you withdrew.",
     "vet402 does not load Clarity, wherever you are and whatever you choose.",
@@ -458,7 +469,7 @@ test("privacy: 独立点検の英語の直し（逐語）と、Data we collect �
   }
   const collect = text.match(/Data we collect(.*?)<\/ul>/)?.[1] ?? "";
   assert.match(collect, /Session analytics/);
-  assert.match(collect, /The page address and title are not masked/);
+  assert.match(collect, /\(the page address and title are not masked\) <\/li>/);
 });
 
 test("マスク: DashboardShell の根（ログイン画面と本体の両方）に data-clarity-mask。ID が無い時は属性を出さない", () => {

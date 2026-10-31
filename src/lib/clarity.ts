@@ -152,17 +152,21 @@ export function startClarity(
 export const CLARITY_COOKIES = ["_clck", "_clsk"] as const;
 
 /**
- * _clck・_clsk を期限切れにする cookie 文字列。clarity-js は書ける最上位のドメイン（vet402.com なら
- * .vet402.com）に書くので、その domain 付きとホスト名だけ（domain 無し）の両方を消す。
+ * _clck・_clsk を期限切れにする cookie 文字列。clarity-js は書ける最上位のドメインに書く（vet402.com なら
+ * .vet402.com、プレビューの a.b.x.vercel.app なら書けた所まで）。どこに書いたかは分からないので、
+ * ホスト名だけ（domain 無し）と、ホスト名の後ろからたどれる 2 段以上の全部のドメインで消す
+ * （a.b.x.vercel.app → .a.b.x.vercel.app・.b.x.vercel.app・.x.vercel.app・.vercel.app）。
+ * ブラウザが受け付けない domain（公開接尾辞）は単に無視される。
  */
 export function clarityCookieExpiries(hostname: string): string[] {
-  const out: string[] = [];
   const labels = hostname.split(".").filter(Boolean);
   const isIp = /^[0-9.]+$/.test(hostname) || hostname.includes(":");
-  const top = !isIp && labels.length >= 2 ? labels.slice(-2).join(".") : null;
+  const domains: string[] = [];
+  if (!isIp) for (let i = 0; i <= labels.length - 2; i++) domains.push(labels.slice(i).join("."));
+  const out: string[] = [];
   for (const name of CLARITY_COOKIES) {
     out.push(`${name}=; Max-Age=0; Path=/`);
-    if (top) out.push(`${name}=; Max-Age=0; Path=/; Domain=.${top}`);
+    for (const d of domains) out.push(`${name}=; Max-Age=0; Path=/; Domain=.${d}`);
   }
   return out;
 }
