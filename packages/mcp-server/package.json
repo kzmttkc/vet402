@@ -24,6 +24,9 @@
     "typescript": "^5",
     "viem": "^2.56.6"
   },
+  "overrides": {
+    "jayson": "^5.0.0"
+  },
   "description": "MCP server for vet402: ask an agent's trust score, a wallet's, or a payee's before your agent pays them.",
   "license": "MIT",
   "author": "KIZUNA Creation",
