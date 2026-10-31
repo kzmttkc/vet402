@@ -113,8 +113,9 @@ beforeEach(async () => {
   const { getDb } = await import("@/lib/db/client");
   const { sql } = await import("drizzle-orm");
   const db = getDb()!;
-  await db.execute(sql`TRUNCATE owner_agents`);
-  await db.execute(sql`DELETE FROM agents`);
+  // このファイルの行は agent_id < 1000 だけ（owner-index-write-order.pg.test.ts は 9042・9043 を使う。並列でも混ざらない）。
+  await db.execute(sql`DELETE FROM owner_agents WHERE agent_id < 1000`);
+  await db.execute(sql`DELETE FROM agents WHERE agent_id < 1000`);
   await db.execute(sql`DELETE FROM indexer_checkpoints WHERE scope IN ('identity_registry', 'identity_registry_wallets')`);
   await db.execute(sql`
     INSERT INTO indexer_checkpoints (scope, last_block, chain_tip_at_run)
@@ -132,7 +133,7 @@ beforeEach(async () => {
 async function ownerRows(): Promise<string[]> {
   const { getDb } = await import("@/lib/db/client");
   const { sql } = await import("drizzle-orm");
-  const res = await getDb()!.execute(sql`SELECT owner, agent_id::text AS id FROM owner_agents`);
+  const res = await getDb()!.execute(sql`SELECT owner, agent_id::text AS id FROM owner_agents WHERE agent_id < 1000`);
   const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { owner: string; id: string }[];
   return rows.map((r) => `${r.owner}:${r.id}`).sort();
 }
@@ -140,7 +141,7 @@ async function ownerRows(): Promise<string[]> {
 async function walletRows(): Promise<string[]> {
   const { getDb } = await import("@/lib/db/client");
   const { sql } = await import("drizzle-orm");
-  const res = await getDb()!.execute(sql`SELECT agent_id::text AS id, wallet FROM agents`);
+  const res = await getDb()!.execute(sql`SELECT agent_id::text AS id, wallet FROM agents WHERE agent_id < 1000`);
   const rows = (Array.isArray(res) ? res : (res as { rows: unknown[] }).rows) as { id: string; wallet: string }[];
   return rows.map((r) => `${r.id}:${r.wallet}`).sort();
 }
@@ -489,6 +490,44 @@ test("lease: a run whose lease expired and was taken over does not release the n
   assert.deepEqual(await leaseRow(), { holder: secondHolder, expired: false }, "古い持ち主の解放は新しい lease を消さない");
   if (second.acquired) await second.release();
   assert.equal(await leaseRow(), null);
+});
+
+test("owner: crossing the write deadline on the first segment throws instead of answering ok with nothing advanced", { skip }, async () => {
+  const { indexOwnerAgents } = await import("@/lib/indexer/owner-indexer");
+  const writer = await import("@/lib/db/owner-index-writer");
+  const deps = {
+    now,
+    // 最初の区切りの書き込みを始める時点で、時計が書き込みの期限を越えている。
+    applyChanges: async (changes: Parameters<typeof writer.applyOwnerAgentChanges>[0], options?: Parameters<typeof writer.applyOwnerAgentChanges>[1]) => {
+      clock += 1_000_000;
+      return writer.applyOwnerAgentChanges(changes, options);
+    },
+  };
+  await assert.rejects(
+    indexOwnerAgents({ maxBlocks: 250_000n, segmentBlocks: SEG, timeBudgetMs: 1_000_000, hardStopMs: 1_000_000, writeDeadlineMs: 500_000, deps } as never),
+    (error: Error) => error.name === "DeadlineExceededError",
+  );
+  assert.equal(await checkpoint("identity_registry"), START, "checkpoint は動かない");
+  assert.deepEqual(await ownerRows(), [], "最初の区切りの文は 1 つも始めていない");
+});
+
+test("cron runner: a first-segment write deadline makes the body ok:false (500), so a stuck index does not look green", { skip }, async () => {
+  const { runIdentityIndexes } = await import("@/lib/indexer/identity-index-run");
+  // 2 つの索引が同じ時計を回す。書き込みの期限 = 1 区切りを読み終える前の時刻（getLogs 20 回 = 偽の 20 秒）。
+  // owner の最初の区切りは読み終えるのに getLogs 40 回かかるので、書き始める時には期限を過ぎている。
+  const run = await runIdentityIndexes({
+    maxBlocks: 250_000n,
+    segmentBlocks: SEG,
+    timeBudgetMs: 1_000_000,
+    hardStopMs: 1_000_000,
+    writeDeadlineMs: 20_000,
+    now,
+  });
+  const body = run.body as Record<string, unknown>;
+  assert.equal(run.status, 500);
+  assert.equal(body.ok, false);
+  assert.match(String(body.error), /owner: deadline_exceeded/);
+  assert.equal(await checkpoint("identity_registry"), START);
 });
 
 test("owner: a getLogs that never answers is abandoned by the wall clock and the earlier segment stays", { skip }, async () => {

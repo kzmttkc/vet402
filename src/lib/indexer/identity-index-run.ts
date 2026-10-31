@@ -37,7 +37,7 @@ export type IdentityIndexRunBody = {
   walletIndex: AgentWalletIndexResult | { error: string };
 } & Omit<Partial<OwnerIndexResult>, "blocksAdvanced" | "caughtUp">;
 
-const BUDGET_STOPS = new Set(["time_budget", "hard_stop"]);
+const BUDGET_STOPS = new Set(["time_budget", "hard_stop", "write_deadline"]);
 
 function message(reason: unknown): string {
   return reason instanceof Error ? reason.message : String(reason);

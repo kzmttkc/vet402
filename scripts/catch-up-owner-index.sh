@@ -54,7 +54,10 @@ run_local() {
   : "${DATABASE_URL:?DATABASE_URL required for --local (set env or install neonctl)}"
   : "${BASE_RPC_URL:?BASE_RPC_URL required for --local}"
 
-  for i in $(seq 1 "$MAX_RUNS"); do
+  waits=0
+  i=0
+  while [ "$i" -lt "$MAX_RUNS" ]; do
+    i=$((i + 1))
     echo "==> local indexer run $i / $MAX_RUNS"
     OUT=$(npm run indexer:owners -- "$MAX_BLOCKS" 2>&1) || {
       echo "$OUT"
@@ -66,6 +69,18 @@ run_local() {
       echo "==> caught up"
       exit 0
     }
+    # Another run (the cron, or a second catch-up) holds the lease: wait, do not count it as a run.
+    if echo "$OUT" | tail -1 | body_lease_held; then
+      i=$((i - 1))
+      waits=$((waits + 1))
+      if [ "$waits" -ge "${MAX_LEASE_WAITS:-40}" ]; then
+        echo "==> the lease stayed held for $waits checks; stopping" >&2
+        exit 1
+      fi
+      echo "another run holds the lease; waiting ${LEASE_WAIT_SEC}s"
+      sleep "$LEASE_WAIT_SEC"
+      continue
+    fi
     sleep "$SLEEP_SEC"
   done
   echo "==> reached MAX_RUNS ($MAX_RUNS) without catching up" >&2

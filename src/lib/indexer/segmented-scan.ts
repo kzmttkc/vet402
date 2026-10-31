@@ -38,7 +38,7 @@ export const DEFAULT_SEGMENT_BLOCKS = 20_000n;
  *    timeout 20 秒 × 最大 4 回まで返らないことがあるので、壁時計でも切る（withDeadline）。
  *  - DEFAULT_WRITE_DEADLINE_MS（270 秒）: 書き込みはここで次の文を始めない（走っている文は待つ）。
  *    書き終わらなかった区切りは checkpoint を進めずに応答を返す（stoppedBy: "write_deadline"）。
- *    次の回が同じ区切りを読み直す。
+ *    次の回が同じ区切りを読み直す。最初の区切りで当たった回だけは throw する（読み取りの失敗と同じ）。
  *
  * 書き込みに残る時間は 270 − 200 = 70 秒以上。所有者索引の最も重い区切り（10/31 手元実測で
  * 18.5 万 agentId）の書き込みは 1,000 行ずつ・4 本並列・upsert の段と delete の段で 94 往復。
@@ -153,7 +153,10 @@ export async function runSegmentedScan<R>(input: {
     } catch (error) {
       // 期限で書き終わらなかった区切り: checkpoint は前のまま、応答は返す（関数ごと殺されない）。
       // 書けた分は残るが、どれも何度書いても同じ結果の文で、次の回が同じ区切りを書き直す。
+      // 最初の区切りなら throw（cron は ok:false・500）: 1 ブロックも進まない回を ok:true で返すと、
+      // 毎日同じ区切りで止まっている索引が緑に見える（2026-10-31 再レビュー N-1）。
       if (error instanceof DeadlineExceededError) {
+        if (segments === 0) throw error;
         stoppedBy = "write_deadline";
         break;
       }
