@@ -35,7 +35,7 @@ const WALLET = "0x89e9e1ab11dd1b138b1dce6d6a4a0926aafd5029" as Address;
 const realFetch = globalThis.fetch;
 
 // Pacing is real time. Cases that are not ABOUT pacing opt out of it; the ones
-// that are set their own interval explicitly.
+// that are set their own interval (and clock) explicitly.
 beforeEach(() => {
   process.env.BLOCKSCOUT_MIN_INTERVAL_MS = "0";
   process.env.BLOCKSCOUT_COOLDOWN_MS = "0";
@@ -136,11 +136,19 @@ test("after a refusal, further requests are withheld instead of fired", async ()
   assert.equal(calls, 1, "no second request may be fired into an open cooldown");
 });
 
-test("v1 request starts are paced so a scan cannot fire the burst that trips the limiter", async () => {
+test("v1 request starts are paced so a scan cannot fire the burst that trips the limiter", { timeout: 10_000 }, async (t) => {
   // The actual repair. Three back-to-back v1 requests draw a 429, and the
   // previous code had no pacing at all: the weekly benchmark scanned 42
   // addresses as fast as it could, tripped the limiter on the 5th, and failed
   // closed on the remaining 37.
+  //
+  // The clock is fake, so what is measured is the gate's spacing decision and
+  // not how promptly a loaded machine schedules each caller. On the real clock
+  // this failed on 2026-10-31 inside a full `npm test` with parallel suites
+  // running ("request 2 started only 23ms after the previous one"): the gate
+  // stamps a start, then a CPU-starved caller reaches fetch late, and the next
+  // caller's correctly paced start lands closer to it than the interval.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });
   process.env.BLOCKSCOUT_MIN_INTERVAL_MS = "60";
   resetBlockscoutRateGate();
 
@@ -150,17 +158,28 @@ test("v1 request starts are paced so a scan cannot fire the burst that trips the
     return jsonResponse({ status: "1", message: "OK", result: OK_TXS });
   };
 
-  await Promise.all([
+  const scan = Promise.all([
     fetchWalletTransactions(WALLET, { sort: "asc", offset: 1 }),
     fetchWalletTransactions(WALLET, { sort: "asc", offset: 1 }),
     fetchWalletTransactions(WALLET, { sort: "asc", offset: 1 }),
     fetchWalletTransactions(WALLET, { sort: "asc", offset: 1 }),
   ]);
 
-  assert.equal(startedAt.length, 4);
+  // Advance one millisecond at a time and let every queued caller act before
+  // the next, so each start is recorded at the instant the gate released it.
+  // setImmediate is left on the real clock to drain the promise chain.
+  for (let elapsed = 0; startedAt.length < 4 && elapsed < 1_000; elapsed++) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(1);
+  }
+  // Checked before awaiting: a gate that waits far too long would otherwise
+  // leave the scan parked on a fake timer nobody advances, and hang the run.
+  assert.equal(startedAt.length, 4, `only ${startedAt.length} of 4 requests started within 1000 fake ms`);
+  await scan;
+
   for (let i = 1; i < startedAt.length; i++) {
     const gap = startedAt[i] - startedAt[i - 1];
-    assert.ok(gap >= 50, `request ${i + 1} started only ${gap}ms after the previous one`);
+    assert.ok(gap >= 60, `request ${i + 1} started only ${gap}ms after the previous one`);
   }
 });
 
