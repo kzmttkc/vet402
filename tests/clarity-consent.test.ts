@@ -440,6 +440,32 @@ test("マスク: DashboardShell の根（ログイン画面と本体の両方）
 
 test("footer: Privacy choices の入口は ID がある時だけ、ポリシーの選択の節へ", () => {
   const src = read("src/components/site/SiteFooter.tsx");
-  assert.match(src, /label: "Privacy choices", href: "\/legal\/privacy#privacy-choices"/);
+  assert.match(src, /PRIVACY_CHOICES_HREF = "\/legal\/privacy#privacy-choices"/);
+  assert.match(src, /label: "Privacy choices", href: PRIVACY_CHOICES_HREF/);
   assert.match(src, /NEXT_PUBLIC_CLARITY_PROJECT_ID/);
+});
+
+test("footer: ID がある時も、凍結面（/rwa・/tokyo・/ethonline）と Clarity を動かさない頁では Privacy choices を出さない", async () => {
+  const prev = process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
+  process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID = ID;
+  try {
+    // SiteFooter は読み込みの時点で ID を読む。この test だけが読み込む。
+    const { SiteFooter } = await import("@/components/site/SiteFooter");
+    const html = (pathname: string) => renderToStaticMarkup(createElement(SiteFooter, { pathname }));
+    for (const p of ["/", "/faq", "/legal/privacy", "/sellers/api.example.com"]) {
+      assert.match(html(p), />Privacy choices</, p);
+    }
+    for (const p of ["/rwa", "/rwa/board", "/tokyo", "/ethonline", "/observatory/confirm", "/observatory/unsubscribe"]) {
+      const out = html(p);
+      assert.doesNotMatch(out, /Privacy choices/, p);
+      assert.doesNotMatch(out, /privacy-choices/, p);
+    }
+  } finally {
+    if (prev === undefined) delete process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID;
+    else process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID = prev;
+  }
+});
+
+test("SiteChrome は今の pathname を SiteFooter に渡す", () => {
+  assert.match(read("src/components/site/SiteChrome.tsx"), /<SiteFooter pathname=\{pathname \?\? ""\} \/>/);
 });

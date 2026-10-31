@@ -63,7 +63,7 @@ export function SiteChrome({
       <div id="main-content" ref={mainRef} tabIndex={-1} className="min-w-0 flex-1">
         {children}
       </div>
-      <SiteFooter />
+      <SiteFooter pathname={pathname ?? ""} />
     </>
   );
 }

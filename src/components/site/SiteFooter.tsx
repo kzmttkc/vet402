@@ -20,7 +20,7 @@
 
 import Link from "next/link";
 import { Wordmark } from "@/components/site/Wordmark";
-import { clarityProjectId } from "@/lib/clarity";
+import { clarityExcludedPath, clarityProjectId } from "@/lib/clarity";
 
 // 2026-09-02 Takeshi「フッターのバランスが悪い。本当に必要なものだけ残し、配置と内容を最適化」。
 // それまでは Index 11 / Operator 6 / Cite 2 の 3 列で、左だけが長い索引だった。
@@ -71,6 +71,8 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
   },
 ];
 
+const PRIVACY_CHOICES_HREF = "/legal/privacy#privacy-choices";
+
 // 法務と機械向け。約束として要るが、初見の読者の次の一手ではないので 1 行に落とす。
 const SMALL_PRINT_LINKS = [
   { label: "Terms", href: "/legal/terms" },
@@ -80,16 +82,22 @@ const SMALL_PRINT_LINKS = [
   { label: "Commercial disclosure", href: "/legal/notice#commercial-transactions" },
   { label: "Relationships", href: "/legal/notice#relationships" },
   { label: "Contact", href: "/legal/notice#contact" },
-  // 2026-10-31 Microsoft Clarity の同意を後から変える入口。ID がある時だけ出す。
+  // 2026-10-31 Microsoft Clarity の同意を後から変える入口。ID がある時だけ出す
+  // （Clarity を動かさない頁では SiteFooter が外す）。
   ...(clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID)
-    ? [{ label: "Privacy choices", href: "/legal/privacy#privacy-choices" }]
+    ? [{ label: "Privacy choices", href: PRIVACY_CHOICES_HREF }]
     : []),
   { label: "RSS", href: "/blog/rss.xml" },
   { label: "llms.txt", href: "/llms.txt" },
 ];
 
-export function SiteFooter() {
+export function SiteFooter({ pathname = "" }: { pathname?: string }) {
   const year = new Date().getFullYear();
+  // 凍結面（/rwa・/tokyo・/ethonline）とトークンを URL に載せる頁は Clarity を動かさないので、
+  // ID がある時も入口を出さない（凍結面は見た目を変えない。2026-10-31）。
+  const smallPrint = clarityExcludedPath(pathname)
+    ? SMALL_PRINT_LINKS.filter((item) => item.href !== PRIVACY_CHOICES_HREF)
+    : SMALL_PRINT_LINKS;
 
   return (
     // ヘッダと同じ式で紙面の本文列に揃える（外は main と同じ余白、内は .sheet と
@@ -125,7 +133,7 @@ export function SiteFooter() {
 
         <nav aria-label="Legal and machine-readable" className="mt-10 border-t border-hair pt-5">
           <ul className="flex flex-wrap gap-x-2 gap-y-1 text-[0.84375rem] text-brand-lift">
-            {SMALL_PRINT_LINKS.map((item, i) => (
+            {smallPrint.map((item, i) => (
               <li key={item.href} className="flex items-center gap-x-2">
                 {i > 0 && <span aria-hidden="true">·</span>}
                 <Link href={item.href} className="inline-flex min-h-8 items-center hover:text-brand-deep">
