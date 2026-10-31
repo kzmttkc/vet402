@@ -40,6 +40,9 @@
     "typescript": "^5",
     "viem": "^2.55.1"
   },
+  "overrides": {
+    "jayson": "^5.0.0"
+  },
   "description": "Independent checks for x402 sellers. Read a measured decision before a payment, or let payOrRefuse pay on a supported chain only after every check passes.",
   "license": "MIT",
   "author": "KIZUNA Creation",
