@@ -364,7 +364,7 @@ test("L2 の行: 行の l2_schema が mismatch でも読み直し（l2_reading�
 });
 
 test("L2 の行: 行の l2_schema が no_declaration でも読み直し（l2_reading）が match なら、判定 not_checked は食い違い", () => {
-  const c = l2SameRow("not_checked", "no_declaration", "match", "match");
+  const c = l2SameRow("not_checked", "no_declaration", "", "match");
   assert.equal(c.ok, false, JSON.stringify(c.values));
 });
 
