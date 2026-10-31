@@ -113,11 +113,15 @@ const L2_EQUIV: Record<string, string[]> = {
   mismatch: ["mismatch"],
   conform: ["match"],
   undeclared: ["no_declaration", ""],
-  // 2026-09-29.4: 宣言があって照合できない L2 は not_checked（WARN）。宣言の無い出品だけが undeclared
+  // 2026-09-29.4: 宣言があって照合できない L2 は not_checked（WARN）。出力の宣言の無い出品（宣言はあっても出力を
+  // 宣言していない出品を含む）が undeclared
   // 2026-10-31（Issue #83）: 判定は出力を宣言している出品で、直近の配達が match・mismatch でなければ行の語を問わず
   // not_checked と言う（seller-facts.ts assembleSellerFacts の l2Status。legacyL2SchemaOf は mismatch 以外を読み直さない）。
-  // 買った時は宣言が無く（行は no_declaration・古い行は空欄）、後から売り手が出力を宣言した出品がこれに当たる。
-  // match・mismatch の行は判定が conform・mismatch に写すので、not_checked と並べば食い違いのまま。
+  // 行が no_declaration（古い行は空欄）になるのは、買った時は宣言が無く後から売り手が出力を宣言した出品と、出力を例の
+  // プロパティだけで宣言し JSON 以外を返す出品（宣言が変わらなくても no_declaration。l2-check.ts checkL2Detailed の
+  // Content-Type が JSON でない枝の requiredKeys.length === 0）。
+  // 読み直した行（l2_reading、無ければ l2_schema）が match・mismatch なら判定は conform・mismatch に写すので、
+  // not_checked と並べば食い違いのまま。
   not_checked: ["not_checked", "no_declaration", ""],
 };
 

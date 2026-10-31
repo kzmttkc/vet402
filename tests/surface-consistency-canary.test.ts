@@ -324,14 +324,14 @@ test("食い違い: 記録頁は L2 mismatch、判定は undeclared（数えな�
  * 判定の L2 の語と、比べる行の台帳（l2_schema / l2_reading）・記録頁の L2 を差し替えて、l2_same_row の結果だけを返す。
  * 判定は出力を宣言している出品で、直近の配達が match・mismatch でなければ not_checked と言う（seller-facts.ts の l2Status）。
  */
-function l2SameRow(decL2: string, rowL2: string, recordL2: string) {
+function l2SameRow(decL2: string, rowL2: string, recordL2: string, rowReading?: string) {
   const x = listing(1, "allow", ["delivered"]);
   assert.ok(x.ledgerRows.ok === true && x.record.ok === true && x.decision.ok === true && x.mcp.ok === true);
   const d = structuredClone(x.decision.value);
   d.facts = { ...d.facts, l2: { status: decL2 } };
   x.decision = { ok: true, value: d };
   x.mcp = { ok: true, value: { ...x.mcp.value, measurement: structuredClone(d) } };
-  x.ledgerRows = { ok: true, value: x.ledgerRows.value.map((r) => ({ ...r, l2_schema: rowL2 })) };
+  x.ledgerRows = { ok: true, value: x.ledgerRows.value.map((r) => ({ ...r, l2_schema: rowL2, ...(rowReading === undefined ? {} : { l2_reading: rowReading }) })) };
   x.record = { ok: true, value: { ...x.record.value, rows: x.record.value.rows.map((r) => ({ ...r, l2: recordL2 })) } };
   const c = compareListing(x, registry()).checks.find((k) => k.rule === "l2_same_row");
   assert.ok(c, "l2_same_row was not compared");
@@ -355,6 +355,21 @@ test("L2 の行: 判定 not_checked × 行 match は食い違い（判定はそ�
 
 test("L2 の行: 判定 not_checked × 行 mismatch は食い違い", () => {
   const c = l2SameRow("not_checked", "mismatch", "mismatch");
+  assert.equal(c.ok, false, JSON.stringify(c.values));
+});
+
+test("L2 の行: 行の l2_schema が mismatch でも読み直し（l2_reading）が not_checked なら、判定 not_checked と一致", () => {
+  const c = l2SameRow("not_checked", "mismatch", "not_checked", "not_checked");
+  assert.equal(c.ok, true, JSON.stringify(c.values));
+});
+
+test("L2 の行: 行の l2_schema が no_declaration でも読み直し（l2_reading）が match なら、判定 not_checked は食い違い", () => {
+  const c = l2SameRow("not_checked", "no_declaration", "match", "match");
+  assert.equal(c.ok, false, JSON.stringify(c.values));
+});
+
+test("L2 の行: 台帳は no_declaration でも記録頁が match なら、判定 not_checked は食い違い（記録頁も同値表に当てる）", () => {
+  const c = l2SameRow("not_checked", "no_declaration", "match");
   assert.equal(c.ok, false, JSON.stringify(c.values));
 });
 
