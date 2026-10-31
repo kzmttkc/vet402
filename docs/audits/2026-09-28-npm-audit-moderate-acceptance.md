@@ -57,3 +57,5 @@ vet402
 
 凍結の解除まで、`npm audit --omit=dev` に **moderate 以外**（high / critical）か、
 上の経路の外の新しい件が出たら、この受容は適用しない（別件として扱う）。
+
+解消: 2026-10-31 `b883a3e0`（ルート `overrides.jayson ^5.0.0`。jayson 5.0.0 は stream-json と uuid に依存しない。web3.js が読む browser クライアントの差は要求 id の生成元だけで、スタブ相手の RPC の往復は前後でバイト一致。`npm test` と `npm run test:db` は fail 0）。
