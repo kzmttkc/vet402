@@ -2,13 +2,14 @@
  * Microsoft Clarity（2026-10-31 オーナー承認）。純粋な判定と、window.clarity の呼び方だけを置く。
  *
  * - Project ID は NEXT_PUBLIC_CLARITY_PROJECT_ID。無い・形が違うなら null を返し、呼び出し側は何も出さない。
- * - 同意が要る地域: EEA（EU 27 か国と IS・LI・NO）・UK・スイス。Clarity 自身が 2025-10-31 から
- *   この 3 地域に同意の信号を求めている（learn.microsoft.com/clarity/setup-and-installation/consent-mode）。
- *   国が分からないときは同意が要る側に倒す。
+ * - 同意が要る地域: EEA（EU 27 か国・その海外の地域・IS・LI・NO）・UK（王室属領と GI を含む）・スイス。
+ *   Clarity 自身が 2025-10-31 からこの 3 地域に同意の信号を求めている
+ *   （learn.microsoft.com/clarity/setup-and-installation/consent-mode）。国が分からないときは同意が要る側に倒す。
  * - 同意が要る地域では、選ぶ前はタグそのものを読み込まない（Clarity の no-consent mode でも
  *   cookie 無しで記録は続くため、「同意まで記録しない」にはタグを入れないことが要る）。
- * - consentv2 の形は公式（clarity-consent-api-v2）。広告は使わないので ad_Storage は全員に denied を送る
- *   （同意の要らない地域でも送る。Clarity の第三者 cookie の一部は Microsoft の広告用で、vet402 はそれを頼まない）。
+ * - consentv2 の形は公式（clarity-consent-api-v2）。広告は使わないので ad_Storage は全員に denied を送る。
+ * - 撤回（Accept の後の Decline）は consentv2 denied を送って頁を読み直す。clarity-js は denied を受けると
+ *   cookie 無しのモードで記録を続けるので、読み直した頁でタグを入れないことで止める（2026-10-31 独立点検 H2）。
  */
 
 export const CLARITY_CONSENT_COOKIE = "vet402_analytics_consent";
@@ -16,6 +17,12 @@ export const CLARITY_CONSENT_COOKIE = "vet402_analytics_consent";
 export const CLARITY_CONSENT_MAX_AGE = 60 * 60 * 24 * 180;
 /** Privacy choices のボタンが帯を開き直すためのイベント名。 */
 export const PRIVACY_CHOICES_EVENT = "vet402:privacy-choices";
+
+/** 帯の文。地域で分ける（2026-10-31 独立点検 M3・逐語）。 */
+export const BANNER_TEXT_CONSENT_REQUIRED =
+  "vet402 would like to record how pages are used (clicks, scrolling, page layout) with Microsoft Clarity, to find what is hard to use. Page text, form fields and keys are masked. Nothing is recorded unless you accept.";
+export const BANNER_TEXT_DEFAULT_ON =
+  "vet402 records how pages are used (clicks, scrolling, page layout) with Microsoft Clarity, to find what is hard to use. Page text, form fields and keys are masked. Choose Decline to turn it off.";
 
 export type ConsentChoice = "granted" | "denied";
 
@@ -25,45 +32,87 @@ export function clarityProjectId(raw: string | undefined | null): string | null 
   return /^[a-z0-9]{6,20}$/i.test(id) ? id : null;
 }
 
-// EU 27 か国 + EEA の 3 か国（IS・LI・NO）+ UK + スイス。ISO 3166-1 alpha-2。
+// ISO 3166-1 alpha-2。
 const CONSENT_REQUIRED = new Set([
+  // EU 27 か国
   "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT",
   "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
+  // EU の一部として別の国名コードを持つ地域（フランスの海外県・サン・マルタン、フィンランドのオーランド）
+  "RE", "GP", "MQ", "GF", "YT", "MF", "AX",
+  // EEA の 3 か国
   "IS", "LI", "NO",
-  "GB", "CH",
+  // UK と、GDPR 相当の法を自前で持つジブラルタル・王室属領（ジャージー・ガーンジー・マン島）
+  "GB", "GI", "JE", "GG", "IM",
+  // スイス
+  "CH",
 ]);
 
 /**
  * 同意が要るか。Vercel の x-vercel-ip-country を渡す。
- * 無い・2 文字の国名でない・XX（不明）・T1（Tor）などは true（要る側）。
+ * 無い・2 文字の国名でない・XX（不明）・EU・T1（Tor）などは true（要る側）。
  */
 export function consentRequiredFor(country: string | null | undefined): boolean {
   const c = (country ?? "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(c)) return true;
   if (c === "XX" || c === "EU") return true;
-  if (CONSENT_REQUIRED.has(c)) return true;
-  // ISO の国名として割り当てのない値（Tor の T1 など）は上の正規表現で落ちる。
-  return false;
+  return CONSENT_REQUIRED.has(c);
 }
 
 export function parseConsentChoice(value: string | null | undefined): ConsentChoice | null {
   return value === "granted" || value === "denied" ? value : null;
 }
 
+/** document.cookie の文字列から選択を読む。 */
+export function choiceFromCookieString(cookie: string | null | undefined): ConsentChoice | null {
+  for (const part of (cookie ?? "").split(";")) {
+    const [k, ...v] = part.trim().split("=");
+    if (k === CLARITY_CONSENT_COOKIE) return parseConsentChoice(v.join("="));
+  }
+  return null;
+}
+
+/**
+ * 読み込むか・帯を出すか。
+ * Global Privacy Control を出しているブラウザでは、選択に関わらず読み込まず帯も出さない
+ * （clarity-js 自身も GPC では記録しない。ポリシーと同じ扱い）。
+ */
 export function clarityPlan(input: {
   consentRequired: boolean;
   choice: ConsentChoice | null;
   gpc: boolean;
 }): { load: boolean; banner: boolean } {
+  if (input.gpc) return { load: false, banner: false };
   if (input.choice === "granted") return { load: true, banner: false };
   if (input.choice === "denied") return { load: false, banner: false };
   if (input.consentRequired) return { load: false, banner: true };
-  // 同意の要らない地域の既定は記録する。ただし Global Privacy Control を出しているブラウザは断ったものとして扱う。
-  return { load: !input.gpc, banner: false };
+  return { load: true, banner: false };
+}
+
+/**
+ * Clarity を動かさない頁。
+ * - /observatory/confirm・/observatory/unsubscribe: メールのリンクが URL の # にトークンを載せる
+ *   （src/lib/observatory/record-subscriptions.ts）。Clarity は頁の URL を送るので、ここでは読み込まない。
+ * - /rwa・/tokyo・/ethonline: 凍結面（tests/seo-audit-1026.test.ts）。帯もタグも出さない。
+ */
+const EXCLUDED_PREFIXES = [
+  "/observatory/confirm",
+  "/observatory/unsubscribe",
+  "/rwa",
+  "/tokyo",
+  "/ethonline",
+];
+
+export function clarityExcludedPath(pathname: string | null | undefined): boolean {
+  const p = pathname ?? "";
+  return EXCLUDED_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
 }
 
 type ClarityFn = ((...args: unknown[]) => void) & { q?: unknown[][] };
 type ClarityWindow = { clarity?: ClarityFn };
+
+export function clarityLoaded(win: ClarityWindow): boolean {
+  return typeof win.clarity === "function";
+}
 
 /**
  * 公式スニペットと同じ queue の stub を置き、タグを 1 回だけ入れる。
@@ -76,7 +125,7 @@ export function startClarity(
   projectId: string,
 ): void {
   const { win } = env;
-  const already = typeof win.clarity === "function";
+  const already = clarityLoaded(win);
   if (!already) {
     const stub: ClarityFn = function (...args: unknown[]) {
       (stub.q = stub.q || []).push(args);
@@ -87,12 +136,14 @@ export function startClarity(
   if (!already) env.insertScript(`https://www.clarity.ms/tag/${projectId}`);
 }
 
-/** 読み込み済みなら、denied を送り、Clarity の cookie を消し、この頁の記録を止める。 */
-export function stopClarity(win: ClarityWindow): void {
-  if (typeof win.clarity !== "function") return;
-  win.clarity("consentv2", { ad_Storage: "denied", analytics_Storage: "denied" });
-  win.clarity("consent", false);
-  win.clarity("stop");
+/**
+ * 撤回。読み込み済みなら consentv2 denied を送って true を返す（呼び手が頁を読み直す）。
+ * Clarity は denied を受けると自分の cookie（_clck・_clsk）を消す。非公開の stop は呼ばない。
+ */
+export function denyClarity(win: ClarityWindow): boolean {
+  if (!clarityLoaded(win)) return false;
+  win.clarity!("consentv2", { ad_Storage: "denied", analytics_Storage: "denied" });
+  return true;
 }
 
 /**
@@ -107,11 +158,26 @@ export function clarityCspSources(): { script: string; connect: string; img: str
   };
 }
 
-/** HTML の頁か。API・MCP・.well-known・拡張子のあるファイル（csv / json / xml / txt …）は頁ではない。 */
+// 頁ではないファイルの拡張子。/sellers/api.example.com のようにホスト名を含む頁は頁として扱う（独立点検 M1）。
+const FILE_EXTENSIONS = new Set([
+  "csv", "json", "jsonl", "ndjson", "xml", "txt", "md", "yaml", "yml", "rss", "atom",
+  "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "ico", "pdf",
+  "webmanifest", "js", "mjs", "css", "map", "woff", "woff2", "ttf", "otf",
+  "wasm", "zip", "gz", "tgz",
+]);
+
+/** HTML の頁か。API・MCP・.well-known・既知の拡張子のファイルは頁ではない。 */
 export function isHtmlPagePath(pathname: string): boolean {
   if (pathname === "/mcp" || pathname.startsWith("/mcp/")) return false;
   if (pathname.startsWith("/api/") || pathname === "/api") return false;
   if (pathname.startsWith("/.well-known/")) return false;
   const last = pathname.split("/").pop() ?? "";
-  return !last.includes(".");
+  const dot = last.lastIndexOf(".");
+  if (dot < 0) return true;
+  return !FILE_EXTENSIONS.has(last.slice(dot + 1).toLowerCase());
+}
+
+/** CSP に Clarity を足すか。頁であり、Clarity を動かさない頁でないこと。 */
+export function clarityCspApplies(pathname: string): boolean {
+  return isHtmlPagePath(pathname) && !clarityExcludedPath(pathname);
 }

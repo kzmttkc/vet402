@@ -88,7 +88,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // 1 行フッタで出す。
   if (isLogin) {
     return (
-      <div className="flex min-h-screen flex-col bg-zinc-50">
+      // 2026-10-31 Microsoft Clarity: dashboard の中身（鍵・財布・メール・請求）は根で丸ごと伏せる。
+      <div data-clarity-mask="true" className="flex min-h-screen flex-col bg-zinc-50">
         <div className="flex flex-1 flex-col">{children}</div>
         <DashboardFooter />
       </div>
@@ -117,7 +118,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900">
+    // 2026-10-31 Microsoft Clarity: dashboard の中身（鍵・財布・メール・請求）は根で丸ごと伏せる。
+    <div data-clarity-mask="true" className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900">
       {/* Skip link — the dashboard has its own chrome (SiteChrome is bypassed
           here), so it needs its own. Eight sidebar links otherwise sit between
           the top of the tab order and the page content on every view. */}

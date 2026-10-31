@@ -192,6 +192,15 @@ export default async function PrivacyPage() {
               signature that prove control of it. This table holds no email address; if you write to
               support instead, that correspondence lives in the support inbox
             </li>
+            {/* 2026-10-31: Microsoft Clarity。中身は #session-analytics。 */}
+            <li>
+              <strong>Session analytics</strong> (Microsoft Clarity, see{" "}
+              <a className="doc-link" href="#session-analytics">
+                session analytics
+              </a>
+              ): how pages are used, such as clicks, scrolling and page layout, with page text,
+              images and form fields masked. The page address and title are not masked
+            </li>
           </ul>
         </section>
 
@@ -240,7 +249,7 @@ export default async function PrivacyPage() {
             {/* 2026-10-31: Microsoft Clarity を入れたので「同意に頼る処理は無い」は偽になる。EEA・UK・スイスの同意を書く。 */}
             <li>
               <strong>Consent</strong> (Art. 6(1)(a)): session analytics with Microsoft Clarity for
-              visitors in the EEA, the UK and Switzerland. vet402 asks for it separately on a banner,
+              visitors in the EEA, the UK and Switzerland. vet402 asks for it on a banner at the bottom of the page,
               and you can withdraw it at any time (see{" "}
               <a className="doc-link" href="#session-analytics">
                 session analytics
@@ -335,8 +344,8 @@ export default async function PrivacyPage() {
           <p>
             We use the providers below to run the service. Each processes only the data its function
             needs, under its own data-processing terms. We do not sell personal data, and we do not
-            share it with anyone for their own marketing. Microsoft, for Clarity, also acts as a
-            controller of what it receives in its own right; see{" "}
+            share it with anyone for their own marketing. For Clarity, Microsoft is also an
+            independent controller of the data it receives. See{" "}
             <a className="doc-link" href="#session-analytics">
               session analytics
             </a>
@@ -461,12 +470,12 @@ export default async function PrivacyPage() {
             {/* 2026-10-31 オーナー承認: Microsoft Clarity（NEXT_PUBLIC_CLARITY_PROJECT_ID）。中身は #session-analytics。 */}
             <li>
               <strong>Microsoft Clarity</strong> (Microsoft Corporation, United States). Session
-              recordings and heatmaps of how pages are used, with page text masked. It receives what is
+              recordings and heatmaps of how pages are used, with page text masked. It receives the data
               described under{" "}
               <a className="doc-link" href="#session-analytics">
                 session analytics
               </a>
-              , and for visitors in the EEA, the UK and Switzerland only after they accept.
+              . Visitors in the EEA, the UK and Switzerland are recorded only after they accept.
             </li>
             <li>
               <strong>GitHub</strong> (United States) — hosts vet402&apos;s public source code and
@@ -620,29 +629,31 @@ export default async function PrivacyPage() {
           <p>
             vet402 uses Microsoft Clarity, a service of Microsoft Corporation, to see where pages are
             hard to use: which links are clicked, how far a page is scrolled, and where people stop.
-            When it runs, your browser loads a script from <code>www.clarity.ms</code> and sends
-            Clarity what Microsoft describes as the interactions on the page (mouse movements,
+            When it runs, your browser loads Clarity&apos;s scripts from <code>clarity.ms</code> and
+            sends Clarity what Microsoft describes as the interactions on the page (mouse movements,
             clicks, scrolling, window resizing, text selection and input events), how the page is
             rendered (the layout and structure of its elements), page events such as page size and
-            visibility, script errors and performance measures, the address of the page and the
-            referring page, and your device type, browser, operating system and screen size.
+            visibility, script errors and performance measures, the address and title of the page and
+            the referring page, and your device type, browser, operating system and screen size.
             Microsoft also receives your IP address with each request and uses it to estimate your
             country. Clarity turns this into session replays and heatmaps that vet402 reads in the
             Clarity dashboard.
           </p>
           <p>
-            <strong>Masking.</strong> vet402 runs Clarity in its Strict masking mode, so the text on
-            the page is replaced with placeholder characters before it leaves your browser. Clarity
-            always masks what you type into input boxes and dropdowns. On top of that, vet402 marks
-            the API key shown at sign-up and in the dashboard, the wallet addresses in dashboard
-            lookups and lists, and the sign-up, login, search, lookup and notification fields with
-            Clarity&apos;s <code>data-clarity-mask</code> attribute. vet402 does not send Clarity
+            <strong>Masking.</strong> vet402 runs Clarity in its Strict masking mode, so the text and
+            images on the page are replaced with placeholders before they leave your browser. The
+            page address and title are not masked. Clarity always masks what you type into input
+            boxes and dropdowns. On top of that, vet402 marks the whole dashboard, the API key shown
+            at sign-up, and the sign-up, login, search, lookup and notification fields with
+            Clarity&apos;s <code>data-clarity-mask</code> attribute. On the two pages reached from
+            notification emails, whose addresses carry a token, Clarity does not run. vet402 does not send Clarity
             your email address, your API key or your account ID.
           </p>
           <p>
             <strong>Cookies.</strong> When Clarity runs, it sets two first-party cookies on
-            vet402.com: <code>_clck</code>, which keeps a pseudonymous Clarity user ID, and{" "}
-            <code>_clsk</code>, which joins the pages of one visit into one recording. Microsoft
+            vet402.com: <code>_clck</code>, which keeps a pseudonymous Clarity user ID for up to one year,
+            and <code>_clsk</code>, which joins the pages of one visit into one recording and lasts
+            one day. Microsoft
             lists further cookies on its own domains (CLID, MUID, MR, SM and ANONCHK), some of which
             Microsoft uses for advertising. vet402 tells Clarity that advertising storage is denied
             for every visitor. vet402 also sets <code>vet402_analytics_consent</code>, a first-party
@@ -654,15 +665,15 @@ export default async function PrivacyPage() {
             Switzerland.</strong> If your request appears to come from one of these places, or if
             vet402 cannot tell where it comes from, Clarity is not loaded and nothing is recorded
             until you choose Accept on the banner at the bottom of the page. If you choose Decline,
-            Clarity stays off. vet402 relies on your consent for this (GDPR and UK GDPR Art.
-            6(1)(a)). You can withdraw it at any time under Privacy choices below, which does not
+            Clarity stays off. vet402 relies on your consent for this (Art. 6(1)(a) of the GDPR
+            and the UK GDPR, and consent under Swiss data protection law). You can withdraw it at any time under Privacy choices below, which does not
             undo recording made before you withdrew it.
           </p>
           <p>
             <strong>Visitors everywhere else.</strong> Clarity runs by default, because session
             analytics is how vet402 finds and fixes what is hard to use. You can turn it off at any
             time under Privacy choices below. If your browser sends a Global Privacy Control signal,
-            vet402 treats it as Decline and does not load Clarity. Microsoft also offers its own
+            vet402 does not load Clarity, in any region and whatever you choose. Microsoft also offers its own
             opt-out for Clarity through the Digital Advertising Alliance at{" "}
             <a className="doc-link" href="https://optout.aboutads.info/">
               optout.aboutads.info
@@ -671,14 +682,16 @@ export default async function PrivacyPage() {
           </p>
           <p>
             <strong>Retention and Microsoft&apos;s own use.</strong> Clarity keeps recordings for 30
-            days, and keeps favorited recordings and a random sample of recordings for up to 9 months.
-            Microsoft stores Clarity data in its Azure cloud and is a controller of the data it
+            days, and keeps favorited recordings, a random sample of recordings and heatmaps for up to
+            9 months. Clarity does not let vet402 find or delete one visitor&apos;s recordings. They
+            expire on this schedule. Microsoft stores Clarity data in its Azure cloud and is a controller of the data it
             receives in its own right, which it handles under the{" "}
             <a className="doc-link" href="https://www.microsoft.com/privacy/privacystatement">
               Microsoft Privacy Statement
             </a>
-            . Choosing Decline after you accepted removes Clarity&apos;s cookies from your browser
-            and stops recording on the open page.
+            . Choosing Decline after you accepted deletes the <code>_clck</code> and{" "}
+            <code>_clsk</code> cookies on vet402.com and stops recording. Cookies that Microsoft set
+            on its own domains stay until they expire or you clear them.
           </p>
           <div id="privacy-choices" className="scroll-mt-24 space-y-2">
             <p>

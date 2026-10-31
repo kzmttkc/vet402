@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSellersPath, sellersRateLimitResponse } from "@/lib/sellers/page-limit";
 import { invalidPayeeAddressHtml, isMalformedPayeePath } from "@/lib/payee/invalid-address-page";
-import { clarityCspSources, clarityProjectId, isHtmlPagePath } from "@/lib/clarity";
+import { clarityCspApplies, clarityCspSources, clarityProjectId } from "@/lib/clarity";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -46,9 +46,10 @@ export async function proxy(request: NextRequest) {
   const nonce = generateNonce();
 
   // 2026-10-31 Microsoft Clarity: Project ID がある時の HTML 頁にだけ読み込み先を足す。
-  // API・CSV・MCP・ファイルの応答の CSP は今のまま（src/lib/clarity.ts の isHtmlPagePath）。
+  // API・CSV・MCP・ファイルの応答と、Clarity を動かさない頁（トークンを URL に載せる頁・凍結面）の
+  // CSP は今のまま（src/lib/clarity.ts の clarityCspApplies）。
   const clarity =
-    clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID) && isHtmlPagePath(request.nextUrl.pathname)
+    clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID) && clarityCspApplies(request.nextUrl.pathname)
       ? clarityCspSources()
       : null;
 

@@ -14,17 +14,22 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NextRequest } from "next/server";
 import {
+  BANNER_TEXT_CONSENT_REQUIRED,
+  BANNER_TEXT_DEFAULT_ON,
   CLARITY_CONSENT_COOKIE,
+  choiceFromCookieString,
+  clarityCspApplies,
   clarityCspSources,
+  clarityExcludedPath,
   clarityPlan,
   clarityProjectId,
   consentRequiredFor,
+  denyClarity,
   isHtmlPagePath,
   parseConsentChoice,
   startClarity,
-  stopClarity,
 } from "@/lib/clarity";
-import { ClarityConsent } from "@/components/site/ClarityConsent";
+import { ClarityConsentView } from "@/components/site/ClarityConsent";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -40,7 +45,13 @@ test("clarityProjectId: 未設定・空・形の違う値は null（何も読み
 });
 
 test("consentRequiredFor: EEA・UK・スイスと国不明は同意が要る側、US・JP は要らない", () => {
-  for (const c of ["DE", "FR", "IE", "NL", "IS", "LI", "NO", "GB", "CH", "de", "gb"]) {
+  for (const c of [
+    "DE", "FR", "IE", "NL", "IS", "LI", "NO", "GB", "CH", "de", "gb",
+    // EU の海外の地域とオーランド（独立点検 M2）
+    "RE", "GP", "MQ", "GF", "YT", "MF", "AX",
+    // ジブラルタルと王室属領
+    "GI", "JE", "GG", "IM",
+  ]) {
     assert.equal(consentRequiredFor(c), true, c);
   }
   for (const c of [null, undefined, "", "XX", "T1", "EU", "???"]) {
@@ -57,6 +68,10 @@ test("parseConsentChoice: granted / denied だけを選択として読む", () =
   assert.equal(parseConsentChoice(undefined), null);
   assert.equal(parseConsentChoice("yes"), null);
   assert.match(CLARITY_CONSENT_COOKIE, /^[a-z0-9_]+$/);
+  assert.equal(choiceFromCookieString("a=1; vet402_analytics_consent=denied; b=2"), "denied");
+  assert.equal(choiceFromCookieString("vet402_analytics_consent=granted"), "granted");
+  assert.equal(choiceFromCookieString("x_vet402_analytics_consent=granted"), null);
+  assert.equal(choiceFromCookieString(""), null);
 });
 
 test("clarityPlan: 同意が要る地域は、選択の前に読み込まず帯を出す", () => {
@@ -74,7 +89,7 @@ test("clarityPlan: 同意が要る地域は、選択の前に読み込まず帯�
   });
 });
 
-test("clarityPlan: それ以外の地域は既定で読み込み、断った人と GPC の人は読み込まない", () => {
+test("clarityPlan: それ以外の地域は既定で読み込み、断った人は読み込まない", () => {
   assert.deepEqual(clarityPlan({ consentRequired: false, choice: null, gpc: false }), {
     load: true,
     banner: false,
@@ -83,15 +98,14 @@ test("clarityPlan: それ以外の地域は既定で読み込み、断った人�
     load: false,
     banner: false,
   });
-  assert.deepEqual(clarityPlan({ consentRequired: false, choice: null, gpc: true }), {
-    load: false,
-    banner: false,
-  });
-  // 明示の Accept は GPC より後の意思なので読み込む。
-  assert.deepEqual(clarityPlan({ consentRequired: false, choice: "granted", gpc: true }), {
-    load: true,
-    banner: false,
-  });
+});
+
+test("clarityPlan: GPC では地域と選択に関わらず読み込まず、帯も出さない（clarity-js も GPC では記録しない）", () => {
+  for (const consentRequired of [true, false]) {
+    for (const choice of [null, "granted", "denied"] as const) {
+      assert.deepEqual(clarityPlan({ consentRequired, choice, gpc: true }), { load: false, banner: false });
+    }
+  }
 });
 
 type Win = { clarity?: ((...args: unknown[]) => void) & { q?: unknown[][] } };
@@ -119,61 +133,87 @@ test("startClarity: タグは二度入れない。広告の denied はどの呼�
   }
 });
 
-test("stopClarity: 読み込み済みなら denied を送り、cookie を消し、記録を止める。未読み込みなら何も呼ばない", () => {
+test("denyClarity: 読み込み済みなら consentv2 denied だけを送って true（呼び手が読み直す）。未読み込みなら何もしない", () => {
   const untouched: Win = {};
-  stopClarity(untouched);
+  assert.equal(denyClarity(untouched), false);
   assert.equal(untouched.clarity, undefined);
 
   const win: Win = {};
   startClarity({ win, insertScript: () => {} }, ID);
-  stopClarity(win);
+  assert.equal(denyClarity(win), true);
   assert.deepEqual(win.clarity?.q, [
     ["consentv2", { ad_Storage: "denied", analytics_Storage: "granted" }],
     ["consentv2", { ad_Storage: "denied", analytics_Storage: "denied" }],
-    ["consent", false],
-    ["stop"],
   ]);
 });
 
-test("ClarityConsent: ID が無ければ何も描かない", () => {
-  for (const consentRequired of [true, false]) {
-    const html = renderToStaticMarkup(
-      createElement(ClarityConsent, { projectId: null, consentRequired, initialChoice: null }),
-    );
-    assert.equal(html, "");
+test("clarityExcludedPath: トークンを URL に載せる頁と凍結面", () => {
+  for (const p of [
+    "/observatory/confirm",
+    "/observatory/unsubscribe",
+    "/rwa",
+    "/rwa/board",
+    "/tokyo",
+    "/ethonline",
+  ]) {
+    assert.equal(clarityExcludedPath(p), true, p);
+  }
+  for (const p of ["/", "/observatory", "/observatory/e/abc", "/rwanda", "/tokyo-guide", "/legal/privacy", null]) {
+    assert.equal(clarityExcludedPath(p), false, String(p));
   }
 });
 
-test("ClarityConsent: DE・GB・CH・国不明では、同意前の HTML に Clarity が無く、帯（Accept / Decline / ポリシー）が出る", () => {
-  for (const country of ["DE", "GB", "CH", null]) {
-    const html = renderToStaticMarkup(
-      createElement(ClarityConsent, {
-        projectId: ID,
-        consentRequired: consentRequiredFor(country),
-        initialChoice: null,
-      }),
-    );
-    assert.doesNotMatch(html, /clarity\.ms/, `${country}: no Clarity script before consent`);
-    assert.match(html, />Accept</, `${country}: Accept`);
-    assert.match(html, />Decline</, `${country}: Decline`);
-    assert.match(html, /href="\/legal\/privacy#session-analytics"/, `${country}: policy link`);
-  }
-});
-
-test("ClarityConsent: US では帯を出さない（読み込みはクライアントで行う）", () => {
-  const html = renderToStaticMarkup(
-    createElement(ClarityConsent, {
-      projectId: ID,
-      consentRequired: consentRequiredFor("US"),
-      initialChoice: null,
+// effect の配線・再マウント・撤回は tests/clarity-consent-dom.test.ts（jsdom）で確かめる。ここは最初の HTML だけ。
+const view = (props: { projectId: string | null; consentRequired: boolean; pathname?: string; initialChoice?: "granted" | "denied" | null }) =>
+  renderToStaticMarkup(
+    createElement(ClarityConsentView, {
+      projectId: props.projectId,
+      consentRequired: props.consentRequired,
+      initialChoice: props.initialChoice ?? null,
+      pathname: props.pathname ?? "/",
     }),
   );
-  assert.doesNotMatch(html, />Accept</);
-  assert.doesNotMatch(html, /clarity\.ms/);
+
+test("ClarityConsentView（最初の HTML）: ID が無ければ何も描かない", () => {
+  for (const consentRequired of [true, false]) assert.equal(view({ projectId: null, consentRequired }), "");
+});
+
+test("ClarityConsentView（最初の HTML）: DE・GB・CH・国不明は同意を求める帯の文（逐語）と Accept / Decline / ポリシー", () => {
+  for (const country of ["DE", "GB", "CH", null]) {
+    const html = view({ projectId: ID, consentRequired: consentRequiredFor(country) });
+    assert.ok(html.includes(BANNER_TEXT_CONSENT_REQUIRED), `${country}: wording`);
+    assert.match(html, />Accept</);
+    assert.match(html, />Decline</);
+    assert.match(html, /href="\/legal\/privacy#session-analytics"/);
+  }
+  assert.equal(
+    BANNER_TEXT_CONSENT_REQUIRED,
+    "vet402 would like to record how pages are used (clicks, scrolling, page layout) with Microsoft Clarity, to find what is hard to use. Page text, form fields and keys are masked. Nothing is recorded unless you accept.",
+  );
+  assert.equal(
+    BANNER_TEXT_DEFAULT_ON,
+    "vet402 records how pages are used (clicks, scrolling, page layout) with Microsoft Clarity, to find what is hard to use. Page text, form fields and keys are masked. Choose Decline to turn it off.",
+  );
+});
+
+test("ClarityConsentView（最初の HTML）: US では帯を出さない。除外の頁では EU でも帯を出さない", () => {
+  assert.equal(view({ projectId: ID, consentRequired: consentRequiredFor("US") }), "");
+  for (const pathname of ["/observatory/confirm", "/observatory/unsubscribe", "/rwa", "/tokyo", "/ethonline"]) {
+    assert.equal(view({ projectId: ID, consentRequired: true, pathname }), "", pathname);
+  }
 });
 
 test("isHtmlPagePath: API・MCP・ファイル（csv / json / xml / txt）は頁ではない", () => {
-  for (const p of ["/", "/observatory", "/legal/privacy", "/payee/0xabc", "/dashboard/keys"]) {
+  for (const p of [
+    "/",
+    "/observatory",
+    "/legal/privacy",
+    "/payee/0xabc",
+    "/dashboard/keys",
+    // ホスト名を含む頁（独立点検 M1）
+    "/sellers/api.example.com",
+    "/sellers/edge.goldsky.com",
+  ]) {
     assert.equal(isHtmlPagePath(p), true, p);
   }
   for (const p of [
@@ -185,10 +225,20 @@ test("isHtmlPagePath: API・MCP・ファイル（csv / json / xml / txt）は頁
     "/blog/rss.xml",
     "/sitemap.xml",
     "/openapi.yaml",
+    "/opengraph-image.png",
+    "/manifest.webmanifest",
+    "/icon.ico",
     "/.well-known/mcp-registry-auth",
   ]) {
     assert.equal(isHtmlPagePath(p), false, p);
   }
+});
+
+test("clarityCspApplies: ホスト名を含む頁（/sellers/api.example.com）には足し、除外の頁とファイルには足さない", () => {
+  assert.equal(clarityCspApplies("/sellers/api.example.com"), true);
+  assert.equal(clarityCspApplies("/observatory/confirm"), false);
+  assert.equal(clarityCspApplies("/tokyo"), false);
+  assert.equal(clarityCspApplies("/blog/rss.xml"), false);
 });
 
 test("clarityCspSources: 公式どおり *.clarity.ms と c.bing.com", () => {
@@ -225,7 +275,18 @@ test("proxy CSP: ID があれば HTML 頁にだけ足す。API・CSV・MCP の C
   assert.match(page, /connect-src 'self' https:\/\/plausible\.io https:\/\/\*\.clarity\.ms https:\/\/c\.bing\.com/);
   assert.match(page, /img-src 'self' data: https:\/\/\*\.clarity\.ms https:\/\/c\.bing\.com/);
   assert.match(page, /script-src [^;]*https:\/\/\*\.clarity\.ms/);
-  for (const p of ["/api/v1/resources/x/export.csv", "/mcp", "/api/mcp", "/llms.txt"]) {
+  // Clarity を動かさない頁（トークンを URL に載せる頁・凍結面）も CSP は今のまま。
+  for (const p of [
+    "/api/v1/resources/x/export.csv",
+    "/mcp",
+    "/api/mcp",
+    "/llms.txt",
+    "/observatory/confirm",
+    "/observatory/unsubscribe",
+    "/rwa",
+    "/tokyo",
+    "/ethonline",
+  ]) {
     const csp = await cspFor(p, ID);
     assert.doesNotMatch(csp, /clarity|bing/, p);
     assert.equal(csp.replace(/'nonce-[^']+'/, "N"), (await cspFor(p, undefined)).replace(/'nonce-[^']+'/, "N"), p);
@@ -341,6 +402,40 @@ test("privacy: Clarity の節（取るもの・Microsoft・EEA/UK/CH の同意�
   assert.doesNotMatch(src, /This is the\s+only third party our pages send information to/);
   assert.doesNotMatch(src, /we do not currently rely on consent for any\s+processing/);
   assert.doesNotMatch(src, /We use one cookie, and only after you log in/);
+});
+
+test("privacy: 独立点検の英語の直し（逐語）と、Data we collect のセッション解析", () => {
+  // JSX の改行・{" "}・&apos;・<code> を畳んで、読まれる文として比べる。
+  const text = read("src/app/legal/privacy/page.tsx")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+    .replace(/\{" "\}/g, " ")
+    .replace(/&apos;/g, "'")
+    .replace(/<\/?code[^>]*>/g, "")
+    .replace(/<a [^>]*>\s*([^<]*?)\s*<\/a>/g, "$1")
+    .replace(/\s+/g, " ");
+  for (const sentence of [
+    "For Clarity, Microsoft is also an independent controller of the data it receives.",
+    "It receives the data described under session analytics . Visitors in the EEA, the UK and Switzerland are recorded only after they accept.",
+    "your browser loads Clarity's scripts from clarity.ms and sends Clarity",
+    "the address and title of the page and the referring page",
+    "so the text and images on the page are replaced with placeholders before they leave your browser. The page address and title are not masked.",
+    "_clck, which keeps a pseudonymous Clarity user ID for up to one year, and _clsk, which joins the pages of one visit into one recording and lasts one day.",
+    "(Art. 6(1)(a) of the GDPR and the UK GDPR, and consent under Swiss data protection law)",
+    "keeps favorited recordings, a random sample of recordings and heatmaps for up to 9 months. Clarity does not let vet402 find or delete one visitor's recordings. They expire on this schedule.",
+    "deletes the _clck and _clsk cookies on vet402.com and stops recording. Cookies that Microsoft set on its own domains stay until they expire or you clear them.",
+    "vet402 asks for it on a banner at the bottom of the page,",
+    "vet402 does not load Clarity, in any region and whatever you choose.",
+  ]) {
+    assert.ok(text.includes(sentence), `verbatim: ${sentence}`);
+  }
+  const collect = text.match(/Data we collect(.*?)<\/ul>/)?.[1] ?? "";
+  assert.match(collect, /Session analytics/);
+  assert.match(collect, /The page address and title are not masked/);
+});
+
+test("マスク: DashboardShell の根（ログイン画面と本体の両方）に data-clarity-mask", () => {
+  const shell = read("src/components/dashboard/shell.tsx");
+  assert.equal(shell.match(/<div data-clarity-mask="true" className="flex min-h-screen flex-col bg-zinc-50/g)?.length ?? 0, 2);
 });
 
 test("footer: Privacy choices の入口は ID がある時だけ、ポリシーの選択の節へ", () => {
