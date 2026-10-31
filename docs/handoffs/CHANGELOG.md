@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-10-31 Surface canary reads a no_declaration row under a not_checked decision as the same state
+
+- **What**: `src/lib/surface-canary/compare.ts` `L2_EQUIV.not_checked` is now `["not_checked", "no_declaration", ""]`, the same mapping `seller-facts.ts` uses (a listing that declares output and whose latest delivery is neither match nor mismatch is `not_checked`). A re-read row (`l2_reading`, else `l2_schema`) of match or mismatch under a `not_checked` decision is still a discrepancy, and the record page is held to the same table.
+- **Why**: GitHub Issue #83 (red since 10/29, flapping with the sample): `pool.linkrra.com/api/billing/x402/chat/completions` was bought on 10/18 before the seller added an output declaration, so the row says `no_declaration` (declaration hash 3197fd12…) while the decision reads today's declaration (72fbbbec…) and says `not_checked`. Both surfaces were right; the canary's table was narrower than the decision's.
+- **Impact**: No public surface changes. The canary stops flagging this case; a listing that declares output only by example properties and answers non-JSON also lands here (its rows are `no_declaration` by design, `l2-check.ts` `checkL2Detailed`). Open question for the decision owner (not changed here): such a listing stays `l2_not_checked` (WARN) for as long as it answers non-JSON.
+- **Commits**: this entry.
+
 ## 2026-10-31 index-owners works in time-budgeted segments and writes in batches
 
 - **What**: `/api/cron/index-owners` now runs the owner index and the WalletSet index side by side on one clock (`src/lib/indexer/identity-index-run.ts`). Each reads, writes and checkpoints per segment of up to 20,000 blocks (`src/lib/indexer/segmented-scan.ts`, the same idea as `index-feedback` on 10/13): no new segment after 180 s, a segment still being read at 230 s is dropped unwritten, and the checkpoint is the last block of the last segment that was read **and** written. The owner index reads a segment in 4,000-block windows and closes it early once it holds 100,000 events. Its writes are folded per agentId (`ownerChangesForSegment`) and written 1,000 rows per statement, 4 statements at a time (`applyOwnerAgentChanges`: rows to keep first, deletes after), and ownerOf is checked 1,000 ids per eth_call, 4 at a time. The response adds `blocksAdvanced: {owner, wallet}`, `stoppedByBudget`, and per index `partial` / `stoppedBy` / `segments`. Production `maxBlocks` is now a fixed 1,000,000 (the time budget is the real limit). `scripts/catch-up-owner-index.sh` defaults to `https://vet402.com`, reads the top-level `caughtUp` as JSON and stops after 3 failed calls in a row; `scripts/index-owners.ts` runs the same runner as the cron.
