@@ -2018,6 +2018,13 @@ claims:
     check: null
     why_unverifiable: "第三者のスクリプトの挙動。根拠は learn.microsoft.com/en-us/clarity/setup-and-installation/clarity-masking の「Content in the input boxes is masked in all modes」。vet402 側では tests/clarity-consent.test.ts が全入力欄の data-clarity-mask を固定する"
     verified_at: 2026-10-31
+  - id: privacy_clarity_delete_only_whole_project
+    surface: src/app/legal/privacy/page.tsx
+    quote: "Clarity can delete recordings only by deleting the whole project"
+    means: "Clarity で 1 人の訪問者の録画だけを消す手段は無く、消すにはプロジェクトごと消す（Microsoft の公式の説明）"
+    check: null
+    why_unverifiable: "第三者のサービスの仕様。根拠は learn.microsoft.com/en-us/clarity/faq の「Can I delete data for a specific user? You need to delete the entire project to delete user's data.」（2026-10-31 に読んだ）"
+    verified_at: 2026-10-31
   - id: legal_r4_terms_l1_dispute_l0_only
     surface: src/app/legal/terms/page.tsx
     quote: "the signed route re-runs the L0 probe only"

@@ -194,12 +194,12 @@ export default async function PrivacyPage() {
             </li>
             {/* 2026-10-31: Microsoft Clarity。中身は #session-analytics。 */}
             <li>
-              <strong>Session analytics</strong> (Microsoft Clarity, see{" "}
+              <strong>Session analytics</strong> (Microsoft Clarity; details under{" "}
               <a className="doc-link" href="#session-analytics">
                 session analytics
               </a>
               ): how pages are used, such as clicks, scrolling and page layout, with page text,
-              images and form fields masked. The page address and title are not masked
+              images and form fields masked. The page address and title are not masked.
             </li>
           </ul>
         </section>
@@ -645,8 +645,8 @@ export default async function PrivacyPage() {
             page address and title are not masked. Clarity always masks what you type into input
             boxes and dropdowns. On top of that, vet402 marks the whole dashboard, the API key shown
             at sign-up, and the sign-up, login, search, lookup and notification fields with
-            Clarity&apos;s <code>data-clarity-mask</code> attribute. On the two pages reached from
-            notification emails, whose addresses carry a token, Clarity does not run. vet402 does not send Clarity
+            Clarity&apos;s <code>data-clarity-mask</code> attribute. Clarity does not run on the two
+            pages that notification emails link to, because their addresses carry a token. vet402 does not send Clarity
             your email address, your API key or your account ID.
           </p>
           <p>
@@ -666,14 +666,15 @@ export default async function PrivacyPage() {
             vet402 cannot tell where it comes from, Clarity is not loaded and nothing is recorded
             until you choose Accept on the banner at the bottom of the page. If you choose Decline,
             Clarity stays off. vet402 relies on your consent for this (Art. 6(1)(a) of the GDPR
-            and the UK GDPR, and consent under Swiss data protection law). You can withdraw it at any time under Privacy choices below, which does not
-            undo recording made before you withdrew it.
+            and the UK GDPR, and consent under Swiss data protection law). You can withdraw it at any time
+            under Privacy choices below. Withdrawing does not affect recording made before you
+            withdrew.
           </p>
           <p>
             <strong>Visitors everywhere else.</strong> Clarity runs by default, because session
             analytics is how vet402 finds and fixes what is hard to use. You can turn it off at any
             time under Privacy choices below. If your browser sends a Global Privacy Control signal,
-            vet402 does not load Clarity, in any region and whatever you choose. Microsoft also offers its own
+            vet402 does not load Clarity, wherever you are and whatever you choose. Microsoft also offers its own
             opt-out for Clarity through the Digital Advertising Alliance at{" "}
             <a className="doc-link" href="https://optout.aboutads.info/">
               optout.aboutads.info
@@ -683,9 +684,10 @@ export default async function PrivacyPage() {
           <p>
             <strong>Retention and Microsoft&apos;s own use.</strong> Clarity keeps recordings for 30
             days, and keeps favorited recordings, a random sample of recordings and heatmaps for up to
-            9 months. Clarity does not let vet402 find or delete one visitor&apos;s recordings. They
-            expire on this schedule. Microsoft stores Clarity data in its Azure cloud and is a controller of the data it
-            receives in its own right, which it handles under the{" "}
+            9 months. vet402 cannot tell which recordings are yours, and
+            Clarity can delete recordings only by deleting the whole project, so recordings expire on
+            this schedule rather than on request. Microsoft stores Clarity data in its Azure cloud and
+            is an independent controller of the data it receives, which it handles under the{" "}
             <a className="doc-link" href="https://www.microsoft.com/privacy/privacystatement">
               Microsoft Privacy Statement
             </a>

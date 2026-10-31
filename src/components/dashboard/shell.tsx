@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { dashboardLogout } from "@/lib/dashboard/client";
 import { dashboardErrorMessage } from "@/lib/dashboard/errors";
 import { buttonClass } from "@/components/ui/Button";
+import { clarityProjectId } from "@/lib/clarity";
 
 const nav = [
   { href: "/dashboard", label: "Overview" },
@@ -17,6 +18,10 @@ const nav = [
   { href: "/dashboard/billing", label: "Billing" },
   { href: "/dashboard/integrations", label: "Integrations" },
 ];
+
+// 2026-10-31 Microsoft Clarity: dashboard の中身（鍵・財布・メール・請求）は根で丸ごと伏せる。
+// ID が無い時は属性を出さない（HTML を今と同じに保つ）。
+const CLARITY_MASK = clarityProjectId(process.env.NEXT_PUBLIC_CLARITY_PROJECT_ID) ? "true" : undefined;
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -88,8 +93,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   // 1 行フッタで出す。
   if (isLogin) {
     return (
-      // 2026-10-31 Microsoft Clarity: dashboard の中身（鍵・財布・メール・請求）は根で丸ごと伏せる。
-      <div data-clarity-mask="true" className="flex min-h-screen flex-col bg-zinc-50">
+      <div data-clarity-mask={CLARITY_MASK} className="flex min-h-screen flex-col bg-zinc-50">
         <div className="flex flex-1 flex-col">{children}</div>
         <DashboardFooter />
       </div>
@@ -118,8 +122,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    // 2026-10-31 Microsoft Clarity: dashboard の中身（鍵・財布・メール・請求）は根で丸ごと伏せる。
-    <div data-clarity-mask="true" className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900">
+    <div data-clarity-mask={CLARITY_MASK} className="flex min-h-screen flex-col bg-zinc-50 text-zinc-900">
       {/* Skip link — the dashboard has its own chrome (SiteChrome is bypassed
           here), so it needs its own. Eight sidebar links otherwise sit between
           the top of the tab order and the page content on every view. */}

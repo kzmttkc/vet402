@@ -7,18 +7,20 @@
  * - 同意が要る地域（EEA・UK・スイス・国不明）は、Accept を押すまでタグを入れない。
  * - それ以外は既定で読み込む。Privacy choices（ポリシーの #privacy-choices）から帯を開き直して止められる。
  * - GPC のブラウザでは読み込まない。
- * - トークンを URL に載せる頁と凍結面（clarityExcludedPath）では帯もタグも出さない。別の頁で読み込んだ
- *   後にそこへ移ったら、頁を読み直して止める。
- * - 撤回（読み込み済みでの Decline）は consentv2 denied の直後に読み直す（clarity-js は denied の後も
- *   cookie 無しで記録を続けるため。読み直した頁は cookie が denied なのでタグを入れない）。
+ * - トークンの頁（/observatory/confirm・/observatory/unsubscribe）: 帯もタグも出さない。別の頁で動き出した
+ *   Clarity のまま移ってきたら頁を読み直す。
+ * - 凍結面（/rwa・/tokyo・/ethonline）: 帯もタグも出さないだけ（読み直さない）。
+ * - トークンの頁か凍結面から始まった文書は、CSP に Clarity が無いので、その文書の間はタグを入れない。
+ * - 撤回（読み込み済みでの Decline）は consentv2 を呼ばず、cookie に denied を書いた直後に読み直す。
+ *   読み直した denied の頁で _clck・_clsk を最上位ドメインとホスト名の両方で期限切れにする。
  * - root template に置くので、頁を移るたびにマウントし直す。server から来る国と cookie は最初の
  *   読み込みの値で固まるため、選択は document.cookie とこのモジュールの変数を server の値より先に読む。
+ * - 帯はマウントの後にだけ描く（server と client の最初の描画を一致させる。GPC・cookie を client で読むため）。
  * - 帯は公開面の紙面のトークン（bg-paper・border-hair・text-brand）と buttonClass だけで組む。
- *   Accept と Decline は同じ大きさ・同じ系統。帯が出ている間は body の下に同じ高さの余白を置き、
- *   フッターを覆わない。
+ *   Accept と Decline は同じ大きさ・同じ系統。帯が出ている間は body の下に同じ高さの余白を置く。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { buttonClass } from "@/components/ui/Button";
@@ -29,21 +31,28 @@ import {
   CLARITY_CONSENT_MAX_AGE,
   PRIVACY_CHOICES_EVENT,
   choiceFromCookieString,
+  clarityCookieExpiries,
   clarityExcludedPath,
   clarityLoaded,
   clarityPlan,
   clarityProjectId,
-  denyClarity,
+  clarityTokenPath,
   startClarity,
   type ConsentChoice,
 } from "@/lib/clarity";
 
 /** この頁（読み直すまで）の中で選ばれた答え。template の再マウントをまたいで残る。 */
 let pageChoice: ConsentChoice | null = null;
+/**
+ * この文書を読み込んだ時の頁。このモジュールは root template の一部として最初の読み込みで評価されるので、
+ * ここで読む location がその文書の最初の頁。除外の頁から始まった文書は CSP に Clarity が無い。
+ */
+let documentStartPath: string | null = typeof window !== "undefined" ? window.location.pathname : null;
 
-/** テスト用。モジュールの変数を初期に戻す。 */
-export function resetClarityPageChoiceForTests() {
+/** テスト用。モジュールの変数を、startPath の頁を読み直した直後の状態に戻す。 */
+export function resetClarityPageChoiceForTests(startPath: string = "/") {
   pageChoice = null;
+  documentStartPath = startPath;
 }
 
 type ClarityWin = Parameters<typeof startClarity>[0]["win"];
@@ -87,6 +96,16 @@ function saveChoice(choice: ConsentChoice) {
   }
 }
 
+function expireClarityCookies() {
+  try {
+    for (const c of clarityCookieExpiries(window.location.hostname)) document.cookie = c;
+  } catch {
+    // cookie が書けない環境では消すものも無い。
+  }
+}
+
+const noopSubscribe = () => () => {};
+
 type Props = {
   projectId: string | null;
   consentRequired: boolean;
@@ -110,6 +129,13 @@ export function ClarityConsentView({
   reload,
 }: Props & { pathname: string; reload?: () => void }) {
   const excluded = clarityExcludedPath(pathname);
+  const tokenPage = clarityTokenPath(pathname);
+  // server の HTML は帯を含まない。client はマウントの後に帯を決める（初回の描画を一致させる）。
+  const mounted = useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
   const [banner, setBanner] = useState(
     () =>
       clarityPlan({
@@ -128,23 +154,29 @@ export function ClarityConsentView({
   useEffect(() => {
     if (!projectId) return;
     const win = window as unknown as ClarityWin;
-    if (excluded) {
-      // 別の頁で動き出した Clarity を、この頁へ移った後も動かしたままにしない。
+    if (tokenPage) {
+      // 別の頁で動き出した Clarity を、トークンの頁へ移った後も動かしたままにしない。
       if (clarityLoaded(win)) doReload();
       return;
     }
-    const plan = clarityPlan({
-      consentRequired,
-      choice: currentChoice(initialChoice),
-      gpc: gpc || browserGpc(),
-    });
+    if (excluded) return;
+    // 除外の頁から始まった文書は CSP に Clarity が無い。この文書の間は読み込まない。
+    if (clarityExcludedPath(documentStartPath)) return;
+    const choice = currentChoice(initialChoice);
+    if (choice === "denied" && !clarityLoaded(win)) expireClarityCookies();
+    const plan = clarityPlan({ consentRequired, choice, gpc: gpc || browserGpc() });
     if (plan.load) startClarity(browserEnv(), projectId);
     const open = () => setBanner(true);
     window.addEventListener(PRIVACY_CHOICES_EVENT, open);
     return () => window.removeEventListener(PRIVACY_CHOICES_EVENT, open);
-  }, [projectId, consentRequired, initialChoice, gpc, excluded, doReload]);
+  }, [projectId, consentRequired, initialChoice, gpc, excluded, tokenPage, doReload]);
 
-  const visible = Boolean(projectId) && !excluded && banner;
+  const visible =
+    mounted &&
+    Boolean(projectId) &&
+    !excluded &&
+    !clarityExcludedPath(documentStartPath) &&
+    banner;
 
   // 帯と同じ高さの余白を body の下に置く（帯が出ている間だけ）。
   useEffect(() => {
@@ -176,8 +208,13 @@ export function ClarityConsentView({
       if (choice === "granted") {
         if (gpc || browserGpc()) return;
         startClarity(browserEnv(), projectId);
-      } else if (denyClarity(win)) {
+        return;
+      }
+      if (clarityLoaded(win)) {
+        // 撤回: consentv2 は呼ばずに読み直す。cookie は読み直した頁が消す。
         doReload();
+      } else {
+        expireClarityCookies();
       }
     },
     [projectId, gpc, doReload],
@@ -185,7 +222,7 @@ export function ClarityConsentView({
 
   if (!visible) return null;
 
-  const gpcOn = gpc || (typeof navigator !== "undefined" && browserGpc());
+  const gpcOn = gpc || browserGpc();
 
   return (
     <div
@@ -197,7 +234,7 @@ export function ClarityConsentView({
       <div className="mx-auto flex w-full max-w-[var(--column)] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:max-w-[1200px]">
         <p className="max-w-[72ch] leading-relaxed">
           {gpcOn
-            ? "Your browser sends a Global Privacy Control signal, so vet402 does not load Microsoft Clarity."
+            ? "Your browser sends a Global Privacy Control signal, so vet402 does not load Microsoft Clarity and nothing is recorded."
             : consentRequired
               ? BANNER_TEXT_CONSENT_REQUIRED
               : BANNER_TEXT_DEFAULT_ON}{" "}

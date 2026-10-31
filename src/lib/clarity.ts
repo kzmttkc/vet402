@@ -8,8 +8,10 @@
  * - 同意が要る地域では、選ぶ前はタグそのものを読み込まない（Clarity の no-consent mode でも
  *   cookie 無しで記録は続くため、「同意まで記録しない」にはタグを入れないことが要る）。
  * - consentv2 の形は公式（clarity-consent-api-v2）。広告は使わないので ad_Storage は全員に denied を送る。
- * - 撤回（Accept の後の Decline）は consentv2 denied を送って頁を読み直す。clarity-js は denied を受けると
- *   cookie 無しのモードで記録を続けるので、読み直した頁でタグを入れないことで止める（2026-10-31 独立点検 H2）。
+ * - 撤回（読み込み済みでの Decline）は consentv2 を呼ばず、選択を cookie に書いた直後に頁を読み直す。
+ *   clarity-js は denied を受けると約 250ms 後に cookie 無しで記録を再開し、頁を離れる時に送信するため
+ *   （clarity-js の data/metadata.ts・core/unload.ts・data/upload.ts）。読み直した denied の頁はタグを入れず、
+ *   clarity-js が残した _clck・_clsk を消す（2026-10-31 再点検 M1）。
  */
 
 export const CLARITY_CONSENT_COOKIE = "vet402_analytics_consent";
@@ -90,21 +92,31 @@ export function clarityPlan(input: {
 
 /**
  * Clarity を動かさない頁。
- * - /observatory/confirm・/observatory/unsubscribe: メールのリンクが URL の # にトークンを載せる
- *   （src/lib/observatory/record-subscriptions.ts）。Clarity は頁の URL を送るので、ここでは読み込まない。
- * - /rwa・/tokyo・/ethonline: 凍結面（tests/seo-audit-1026.test.ts）。帯もタグも出さない。
+ * - トークンの頁 /observatory/confirm・/observatory/unsubscribe: メールのリンクが URL の # にトークンを載せる
+ *   （src/lib/observatory/record-subscriptions.ts）。Clarity は頁の URL を送るので読み込まず、別の頁で
+ *   動き出した Clarity のままここへ移ったら頁を読み直して止める。
+ * - 凍結面 /rwa・/tokyo・/ethonline（tests/seo-audit-1026.test.ts）: 帯・フッターのリンク・タグを出さない
+ *   だけ。読み直しはしない（トップから /ethonline へのリンクがあり、遷移ごとに読み直さない）。
+ * どちらも proxy は CSP に Clarity を足さない。
  */
-const EXCLUDED_PREFIXES = [
-  "/observatory/confirm",
-  "/observatory/unsubscribe",
-  "/rwa",
-  "/tokyo",
-  "/ethonline",
-];
+const TOKEN_PREFIXES = ["/observatory/confirm", "/observatory/unsubscribe"];
+const FROZEN_PREFIXES = ["/rwa", "/tokyo", "/ethonline"];
+
+function underAny(pathname: string | null | undefined, prefixes: string[]): boolean {
+  const p = pathname ?? "";
+  return prefixes.some((x) => p === x || p.startsWith(`${x}/`));
+}
+
+export function clarityTokenPath(pathname: string | null | undefined): boolean {
+  return underAny(pathname, TOKEN_PREFIXES);
+}
+
+export function clarityFrozenPath(pathname: string | null | undefined): boolean {
+  return underAny(pathname, FROZEN_PREFIXES);
+}
 
 export function clarityExcludedPath(pathname: string | null | undefined): boolean {
-  const p = pathname ?? "";
-  return EXCLUDED_PREFIXES.some((x) => p === x || p.startsWith(`${x}/`));
+  return clarityTokenPath(pathname) || clarityFrozenPath(pathname);
 }
 
 type ClarityFn = ((...args: unknown[]) => void) & { q?: unknown[][] };
@@ -136,14 +148,23 @@ export function startClarity(
   if (!already) env.insertScript(`https://www.clarity.ms/tag/${projectId}`);
 }
 
+/** clarity-js が vet402.com に書く first-party cookie。 */
+export const CLARITY_COOKIES = ["_clck", "_clsk"] as const;
+
 /**
- * 撤回。読み込み済みなら consentv2 denied を送って true を返す（呼び手が頁を読み直す）。
- * Clarity は denied を受けると自分の cookie（_clck・_clsk）を消す。非公開の stop は呼ばない。
+ * _clck・_clsk を期限切れにする cookie 文字列。clarity-js は書ける最上位のドメイン（vet402.com なら
+ * .vet402.com）に書くので、その domain 付きとホスト名だけ（domain 無し）の両方を消す。
  */
-export function denyClarity(win: ClarityWindow): boolean {
-  if (!clarityLoaded(win)) return false;
-  win.clarity!("consentv2", { ad_Storage: "denied", analytics_Storage: "denied" });
-  return true;
+export function clarityCookieExpiries(hostname: string): string[] {
+  const out: string[] = [];
+  const labels = hostname.split(".").filter(Boolean);
+  const isIp = /^[0-9.]+$/.test(hostname) || hostname.includes(":");
+  const top = !isIp && labels.length >= 2 ? labels.slice(-2).join(".") : null;
+  for (const name of CLARITY_COOKIES) {
+    out.push(`${name}=; Max-Age=0; Path=/`);
+    if (top) out.push(`${name}=; Max-Age=0; Path=/; Domain=.${top}`);
+  }
+  return out;
 }
 
 /**
@@ -171,6 +192,8 @@ export function isHtmlPagePath(pathname: string): boolean {
   if (pathname === "/mcp" || pathname.startsWith("/mcp/")) return false;
   if (pathname.startsWith("/api/") || pathname === "/api") return false;
   if (pathname.startsWith("/.well-known/")) return false;
+  // /sellers/<host> は売り手のホスト名の頁。.md・.zip などの TLD でも頁（再点検 L2）。
+  if (pathname.startsWith("/sellers/")) return true;
   const last = pathname.split("/").pop() ?? "";
   const dot = last.lastIndexOf(".");
   if (dot < 0) return true;
