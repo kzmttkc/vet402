@@ -74,6 +74,9 @@
 //     (4) L2: 宣言があるのに照合できていない（配達が無い・本文を読み切れなかった・照合の前の行）は l2 = not_checked で WARN
 //         （l2_not_checked）。以前は undeclared と書いて ALLOW を妨げなかった。
 //     (5) 署名した失敗の行で試行から 90 分のうち（遅延回収の待ち）は未確定（l1_empty_2xx_settlement_unknown・WARN）。
+//   2026-11-02.1（Issue #87）: 規則の文（2 回連続の fail）は変えていない。loadSellerFacts の 30 日窓で 2 本目の fail が
+//     切れて WARN に読んでいた行が l0_fail（BLOCK）に届くので、2026-09-17 と同じ理由で版を上げた。窓の中に 0 本で窓の外に
+//     プローブがある出品の原因は l0_unverified_no_recent_probe（not_probed は「測っていない」で事実と違った。推奨は変えない）。
 //   BLOCK if l0 = fail ∨ paid_undelivered_seller_side_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if l0 = unverified ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
@@ -128,7 +131,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-09-29.4";
+export const DECISION_RULES_VERSION = "2026-11-02.1";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;

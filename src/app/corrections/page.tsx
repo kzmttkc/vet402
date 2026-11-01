@@ -50,14 +50,27 @@ type Correction = {
 };
 
 /**
- * 発行済みの訂正。
+ * 発行済みの訂正（新しい順）。
  *
- * 空配列は「まだ1件も無い」という事実であって、書き忘れではない。ここに
- * 何かを足すのは、ToS §8 のどちらかの経路で申立てを受け、事実誤認だったと
- * 判断して再スコアした時だけ。「見解の相違で変えなかった」ものはここには
- * 載らない（訂正ではないため）が、それは §2 に書いてある。
+ * 公開した判定・数字・説明の誤りを直したら足す。申立て（ToS §8）を受けた時に限らず、
+ * 自分で見つけた誤りも足す（2026-11-02 の /decision の件など）。「見解の相違で変えなかった」
+ * ものはここには載らない（訂正ではないため）が、それは §2 に書いてある。
  */
 const CORRECTIONS: Correction[] = [
+  {
+    date: "2026-11-02",
+    subject: "/decision answering WARN on a second L0 fail older than 30 days",
+    wrong:
+      "/decision and the facts API read L0 probes from a 30-day window. A failing listing is probed less often, so the second of two failures in a row could leave that window. " +
+      "The answer was then l0_unverified_single_fail, a WARN, while the L0 CSV and the record page read the same probes and showed fail or withdrawn. " +
+      "Read on 2026-11-01T22:42Z, this applied to 1,203 listings: 118 listed and 1,085 delisted.",
+    action:
+      "Changed on 2026-11-02. When the probes in the window all failed and there are fewer than two, the streak now counts the newest older probes. " +
+      "Those listings moved from WARN to BLOCK (l0_fail) unless another reason already blocked them. " +
+      "The published rule did not change: two measured failures in a row. The decision rules version is now 2026-11-02.1. " +
+      "A listing with no probe in the window keeps its recommendation, and its cause now reads l0_unverified_no_recent_probe instead of l0_unverified_not_probed: " +
+      "12,697 listings read on 2026-11-01T23:12Z, 2,633 of them with the newest two probes failed, which the L0 CSV shows as fail or withdrawn.",
+  },
   {
     date: "2026-10-24",
     subject: "Counting other measurement services as real buyers",

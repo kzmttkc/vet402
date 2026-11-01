@@ -82,7 +82,7 @@ function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-09-29.4", () => assert.equal(DECISION_RULES_VERSION, "2026-09-29.4"));
+test("版: 2026-11-02.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.1"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗
@@ -304,7 +304,7 @@ const SELLER_BASE: SellerFacts = {
 test("rules.ts（payer）が出しうる語は全部、表にある", () => {
   const seen = new Set<string>();
   const l0s = ["pass", "fail", "unverified"] as const;
-  const causes = [null, "single_fail", "tls", "not_probed", "request_shape"];
+  const causes = [null, "single_fail", "tls", "not_probed", "no_recent_probe", "request_shape"];
   const l1s: Partial<SellerFacts["l1"]>[] = [
     { n_attempts: 0, n_delivered: 0, n_settled: 0 },
     { n_attempts: 3, n_delivered: 0, n_settled: 0 },

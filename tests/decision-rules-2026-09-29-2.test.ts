@@ -122,7 +122,7 @@ function run(s: Setup, extra: PayerOptions = {}) {
 }
 
 test("版: 2026-09-29.2 で上げ、2026-09-29.3・2026-09-29.4（売り手の側（確定）だけ BLOCK・unverified は WARN）でも上げた", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-09-29.4");
+  assert.equal(DECISION_RULES_VERSION, "2026-11-02.1");
   assert.equal(L1_PAID_UNDELIVERED_BLOCK, 2);
   assert.equal(L1_FRESH_DAYS, 30);
 });

@@ -51,7 +51,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "l0_unverified",
     role: "payer",
     effect: "WARN",
-    meaning: "vet402 has not measured a valid 402 recently (not probed yet, a URL with a path parameter, a probe that could not complete, or one failure so far); the l0_unverified_<cause> code next to it says why.",
+    meaning: "vet402 has not measured a valid 402 recently (not probed yet, no probe in the last 30 days, a URL with a path parameter, a probe that could not complete, or one failure so far); the l0_unverified_<cause> code next to it says why.",
     forPayer: "A WARN with degraded: true. Unverified is not a failure; l0_fail (two measured failures in a row) is the L0 BLOCK.",
     sellerCanFix: "partly",
   },
@@ -62,6 +62,14 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     meaning: "The latest probe failed once; the published rule needs two failures in a row.",
     forPayer: "Probably temporary. Retry later, or pay under your own ceiling.",
     sellerCanFix: "yes",
+  },
+  {
+    code: "l0_unverified_no_recent_probe",
+    role: "payer",
+    effect: "WARN",
+    meaning: "vet402 has probed this listing before, but not in the last 30 days, so this answer does not rest on a recent probe.",
+    forPayer: "Not measured recently, so WARN and degraded. A measurement gap, not a finding against the seller.",
+    sellerCanFix: "no",
   },
   {
     code: "l0_unverified_<cause>",

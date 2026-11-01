@@ -4256,12 +4256,12 @@ components:
     DecisionReasonCode:
       type: string
       description: >-
-        Since 2026-09-29.4. The reason codes of `DecisionResult.reason_codes`:
+        Since 2026-11-02.1. The reason codes of `DecisionResult.reason_codes`:
         the fixed words in `enum`, plus the families in `x-vet402-patterns`
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
         it: /docs/api#reason-codes (same source, src/lib/decision/reason-codes.ts).
-      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_not_checked, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
+      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_no_recent_probe, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_not_checked, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
       x-vet402-patterns: ["^l0_unverified_[a-z0-9_]{1,40}$", "^(settlements|funder_index|erc8004)_unavailable$"]
 
     DecisionResult:
@@ -4294,7 +4294,7 @@ components:
             Machine-readable reasons. Every code, with its meaning, what it
             means for the payer and whether the seller can fix it, is in
             `DecisionReasonCode` and in the table at /docs/api#reason-codes.
-            Rules 2026-09-29.4 (rules_version). Each paid attempt (one L1
+            Rules 2026-11-02.1 (rules_version). Each paid attempt (one L1
             purchase row) is sorted by one function, the same one /sellers,
             /api/v1/sellers/export.csv and this decision read: whether money
             moved, whether it delivered, and whose side a failure is on.
@@ -4341,22 +4341,22 @@ components:
             (l1_not_attempted means none was ever signed). l1_basis carries
             the counts, the last attempt, signed attempt and delivery, and
             the days since each. L0: l0_fail (two measured failures in a
-            row) is a BLOCK. l0_unverified (not probed yet, a URL with a
-            path parameter vet402 cannot fill, a probe that could not
-            complete, or one failure so far) is a WARN with degraded: true,
-            next to l0_unverified_<cause>; unverified is not a failure. L2:
-            l2_mismatch is a BLOCK when the evidence names missing keys
-            (mismatch_kind missing_keys), otherwise l2_mismatch_unexplained
-            and a WARN. A listing that declares an output schema but whose
-            latest delivery vet402 has not checked against it (no delivery,
-            a body over 256 KiB or cut off) is l2_not_checked, a WARN;
-            l2_undeclared means the listing declares no output schema. Every
-            code, its effect and whether the seller can fix it:
-            https://vet402.com/docs/api#reason-codes. Limit of the method:
-            vet402 buys with a fixed, published User-Agent, so a seller
-            could answer vet402 differently from other buyers; other buyers'
-            settlements show that they paid, not that they received, so the
-            decision cannot detect this.
+            row) is a BLOCK. l0_unverified (not probed yet, no probe in the
+            last 30 days, a URL with a path parameter vet402 cannot fill, a
+            probe that could not complete, or one failure so far) is a WARN
+            with degraded: true, next to l0_unverified_<cause>; unverified
+            is not a failure. L2: l2_mismatch is a BLOCK when the evidence
+            names missing keys (mismatch_kind missing_keys), otherwise
+            l2_mismatch_unexplained and a WARN. A listing that declares an
+            output schema but whose latest delivery vet402 has not checked
+            against it (no delivery, a body over 256 KiB or cut off) is
+            l2_not_checked, a WARN; l2_undeclared means the listing declares
+            no output schema. Every code, its effect and whether the seller
+            can fix it: https://vet402.com/docs/api#reason-codes. Limit of
+            the method: vet402 buys with a fixed, published User-Agent, so a
+            seller could answer vet402 differently from other buyers; other
+            buyers' settlements show that they paid, not that they received,
+            so the decision cannot detect this.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,

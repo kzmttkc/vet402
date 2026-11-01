@@ -8,11 +8,12 @@
 // 固定すること:
 //   1. 窓の外を読むのは、窓の中に 1 本以上あって全部 fail で、本数がゲートに届かないときだけ
 //   2. 窓の外の verdict は l0.status と l0UnverifiedCauseOf だけに効く
-//   3. 窓の中に 1 本も無い出品の答えは変えない
+//   3. 窓の中に 1 本も無い出品の status と推奨は変えない。原因の語だけ、窓の外に行があれば no_recent_probe
 // 実際の SQL と読む回数は tests/decision-l0-streak-window.pg.test.ts。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { reasonCodeDocOf } from "@/lib/decision/reason-codes";
 import { decidePayer } from "@/lib/decision/rules";
 import {
   assembleSellerFacts,
@@ -98,7 +99,20 @@ test("窓の中に 0 本（窓の外に fail 2 本）→ unverified / not_probed
   const i = input([]);
   assert.equal(l0VerdictsNeededBeforeWindow(i.probes), 0);
   assert.equal(assembleSellerFacts(i).l0.status, "unverified");
-  assert.equal(l0UnverifiedCauseOf(i.probes), "not_probed");
+  assert.equal(l0UnverifiedCauseOf(i.probes), "not_probed", "1 度も測っていない");
+  assert.equal(l0UnverifiedCauseOf(i.probes, [], true), "no_recent_probe", "窓の外に行がある");
+});
+
+test("no_recent_probe: 語だけが変わり、status と推奨は not_probed と同じ", () => {
+  const f = assembleSellerFacts(input([]));
+  const notProbed = decidePayer(f, { l0UnverifiedCause: "not_probed" });
+  const noRecent = decidePayer(f, { l0UnverifiedCause: "no_recent_probe" });
+  assert.equal(noRecent.recommendation, notProbed.recommendation);
+  assert.ok(noRecent.reason_codes.includes("l0_unverified_no_recent_probe"), noRecent.reason_codes.join());
+  assert.ok(!noRecent.reason_codes.includes("l0_unverified_not_probed"), noRecent.reason_codes.join());
+  assert.equal(reasonCodeDocOf("l0_unverified_no_recent_probe")?.effect, "WARN");
+  assert.equal(l0UnverifiedCauseOf([probe("pass")], [], true), null, "pass なら原因なし（窓の外の有無は効かない）");
+  assert.equal(l0UnverifiedCauseOf([probe("fail")], [], true), "single_fail", "窓の中に行があれば no_recent_probe にしない");
 });
 
 test("窓の外の verdict は offer_stability にも availability にも観測時刻にも混ざらない", (t) => {

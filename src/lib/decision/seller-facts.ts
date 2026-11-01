@@ -2,7 +2,8 @@
 // §8.1 売り手事実。集計は純関数 assembleSellerFacts に置き、DB 読みは loadSellerFacts。
 //
 //   l0.status        = publishedVerdict（2 連続 fail ゲート。1 回の fail を公開しない）。連続は 30 日窓の外まで数える
-//                      （窓の中に 1 本以上ある出品だけ・l0VerdictsNeededBeforeWindow・2026-11-02）
+//                      （窓の中に 1 本以上ある出品だけ・l0VerdictsNeededBeforeWindow・2026-11-02）。窓の中に 0 本なら
+//                      unverified のままで、原因は窓の外に行があれば no_recent_probe、無ければ not_probed
 //   l1.n_attempts    = 署名した試行（spent が立つ status）。署名前の拒否は数えない
 //   l1.n_settled     = チェーンで確定（status = settled）
 //   l1.n_inconclusive= 売り手の不履行として数えない署名済みの試行（delivery.ts の heldReasonOf）:
@@ -460,16 +461,21 @@ export function l1TimelineOf(input: L1Input, now: number = Date.now()): L1Timeli
  * 理由を探す手掛かりが無かった。判定は変えず、原因を下位コードとして足すための材料を返す。
  *
  *   not_probed   まだ 1 度もプローブしていない
+ *   no_recent_probe  窓（30 日）の中に 1 本も無いが、窓より前にプローブがある（2026-11-02）
  *   single_fail  直近は fail だが公開ゲート（連続 fail 本数）に届いていない
  *   <reason>     直近のプローブ自体が unverified で、その記録された理由（tls / unsafe_target /
  *                path_template / request_shape / rate_limited …）。記録が無ければ unrecorded
  *
  * 公開判定が unverified でなければ null。語は [a-z0-9_] に丸める（reason code に混ぜるため）。
  */
-export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[], verdictsBeforeWindow: readonly string[] = []): string | null {
+export function l0UnverifiedCauseOf(
+  probesNewestFirst: readonly ProbeInput[],
+  verdictsBeforeWindow: readonly string[] = [],
+  hasProbeBeforeWindow: boolean = false,
+): string | null {
   if (l0StatusOf(probesNewestFirst, verdictsBeforeWindow) !== "unverified") return null;
   const latest = probesNewestFirst[0];
-  if (!latest) return "not_probed";
+  if (!latest) return hasProbeBeforeWindow ? "no_recent_probe" : "not_probed";
   if (latest.verdict === "fail") return "single_fail";
   const reason = (latest.failReason ?? "").toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
   return reason === "" ? "unrecorded" : reason.slice(0, 40);
@@ -773,6 +779,17 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
             ORDER BY probed_at DESC LIMIT ${l0VerdictsNeeded}
           `),
         ).map((r) => String(r.verdict));
+  // 2026-11-02: 窓の中に 0 本のときだけ 1 回、窓の外に行があるかを読む。原因の語だけに使い、l0.status には効かせない
+  // （窓の外の pass を status に渡すと、窓の中に 0 本の出品の答えが変わる）。
+  const l0HasProbeBeforeWindow =
+    probes.length === 0 &&
+    rowsOf(
+      await db.execute(sql`
+        SELECT 1 AS hit FROM x402_l0_probes
+        WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at <= now() - interval '30 days'
+        LIMIT 1
+      `),
+    ).length > 0;
 
   const purchaseRows = await fetchL1WindowPurchaseRows(db, endpointUuid);
   // 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（readRecordSides・記録頁と同じ 1 本）。
@@ -846,7 +863,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     facts,
     lastAttempt,
     l1NotCounted: l1NotCountedOf(factsInput),
-    l0UnverifiedCause: l0UnverifiedCauseOf(probes, l0VerdictsBeforeWindow),
+    l0UnverifiedCause: l0UnverifiedCauseOf(probes, l0VerdictsBeforeWindow, l0HasProbeBeforeWindow),
     l1Timeline,
     verifiedTerms,
     l2ContentType: l2ContentTypeOf(purchases, facts),

@@ -85,9 +85,16 @@ if (!TEST_DB) {
     assert.equal(onlyOne.loaded.l0UnverifiedCause, "single_fail");
 
     const noneInWindow = await load(await mk([["fail", 31], ["fail", 32]]));
-    assert.equal(noneInWindow.calls, base, "窓の中に 0 本なら読まない");
+    assert.equal(noneInWindow.calls, base + 1, "窓の中に 0 本なら、窓の外の有無を 1 回だけ読む");
     assert.equal(noneInWindow.loaded.facts.l0.status, "unverified");
-    assert.equal(noneInWindow.loaded.l0UnverifiedCause, "not_probed");
+    assert.equal(noneInWindow.loaded.l0UnverifiedCause, "no_recent_probe");
+    const passBefore = await load(await mk([["pass", 31]]));
+    assert.equal(passBefore.calls, base + 1);
+    assert.equal(passBefore.loaded.facts.l0.status, "unverified", "窓の外の pass は status に効かない");
+    assert.equal(passBefore.loaded.l0UnverifiedCause, "no_recent_probe");
+    const neverProbed = await load(await mk([]));
+    assert.equal(neverProbed.calls, base + 1);
+    assert.equal(neverProbed.loaded.l0UnverifiedCause, "not_probed", "1 度も測っていない");
 
     const unverifiedInWindow = await load(await mk([["unverified", 11], ["fail", 31]]));
     assert.equal(unverifiedInWindow.calls, base, "連続が始まっていなければ読まない");
