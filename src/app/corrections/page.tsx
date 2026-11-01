@@ -34,7 +34,7 @@ import { catalogWithdrawalCorrectionAction } from "@/lib/observatory/l0-verdict"
 export const metadata: Metadata = pageMetadata({
   title: "Corrections log",
   description:
-    "Every correction vet402 has issued to a published score or verification result, with what was wrong and what changed. Empty until the first one is issued.",
+    "Every correction vet402 has issued to a published score or verification result, with what was wrong and what changed.",
   path: "/corrections",
 });
 

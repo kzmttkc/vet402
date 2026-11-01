@@ -95,7 +95,7 @@ test("窓の中に fail 2 本 → fail、窓の中が pass → pass（窓の外�
   assert.equal(l0UnverifiedCauseOf([probe("fail")]), "single_fail", "引数 1 つの呼び方も今と同じ");
 });
 
-test("窓の中に 0 本（窓の外に fail 2 本）→ unverified / not_probed のまま（読まないので材料が来ない）", () => {
+test("窓の中に 0 本（窓の外に fail 2 本）→ unverified（読むのは有無だけ）", () => {
   const i = input([]);
   assert.equal(l0VerdictsNeededBeforeWindow(i.probes), 0);
   assert.equal(assembleSellerFacts(i).l0.status, "unverified");
