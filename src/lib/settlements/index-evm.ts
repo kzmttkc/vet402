@@ -601,15 +601,31 @@ function scrubErrorText(text: string): string {
   return redactedError(text).message;
 }
 
+/** 原因をたどる段数の上限。循環や異常に深い鎖でも文字列を伸ばし続けない。 */
+const MAX_ERROR_CAUSE_DEPTH = 5;
+
 /**
  * 2026-11-02: drizzle の "Failed query" は message に文しか入らず、本当の原因は error.cause にある。
+ * Neon の根（ENOTFOUND 等）は NeonDbError の sourceError のさらに cause にあるので、数段たどる。
  * 伏せる処理は本文と別に通す（`params:` を落とす正規表現は行末まで食うので、つないでから通すと原因も消える）。
- * viem のように本文が原因を含むなら足さない。原因が無ければ空文字。
+ * viem のように既に出た文は繰り返さない。Error でも文字列でもない原因で止まる（[object Object] を出さない）。
  */
 function errorCauseSuffix(error: unknown, scrubbedMessage: string): string {
-  if (!(error instanceof Error) || error.cause === undefined || error.cause === null) return "";
-  const cause = scrubErrorText(error.cause instanceof Error ? error.cause.message : String(error.cause));
-  return cause === "" || scrubbedMessage.includes(cause) ? "" : ` | cause: ${cause}`;
+  let said = scrubbedMessage;
+  let suffix = "";
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_ERROR_CAUSE_DEPTH && current instanceof Error; depth++) {
+    const inner: unknown = current.cause ?? (current as { sourceError?: unknown }).sourceError;
+    const text = inner instanceof Error ? inner.message : typeof inner === "string" ? inner : null;
+    if (text === null) break;
+    const cause = scrubErrorText(text);
+    if (cause !== "" && !said.includes(cause)) {
+      suffix += ` | cause: ${cause}`;
+      said += `\n${cause}`;
+    }
+    current = inner;
+  }
+  return suffix;
 }
 
 export async function indexEvm(options: { budgetMs?: number; classifier?: WashClassifier } = {}): Promise<EvmIndexSummary[]> {

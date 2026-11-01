@@ -24,7 +24,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ## 2026-11-02 Settlement index errors keep error.cause
 
-- **What**: `indexErrorSkipped` and the last catch in `scripts/index-settlements.ts` (`indexFatalErrorText`) append ` | cause: <message>` from `error.cause`. Message and cause are each scrubbed by `redactedError`: urls, Stellar secrets, and the `params:` tail. The script cuts message and cause at 500 characters each, so a long statement cannot push the cause out.
+- **What**: `indexErrorSkipped` and the last catch in `scripts/index-settlements.ts` (`indexFatalErrorText`) append ` | cause: <message>` from `error.cause`, walking up to five levels (also through Neon's `sourceError`, where the root such as ENOTFOUND sits) and stopping at a cause that is neither an Error nor a string. Message and cause are each scrubbed by `redactedError`: urls, Stellar secrets, and the `params:` tail. The script cuts message and cause at 500 characters each, so a long statement cannot push the cause out.
 - **Why**: Drizzle's "Failed query" has only the statement in `error.message`. The real cause sits in `error.cause`, so a failed index run could not be read.
 - **Impact**: Longer `skipped: "error:..."` strings in the cron response and script output, with the same `error:` prefix. The `params:` tail is now dropped here too, because `redact.ts` records that values can hold signed payment payloads. No indexing or money-path change.
 - **Commits**: this entry.

@@ -208,4 +208,27 @@ test("indexFatalErrorText: a long statement does not push the cause past the cut
   assert.ok(out.length < 1100, `still bounded: ${out.length}`);
   assert.equal(indexFatalErrorText(new Error("plain at https://rpc.example/v2/KEY")), "Error: plain at <url>");
   assert.equal(indexFatalErrorText("x".repeat(600)).length, 500, "the 500-character cut on the message stays");
+  assert.ok(indexFatalErrorText(new Error("m", { cause: new Error("c".repeat(800)) })).length <= 508, "the cause is cut at 500 too");
+});
+
+test("indexErrorSkipped: walks the cause chain to the root, with a depth limit, and never prints [object Object]", () => {
+  // Neon: drizzle -> NeonDbError (sourceError) -> TypeError fetch failed -> ENOTFOUND.
+  const neon = Object.assign(new Error("Error connecting to database: TypeError: fetch failed"), {
+    sourceError: new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND db.example") }),
+  });
+  const out = indexErrorSkipped(new Error("Failed query: select 1\nparams: ", { cause: neon }));
+  assert.match(out, /getaddrinfo ENOTFOUND db\.example/, "the root is readable");
+  assert.equal(out.match(/fetch failed/g)?.length, 1, "a repeated message is said once");
+
+  assert.equal(indexErrorSkipped(new Error("m", { cause: { code: 7 } })), "error:m", "an object cause adds nothing");
+  assert.equal(indexErrorSkipped(new Error("m", { cause: 42 })), "error:m", "a number cause adds nothing");
+  assert.equal(indexErrorSkipped(new Error("m", { cause: new Error("a", { cause: { code: 7 } }) })), "error:m | cause: a");
+
+  let deep: Error = new Error("level-0");
+  for (let i = 1; i <= 20; i++) deep = new Error(`level-${i}`, { cause: deep });
+  assert.ok((indexErrorSkipped(deep).match(/cause:/g)?.length ?? 0) <= 5, "the walk stops at the depth limit");
+
+  const loop = new Error("loop-a");
+  loop.cause = new Error("loop-b", { cause: loop });
+  assert.equal(indexErrorSkipped(loop), "error:loop-a | cause: loop-b", "a cycle ends and does not repeat");
 });
