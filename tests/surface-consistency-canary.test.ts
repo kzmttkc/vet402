@@ -271,6 +271,37 @@ test("食い違い: 売り手頁が seller's side・export は vet402's side →
   assert.deepEqual(d.values.map((v) => v.surface), ["sellers", "seller_page", "record"]);
 });
 
+/** 売り手頁が「not tried」のまま（行を名指さない）で、頁頭の台帳を読んだ時刻だけを変えた頁 */
+function notTriedPageReadAt(x: ListingInput, readAt: string) {
+  assert.ok(x.decision.ok === true);
+  const li = sellerLi(x.observatoryId, x.decision.value.subject!.id!, { latest: "not tried on Base yet", result: "not tried on Base yet", side: "not tried on Base yet", status: "", iso: "" })
+    .replace(/<span>Recorded[\s\S]*?<\/details>/, "");
+  const p = parseSellerHostPage(`<span class="doc-asof">Read from the database <!-- -->${readAt} UTC<!-- --> · reused for up to <!-- -->5<!-- --> min</span><h2>Your listings</h2><ul>${li}</ul>`);
+  assert.ok(p);
+  const v = p.listings.get(x.observatoryId)!;
+  assert.equal(v.ledgerReadAt, readAt);
+  return v;
+}
+
+test("読み置き: 売り手頁が最新の行より前に台帳を読んで not tried → 食い違いにしない（side/latest_row_side は skip）", () => {
+  const listings = consistentSample();
+  const x = listings[0]!; // allow: 最新の行は 2026-09-20 12:00
+  x.sellerPage = { ok: true, value: notTriedPageReadAt(x, "2026-09-20 11:58") };
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length) });
+  assert.equal(r.discrepancies.find((c) => c.rule === "latest_row_side"), undefined, JSON.stringify(r.discrepancies.slice(0, 3)));
+});
+
+test("食い違い: 売り手頁が最新の行より後に台帳を読んだのに not tried → FAIL（side/latest_row_side）", () => {
+  const listings = consistentSample();
+  const x = listings[0]!;
+  x.sellerPage = { ok: true, value: notTriedPageReadAt(x, "2026-09-20 12:05") };
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length) });
+  assert.equal(r.ok, false);
+  const d = r.discrepancies.find((c) => c.rule === "latest_row_side");
+  assert.ok(d, "latest_row_side not flagged");
+  assert.equal(d.listing, x.resourceKey);
+});
+
 test("食い違い: 未プローブで BLOCK、記録頁は unverified・売り手は not tried → FAIL（verdict/block_vs_unmeasured）", () => {
   const listings = consistentSample();
   const x = listings[2]!;

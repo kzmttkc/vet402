@@ -417,7 +417,12 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     const pageMin = page ? minuteOf(page.attemptedAtIso) ?? (page.latestAttempt?.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)?.[0] ?? null) : null;
     const recRow = rec?.rows[0] ?? null;
     const aligned = [pageMin, recRow?.attemptedMinute].filter((m): m is string => m != null).every((m) => m === csvMin);
-    if (!aligned) {
+    // 売り手頁が行を名指さず（not tried）、頁が台帳を読んだのが export の最新の行より前なら、頁の読み置きであって食い違いではない
+    // （2026-10-31 402.com.tr: 09:32 の購入の後、頁はそれより前の読みのまま「not tried on Base yet」）。読んだ時刻が取れなければ比べる。
+    const pageReadBeforeRow = !!page && pageMin == null && csvMin != null && page.ledgerReadAt != null && page.ledgerReadAt < csvMin;
+    if (pageReadBeforeRow) {
+      skip("side", "latest_row_side", `seller page read the ledger at ${page.ledgerReadAt}, before the latest row ${csvMin} — cache ages`);
+    } else if (!aligned) {
       skip("side", "latest_row_side", `latest row differs between surfaces (sellers ${csvMin}, seller_page ${pageMin}, record ${recRow?.attemptedMinute}) — cache ages`);
     } else {
       const vals: SurfaceValue[] = [{ surface: "sellers", value: `${sellers.outcome}${sellers.side_label ? ` (${sellers.side_label})` : ""}` }];

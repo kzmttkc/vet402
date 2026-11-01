@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-01 Surface canary: a seller page that read the ledger before the latest row is cache age, not a discrepancy
+
+- **What**: `parseSellerHostPage` reads the page header "Read from the database YYYY-MM-DD HH:MM UTC" into `ledgerReadAt` on each listing. In `side/latest_row_side`, when the seller page names no row (not tried) and that read time is before the minute of the latest row in `/api/v1/sellers/export.csv`, the rule is skipped with "cache ages" instead of failing. Two tests: read before the row → no discrepancy; read after the row and still not tried → FAIL.
+- **Why**: The scheduled run on 2026-10-31 (run 41189613720, Issue #84) failed on one listing, 402.com.tr/api/x402/base-tx: export said pending, the record page said "awaiting on-chain verification", the seller page said "not tried on Base yet". The purchase was at 09:32:16Z and the run read the pages at about 09:50Z; the seller page serves a cached read ("the first view after a quiet period can show an older read"). On 11/01 the same page reads 2026-10-31 09:32 delivered. The board already counts settle_claimed as pending, so the page itself was not wrong.
+- **Impact**: Canary only; no page, API or money-path change. A page that read the ledger after the row and still says not tried still fails, and a page with no readable header is compared as before. Issue #84 closes on the next green run.
+- **Commits**: this entry.
+
 ## 2026-10-31 Dependabot: 43 of 47 open alerts fixed in the lockfiles, 4 left with a reason
 
 - **What**: Lockfile and override changes in six places, no source change. Root: `overrides.jayson ^5.0.0` (drops stream-json 1.9.1 and uuid 8.3.2 from under `@solana/web3.js`), `overrides["@esbuild-kit/core-utils"].esbuild ^0.25.12`, brace-expansion 5.0.12 / 1.1.21. `packages/mcp-server`: proxy-addr 2.0.8 (the critical one), body-parser 2.4.0, qs 6.16.1, fast-uri 3.1.9, ip-address 10.7.4, hono 4.13.13 inside the existing ranges, `@modelcontextprotocol/sdk` ^1.32.1 (from 1.29.0) with `@hono/node-server` 2.1.5, plus the jayson override for the dev copy of web3.js. `packages/sdk`: the jayson override (dev only). `examples/langchain-tool`: `@langchain/core` ^1.3.0 (langsmith 0.11.1, no uuid) and zod ^4.6.7. `examples/solana-agent-kit-plugin`: zod ^4.6.7. `docs/tokyo-2026/prework/rehearsal`: `overrides.ws ^8.21.0` (8.22.0). New versions resolved with `npm install --before 2026-10-24`.

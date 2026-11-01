@@ -178,6 +178,8 @@ export type SellerListing = {
   heldAs: string | null;
   /** 「the row with attempted_at …」の ISO 時刻 */
   attemptedAtIso: string | null;
+  /** 頁が台帳を読んだ時刻 "YYYY-MM-DD HH:MM"（頁頭の「Read from the database … UTC」）。頁は読みを使い回すので、これより後の行は頁に無い */
+  ledgerReadAt: string | null;
 };
 
 /** 頁の中の `<li id="listing-<uuid>">` を全部読む。頁の形でなければ null。 */
@@ -185,6 +187,7 @@ export function parseSellerHostPage(html: string): { listings: Map<string, Selle
   const starts = [...html.matchAll(/<li[^>]*\sid="listing-([0-9a-f-]{36})"[^>]*>/g)];
   if (starts.length === 0 && !/Your listings/.test(html)) return null;
   const listings = new Map<string, SellerListing>();
+  const ledgerReadAt = /Read from the database\s*(?:<!-- -->)?\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC/.exec(html)?.[1] ?? null;
   for (let i = 0; i < starts.length; i++) {
     const from = starts[i]!.index!;
     const to = i + 1 < starts.length ? starts[i + 1]!.index! : html.indexOf("</ul>", from) > 0 ? html.indexOf("</ul>", from) : html.length;
@@ -212,6 +215,7 @@ export function parseSellerHostPage(html: string): { listings: Map<string, Selle
       recordedStatus: /^Recorded \([^)]*\)(?:<!-- -->)?:(?:<!-- -->)?\s*<code>([a-z_]+)<\/code>/.exec(recorded)?.[1] ?? null,
       heldAs: /held as <code>([a-z_0-9]+)<\/code>/.exec(recorded)?.[1] ?? null,
       attemptedAtIso: /<code>attempted_at<\/code>\s*(?:<!-- -->)?\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)/.exec(block)?.[1] ?? null,
+      ledgerReadAt,
     });
   }
   const hasNextPage = /[?&]page=\d+"[^>]*>\s*(?:Next|Older|More|→)/i.test(html) || /rel="next"/.test(html);
