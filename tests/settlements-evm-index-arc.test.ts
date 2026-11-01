@@ -9,7 +9,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, indexErrorSkipped, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
+import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, indexErrorSkipped, indexFatalErrorText, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
 import { decodeEventLog } from "viem";
 import { readFileSync } from "node:fs";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
@@ -177,4 +177,35 @@ test("indexErrorSkipped: keeps the error: prefix and the cause, and never carrie
   // Non-Error values and other schemes (wss from a Solana-style client, a postgres DSN) are covered too.
   assert.equal(indexErrorSkipped("boom at wss://rpc.example/v2/key and postgres://u:pw@db.example/x"), "error:boom at <url> and <url>");
   assert.equal(indexErrorSkipped(new Error("TEMPO_RPC_URL_unset")), "error:TEMPO_RPC_URL_unset", "a message without a url is unchanged");
+});
+
+// ---- 2026-11-02: drizzle の "Failed query" は message に文しか無く、本当の原因は error.cause にある ----
+test("indexErrorSkipped: appends error.cause, scrubbed, and keeps the error: prefix", () => {
+  const drizzleLike = new Error('Failed query: insert into "settlements" ("tx_hash") values ($1)\nparams: SIGNEDPAYLOAD', {
+    cause: new Error("could not connect to postgres://u:pw@db.example/x: too many connections"),
+  });
+  const out = indexErrorSkipped(drizzleLike);
+  assert.ok(out.startsWith("error:Failed query: insert into"), out);
+  assert.match(out, /too many connections/, "the real cause is readable");
+  assert.ok(!out.includes("pw@db.example"), out);
+  assert.match(out, /could not connect to <url>/, "the cause goes through the url redaction");
+  assert.ok(!out.includes("SIGNEDPAYLOAD"), "params can hold signed payloads (redact.ts), and the cause survives dropping them");
+
+  const nonError = indexErrorSkipped(new Error("boom", { cause: "plain string at https://rpc.example/v2/KEY" }));
+  assert.ok(nonError.includes("plain string at <url>") && !nonError.includes("KEY"), nonError);
+
+  assert.equal(indexErrorSkipped(new Error("no cause")), "error:no cause", "no cause, no suffix");
+  // viem repeats the cause inside its own message. Do not say it twice.
+  const viemLike = new Error("HTTP request failed.\n\nDetails: fetch failed", { cause: new Error("fetch failed") });
+  assert.equal(indexErrorSkipped(viemLike), "error:HTTP request failed.\n\nDetails: fetch failed");
+});
+
+test("indexFatalErrorText: a long statement does not push the cause past the cut, and urls are hidden (scripts/index-settlements.ts)", () => {
+  const long = new Error(`Failed query: ${"select 1 ".repeat(200)}`, { cause: new Error("deadlock detected at wss://rpc.example/v2/KEY") });
+  const out = indexFatalErrorText(long);
+  assert.match(out, /deadlock detected at <url>/);
+  assert.ok(!out.includes("KEY"), out);
+  assert.ok(out.length < 1100, `still bounded: ${out.length}`);
+  assert.equal(indexFatalErrorText(new Error("plain at https://rpc.example/v2/KEY")), "Error: plain at <url>");
+  assert.equal(indexFatalErrorText("x".repeat(600)).length, 500, "the 500-character cut on the message stays");
 });

@@ -13,7 +13,7 @@
 import { loadWashClassifier } from "@/lib/settlements/context";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { ingestPayments } from "@/lib/settlements/ingest-payments";
-import { indexEvm } from "@/lib/settlements/index-evm";
+import { indexEvm, indexFatalErrorText } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
 import { recoverLateSettlements } from "@/lib/settlements/recover-late";
@@ -55,6 +55,6 @@ async function main() {
 main()
   .then(() => process.exit(process.exitCode ?? 0))
   .catch((e) => {
-    console.error(JSON.stringify({ ok: false, error: String(e).slice(0, 500) }));
+    console.error(JSON.stringify({ ok: false, error: indexFatalErrorText(e) }));
     process.exit(1);
   });

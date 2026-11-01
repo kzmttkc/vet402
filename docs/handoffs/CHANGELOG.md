@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Settlement index errors keep error.cause
+
+- **What**: `indexErrorSkipped` and the last catch in `scripts/index-settlements.ts` (`indexFatalErrorText`) append ` | cause: <message>` from `error.cause`. Message and cause are each scrubbed by `redactedError`: urls, Stellar secrets, and the `params:` tail. The script cuts message and cause at 500 characters each, so a long statement cannot push the cause out.
+- **Why**: Drizzle's "Failed query" has only the statement in `error.message`. The real cause sits in `error.cause`, so a failed index run could not be read.
+- **Impact**: Longer `skipped: "error:..."` strings in the cron response and script output, with the same `error:` prefix. The `params:` tail is now dropped here too, because `redact.ts` records that values can hold signed payment payloads. No indexing or money-path change.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 /decision counts the L0 fail streak past the 30-day probe window
 
 - **What**: `loadSellerFacts` still reads probes in its 30-day window. When a listing has at least one probe in the window, every one of them failed and there are fewer than `MIN_CONSECUTIVE_FAILS_TO_PUBLISH`, it now reads the verdicts of the newest older probes, only as many as are missing (`l0VerdictsNeededBeforeWindow`). Those verdicts feed `l0.status` and `l0UnverifiedCauseOf` only: the input carries bare verdict words, so `offer_stability`, `availability_*`, `observed_at`, `dialect` and `fail_reason` still read window rows. The extra read is one indexed query, and only for listings in that state. A listing with no probe in the window keeps its answer. `DECISION_RULES_VERSION` is unchanged: the published rule (two measured failures in a row) did not change, and the code now does what it says.

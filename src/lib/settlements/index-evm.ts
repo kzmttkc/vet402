@@ -37,7 +37,7 @@ import { attribute } from "./attribution";
 import { classifyWash } from "./wash";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { TEMPO_CHAIN_ID, TEMPO_USDC_E, isMppAttributionMemo, tempoRpcUrl } from "@/lib/observatory/mpp-payer";
-import { redactUrls } from "@/lib/observatory/redact";
+import { redactedError } from "@/lib/observatory/redact";
 
 export const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 /** TIP-20（Tempo）の memo 付き転送。MPP の client は transferWithMemo を呼ぶ（2026-09-17）。 */
@@ -580,9 +580,36 @@ export async function indexEvmChain(
  * 2026-10-10（点検の所見）: viem の transport の誤りは本文に RPC の URL を含み、URL には鍵が入る形
  * （…/v2/<key>）がある。この文字列は cron の応答（JSON）にそのまま載るので、URL を伏せてから返す。
  * 切らない（2026-09-04: 120 字で切って原因が読めなかった）。全チェーン共通（Base・Polygon・Arc・Tempo・Celo）。
+ * 2026-11-02: error.cause も後ろに足す（errorCauseSuffix）。
  */
 export function indexErrorSkipped(error: unknown): string {
-  return `error:${redactUrls(error instanceof Error ? error.message : String(error))}`;
+  const message = scrubErrorText(error instanceof Error ? error.message : String(error));
+  return `error:${message}${errorCauseSuffix(error, message)}`;
+}
+
+/**
+ * scripts/index-settlements.ts が最後に捕まえた誤りの文字列。本文を 500 字で切るので、長い SQL の後ろに原因を
+ * 続けて切ると原因が消える。本文と原因を別々に切る。
+ */
+export function indexFatalErrorText(error: unknown): string {
+  const message = scrubErrorText(String(error));
+  return `${message.slice(0, 500)}${errorCauseSuffix(error, message).slice(0, 500)}`;
+}
+
+/** URL・秘密を伏せ、drizzle の `params:` から後ろを落とす（redact.ts: 値に署名済みの支払いが入りうる）。 */
+function scrubErrorText(text: string): string {
+  return redactedError(text).message;
+}
+
+/**
+ * 2026-11-02: drizzle の "Failed query" は message に文しか入らず、本当の原因は error.cause にある。
+ * 伏せる処理は本文と別に通す（`params:` を落とす正規表現は行末まで食うので、つないでから通すと原因も消える）。
+ * viem のように本文が原因を含むなら足さない。原因が無ければ空文字。
+ */
+function errorCauseSuffix(error: unknown, scrubbedMessage: string): string {
+  if (!(error instanceof Error) || error.cause === undefined || error.cause === null) return "";
+  const cause = scrubErrorText(error.cause instanceof Error ? error.cause.message : String(error.cause));
+  return cause === "" || scrubbedMessage.includes(cause) ? "" : ` | cause: ${cause}`;
 }
 
 export async function indexEvm(options: { budgetMs?: number; classifier?: WashClassifier } = {}): Promise<EvmIndexSummary[]> {
