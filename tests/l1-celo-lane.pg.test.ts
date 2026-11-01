@@ -477,6 +477,7 @@ if (!TEST_DB) {
       const summary = await runL1Batch({ limit: 10, fetchImpl: w.fetchImpl, getPayerUsdcBalance: async () => 0n });
       assert.equal(w.paid().length, 0);
       assert.equal(summary.payerUnfunded, 2, "Celo と Base で 1 回ずつ");
+      assert.deepEqual([...summary.payerUnfundedChains].sort(), ["base", "celo"], "どちらのチェーンかが応答で分かる");
       assert.deepEqual(await ledgerFor(TOOLS_URL), [], "売り手の失敗として記録しない");
     });
 

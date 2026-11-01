@@ -214,6 +214,7 @@ if (!TEST_DB) {
       assert.equal(summary.attempted, 0);
       assert.equal(summary.payerUnfunded, 2);
       assert.deepEqual(summary.payerFundsUnreadable, [], "残高不足は『読めない』ではない");
+      assert.deepEqual(summary.payerUnfundedChains, ["base"], "2 件でもチェーン名は 1 回");
       assert.deepEqual(await rowsFor("https://seller1.example/api"), [], "台帳に行を書かない（settle_failed にしない）");
       assert.deepEqual(await rowsFor("https://seller2.example/api"), []);
 
@@ -249,6 +250,7 @@ if (!TEST_DB) {
       // 2026-09-20: 「足りない」と「読めない」を summary で分ける。読めなかったチェーンは 1 回だけ名前で出る
       // （cron の応答は 200 のままなので、監視が拾える鍵はこれ）。
       assert.deepEqual(summary.payerFundsUnreadable, ["base"]);
+      assert.deepEqual(summary.payerUnfundedChains, ["base"], "読めなかったチェーンも payerUnfunded に数えた名前");
       assert.deepEqual(await rowsFor("https://seller1.example/api"), []);
     });
 

@@ -36,6 +36,7 @@ const HALTED: L1BatchSummary = {
   payerUnfunded: 0,
   sellerCapped: 2,
   payerFundsUnreadable: [],
+  payerUnfundedChains: ["base"],
   laneFloor: {},
   laneFloorHostCapped: {},
   xrplFeeOverCap: 0,
@@ -79,6 +80,11 @@ test("publicL1Summary は持ち時間の計器（laneSkippedForTime・setupMs・
   assert.equal("gatewayPostBodyUnknownSignSkipped" in out, false);
   assert.equal("setupMs" in out, false);
   assert.equal("attemptsByNetwork" in out, false);
+});
+
+test("publicL1Summary は資金切れのチェーン名（payerUnfundedChains）を公開口へ出さない（2026-11-02）", () => {
+  const out = publicL1Summary(HALTED) as Record<string, unknown>;
+  assert.equal("payerUnfundedChains" in out, false, "どの購入元が空かは運用の内訳。cron の応答だけに載せる");
 });
 
 test("publicL1Summary は準備の内訳の計器（primaryFetchMs・laneFetchMs）を公開口へ出さない（2026-10-27）", () => {

@@ -198,6 +198,11 @@ export type L1BatchSummary = {
    */
   payerFundsUnreadable: string[];
   /**
+   * payerUnfunded に数えたチェーンの名前（重複なし・2026-11-02）。「足りない」と「読めない」の両方を含む。
+   * 件数だけでは cron の応答からどのチェーンの購入元か分からなかった。計器なので判定や順番には使わない。
+   */
+  payerUnfundedChains: string[];
+  /**
    * チェーンごとの候補の最低枠（2026-09-17・budget.ts laneFloorPerRun）で主候補の先頭に置いた
    * 件数。別枠を持つレーン（CHAIN_DAILY_CAPS）だけが鍵になる。旗が off・別枠が尽きた・候補が
    * 無い日は 0。購入の可否は従来の経路（デッドライン・別枠・残高・原子的予約）がそのまま決める。
@@ -298,9 +303,11 @@ export type L1BatchSummary = {
 // その 1 件の計測の事実ではない（公開口は 1 件指定なのでレーン枠も census も使わない）。
 // gatewayPostBodyUnknownActive・gatewayPostBodyUnknownSignSkipped（2026-10-28/29）も出さない: Gateway 形の関門の内訳。
 // primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
+// payerUnfundedChains（2026-11-02）も出さない: どの購入元が空かは運用の内訳で、cron の応答だけに載せる。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
   | "haltReason"
+  | "payerUnfundedChains"
   | "censusCandidates"
   | "censusRemaining"
   | "retestCandidates"
@@ -2115,6 +2122,7 @@ export async function runL1Batch(
     payerUnfunded: 0,
     sellerCapped: 0,
     payerFundsUnreadable: [],
+    payerUnfundedChains: [],
     laneFloor: {},
     laneFloorHostCapped: {},
     xrplFeeOverCap: 0,
@@ -2473,6 +2481,7 @@ export async function runL1Batch(
   const unfundedLogged = new Set<string>();
   const onPayerUnfunded = (chain: string, detail: Record<string, unknown>) => {
     summary.payerUnfunded++;
+    if (!summary.payerUnfundedChains.includes(chain)) summary.payerUnfundedChains.push(chain);
     if (detail.reason === "unreadable" && !summary.payerFundsUnreadable.includes(chain)) summary.payerFundsUnreadable.push(chain);
     if (unfundedLogged.has(chain)) return;
     unfundedLogged.add(chain);

@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 L1 cron response names the chains with an unfunded payer
+
+- **What**: `L1BatchSummary` gains `payerUnfundedChains: string[]` (no duplicates), filled in `onPayerUnfunded`. It lists every chain counted in `payerUnfunded`, both too low and unreadable. `payerFundsUnreadable` stays as the unreadable subset.
+- **Why**: `payerUnfunded` is only a count, so the cron response could not say which chain's payer ran out.
+- **Impact**: One new key on `/api/cron/l1-purchase`. It is left out of `publicL1Summary`, so the key-less `POST /api/v1/demo/verify` does not show it. No change to payment decisions or their order.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Settlement index errors keep error.cause
 
 - **What**: `indexErrorSkipped` and the last catch in `scripts/index-settlements.ts` (`indexFatalErrorText`) append ` | cause: <message>` from `error.cause`. Message and cause are each scrubbed by `redactedError`: urls, Stellar secrets, and the `params:` tail. The script cuts message and cause at 500 characters each, so a long statement cannot push the cause out.
