@@ -283,12 +283,42 @@ function notTriedPageReadAt(x: ListingInput, readAt: string) {
   return v;
 }
 
-test("読み置き: 売り手頁が最新の行より前に台帳を読んで not tried → 食い違いにしない（side/latest_row_side は skip）", () => {
+test("読み置き: 売り手頁が最新の行より前に台帳を読んで not tried → 頁だけ外し、export・台帳・記録頁は比べる", () => {
   const listings = consistentSample();
   const x = listings[0]!; // allow: 最新の行は 2026-09-20 12:00
   x.sellerPage = { ok: true, value: notTriedPageReadAt(x, "2026-09-20 11:58") };
   const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length) });
-  assert.equal(r.discrepancies.find((c) => c.rule === "latest_row_side"), undefined, JSON.stringify(r.discrepancies.slice(0, 3)));
+  assert.deepEqual(r.discrepancies, [], JSON.stringify(r.discrepancies.slice(0, 3)));
+  const c = compareListing(x, registry());
+  assert.ok(c.skips.some((k) => k.rule === "seller_page_stale"), "stale page not recorded as a skip");
+  for (const rule of ["latest_row_side", "latest_row_status"]) {
+    const ch = c.checks.find((k) => k.rule === rule);
+    assert.ok(ch?.ok, `${rule} was not compared`);
+    assert.ok(!ch.values.some((v) => v.surface === "seller_page"), `${rule} still reads the stale page`);
+  }
+});
+
+test("食い違い: 売り手頁は読み置きでも、記録頁が vet402's side・export は delivered → FAIL（side/latest_row_side）", () => {
+  const listings = consistentSample();
+  const x = listings[0]!;
+  assert.ok(x.record.ok === true);
+  x.sellerPage = { ok: true, value: notTriedPageReadAt(x, "2026-09-20 11:58") };
+  const rows = x.record.value.rows.map((row, i) => (i === 0 ? { ...row, whoseSide: "vet402's side" } : row));
+  x.record = { ok: true, value: { ...x.record.value, rows } };
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length) });
+  assert.equal(r.ok, false);
+  const d = r.discrepancies.find((c) => c.rule === "latest_row_side");
+  assert.ok(d, "latest_row_side not flagged");
+  assert.deepEqual(d.values.map((v) => v.surface), ["sellers", "record"]);
+});
+
+test("食い違い: 売り手頁が最新の行と同じ分に台帳を読んだのに not tried → FAIL（読み置きにしない）", () => {
+  const listings = consistentSample();
+  const x = listings[0]!;
+  x.sellerPage = { ok: true, value: notTriedPageReadAt(x, "2026-09-20 12:00") };
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length) });
+  assert.equal(r.ok, false);
+  assert.ok(r.discrepancies.find((c) => c.rule === "latest_row_side"), "latest_row_side not flagged");
 });
 
 test("食い違い: 売り手頁が最新の行より後に台帳を読んだのに not tried → FAIL（side/latest_row_side）", () => {
@@ -300,6 +330,7 @@ test("食い違い: 売り手頁が最新の行より後に台帳を読んだの
   const d = r.discrepancies.find((c) => c.rule === "latest_row_side");
   assert.ok(d, "latest_row_side not flagged");
   assert.equal(d.listing, x.resourceKey);
+  assert.ok(d.values.some((v) => v.surface === "seller_page" && String(v.value).includes("page read 2026-09-20 12:05")));
 });
 
 test("食い違い: 未プローブで BLOCK、記録頁は unverified・売り手は not tried → FAIL（verdict/block_vs_unmeasured）", () => {

@@ -414,22 +414,25 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
   // ---- 誰の側か・状態: 最新の行（同じ行を指しているときだけ比べる）----
   if (sellers && sellers.outcome !== "not_tried") {
     const csvMin = minuteOf(sellers.latest_attempted_at);
-    const pageMin = page ? minuteOf(page.attemptedAtIso) ?? (page.latestAttempt?.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)?.[0] ?? null) : null;
+    const pageMin0 = page ? minuteOf(page.attemptedAtIso) ?? (page.latestAttempt?.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)?.[0] ?? null) : null;
+    // 売り手頁が行を名指さず（not tried）、頁が台帳を読んだのが export の最新の行より前なら、頁は読み置き（unstable_cache は
+    // 期限切れ後の最初の表示で古い読みを返す）。その頁だけを比較から外し、export・台帳・記録頁の比較は残す
+    // （2026-10-31 402.com.tr: 09:32 の購入の後、頁は「not tried on Base yet」。頁頭の時刻はログに無く、読み置きは推定）。
+    // 読んだ時刻が取れない頁と、行と同じ分以降に読んだ頁は従来どおり比べる。
+    const pageStale = !!page && pageMin0 == null && csvMin != null && page.ledgerReadAt != null && page.ledgerReadAt < csvMin;
+    if (pageStale) skip("side", "seller_page_stale", `seller page read the ledger at ${page.ledgerReadAt}, before the latest row ${csvMin} — left out of the latest-row comparison`);
+    const pg = pageStale ? null : page;
+    const pageMin = pageStale ? null : pageMin0;
     const recRow = rec?.rows[0] ?? null;
     const aligned = [pageMin, recRow?.attemptedMinute].filter((m): m is string => m != null).every((m) => m === csvMin);
-    // 売り手頁が行を名指さず（not tried）、頁が台帳を読んだのが export の最新の行より前なら、頁の読み置きであって食い違いではない
-    // （2026-10-31 402.com.tr: 09:32 の購入の後、頁はそれより前の読みのまま「not tried on Base yet」）。読んだ時刻が取れなければ比べる。
-    const pageReadBeforeRow = !!page && pageMin == null && csvMin != null && page.ledgerReadAt != null && page.ledgerReadAt < csvMin;
-    if (pageReadBeforeRow) {
-      skip("side", "latest_row_side", `seller page read the ledger at ${page.ledgerReadAt}, before the latest row ${csvMin} — cache ages`);
-    } else if (!aligned) {
+    if (!aligned) {
       skip("side", "latest_row_side", `latest row differs between surfaces (sellers ${csvMin}, seller_page ${pageMin}, record ${recRow?.attemptedMinute}) — cache ages`);
     } else {
       const vals: SurfaceValue[] = [{ surface: "sellers", value: `${sellers.outcome}${sellers.side_label ? ` (${sellers.side_label})` : ""}` }];
       const sides: Side[] = [sideFromOutcome(sellers.outcome)].filter((s): s is Side => s !== null);
-      if (page) {
-        vals.push({ surface: "seller_page", value: page.whoseSide });
-        const s = sideFromWords(page.whoseSide);
+      if (pg) {
+        vals.push({ surface: "seller_page", value: `${pg.whoseSide}${pg.ledgerReadAt ? ` (page read ${pg.ledgerReadAt})` : ""}` });
+        const s = sideFromWords(pg.whoseSide);
         if (s) sides.push(s);
       }
       if (recRow) {
@@ -438,7 +441,7 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
         if (s) sides.push(s);
       }
       // 「not sorted」の語は面の間で一字一句同じはず（記録頁は「the same words as the seller page」と書く）
-      const words = [sellers.side_label, page?.whoseSide, recRow?.whoseSide].filter(
+      const words = [sellers.side_label, pg?.whoseSide, recRow?.whoseSide].filter(
         (w): w is string => !!w && w !== "—" && sideFromWords(w) === "unsorted",
       );
       const sameWords = new Set(words.map((w) => w.replace(/\s+/g, " ").trim())).size <= 1;
@@ -457,10 +460,10 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
         statuses.push({ surface: "ledger", value: `purchase_id ${sellers.purchase_id} not found` });
         st.add("(missing)");
       }
-      if (page?.recordedStatus) {
-        statuses.push({ surface: "seller_page", value: `${page.recordedStatus}${page.heldAs ? ` held ${page.heldAs}` : ""}` });
-        st.add(page.recordedStatus);
-        held.add(page.heldAs ?? "");
+      if (pg?.recordedStatus) {
+        statuses.push({ surface: "seller_page", value: `${pg.recordedStatus}${pg.heldAs ? ` held ${pg.heldAs}` : ""}` });
+        st.add(pg.recordedStatus);
+        held.add(pg.heldAs ?? "");
       }
       if (recRow) {
         statuses.push({ surface: "record", value: recRow.result });
