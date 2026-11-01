@@ -118,6 +118,8 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.12"
     },
-    "jayson": "^5.0.0"
+    "jayson": "^5.0.0",
+    "follow-redirects": "^1.16.2",
+    "minimatch": "^11.0.1"
   }
 }
