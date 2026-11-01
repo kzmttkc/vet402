@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Microsoft Clarity goes live
+
+- **What**: The commits under "2026-10-31 Microsoft Clarity behind a consent banner" reach main, and `NEXT_PUBLIC_CLARITY_PROJECT_ID` is set in Vercel production (project `z72dc0haxk`, a public value). This build is the first with the tag, the banner, the CSP hosts and the footer link.
+- **Why**: Owner sent the project ID on 11/02 with Masking set to Strict and confirmed saved in the Clarity settings.
+- **Impact**: Consent first in the EEA, UK, Switzerland and for an unknown country; never with Global Privacy Control; not on `/rwa`, `/tokyo`, `/ethonline`, `/observatory/confirm` or `/observatory/unsubscribe`. The tag reads the value at build, so turning it off takes a changed value and a new build.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 L1 cron response names the chains with an unfunded payer
 
 - **What**: `L1BatchSummary` gains `payerUnfundedChains: string[]` (no duplicates), filled in `onPayerUnfunded`. It lists every chain counted in `payerUnfunded`, both too low and unreadable. `payerFundsUnreadable` stays as the unreadable subset.
