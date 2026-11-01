@@ -23,7 +23,7 @@ export function HomeIntro({
 }) {
   const big = `${DISPLAY} font-bold tracking-[-0.03em] text-brand-deep`;
   const share = ledger ? lowestChainShareLine(ledger.chains) : "";
-  const paidNo2xx = ledger ? Math.max(0, ledger.settled - ledger.delivered) : 0;
+  const paidNotDelivered = ledger ? Math.max(0, ledger.settled - ledger.delivered) : 0;
   return (
     <>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-brand-deep pb-3 text-[0.84375rem] text-brand-lift">
@@ -77,9 +77,9 @@ export function HomeIntro({
             The whole ledger
           </h2>
           <p className="max-w-[40ch] text-[1.0625rem] leading-[1.45] text-brand sm:text-[1.25rem]">
-            <span className={`${big} text-[2.75rem] leading-none sm:text-[4rem]`}>{fmt(paidNo2xx)}</span> of{" "}
-            <span className={`${big} text-[1.75rem]`}>{fmt(ledger.settled)}</span> settled purchases got no 2xx
-            answer.
+            <span className={`${big} text-[2.75rem] leading-none sm:text-[4rem]`}>{fmt(paidNotDelivered)}</span> of{" "}
+            <span className={`${big} text-[1.75rem]`}>{fmt(ledger.settled)}</span> settled purchases did not count
+            as delivered.
           </p>
           <ShareRule
             id="ledger-share"

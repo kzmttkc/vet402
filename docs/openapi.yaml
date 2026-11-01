@@ -2789,7 +2789,7 @@ paths:
                           since 2026-09-17.
                       inconclusiveSettled:
                         type: integer
-                        description: The settled part of inconclusive; settled − delivered − inconclusiveSettled is money that moved with no 2xx and no 4xx.
+                        description: The settled part of inconclusive; settled − delivered − inconclusiveSettled is money that moved without a 4xx and did not count as delivered (a 5xx, a 3xx, a 202, an empty body or no recorded answer).
                       inconclusiveByReason:
                         type: object
                         description: >-

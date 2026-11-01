@@ -398,7 +398,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               </Link>
               ).{" "}
               <strong>settled</strong> is the transfer vet402 confirmed on-chain. <strong>delivered</strong>{" "}
-              is the response arriving. A settled row whose paid request answered 5xx counts as
+              is a 2xx other than 202 with a non-empty body. A settled row whose paid request answered 5xx counts as
               settled and not as delivered.{" "}
               <Link href="/observatory/methodology" className="underline">
                 definitions

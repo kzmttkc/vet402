@@ -971,7 +971,8 @@ export default async function ObservatoryMethodologyPage() {
           is settled and not delivered. Both counts are published side by side on the endpoint
           page, on the register, in the badge, and at <code>/api/v1/observatory/state</code>
           (<code>l1.settled</code> and <code>l1.delivered</code>), so the difference between them
-          is money that moved without the response arriving. Until 2026-09-04 only{" "}
+          is money that moved without a delivered response: a non-2xx answer (most often a <code>4xx</code> or{" "}
+          <code>5xx</code>), a <code>202</code>, an empty body, or no recorded answer. Until 2026-09-04 just{" "}
           <code>settled</code> was published, which let an endpoint whose every paid request
           answered <code>400</code> read as a full settle-through record.
         </p>

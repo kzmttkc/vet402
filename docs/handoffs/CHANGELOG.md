@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Home and methodology: settled minus delivered is "did not count as delivered", not "no 2xx"
+
+- **What**: The home ledger line now reads "N of M settled purchases did not count as delivered" (was "got no 2xx answer"). The methodology sentence on `l1.settled` and `l1.delivered` now says the difference is money that moved without a delivered response: a 4xx or 5xx, a 202, an empty body, or no recorded answer (was "without the response arriving"). The same fix goes to `inconclusiveSettled` in `docs/openapi.yaml` (was "no 2xx and no 4xx"), the record page and the receipt badge aria text (both were "delivered is the response arriving"). One code comment and one variable name follow.
+- **Why**: The number is settled minus delivered, and about 100 of those rows answered 202, which is a 2xx, and a 4xx is a response that arrived. In the export read on 2026-11-01, up to Oct 31 UTC: 706 4xx, 231 no status, 110 5xx, 101 202, 1 3xx. A CognitionWire guide repeated the idea as "no successful answer at all"; the correction to them says this page has the same slip.
+- **Impact**: Wording only. No number, API response field or money-path change. The row-level "no 2xx" in `deliveredLine` stays: it only shows for a row that is not held, not delivered, not a 202 and not an empty 2xx.
+- **Commits**: this entry.
+
 ## 2026-11-01 Dependabot #109 and #110: follow-redirects 1.16.2 and minimatch 11 through root overrides
 
 - **What**: Root `package.json` overrides gain `"follow-redirects": "^1.16.2"` and `"minimatch": "^11.0.1"`; `package-lock.json` follows. The only production entry that moves is `node_modules/follow-redirects` 1.16.1 → 1.16.2 (under `@stellar/stellar-sdk` 16.3.1 → axios 1.21.0). The rest is dev only: minimatch 3.1.5 and the typescript-estree copy 10.2.5 become one minimatch 11.0.3, with brace-expansion 1.1.21 → 5.0.12, balanced-match 1.0.2 → 4.0.4, concat-map removed and `@isaacs/nonrecursive-glob-match` 1.0.3 added. No source change.
