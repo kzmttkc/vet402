@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 /decision counts the L0 fail streak past the 30-day probe window
+
+- **What**: `loadSellerFacts` still reads probes in its 30-day window. When a listing has at least one probe in the window, every one of them failed and there are fewer than `MIN_CONSECUTIVE_FAILS_TO_PUBLISH`, it now reads the verdicts of the newest older probes, only as many as are missing (`l0VerdictsNeededBeforeWindow`). Those verdicts feed `l0.status` and `l0UnverifiedCauseOf` only: the input carries bare verdict words, so `offer_stability`, `availability_*`, `observed_at`, `dialect` and `fail_reason` still read window rows. The extra read is one indexed query, and only for listings in that state. A listing with no probe in the window keeps its answer. `DECISION_RULES_VERSION` is unchanged: the published rule (two measured failures in a row) did not change, and the code now does what it says.
+- **Why**: A failing listing is probed less often, so its second fail can leave the window. /decision then saw one fail and answered `unverified` (`l0_unverified_single_fail`, a WARN), while the L0 export and the record page read the same probes with no window and said `fail`. Example: api.locus.report/api/locus-homeowners-insurance-context (endpoint bfb577a8-3b94-48ad-baba-fa684052378c) has fails on 10-21 and 10-01, and the 10-01 probe left the window on 10-31 at 10:30Z. Surface canary Issue #87 went red on it.
+- **Impact**: /decision, /facts and everything else on `loadSellerFacts` can move from WARN to BLOCK (`l0_unverified_single_fail` becomes `l0_fail`) for about 1,200 listings, on any listing not already held at BLOCK by another reason. Counts from production, 2026-11-02: 1,209 in the count that ordered this fix, and 1,203 re-read at 07:42 JST (2026-11-01T22:42Z) with the newest two probes failed, the newest inside the window and the second outside it: 118 listed and 1,085 delisted, operator endpoints not excluded. Delisted routes block too, as the 2026-10-24 withdrawal note already says for /decision. Not changed: 2,633 listings (same read) with both newest probes failed and none in the window still answer `unverified` / `not_probed` here and `fail` or `withdrawn` on the export. No wording said L0 status was limited to 30 days, so no docs change. No money-path change.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Home and methodology: settled minus delivered is "did not count as delivered", not "no 2xx"
 
 - **What**: The home ledger line now reads "N of M settled purchases did not count as delivered" (was "got no 2xx answer"). The methodology sentence on `l1.settled` and `l1.delivered` now says the difference is money that moved without a delivered response: a 4xx or 5xx, a 202, an empty body, or no recorded answer (was "without the response arriving"). The same fix goes to `inconclusiveSettled` in `docs/openapi.yaml` (was "no 2xx and no 4xx"), the record page and the receipt badge aria text (both were "delivered is the response arriving"). One code comment and one variable name follow.

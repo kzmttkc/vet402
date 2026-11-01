@@ -1,7 +1,8 @@
 // ============================================================
 // §8.1 売り手事実。集計は純関数 assembleSellerFacts に置き、DB 読みは loadSellerFacts。
 //
-//   l0.status        = publishedVerdict（2 連続 fail ゲート。1 回の fail を公開しない）
+//   l0.status        = publishedVerdict（2 連続 fail ゲート。1 回の fail を公開しない）。連続は 30 日窓の外まで数える
+//                      （窓の中に 1 本以上ある出品だけ・l0VerdictsNeededBeforeWindow・2026-11-02）
 //   l1.n_attempts    = 署名した試行（spent が立つ status）。署名前の拒否は数えない
 //   l1.n_settled     = チェーンで確定（status = settled）
 //   l1.n_inconclusive= 売り手の不履行として数えない署名済みの試行（delivery.ts の heldReasonOf）:
@@ -30,7 +31,7 @@ import { getDb } from "@/lib/db/client";
 import { deliveredPredicate, isDelivered, isDeliveryHttp, isInconclusive } from "@/lib/observatory/delivery";
 import { classifySellerRow, ONCE_SUFFIX, type Bucket, type MoneyMoved, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { readRecordSides } from "@/lib/sellers/reader";
-import { publishedVerdict } from "@/lib/observatory/l0-probe";
+import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publishedVerdict } from "@/lib/observatory/l0-probe";
 import { declaredOutputOf, legacyL2SchemaOf } from "@/lib/observatory/l2-check";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
@@ -275,6 +276,12 @@ export function l1McpDeliveryCounts(
 export type SellerFactsInput = {
   /** newest first */
   probes: ProbeInput[];
+  /**
+   * 2026-11-02: 窓より前の直近のプローブの verdict（新しい順）。l0.status の連続 fail を数えるためだけの材料で、
+   * loadSellerFacts が必要なときだけ読む（l0VerdictsNeededBeforeWindow）。verdict の語だけを持たせて、
+   * offer_stability・availability・観測時刻へ混ざらない形にしている。
+   */
+  l0VerdictsBeforeWindow?: readonly string[];
   /** newest first */
   purchases: PurchaseInput[];
   settlements30d: { raw: number; real: number; test: number; measurement?: number; uniquePayersReal: number };
@@ -322,6 +329,25 @@ function percentile(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
   const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
   return sorted[idx];
+}
+
+/**
+ * 2026-11-02: 窓より前を何本読めば公開判定（publishedVerdict）の連続 fail を数え切れるか。
+ *
+ * loadSellerFacts のプローブは 30 日窓で読む。失敗している出品はプローブの間隔が空くので、2 本目の fail が
+ * 窓から落ちると /decision だけ unverified（l0_unverified_single_fail・WARN）と答え、同じプローブを窓なしで読む
+ * L0 の export と記録ページは fail と出していた。窓の中に 1 本以上あって全部 fail で、本数がゲートに届かないとき
+ * だけ足りない本数を返す。窓の中に 0 本の出品は 0（答えを変えない）。
+ */
+export function l0VerdictsNeededBeforeWindow(probesNewestFirst: readonly ProbeInput[]): number {
+  const n = probesNewestFirst.length;
+  if (n === 0 || n >= MIN_CONSECUTIVE_FAILS_TO_PUBLISH) return 0;
+  return probesNewestFirst.every((p) => p.verdict === "fail") ? MIN_CONSECUTIVE_FAILS_TO_PUBLISH - n : 0;
+}
+
+/** facts.l0.status。窓の中の新しい順に、窓より前の verdict を続けて公開規則へ渡す。 */
+function l0StatusOf(probesNewestFirst: readonly ProbeInput[], verdictsBeforeWindow: readonly string[] = []) {
+  return publishedVerdict([...probesNewestFirst.map((p) => p.verdict), ...verdictsBeforeWindow]);
 }
 
 export function offerStabilityOf(probesNewestFirst: readonly ProbeInput[]): OfferStability {
@@ -440,8 +466,8 @@ export function l1TimelineOf(input: L1Input, now: number = Date.now()): L1Timeli
  *
  * 公開判定が unverified でなければ null。語は [a-z0-9_] に丸める（reason code に混ぜるため）。
  */
-export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[]): string | null {
-  if (publishedVerdict(probesNewestFirst.map((p) => p.verdict)) !== "unverified") return null;
+export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[], verdictsBeforeWindow: readonly string[] = []): string | null {
+  if (l0StatusOf(probesNewestFirst, verdictsBeforeWindow) !== "unverified") return null;
   const latest = probesNewestFirst[0];
   if (!latest) return "not_probed";
   if (latest.verdict === "fail") return "single_fail";
@@ -452,7 +478,7 @@ export function l0UnverifiedCauseOf(probesNewestFirst: readonly ProbeInput[]): s
 export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline?: L1Timeline }): SellerFacts {
   const { probes, purchases } = input;
   const latestProbe = probes[0] ?? null;
-  const l0Status = publishedVerdict(probes.map((p) => p.verdict));
+  const l0Status = l0StatusOf(probes, input.l0VerdictsBeforeWindow);
 
   // inconclusive: 決済は確定したが有料応答が 4xx——我々のリクエストの形（POST に `{}`・
   // API キー無し）で説明がつく行。判定は `@/lib/observatory/delivery` の 1 定義に従う
@@ -733,6 +759,21 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     payTo: r.metadata_consistent === false ? "changed" : "declared",
   }));
 
+  // 2026-11-02: 公開判定の連続 fail が窓の境で切れるときだけ、窓より前の直近の verdict を読む。多くの出品は
+  // この往復をしない。境は窓の中の最古の行（上の SQL と now() がずれても行を落とさず二重にも数えない）。
+  const l0VerdictsNeeded = l0VerdictsNeededBeforeWindow(probes);
+  const l0VerdictsBeforeWindow =
+    l0VerdictsNeeded === 0
+      ? []
+      : rowsOf<{ verdict: string }>(
+          await db.execute(sql`
+            SELECT verdict
+            FROM x402_l0_probes
+            WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at < ${probes[probes.length - 1].probedAt}::timestamptz
+            ORDER BY probed_at DESC LIMIT ${l0VerdictsNeeded}
+          `),
+        ).map((r) => String(r.verdict));
+
   const purchaseRows = await fetchL1WindowPurchaseRows(db, endpointUuid);
   // 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（readRecordSides・記録頁と同じ 1 本）。
   // 読めなければ分類なし（お金が動いていない失敗を数える側＝WARN まで）で続ける。理由はログに残す。
@@ -788,6 +829,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
   const factsInput = {
     probes,
+    l0VerdictsBeforeWindow,
     purchases,
     settlements30d,
     payees: ep.payee_id ? [ep.payee_id] : [],
@@ -804,7 +846,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     facts,
     lastAttempt,
     l1NotCounted: l1NotCountedOf(factsInput),
-    l0UnverifiedCause: l0UnverifiedCauseOf(probes),
+    l0UnverifiedCause: l0UnverifiedCauseOf(probes, l0VerdictsBeforeWindow),
     l1Timeline,
     verifiedTerms,
     l2ContentType: l2ContentTypeOf(purchases, facts),
