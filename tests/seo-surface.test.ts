@@ -51,6 +51,7 @@ test("every public indexable route is in the sitemap", () => {
     "/x402/chains/stellar",
     "/x402/chains/arbitrum-one",
     "/x402/chains/bnb-chain",
+    "/x402/chains/avalanche-c-chain",
     "/signup",
     "/legal/terms",
     "/legal/privacy",

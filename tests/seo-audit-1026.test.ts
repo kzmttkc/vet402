@@ -184,6 +184,9 @@ test("チェーン頁の見出しと CAIP-2 はレーンの事実から作る", 
   assert.equal(bySlug["arbitrum-one"].caip2, "eip155:42161");
   assert.equal(bySlug["bnb-chain"].headline, "x402 payments on BNB Chain (USD1)");
   assert.equal(bySlug["bnb-chain"].caip2, "eip155:56");
+  assert.equal(bySlug["avalanche-c-chain"].headline, "x402 payments on Avalanche C-Chain (USDC)");
+  assert.equal(bySlug["avalanche-c-chain"].caip2, "eip155:43114");
+  assert.match(bySlug["avalanche-c-chain"].tie, /EIP-3009/);
   assert.equal(bySlug.stellar.caip2, "stellar:pubnet");
   assert.match(bySlug.stellar.tie, /payer, the payee, the amount, and the asset/);
   const lanes = SUPPORTED_CHAINS.filter((row) => row.kind === "lane").map((row) => row.chain);
@@ -201,6 +204,7 @@ test("Which chains の先頭の文は SUPPORTED_CHAINS から作り、Tempo は 
   assert.match(lead, /Arbitrum One \(USDC over x402\)/);
   assert.match(lead, /BNB Chain \(USD1 over x402\)/);
   assert.match(lead, /Stellar \(USDC over x402\)/);
+  assert.match(lead, /Avalanche C-Chain \(USDC over x402\)/);
   assert.ok(read("public/llms.txt").includes(lead));
   assert.equal(CHAINS_HUB.h1, "x402 and MPP payments by chain");
 });

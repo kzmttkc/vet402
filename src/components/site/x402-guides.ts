@@ -39,6 +39,7 @@ const FACTS: Record<string, { tie: string; reread: string }> = {
   Celo: { tie: EVM_TIE, reread: EVM_REREAD },
   Arbitrum: { tie: EVM_TIE, reread: EVM_REREAD },
   BSC: { tie: EVM_TIE, reread: EVM_REREAD },
+  Avalanche: { tie: EVM_TIE, reread: EVM_REREAD },
   Solana: {
     tie: "The purchase is tied to its settlement by a memo written on the transaction.",
     reread: "The re-read matches that memo.",
@@ -73,6 +74,7 @@ const LEADS: Record<string, readonly [string, string]> = {
   "stellar:pubnet": ["vet402 measures x402 payments on Stellar.", "The pinned settlement asset on Stellar is USDC."],
   Arbitrum: ["vet402 measures x402 payments on Arbitrum One.", "The pinned settlement asset on Arbitrum One is USDC."],
   BSC: ["vet402 measures x402 payments on BNB Chain.", "The pinned settlement asset on BNB Chain is USD1."],
+  Avalanche: ["vet402 measures x402 payments on Avalanche C-Chain.", "The pinned settlement asset on Avalanche C-Chain is USDC."],
 };
 
 function slugOf(label: string): string {

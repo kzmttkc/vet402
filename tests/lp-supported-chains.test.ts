@@ -45,6 +45,7 @@ test("the section lists the lanes and the Robinhood Chain row, in order", () => 
       "stellar:pubnet",
       "Arbitrum",
       "BSC",
+      "Avalanche",
       "Robinhood Chain (4663, mainnet)",
     ],
   );
@@ -61,6 +62,7 @@ test("every lane name is the chainLabel() of its mainnet id — the join key int
     "stellar:pubnet": "stellar:pubnet",
     Arbitrum: "eip155:42161",
     BSC: "eip155:56",
+    Avalanche: "eip155:43114",
   };
   for (const lane of lanes) {
     assert.ok(ids[lane.chain], `no mainnet id pinned for ${lane.chain}`);

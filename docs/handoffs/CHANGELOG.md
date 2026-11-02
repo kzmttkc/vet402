@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Avalanche C-Chain joins the chain list and gets its guide page
+
+- **What**: `SUPPORTED_CHAINS` has an Avalanche lane row (USDC over x402, join key `Avalanche`). `x402-guides.ts` has its lead and its EIP-3009 tie, so `/x402/chains/avalanche-c-chain` exists and the sitemap, the `/x402/chains` hub, the home chain table and the stablecoin asset sentence pick it up from that row. `public/llms.txt` carries the rebuilt Which chains sentence and the new URL. Tests pin the row, the join key, the slug and the sentence.
+- **Why**: `/api/v1/observatory/state` shows settled purchases in the `l1.byChain` row for `eip155:43114`, all bound to the signed nonce, and the rule was that a lane stays off this list only until its first settled purchase.
+- **Impact**: One new public page. Counts come from the ledger read and no number is written in the source. Payer flags, budgets and the lane itself do not change.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Declared query on Arbitrum and Avalanche is on
 
 - **What**: `eip155:42161` and `eip155:43114` are in `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS`. The Production redeploy that reads it was ready by 2026-11-02 04:55:29 UTC, so `OTHER_CHAIN_QUERY_UNSENT_UNTIL` gets a row with that time and `QUERY_UNSENT_CHAIN_NAMES` the two names. The other networks in the allow list were read from the ledger (every row in the last 10 days carries `requestQuery`), so the list kept them.
