@@ -41,6 +41,7 @@ import {
 } from "./settled-tier";
 import {
   settledLateLinkedPredicate,
+  circleGatewayBatchTx,
   settlementSourceOf,
   settlementSourceSql,
   type SettlementSource,
@@ -378,6 +379,11 @@ export type EndpointDetail = {
      * 規則は settlement-source.ts。内部の印（raw_response_meta.lateSettlement）は出さず、結論だけ出す。
      */
     settlementSource: SettlementSource | null;
+    /**
+     * Circle Gateway の行が決済されたバッチ tx（2026-11-02 文言監査 H7）。共有の tx なので txHash には置かない。
+     * settled の Gateway 行だけ。それ以外は null。
+     */
+    gatewayBatchTx: string | null;
   }[];
 } | null;
 
@@ -405,12 +411,14 @@ function withSettledTier<
 ): (Omit<T, "authNonce" | "settlementVerified" | "lateSettlement" | "circleGateway" | "l2Detail" | "l2BodyHead" | "l2ContentType"> & {
   settledTier: SettledTier | null;
   settlementSource: SettlementSource | null;
+  gatewayBatchTx: string | null;
   l2Reading: string | null;
 })[] {
   return rows.map(({ authNonce, settlementVerified, lateSettlement, circleGateway, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
     ...rest,
     settledTier: settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network }),
     settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway }),
+    gatewayBatchTx: rest.status === "settled" ? circleGatewayBatchTx(circleGateway) : null,
     // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
     l2Reading: rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema),
   }));
@@ -854,6 +862,8 @@ export type ObservatoryStats = {
      * nonceBound / amountPayeeOnly とは別の軸（証拠の強さではなく、tx の出所）。規則は settlement-source.ts。
      */
     settledLateLinked: number;
+    /** settled のうち Circle Gateway のバッチで決済された行（settlement_source=circle_gateway）。 */
+    settledCircleGateway: number;
     /** 決済ブロック時刻が試行の -5 分〜+15 分に入った settled 件数。 */
     settledTimeWindowOk: number;
     /** 決済ブロック時刻を我々が持っていない settled 件数（ok とも outside とも言えない）。 */
@@ -1011,6 +1021,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
       settledLateLinked: 0,
+      settledCircleGateway: 0,
       settledTimeWindowOk: 0,
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
@@ -1129,6 +1140,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
       settledLateLinked: 0,
+      settledCircleGateway: 0,
       settledTimeWindowOk: 0,
       settledTimeWindowUnknown: 0,
       endpointsAttempted: 0,
@@ -1160,6 +1172,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
                count(*) FILTER (WHERE ${sql.raw(settledTierPredicate("amount_payee_only"))})::int AS settled_amount_payee_only,
                -- 2026-09-20: tx を売り手ではなく vet402 の索引が貼った settled（settlement-source.ts）。
                count(*) FILTER (WHERE ${sql.raw(settledLateLinkedPredicate())})::int AS settled_late_linked,
+               count(*) FILTER (WHERE status = 'settled' AND (${sql.raw(settlementSourceSql())}) = 'circle_gateway')::int AS settled_circle_gateway,
                count(DISTINCT endpoint_id)::int AS endpoints,
                count(DISTINCT endpoint_id) FILTER (WHERE status = 'settled')::int AS endpoints_settled,
                -- 2026-09-29 敵対的監査 4 周目: 「settled with receipt」の endpoint 数を、売り手のレシートで
@@ -1187,6 +1200,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
         settled_nonce_bound: number;
         settled_amount_payee_only: number;
         settled_late_linked: number;
+        settled_circle_gateway: number;
         endpoints: number;
         endpoints_settled: number;
         endpoints_settled_seller_receipt: number;
@@ -1212,6 +1226,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           settledNonceBound: Number(l1List[0].settled_nonce_bound ?? 0),
           settledAmountPayeeOnly: Number(l1List[0].settled_amount_payee_only ?? 0),
           settledLateLinked: Number(l1List[0].settled_late_linked ?? 0),
+          settledCircleGateway: Number(l1List[0].settled_circle_gateway ?? 0),
           endpointsAttempted: Number(l1List[0].endpoints),
           endpointsSettled: Number(l1List[0].endpoints_settled ?? 0),
           endpointsSettledSellerReceipt: Number(l1List[0].endpoints_settled_seller_receipt ?? 0),

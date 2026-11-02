@@ -126,7 +126,14 @@ export default async function ImpactPage() {
         </h2>
         <p className="doc-p">
           <strong>{stats.totalEndpoints.toLocaleString()}</strong> endpoints on record;{" "}
-          <strong>{stats.activeEndpoints.toLocaleString()}</strong> currently listed.{" "}
+          <strong>{stats.activeEndpoints.toLocaleString()}</strong> active, meaning vet402 has not closed the record
+          {stats.latestSnapshot ? (
+            <>
+              ; the latest full read of the Bazaar saw{" "}
+              <strong>{stats.latestSnapshot.fetchedCount.toLocaleString()}</strong>
+            </>
+          ) : null}
+          .{" "}
           {coverage.pct === null ? (
             "Coverage is starting up."
           ) : (
@@ -151,13 +158,14 @@ export default async function ImpactPage() {
           <strong>{stats.l1.attempts.toLocaleString()}</strong> real purchase attempts across{" "}
           <strong>{stats.l1.endpointsAttempted.toLocaleString()}</strong> endpoints;{" "}
           <strong>{stats.l1.settled.toLocaleString()}</strong> settled on-chain. Of those settled attempts,{" "}
-          {(stats.l1.settled - stats.l1.settledLateLinked).toLocaleString()} carry a transaction the seller named
-          in its own settlement receipt and {stats.l1.settledLateLinked.toLocaleString()} a transaction the seller
+          {(stats.l1.settled - stats.l1.settledLateLinked - stats.l1.settledCircleGateway).toLocaleString()} carry a transaction the seller named
+          in its own settlement receipt, {stats.l1.settledLateLinked.toLocaleString()} a transaction the seller
           did not name, which vet402&apos;s own settlements index found afterwards (<code>settlement_source</code>{" "}
-          <code>vet402_index</code> in the export). By endpoint:{" "}
+          <code>vet402_index</code> in the export), and {stats.l1.settledCircleGateway.toLocaleString()} a Circle
+          Gateway batch transaction that settles many purchases at once (<code>circle_gateway</code>). By endpoint:{" "}
           {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} endpoints have at least one seller-named
-          receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()} have index-found transfers and no
-          seller-named receipt.
+          receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()} have no seller-named receipt: the index
+          found their transfers, or Circle&apos;s Gateway API named the batch.
           Settled attempts and attempts that did not settle are published with the same weight — a receipt series
           per endpoint, transaction hashes included.{" "}
           <Link href="/api/v1/observatory/export.csv" className="underline">

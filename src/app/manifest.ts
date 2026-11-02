@@ -14,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "vet402 — Independent Verification of the x402 Agent-Payment Economy",
     short_name: "vet402",
     description:
-      "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
+      "vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results.",
     start_url: "/",
     display: "browser",
     background_color: "#eef0f3",

@@ -32,7 +32,7 @@ test("abstract copy is unchanged", () => {
   const home = read("src/app/page.tsx");
   assert.ok(
     home.includes(
-      "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the\n            seller&apos;s own declaration, and publishes the results with evidence.",
+      "vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came\n            back, checks it against the seller&apos;s output declaration when there is one, and\n            publishes the results.",
     ),
   );
   // 2026-09-19 公開面監査 D2: 「Nothing on this site is an estimate.」は降ろした。

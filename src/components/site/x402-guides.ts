@@ -32,7 +32,10 @@ const EVM_REREAD = "The re-read matches that nonce on the transfer.";
 
 const FACTS: Record<string, { tie: string; reread: string }> = {
   Base: { tie: EVM_TIE, reread: EVM_REREAD },
-  Arc: { tie: EVM_TIE, reread: EVM_REREAD },
+  Arc: {
+    tie: EVM_TIE,
+    reread: `${EVM_REREAD} A purchase through Circle Gateway has no transfer of its own: Circle's Gateway API names the batch for the nonce, and vet402 checks the buyer's debit in that batch.`,
+  },
   Celo: { tie: EVM_TIE, reread: EVM_REREAD },
   Arbitrum: { tie: EVM_TIE, reread: EVM_REREAD },
   BSC: { tie: EVM_TIE, reread: EVM_REREAD },

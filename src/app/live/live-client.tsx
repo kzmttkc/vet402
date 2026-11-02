@@ -56,12 +56,12 @@ export default function LiveClient() {
     <div className="mt-6">
       <p className="doc-caption" aria-live="polite">
         feed: {status === "open" ? "connected" : status} · rows arrive as they are written to the
-        ledger (probes daily batch + on request; purchases on the daily budget)
+        ledger (probes and purchases run in batches several times a day, and probes also on request)
       </p>
       {rows.length === 0 ? (
         <p className="mt-3 max-w-[62ch] text-brand">
-          Quiet right now. The Observatory measures on a daily cadence, so this feed bursts when
-          the probe or purchase runs fire — it does not simulate activity in between.
+          Quiet right now. Purchases and probes run in batches several times a day, so this feed
+          bursts when a run fires. It does not simulate activity in between.
         </p>
       ) : (
         <table className="mt-3 w-full max-w-[72ch] border-t border-brand-deep text-[0.84375rem]">

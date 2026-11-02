@@ -121,7 +121,7 @@ export function sellerDescription(host: string, chain: string | null = null): st
 function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number }) {
   return (
     <span className="doc-asof">
-      Read from the database {fmtUtc(at)} · reused for up to {Math.round(revalidateSec / 60)} min
+      Read from the database {fmtUtc(at)}. Reused for up to {Math.round(revalidateSec / 60)} min, then refreshed on the next view, so the first view after a quiet period can show an older read.
     </span>
   );
 }
@@ -467,7 +467,7 @@ export function SellersIndexView({
         <span>Sellers on Base</span>
       </h2>
       <p className="doc-p">
-        {n(t.sellers)} sellers with {n(t.listings)} Base listings; vet402 has tried to buy from {n(t.sellersTried)} of
+        {n(t.sellers)} sellers with {n(t.listings)} active Base records (a record vet402 has not closed can stay active after it leaves the catalog); vet402 has tried to buy from {n(t.sellersTried)} of
         the sellers. By the latest attempt at each listing: <CountsLine c={t} notTriedWord="with no Base purchase" />.{" "}
         <Link href="/sellers/fix-first" className="underline">
           What to fix first

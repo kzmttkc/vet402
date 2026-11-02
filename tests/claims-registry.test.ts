@@ -553,6 +553,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 実装どおり「鍵付きの agent / wallet スコアだけが監視対象」に直して断定語が消えた。
   "src/app/accuracy/page.tsx": 13,
   "src/app/api/v1/accuracy/route.ts": 5,
+  // 2026-11-02: 資産の列挙を表から差し込み、説明文が 3 片に分かれて検出が 6 になった。文言監査 M1。
+  "src/app/api/v1/observatory/state/route.ts": 6,
   "src/app/corrections/page.tsx": 21,
   "src/app/docs/api/page.tsx": 56,
   "src/app/impact/page.tsx": 8, // 2026-09-29: 「Rewriting any past row breaks every later root」を実装に合わせて外した
@@ -570,12 +572,14 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/observatory/methodology/page.tsx": 42,
   // 2026-09-29 監査 6 周目: 8 → 7。「[receipts] … keeps only rows with a receipt」を「[settled on-chain] … lists the endpoints …」に
   // 言い換え（receipt を売り手の受領証の意味だけにした）。主張は減っていない。
-  "src/app/observatory/page.tsx": 7,
+  // 2026-11-02: 7 → 6。説明文の "Daily measurements" を外した（実際は 1 日に何度も走る。文言監査 M12）。
+  "src/app/observatory/page.tsx": 6,
   // 2026-09-28: 14 → 13。meta description を 160 字に詰めた際に "at all"（語 all を拾っていた）を落とした。主張は減っていない。
   "src/app/observatory/state/page.tsx": 12, // 2026-09-29: 同上（every later root）
   "src/app/operator-log/page.tsx": 7,
   // LP は床ちょうど（2026-09-20 実測 10・余白 0）。散文を触るときは、この床の更新差分を同じコミットに出す。
-  "src/app/page.tsx": 10,
+  // 2026-11-02: 10 → 8。L3 の "never mixed" と §3.2 の言い直し（断定語を外した）。文言監査 M3・M4。
+  "src/app/page.tsx": 8,
   "src/app/status/page.tsx": 7,
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,

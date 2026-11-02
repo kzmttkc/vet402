@@ -137,7 +137,7 @@ export function parseRecordPage(html: string): RecordPage | null {
       if (tds.length < 5) continue; // 見出し行
       const when = /(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) UTC/.exec(htmlText(tds[0]!));
       if (!when) continue;
-      const result = htmlText(tds[1]!).replace(/\s*tx from our index$/, "");
+      const result = htmlText(tds[1]!).replace(/\s*(?:tx from our index|Circle Gateway batch)$/, "");
       const httpText = htmlText(tds[2]!);
       const tx = /\/tx\/([^"?#]+)"/.exec(tds[3]!)?.[1] ?? /title="([^"]+)"/.exec(tds[3]!)?.[1] ?? null;
       let l2: string | null = null;

@@ -80,7 +80,7 @@ export default async function TermsPage() {
         </div>
         <h1 className="doc-title mt-8">Terms of Service</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: September 29, 2026</p>
+        <p className="doc-note text-center">Last updated: November 2, 2026</p>
 
         <section className="space-y-2">
           <h2 className="sec-head">
@@ -105,9 +105,9 @@ export default async function TermsPage() {
           </h2>
           <p>
             vet402 buys from x402 endpoints with its own funds and publishes what happened, as
-            measurement records (L0–L2) with their evidence. Through its API it also returns a 0–100
-            score and an ALLOW / WARN / BLOCK recommendation, an older opinion signal kept during the
-            transition. Both are for informational purposes only. Neither is a guarantee, credit
+            measurement records (L0–L2) with their evidence. Through its API it also returns a resource
+            decision (ALLOW, WARN or BLOCK from the L0–L2 records). A separate 0–100 score with its own
+            recommendation is an older opinion signal. All of these are for informational purposes only. None is a guarantee, credit
             assessment, investment advice, or legal certification.
           </p>
         </section>
@@ -301,8 +301,8 @@ export default async function TermsPage() {
               signature is the proof — no key required, no charge. That marks the address as
               &quot;address control verified&quot; — it proves you control the wallet, nothing more —
               publishes a profile at{" "}
-              <code className="text-brand-deep">/payee/&lt;address&gt;</code>, and feeds
-              back into how the address is scored.{" "}
+              <code className="text-brand-deep">/payee/&lt;address&gt;</code>. The score does not
+              change because of it.{" "}
               <a className="doc-link" href="/docs/api">
                 The API reference
               </a>{" "}
@@ -501,7 +501,8 @@ export default async function TermsPage() {
             says nothing about whether the endpoint delivers anything, because nothing was
             purchased. What happened when we did pay is L1, and L1 has its own words —{" "}
             <strong>settled</strong> (we re-read the transfer on-chain), <strong>delivered</strong>{" "}
-            (settled and the paid request answered <code>2xx</code>),{" "}
+            (settled and the paid request answered <code>2xx</code> other than <code>202 Accepted</code>{" "}
+            with a non-empty body),{" "}
             <strong>settle_failed</strong>, and the settlement-claim states. An L1 result is never
             reported as a pass or a fail, and an L0 pass is never a statement that the endpoint
             delivered. A temporary outage can produce the same record as a permanent one, which is

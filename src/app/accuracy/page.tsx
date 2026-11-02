@@ -408,7 +408,7 @@ export default async function AccuracyPage() {
             <Link href="/sellers" className="doc-link">
               /sellers
             </Link>{" "}
-            counts listings, not attempts: currently listed Base listings whose latest attempt, of any date, is
+            counts listings, not attempts: active Base records whose latest attempt, of any date, is
             sorted as vet402&apos;s doing (a paid request sent without the declared body or query, the payer
             wallet short or empty, one of vet402&apos;s own spending limits, or a vet402 run that did not
             finish).
@@ -667,9 +667,13 @@ export default async function AccuracyPage() {
             <p className="doc-note mt-5 max-w-[70ch]">
               {benchmark.scans.toLocaleString("en-US")} benchmark scans in the last 90 days
               {benchmark.lastScanAt
-                ? `, most recent ${new Date(benchmark.lastScanAt).toISOString().slice(0, 10)}`
+                ? `, most recent ${new Date(benchmark.lastScanAt).toISOString().slice(0, 10)} (${benchmark.lastScanAddresses.toLocaleString("en-US")} ${benchmark.lastScanAddresses === 1 ? "address" : "addresses"})`
                 : ""}
               .{" "}
+              {benchmark.lastBroadScan
+                ? `The latest pass that covered at least half of the set ran on ${benchmark.lastBroadScan.date} (${benchmark.lastBroadScan.addresses.toLocaleString("en-US")} addresses). `
+                : ""}
+              Scans recorded nothing from 2026-10-08 to 2026-10-30, while the index behind the agent resolver had stopped updating.{" "}
               {benchmarkOverdue ? (
                 <>
                   That is {benchmarkAgeDays} days before this page was generated on {generatedOn} (UTC):

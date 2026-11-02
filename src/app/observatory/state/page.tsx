@@ -1,3 +1,4 @@
+import { PINNED_ASSETS_WITH_ISSUER_TEXT } from "@/lib/observatory/settlement-assets";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -170,10 +171,11 @@ export default async function ObservatoryStatePage() {
     temporalCoverage: snap?.snapshotDate ?? undefined,
     dateModified: snap?.snapshotDate ?? undefined,
     measurementTechnique:
-      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares when that method is GET, POST, HEAD, or DELETE, and GET when the entry declares none or a method outside that set, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog. Fail is published only after consecutive failing probes. L1: a real-money purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain) made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled. Stellar is not in the nonce-bound count.",
+      "L0: one unpaid HTTP probe per catalog-listed endpoint, using the method the catalog entry declares when that method is GET, POST, HEAD, or DELETE, and GET when the entry declares none or a method outside that set, checking for HTTP 402 and whether the advertised price, asset, network and payee agree with the catalog. Fail is published only after consecutive failing probes. L1: a real-money purchase of that chain's pinned asset (" + PINNED_ASSETS_WITH_ISSUER_TEXT + ") made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled. Stellar is not in the nonce-bound count.",
     variableMeasured: [
       "endpoints on record",
-      "currently listed in catalog",
+      "active records (not closed)",
+      "seen in the latest full read of the Bazaar",
       "delisted endpoints",
       "L0 published pass",
       "L0 published fail",
@@ -255,9 +257,11 @@ export default async function ObservatoryStatePage() {
                     ? " (strong pass)"
                     : s.source === "cdp_bazaar" && s.complete === false
                       ? " (weak pass: more than 5% of pages unreadable — this catalog's figures provisional)"
-                      : s.fetchedCount >= s.totalCount
-                        ? ""
-                        : " (incomplete fetch — this catalog's figures provisional)"}
+                      : s.complete === false || (s.complete === null && s.fetchedCount < s.totalCount)
+                        ? " (incomplete fetch: this catalog's figures provisional)"
+                        : s.fetchedCount < s.totalCount
+                          ? " (duplicate keys counted once)"
+                          : ""}
                 </span>
               ))
             )}
@@ -340,10 +344,17 @@ export default async function ObservatoryStatePage() {
                 <td className="num">—</td>
               </tr>
               <tr>
-                <td className="text-brand">Currently listed in the catalog</td>
+                <td className="text-brand">Active: not closed on the record (a Bazaar record is not closed at present)</td>
                 <td className="num">{stats.activeEndpoints.toLocaleString()}</td>
                 <td className="num">{pct(stats.activeEndpoints, denom)}</td>
               </tr>
+              {snap ? (
+                <tr>
+                  <td className="text-brand">Seen in the latest full read of the Bazaar ({snap.snapshotDate})</td>
+                  <td className="num">{snap.fetchedCount.toLocaleString()}</td>
+                  <td className="num">{pct(snap.fetchedCount, snap.totalCount)} of the catalog&apos;s own total</td>
+                </tr>
+              ) : null}
               <tr>
                 <td className="text-brand">Delisted (absent on a complete fetch)</td>
                 <td className="num">{stats.delistedEndpoints.toLocaleString()}</td>
@@ -360,19 +371,19 @@ export default async function ObservatoryStatePage() {
                   掲載中の分と、その中で最新の probe が 7 日より前のものを内訳で出す。 */}
               <tr>
                 <td className="text-brand">
-                  of which currently listed (the rest are delisted endpoints whose latest probe passed)
+                  of which active (the rest are delisted endpoints whose latest probe passed)
                 </td>
                 <td className="num">{stats.publishedPassActive.toLocaleString()}</td>
-                <td className="num">{pct(stats.publishedPassActive, stats.activeEndpoints)} of listed</td>
+                <td className="num">{pct(stats.publishedPassActive, stats.activeEndpoints)} of active</td>
               </tr>
               <tr>
-                <td className="text-brand">of those listed, latest probe more than 7 days old</td>
+                <td className="text-brand">of those active, latest probe more than 7 days old</td>
                 <td className="num">{stats.publishedPassActiveProbeOlderThan7d.toLocaleString()}</td>
                 <td className="num">{pct(stats.publishedPassActiveProbeOlderThan7d, stats.publishedPassActive)}</td>
               </tr>
               <tr>
                 <td className="text-brand">
-                  Payment wall failing on ≥2 consecutive probes, and still listed (published fail)
+                  Payment wall failing on ≥2 consecutive probes, and still active (published fail)
                 </td>
                 <td className="num">{stats.publishedFail.toLocaleString()}</td>
                 <td className="num">{pct(stats.publishedFail, denom)}</td>
@@ -701,7 +712,7 @@ export default async function ObservatoryStatePage() {
                 </tr>
                 <tr>
                   <td className="text-brand">
-                    of which no seller receipt: the settled transfers were found by vet402&apos;s own settlements index
+                    of which no seller receipt: the settled transfers were found by vet402&apos;s own settlements index, or Circle&apos;s Gateway API named the batch
                   </td>
                   <td className="num">{stats.l1.endpointsSettledIndexOnly.toLocaleString()}</td>
                   <td className="num">
@@ -841,7 +852,7 @@ export default async function ObservatoryStatePage() {
           <strong>Coverage (7-day window):</strong>{" "}
           {coverage.pct === null
             ? "no active endpoints on record"
-            : `${coverage.measuredLast7d.toLocaleString()} of ${coverage.activeEndpoints.toLocaleString()} active listed endpoints (${coverage.pct}% of active listed endpoints) carry an L0 measurement from the last 7 days`}
+            : `${coverage.measuredLast7d.toLocaleString()} of ${coverage.activeEndpoints.toLocaleString()} active records (${coverage.pct}% of active records) carry an L0 measurement from the last 7 days`}
           . This is the machine definition behind &quot;endpoints under regular
           verification&quot;. Numerator and denominator as stated, nothing else. This page read
           that share at {coverage.readAt}. The response at {SITE_URL}/api/v1/observatory/state

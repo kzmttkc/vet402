@@ -66,13 +66,12 @@ export default function PartnersPage() {
           verifier that sells favorable treatment is not a verifier. What partners shape is the
           <em> product</em> (APIs, integrations, definitions), never the <em>measurements</em>.
           Being measured more often is not favorable treatment and is not for sale either: four
-          hosts are bought from on a shorter cadence because of the call volume the public catalog
-          reports for them, that list is named in{" "}
+          hosts are bought from on a shorter cadence. The list was picked in August 2026 from demand
+          reported by a third party, not from any relationship with vet402. It is named in{" "}
           <Link href="/observatory/methodology" className="underline">
             the methodology
           </Link>
-          , and the criterion is the catalog&apos;s own reported
-          call volume rather than any relationship with us.
+          , with the catalog&apos;s current call counts to judge it against.
         </p>
 
         <PartnersClient />

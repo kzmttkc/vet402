@@ -11,6 +11,11 @@ import {
 } from "@/lib/observatory/l0-probe";
 import { SETTLE_DROP_MIN_PREV_CALLS, SETTLE_DROP_RATIO } from "@/lib/observatory/catalog-diff";
 import {
+  EIP3009_CHAINS_TEXT,
+  NONCE_BOUND_CHAINS_TEXT,
+  PINNED_ASSETS_WITH_ISSUER_TEXT,
+} from "@/lib/observatory/settlement-assets";
+import {
   FIRST_PURCHASE_DAILY_QUOTA,
   MATURE_SETTLED_MIN,
   MATURE_SWEEP_WINDOW_DAYS,
@@ -132,7 +137,7 @@ export default async function ObservatoryMethodologyPage() {
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>Methodology: L0, L1, L2</span>
-            <span>Version 3 · 2026-09-04</span>
+            <span>Version 3 · last changed 2026-11-02</span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -158,7 +163,7 @@ export default async function ObservatoryMethodologyPage() {
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">In 60 seconds</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
-            L0 asks whether the payment wall answers. L1 asks whether a real purchase settles. L2
+            L0 asks whether the payment wall answers. L1 asks whether a real purchase settles and comes back with a non-empty 2xx. L2
             asks whether the response matches the seller&apos;s declaration. Unverified is not a
             failure. A 0–100 score is a different API and is never an L0–L2 result. Every word this
             page publishes measurements in is defined once, in one line each, in{" "}
@@ -641,9 +646,9 @@ export default async function ObservatoryMethodologyPage() {
           An endpoint present on an earlier
           day and absent from a <strong>complete</strong> fetch is recorded as{" "}
           <code>delisted</code>, with the before/after values kept on the event, unless another catalog still lists that key. On any day
-          vet402&apos;s own fetch is incomplete (fetched count below the catalog&apos;s reported total), no
+          vet402&apos;s own fetch is incomplete (vet402 stopped before the end of the catalog), no
           delisting judgements are made. A gap in vet402 data must never read as a disappearance in
-          yours. Reappearance is recorded as <code>relisted</code>. A fall in the
+          yours. For the MPP directory, the fetched count can sit below the catalog&apos;s reported total because duplicate keys are counted once. Reappearance is recorded as <code>relisted</code>. A fall in the
           catalog-reported 30-day call count of {Math.round(SETTLE_DROP_RATIO * 100)}% or more,
           from a base of at least {SETTLE_DROP_MIN_PREV_CALLS} calls, is recorded as{" "}
           <code>settle_drop</code> — a factual observation of the catalog&apos;s own telemetry,
@@ -680,16 +685,14 @@ export default async function ObservatoryMethodologyPage() {
           then select a payment option and refuse to proceed unless every one of these holds:
           scheme <code>exact</code>, a network whose payer lane is switched on for that run (Base
           is on by default; each other lane sits behind its own flag, and the chains L1 has
-          actually bought on are the rows of the by-chain table in the State of x402 report), the
-          canonical USDC asset for that network (Base, Arc, Celo, Solana and Stellar). Named
-          exceptions of the same kind as USDC.e on Tempo are RLUSD from its fixed issuer on XRPL
-          and USD1 on BNB Chain. The price
+          actually bought on are the rows of the by-chain table in the State of x402 report), that
+          chain&apos;s pinned asset ({PINNED_ASSETS_WITH_ISSUER_TEXT}). The price
           matches what the catalog declared when the target was chosen. Any deviation (a
           different asset, a different chain, a higher price) is recorded as a refusal, never
           paid. A hard per-purchase ceiling (${MAX_PER_PURCHASE_USD.toFixed(2)}) and a daily
           budget (${DAILY_BUDGET_USD}) are checked against a database ledger, not memory, before
           every signature, so a restart or a concurrent run cannot double-spend. A signed spend
-          stays on the record whether or not the seller delivers. On Base, Arc, Celo and BNB Chain
+          stays on the record whether or not the seller delivers. On {EIP3009_CHAINS_TEXT}
           the signature is an EIP-3009 authorization, and a signed EIP-3009 authorization is live
           money the moment it exists.
         </p>
@@ -814,10 +817,16 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found
-          the transfer it paid for: from the vet402 payer, to the catalog-declared payee, for
-          the declared amount, in that chain&apos;s pinned settlement asset (USDC on Base, Arc, Celo,
-          Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on
-          BNB Chain). On Base that means an ERC-20{" "}
+          the transfer it paid for: from the vet402 payer, to the payee the catalog declares (on
+          Tempo, the recipient L0 learned from the challenge), for
+          the declared amount, in that chain&apos;s pinned settlement asset ({PINNED_ASSETS_WITH_ISSUER_TEXT}).
+          Through Circle Gateway on Arc one batch transaction settles many purchases and there is no
+          separate transfer to the payee: Circle&apos;s Gateway API names the batch for the
+          purchase&apos;s nonce, and vet402 checks the buyer&apos;s debit in{" "}
+          <a href="#gateway-batch" className="underline">
+            that batch
+          </a>
+          . On Base that means an ERC-20{" "}
           <code>Transfer</code> log matching all four of those with at least{" "}
           {REQUIRED_CONFIRMATIONS.toString()} confirmations; on
           Solana it means the transaction is <code>finalized</code>, succeeded, and the
@@ -871,9 +880,9 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         <p className="doc-p">
           <strong>settled comes at two evidence strengths, and both counts are published.</strong>{" "}
-          Since 2026-09-04 12:00 UTC a purchase on Base, Arc, Celo, BNB Chain, Solana, Tempo or XRPL
-          stores a one-time value for that purchase (the EIP-3009 authorization nonce on Base, Arc,
-          Celo and BNB Chain, a memo written on Solana, the memo of a TIP-20 transfer on Tempo, the
+          Since 2026-09-04 12:00 UTC a purchase on {NONCE_BOUND_CHAINS_TEXT}
+          stores a one-time value for that purchase (the EIP-3009 authorization nonce on{" "}
+          {EIP3009_CHAINS_TEXT}, a memo written on Solana, the memo of a TIP-20 transfer on Tempo, the
           hash of the signed blob on XRPL) and the re-read matches that value. Those rows are
           published as <strong>nonce-bound</strong>: the re-read matched the one-time value stored
           for that purchase, so the transaction is the one for this purchase. Stellar is not in this count.
@@ -926,7 +935,7 @@ export default async function ObservatoryMethodologyPage() {
           then goes through the same re-read as a seller&apos;s claim before it reads{" "}
           <code>settled</code>. The seller did not name that transaction; we did, and the record
           says so: the ledger export carries <code>settlement_source</code> as{" "}
-          <code>seller_claim</code> or <code>vet402_index</code>, the endpoint page marks the row,
+          <code>seller_claim</code>, <code>vet402_index</code> or <code>circle_gateway</code>, the endpoint page marks the row,
           and the count is live as <code>l1.settledLateLinked</code>.{" "}
           {l1Tiers && l1Tiers.settled > 0 ? (
             <>
@@ -955,7 +964,7 @@ export default async function ObservatoryMethodologyPage() {
         </p>
         {/* 2026-09-29 監査 5 周目: 訂正ログの subject_id と export の行を結べなかった。 */}
         <p className="doc-p">
-          <strong>Joining a correction to its row.</strong> The last column of the ledger export,{" "}
+          <strong>Joining a correction to its row.</strong> The ledger export&apos;s column{" "}
           <code>purchase_id</code> (since 2026-09-29), is the purchase&apos;s id &mdash; a random
           UUID the database gives each attempt, carrying no payer, payee or amount. A row of the
           correction log about a purchase (<code>subject_type</code> <code>purchase</code> on{" "}
@@ -966,8 +975,10 @@ export default async function ObservatoryMethodologyPage() {
         <p className="doc-p">
           <strong>settled is not delivered.</strong> <code>settled</code> is a statement about the
           money: we confirmed the transfer on-chain. <code>delivered</code> is a statement about
-          the goods: the attempt is <code>settled</code> <em>and</em> the paid request answered HTTP{" "}
-          <code>2xx</code> other than <code>202 Accepted</code> with a non-empty body. A seller can take the payment and answer <code>400</code>, and that row
+          the answer: the attempt is <code>settled</code> <em>and</em> the paid request answered HTTP{" "}
+          <code>2xx</code> other than <code>202 Accepted</code> with a non-empty body. It does not show
+          the content is what was paid for: a <code>200</code> with an error in its body can count as
+          delivered, and L2 looks at the shape alone. A seller can take the payment and answer <code>400</code>, and that row
           is settled and not delivered. Both counts are published side by side on the endpoint
           page, on the register, in the badge, and at <code>/api/v1/observatory/state</code>
           (<code>l1.settled</code> and <code>l1.delivered</code>), so the difference between them
@@ -988,7 +999,7 @@ export default async function ObservatoryMethodologyPage() {
           Solana-specific verifier, and a Solana purchase is promoted to <code>settled</code> only
           on the same evidence Base requires. What remains open is narrower and still worth naming:
           the re-read is chain-specific, because what binds a transfer to the signature vet402 holds
-          differs by chain: on Base, Arc, Celo and BNB Chain the EIP-3009 authorization nonce, on Solana a memo
+          differs by chain: on {EIP3009_CHAINS_TEXT} the EIP-3009 authorization nonce, on Solana a memo
           vet402 wrote, on Tempo the indexed memo of a TIP-20{" "}
           <code>TransferWithMemo</code>, on XRPL the hash of the blob vet402 signed (which is the
           transaction hash itself). Stellar is re-read for payer, payee, amount and asset, and is published
@@ -1093,7 +1104,8 @@ export default async function ObservatoryMethodologyPage() {
           <span>What L2 measures</span>
         </h2>
         <p className="doc-p">
-          L2 runs only when the paid request in the same purchase returned <code>200</code>. It is
+          L2 runs only when the paid request in the same purchase answered <code>2xx</code> other than{" "}
+          <code>202 Accepted</code>. It is
           a minimal structural check, not a full JSON-Schema validation: the response must parse
           as JSON and carry the top-level keys the catalog&apos;s own declared output schema marks
           as required. <strong>no_declaration</strong>: the listing&apos;s output schema gave
@@ -1103,10 +1115,11 @@ export default async function ObservatoryMethodologyPage() {
           <code>extensions.bazaar.info.output.example</code>
           ) is not checked yet. It is never counted as a failed delivery.{" "}
           <strong>match</strong> — the response parses
-          and every declared required key is present. <strong>mismatch</strong> — the body does
+          and every declared required key is present. With an example that marks no key as required, a
+          JSON object or array is enough. <strong>mismatch</strong> — the body does
           not parse as JSON, is JSON but not an object or array, a required key is missing, or the
-          content type is not JSON despite declared required keys. <strong>not_checked</strong> — the paid request did not return{" "}
-          <code>200</code>, so there was nothing to check. L2 does not verify that the values are
+          content type is not JSON despite declared required keys. <strong>not_checked</strong> — the paid request did not answer{" "}
+          <code>2xx</code> other than <code>202 Accepted</code>, so there was nothing to check. L2 does not verify that the values are
           correct or that the content is any good — that judgement is L3, and L3 is not built.
         </p>
         <p className="doc-p">

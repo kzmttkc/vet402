@@ -7,6 +7,7 @@
 // getObservatoryStatsCached(), never from an HTTP fetch and never from a number in the source.
 // When the read is not usable, neither section is drawn.
 // ============================================================
+import { PINNED_ASSETS_TEXT, USDC_CHAINS_TEXT } from "@/lib/observatory/settlement-assets";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -102,9 +103,9 @@ test("The public ledger prints the two counts from the read, and the date is the
   assert.ok(html.includes("Paid attempts that settled"));
   assert.ok(html.includes(">4,210<") && html.includes(" of 5,321"));
   assert.ok(html.includes("3,987 of the settled purchases also returned a deliverable HTTP 2xx answer."));
-  assert.ok(html.includes("Latest L0 verdict on listed endpoints"));
-  assert.ok(html.includes(">12,345<") && html.includes(" pass of 20,086 listed"));
-  assert.ok(html.includes("7,741 listed endpoints do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed."));
+  assert.ok(html.includes("Latest L0 verdict on active records"));
+  assert.ok(html.includes(">12,345<") && html.includes(" pass of 20,086 active"));
+  assert.ok(html.includes("7,741 active records do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed."));
   assert.ok(html.includes("Customer count and revenue: not published."));
   assert.ok(html.includes('href="/api/v1/observatory/state"') && html.includes("(CC BY 4.0)."));
   assert.ok(html.includes('href="/observatory"') && html.includes("Open the observatory"));
@@ -119,18 +120,18 @@ test("Where purchases settled: one row per chain with a settled purchase, names 
   assert.ok(ledger);
   const html = renderToStaticMarkup(createElement(SettledChainsSection, { ledger }));
   assert.ok(html.includes("Where purchases settled"));
-  for (const h of ["Chain", "Asset", "Settled purchases", "Delivered", "Paid, not delivered"]) assert.ok(html.includes(`>${h}<`), h);
+  for (const h of ["Chain", "Asset", "Settled purchases", "Delivered", "Settled, not delivered", "Of which held (4xx)"]) assert.ok(html.includes(`>${h}<`), h);
   // The first cell also draws a share rule, so its label is no longer the only child. The title and the six values stay the same.
-  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([\s\S]*?)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
-    (m) => [m[1], m[2].replace(/<[^>]+>/g, "").trim(), m[3], m[4], m[5], m[6]],
+  const rows = [...html.matchAll(/<tr><td title="([^"]*)">([\s\S]*?)<\/td><td>([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><td class="num">([^<]*)<\/td><\/tr>/g)].map(
+    (m) => [m[1], m[2].replace(/<[^>]+>/g, "").trim(), m[3], m[4], m[5], m[6], m[7]],
   );
   assert.ok(html.includes('aria-label="3,300 of 3,500 settled on Base counted as delivered"'));
   // The new column is settled − delivered for that chain. The fixture's counts are unchanged.
   assert.deepEqual(rows, [
-    ["Base", "Base", "USDC", "3,500", "3,300", "200"],
-    ["stellar:pubnet", "Stellar", "USDC", "250", "240", "10"],
-    ["BSC", "BNB Chain", "USD1", "150", "140", "10"],
-    ["eip155:999999", "eip155:999999", NO_ASSET, "7", "5", "2"],
+    ["Base", "Base", "USDC", "3,500", "3,300", "200", "0"],
+    ["stellar:pubnet", "Stellar", "USDC", "250", "240", "10", "0"],
+    ["BSC", "BNB Chain", "USD1", "150", "140", "10", "0"],
+    ["eip155:999999", "eip155:999999", NO_ASSET, "7", "5", "2", "0"],
   ]);
   assert.ok(!html.includes("Base Sepolia"), "a chain with no settled purchase has no row");
 });
@@ -151,9 +152,8 @@ test("asset words are taken from supported-chains-data.ts and the methodology se
   for (const row of SUPPORTED_CHAINS) {
     if (row.kind === "lane") assert.equal(settlementAssetOf(row.chain), row.asset, row.chain);
   }
-  const vocab = read("src/lib/observatory/vocabulary.ts");
-  assert.ok(vocab.includes("USDC on Base, Arc, Celo, Solana and Stellar"), "Stellar's asset is USDC in the methodology");
-  assert.ok(vocab.includes("USD1 on BNB Chain"), "BNB Chain's asset is USD1 in the methodology");
+  assert.ok(USDC_CHAINS_TEXT.includes("Stellar"), "Stellar's asset is USDC in the methodology");
+  assert.ok(PINNED_ASSETS_TEXT.includes("USD1 on BNB Chain"), "BNB Chain's asset is USD1 in the methodology");
   assert.equal(settlementAssetOf("Stellar"), "USDC");
   assert.equal(settlementAssetOf("BSC"), "USD1");
   assert.equal(settlementAssetOf("Arbitrum"), "USDC");
@@ -194,11 +194,11 @@ test("direction C keeps the seller search, the two entries, and the three defini
   const defs = HOME.slice(HOME.indexOf("<dl "), HOME.indexOf("</dl>") + 5);
   for (const piece of [
     '<dt className="font-semibold">What this is</dt>',
-    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>",
+    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a success and a body (a non-empty 2xx other than 202). That shows who answers once paid. It does not check that the content is right.</dd>",
     '<dt className="font-semibold">What you give us</dt>',
-    "<dd>Nothing to look: no wallet, no account, no card. A free key only for API calls.</dd>",
-    '<dt className="font-semibold">What we do not do</dt>',
-    "<dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>",
+    "<dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>",
+    '<dt className="font-semibold">What vet402 does not do</dt>',
+    "<dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), or hold your funds. A spending cap you set runs in your own process, in the SDK.</dd>",
   ]) {
     assert.ok(squash(defs).includes(squash(piece)), `definitions still say: ${piece}`);
   }

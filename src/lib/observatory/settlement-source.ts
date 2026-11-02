@@ -25,7 +25,7 @@ export type SettlementSource = (typeof SETTLEMENT_SOURCES)[number];
  * 共有のバッチ tx は行の tx_hash に置かない（一意索引が 1 tx を 1 購入に縛る）。
  * 請求が確認できるまで batchTx は空で、この関数は null に落ちる。
  */
-function circleGatewayBatchTx(meta: unknown): string | null {
+export function circleGatewayBatchTx(meta: unknown): string | null {
   let value = meta;
   if (typeof value === "string") {
     try {

@@ -98,7 +98,7 @@ const LEVELS = [
   {
     level: "L1",
     name: "Settle-through",
-    question: "Does payment settle and a response arrive?",
+    question: "Does the payment settle, and does a non-empty 2xx come back?",
     how: "Real purchase",
     // 2026-09-04 監査 E・P0-3: この §2 の定義（settle AND arrive）に対して、
     // 公開面は settled しか出していなかった。両方を出力語彙に入れる。
@@ -116,8 +116,8 @@ const LEVELS = [
     level: "L3",
     name: "Quality",
     question: "Is the content any good?",
-    how: "Published rubric",
-    output: "opinion — never mixed with L0–L2",
+    how: "Not built",
+    output: "none: this site presents no L3 opinion",
   },
 ];
 
@@ -137,7 +137,7 @@ export default async function Home() {
   ]);
   const ledger = homeLedgerOf(stats);
   const organization = organizationJsonLd(
-    "Independent verification of the x402 agent-payment economy. vet402 buys what x402 endpoints sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
+    "Independent verification of the x402 agent-payment economy. vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
   );
   // 2026-08-14 SEO/AEO: WebSite ノードが欠けていた（Organization と
   // SoftwareApplication はあった）。検索の sitelinks／エンティティ束ねに効く
@@ -249,11 +249,11 @@ export default async function Home() {
         {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
         <dl className="mx-auto mt-8 grid max-w-[62ch] gap-1 text-[0.84375rem] text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-4">
           <dt className="font-semibold">What this is</dt>
-          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether what was paid for arrived.</dd>
+          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a success and a body (a non-empty 2xx other than 202). That shows who answers once paid. It does not check that the content is right.</dd>
           <dt className="font-semibold">What you give us</dt>
-          <dd>Nothing to look: no wallet, no account, no card. A free key only for API calls.</dd>
-          <dt className="font-semibold">What we do not do</dt>
-          <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), approve payments, or cap your spending.</dd>
+          <dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>
+          <dt className="font-semibold">What vet402 does not do</dt>
+          <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), or hold your funds. A spending cap you set runs in your own process, in the SDK.</dd>
         </dl>
 
         <div className="rule-double mt-16" />
@@ -274,7 +274,7 @@ export default async function Home() {
           .
         </p>
 
-        {/* チェーン表は残す。Paid, not delivered は settled − delivered。読めなければ出さない。 */}
+        {/* チェーン表は残す。Settled, not delivered は settled − delivered で、うち保留（4xx）を隣の列に出す。読めなければ出さない。 */}
         {ledger ? <SettledChainsSection ledger={ledger} /> : null}
 
         {/* ================= RFC first page ================= */}
@@ -355,8 +355,9 @@ export default async function Home() {
                 これは §3.1 が同じ内容をより強い形（「無ければ公開しない」）で
                 述べている重複。Abstract が §3 を先取りするのをやめただけで、
                 デッキの主張は1つも減っていない。 */}
-            vet402 buys what x402 endpoints actually sell, verifies fulfillment against the
-            seller&apos;s own declaration, and publishes the results with evidence.{" "}
+            vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came
+            back, checks it against the seller&apos;s output declaration when there is one, and
+            publishes the results.{" "}
             <strong>
               A weaker tier of evidence is not rounded up into a stronger one: the settlements
               vet402 bound to its own signature and the ones matched on amount and payee alone are
@@ -623,17 +624,16 @@ export default async function Home() {
         <div className="mt-8 flex gap-4">
           <span className="w-[4ch] shrink-0 text-brand-lift">2.1</span>
           <p className="min-w-0 max-w-[64ch] text-brand">
-            The trust score this API returns today &mdash; 0&ndash;100, banded{" "}
-            <span className="whitespace-nowrap">ALLOW / WARN / BLOCK</span> &mdash; predates these
-            levels. It stays available to API and SDK callers during the transition. Observatory
-            verdicts (L0&ndash;L2) replace it as they ship, and both will run side by side until
-            then. A score is never reported as an L0&ndash;L2 result.{" "}
+            The trust score this API returns today (0&ndash;100, banded{" "}
+            <span className="whitespace-nowrap">ALLOW / WARN / BLOCK</span>) predates these
+            levels. The resource decision reads L0&ndash;L2 today. The score stays available to
+            API and SDK callers. A score is never reported as an L0&ndash;L2 result.{" "}
             <Link href="/docs/api#score-breakdown" className="doc-link">
               How the score is composed
             </Link>
             . Full definitions of pass / fail / unverified and the L1 purchase rules:{" "}
             <Link href="/observatory/methodology" className="doc-link">
-              observatory methodology (v2)
+              observatory methodology
             </Link>
             .
           </p>
@@ -649,8 +649,10 @@ export default async function Home() {
           <div className="flex gap-4">
             <span className="w-[4ch] shrink-0 text-brand-lift">3.1</span>
             <p className="min-w-0 max-w-[64ch] text-brand">
-              A failing verdict publishes with raw log, transaction hash, timestamp and reproduction
-              steps &mdash; <strong>or it does not publish.</strong>
+              A published L0 fail shows each probe&apos;s time, method, HTTP status, latency and
+              reason code. A published L1 failure also shows the amount vet402 signed for, the
+              chain and, when there is one, the transaction.{" "}
+              <strong>Response bodies are not published.</strong>
             </p>
           </div>
           <div className="flex gap-4">
@@ -662,11 +664,12 @@ export default async function Home() {
                 docs（Payee score / Availability）と llms.txt には書いてあったが、
                 この頁だけ半分しか言っていなかった。残りの半分を1行で足す。 */}
             <p className="min-w-0 max-w-[64ch] text-brand">
-              Unverifiable is not a verdict. We say <strong>&quot;unverified&quot;</strong>, never
+              Unverifiable is not a verdict. vet402 says <strong>&quot;unverified&quot;</strong>, never
               &quot;bad&quot;. For a caller about to move money, a check
-              that could not be completed returns a fail-closed{" "}
-              <span className="whitespace-nowrap">BLOCK</span> to the API and the SDK, while the
-              public page prints &ldquo;not verifiable right now&rdquo; and no number.{" "}
+              that could not be completed does not read as ALLOW: the resource decision returns{" "}
+              <span className="whitespace-nowrap">WARN</span> with <code>degraded: true</code> or a{" "}
+              <code>503</code>, and the payee score returns a fail-closed{" "}
+              <span className="whitespace-nowrap">BLOCK</span>. The public page prints &ldquo;not verifiable right now&rdquo; and no number.{" "}
               <Link href="/docs/api#payee-score" className="doc-link">
                 Why the two answers differ
               </Link>
@@ -713,8 +716,8 @@ export default async function Home() {
               { label: "Endpoints on record", n: stats.totalEndpoints, href: "/observatory" },
               // 2026-09-29 敵対的監査 4 周目: 「L0 pass 21,229」は掲載落ちを含み、掲載中 20,086 を上回っていた。
               // 段を「掲載中 → 掲載中の L0 pass」にし、L1 は売り手のレシートと vet402 の索引の紐付けを分ける。
-              { label: "Currently listed", n: stats.activeEndpoints, href: "/observatory/state" },
-              { label: "L0 pass, currently listed", n: stats.publishedPassActive, href: "/observatory?verdict=pass" },
+              { label: "Active (not closed)", n: stats.activeEndpoints, href: "/observatory/state" },
+              { label: "L0 pass, active", n: stats.publishedPassActive, href: "/observatory?verdict=pass" },
               { label: "L1 settled, seller's receipt", n: stats.l1.endpointsSettledSellerReceipt, href: "/impact" },
               { label: "L1 settled, no seller receipt", n: stats.l1.endpointsSettledIndexOnly, href: "/impact" },
             ]}
@@ -722,16 +725,21 @@ export default async function Home() {
               <>
                 Endpoints at each level of evidence
                 {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} (UTC) catalog snapshot` : ""}. Bars are
-                proportional to the first row. The first row is every endpoint on record, including the{" "}
-                {stats.delistedEndpoints.toLocaleString()} no longer listed in the catalog. The L0 row counts listed
-                endpoints whose latest probe returned a valid 402 (<code>publishedPassActive</code>);{" "}
+                proportional to the first row. The first row is every endpoint on record and includes delisted ones (
+                {stats.delistedEndpoints.toLocaleString()}). Active means vet402 has not closed the
+                record, and a Bazaar record is not closed at present
+                {stats.latestSnapshot
+                  ? `; the latest full read of the Bazaar saw ${stats.latestSnapshot.fetchedCount.toLocaleString()}`
+                  : ""}
+                . The L0 row counts active
+                records whose latest probe returned a valid 402 (<code>publishedPassActive</code>);{" "}
                 {stats.publishedPassActiveProbeOlderThan7d.toLocaleString()} of them were last probed more than 7 days
                 ago, and a further {(stats.publishedPass - stats.publishedPassActive).toLocaleString()} endpoints whose
-                latest probe passed are no longer listed and are not in this row (<code>publishedPass</code> ={" "}
-                {stats.publishedPass.toLocaleString()} includes them). The two L1 rows count endpoints, listed or not, with
+                latest probe passed are delisted and are not in this row (<code>publishedPass</code> ={" "}
+                {stats.publishedPass.toLocaleString()} includes them). The two L1 rows count endpoints, active or not, with
                 at least one paid attempt settled on-chain: first those where the seller named the transaction in its
                 own settlement receipt, then those with no seller receipt, where none of the settled transfers was named
-                by the seller and vet402&apos;s own settlements index found them (<code>settlement_source</code> in the
+                by the seller and vet402&apos;s own settlements index found them, or Circle&apos;s Gateway API named the batch (<code>settlement_source</code> in the
                 ledger export). Together
                 they are the {stats.l1.endpointsSettled.toLocaleString()} endpoints of <code>l1.endpointsSettled</code> in{" "}
                 <code>/api/v1/observatory/state</code>.
@@ -752,11 +760,11 @@ export default async function Home() {
             title="The x402 Observatory"
             body={
               <>
-                Every endpoint in the public discovery catalog: is it still listed, and does its
-                payment wall answer a valid 402. The catalog is read in runs roughly two hours apart; endpoints are
+                Each endpoint vet402 has read from the public discovery catalog, and whether its
+                payment wall answers a valid 402. The catalog is read in runs roughly two hours apart; endpoints are
                 probed on a rolling schedule
                 {coverage && coverage.pct !== null
-                  ? `. ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active endpoints carry a probe from the last 7 days (page read ${coverage.readAt}). The response at ${SITE_URL}/api/v1/observatory/state carries its own retrievedAt. This page reuses that shared read for up to ${PUBLIC_READ_REVALIDATE} seconds`
+                  ? `. ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active records carry a probe from the last 7 days (page read ${coverage.readAt}). The response at ${SITE_URL}/api/v1/observatory/state carries its own retrievedAt. This page reuses that shared read for up to ${PUBLIC_READ_REVALIDATE} seconds`
                   : ""}
                 . The table shows L0 (payment-wall check) and L1 (real purchases whose transfer
                 vet402 re-read on-chain, whether the seller&apos;s receipt or vet402&apos;s own index

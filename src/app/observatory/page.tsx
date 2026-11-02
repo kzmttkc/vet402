@@ -41,7 +41,7 @@ import { WideColumn } from "@/components/site/WideColumn";
 export const metadata: Metadata = pageMetadata({
   title: "x402 Observatory of agent payments",
   description:
-    "Daily measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402 challenge, and is it still listed. Facts, no scores.",
+    "Measurements over the public x402 catalog: does each endpoint's payment wall answer a valid 402, and what came back when vet402 paid. Facts, no scores.",
   path: "/observatory",
 });
 
@@ -310,12 +310,16 @@ export default async function ObservatoryPage({
             caption={
               <>
                 Published L0 verdict, {band.total.toLocaleString()} endpoints on record (includes
-                delisted; {stats.activeEndpoints.toLocaleString()} active; {stats.publishedPassActive.toLocaleString()}{" "}
-                of the passes are currently listed). Settled on-chain counts endpoints with at least one purchase
-                vet402 re-read on-chain, listed or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
+                delisted; {stats.activeEndpoints.toLocaleString()} active, meaning not closed; {stats.publishedPassActive.toLocaleString()}{" "}
+                of the passes are active
+                {stats.latestSnapshot
+                  ? `; the latest full read of the Bazaar saw ${stats.latestSnapshot.fetchedCount.toLocaleString()}`
+                  : ""}
+                ). Settled on-chain counts endpoints with at least one purchase
+                vet402 re-read on-chain, active or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the
                 seller named in its own settlement receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()}{" "}
                 where the seller returned no receipt and vet402&apos;s own settlements index found the settled
-                transfers, as reported by <code>/api/v1/observatory/state</code>.{" "}
+                transfers or Circle&apos;s Gateway API named the batch, as reported by <code>/api/v1/observatory/state</code>.{" "}
                 {withdrawnBandCountSentence(band.counts.withdrawn)} Select a
                 legend entry to filter the table.
               </>
@@ -449,8 +453,8 @@ export default async function ObservatoryPage({
                 落としたのは「No account」「キーはスコアAPI専用」「headline numbers」
                 といった、表を読む前には要らない但し書き——消したのではなく、
                 すぐ下の §1 と既存のリンク群が同じことを言っている。 */}
-            Every endpoint in the public x402 discovery catalog: is it still listed, and does its
-            payment wall answer a valid <code>402</code> challenge. The probe uses the HTTP method
+            Each endpoint vet402 has read from the public x402 discovery catalog, and whether its
+            payment wall answers a valid <code>402</code> challenge. The probe uses the HTTP method
             the listing declares when that method is GET, POST, HEAD, or DELETE, and GET when the
             listing declares no method or a method outside that set. Two failures in a row on that
             probe can be published as fail. The Bazaar catalog is read in runs roughly two hours apart, each continuing where the previous run stopped. Endpoints are probed on a rolling
@@ -505,9 +509,8 @@ export default async function ObservatoryPage({
           itself. A full read is spread over several runs, a listing that moves within the catalog&apos;s order during
           the read can be missed by it, and a strong pass can still leave up to 5% of its pages unread, so fetched can sit
           below the catalog total. /observatory/state marks each full
-          read as a strong pass or a weak pass (more than 5% of its pages unreadable). For the MPP directory and the
-          Circle x402 discovery, a fetch below the total is incomplete: no delisting judgement is made on such a day. Endpoints on record
-          (Figure 1) include delisted entries; the Catalog column says which are still listed. The{" "}
+          read as a strong pass or a weak pass (more than 5% of its pages unreadable). A fetch is incomplete when vet402 stopped before the end of the catalog, and no delisting judgement is made on such a day. For the MPP directory, fetched can sit below the total because duplicate keys are counted once. Endpoints on record
+          (Figure 1) include delisted entries; the Catalog column says which records are closed. The{" "}
           <em>active</em> count under Figure 1 is a different figure from the catalog total on the snapshot
           line: it counts endpoint rows on record whose catalog status is still <code>active</code>. That
           status is set when a read lists the endpoint. A Bazaar listing is not flipped to <code>delisted</code> at
@@ -517,7 +520,7 @@ export default async function ObservatoryPage({
         </p>
         <p className="doc-p">
           <strong>Catalog</strong> is presence in the public discovery catalog: <code>active</code>{" "}
-          means listed as of the latest snapshot; <code>delisted</code> means the entry was present
+          means vet402 has not closed this record, and a Bazaar record stays active after it leaves the catalog (read last seen on the record page); <code>delisted</code> means the entry was present
           on an earlier day and absent on a complete fetch — with the before/after recorded on the
           endpoint&apos;s page. <strong>L0</strong> is the payment-wall measurement.{" "}
           <code>pass</code> means a probe received HTTP 402 with a parseable{" "}

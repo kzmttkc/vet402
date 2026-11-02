@@ -61,6 +61,10 @@ export interface BenchmarkReport {
   /** raw scan rows in the window (each address may have several) */
   scans: number;
   lastScanAt: string | null;
+  /** Addresses scanned on the UTC day of lastScanAt. A "most recent" scan can be one address. */
+  lastScanAddresses: number;
+  /** Latest UTC day whose scans covered at least half of the addresses in the window. */
+  lastBroadScan: { date: string; addresses: number } | null;
   minSample: number;
   methodologyVersion: 1;
 }
@@ -78,6 +82,7 @@ export function computeBenchmarkReport(rows: BenchmarkRow[]): BenchmarkReport {
   const latest = new Map<string, BenchmarkRow>();
   let scans = 0;
   let lastScanMs = 0;
+  const addressesByDay = new Map<string, Set<string>>();
   for (const row of rows) {
     if (!row.relatedWallet) continue;
     if (row.outcomeType !== "confirmed_fraud" && row.outcomeType !== "confirmed_legitimate") {
@@ -87,6 +92,12 @@ export function computeBenchmarkReport(rows: BenchmarkRow[]): BenchmarkReport {
     const t = toTime(row.detectedAt);
     if (t > lastScanMs) lastScanMs = t;
     const key = row.relatedWallet.toLowerCase();
+    if (t > 0) {
+      const day = new Date(t).toISOString().slice(0, 10);
+      const seen = addressesByDay.get(day) ?? new Set<string>();
+      seen.add(key);
+      addressesByDay.set(day, seen);
+    }
     const existing = latest.get(key);
     if (!existing || t >= toTime(existing.detectedAt)) {
       latest.set(key, row);
@@ -118,6 +129,12 @@ export function computeBenchmarkReport(rows: BenchmarkRow[]): BenchmarkReport {
     }
   }
 
+  const lastScanAddresses = lastScanMs > 0 ? (addressesByDay.get(new Date(lastScanMs).toISOString().slice(0, 10))?.size ?? 0) : 0;
+  const broadDays = [...addressesByDay.entries()]
+    .filter(([, seen]) => seen.size * 2 >= latest.size)
+    .map(([date, seen]) => ({ date, addresses: seen.size }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
   const rate = (num: number, den: number): number | null =>
     den >= MIN_SAMPLE ? Math.round((num / den) * 1000) / 10 : null;
 
@@ -133,6 +150,8 @@ export function computeBenchmarkReport(rows: BenchmarkRow[]): BenchmarkReport {
     },
     scans,
     lastScanAt: lastScanMs > 0 ? new Date(lastScanMs).toISOString() : null,
+    lastScanAddresses,
+    lastBroadScan: broadDays[0] ?? null,
     minSample: MIN_SAMPLE,
     methodologyVersion: 1,
   };

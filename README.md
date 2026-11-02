@@ -61,7 +61,7 @@ GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kro
 - **Continuity Track boundary** — what predates the hackathon window, what does not, and the git commands that separate them: [`docs/ethonline-2026/README_CONTINUITY_SECTION.md`](./docs/ethonline-2026/README_CONTINUITY_SECTION.md).
 - **Language.** Source comments are written in Japanese, my working language; commit subjects are Japanese, and **the rule from 20:00 JST on 2026-09-08 is to write new ones in English** (`docs/ethonline-2026/GIT_RULES.md`) — a rule going forward, not a property of the log behind it. It took effect mid-evening, not at the start of that day, and work already in flight kept landing in Japanese for a few commits after. Nothing is rewritten to tidy this up, so count it rather than take my word: `TZ=Asia/Tokyo git log origin/main --since='2026-09-08 20:00:00 +0900' --pretty=%s`. The English route through the work is [`SKILL.md`](./SKILL.md), [`AI_USAGE.md`](./AI_USAGE.md) and [`docs/ethonline-2026/CHANGED_FILES.md`](./docs/ethonline-2026/CHANGED_FILES.md). **Seven** source files carry an English header above the Japanese one — the SDK's decision and payment path, the MCP bridge, and the two example front-ends: `packages/sdk/src/pay-or-refuse.ts`, `packages/sdk/src/subgraph-evidence.ts`, `packages/sdk/src/x402-pay.ts`, `packages/mcp-server/src/pay-if-trusted.ts`, `examples/ethonline-2026-demo/src/run.ts`, `examples/ethonline-2026-demo/src/render.ts`, `examples/ethonline-2026-ab/src/mcp.mjs`. Count them yourself: `grep -rln "English header for judges" packages/ examples/ | grep -v dist`.
 
-vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.
+vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results.
 
 > **Formerly Vouch.** The repository is <https://github.com/kzmttkc/vet402> (renamed 2026-08-18). The npm scope is `@vet402/*`; the API key prefix (`vouch_`) and some internal identifiers retain the old name for backward compatibility — renaming them would break every key already issued.
 
@@ -145,7 +145,7 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 | Level | Question | How | Output |
 |---|---|---|---|
 | L0 | Liveness — does the endpoint answer correctly? | Probe, no purchase | pass / fail / unverified |
-| L1 | Settle-through — does payment settle and a response arrive? | Real purchase | n of m settled, latency |
+| L1 | Settle-through — does the payment settle, and does a non-empty 2xx come back? | Real purchase | n of m settled, latency |
 | L2 | Conformance — does the response match the seller's own declaration? | Purchase + machine diff | conform / mismatch / undeclared |
 | L3 | Quality — is the content any good? | Published rubric | opinion — never mixed with L0–L2 |
 

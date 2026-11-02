@@ -292,14 +292,6 @@ claims:
       url: https://vet402.com/api/v1/observatory/decisions
       assert: "rows.0.amountUnits != null"
     verified_at: 2026-09-04
-  - id: demo_the_public_x402_catalog_we
-    surface: src/app/demo/page.tsx
-    quote: "The public x402 catalog we track, measured every day"
-    means: "公開カタログを日次で測っている（デモ動画の説明文）"
-    check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "coverage7d.measuredLast7d > 0"
-    verified_at: 2026-09-04
   - id: demo_every_aggregate_is_public_json
     surface: src/app/demo/page.tsx
     quote: "Every aggregate is public JSON — no API key needed"
@@ -725,14 +717,6 @@ claims:
     check: null
     why_unverifiable: "語の定義であって公開 GET の数値ではない。プローブは src/lib/observatory/l0-probe.ts の target.method ?? GET と MIN_CONSECUTIVE_FAILS_TO_PUBLISH。4 種以外は src/lib/observatory/catalog-source.ts が null にする。tests/review-84-public-text.test.ts が同じ文を固定する。"
     verified_at: 2026-10-21
-  - id: obs_daily_measurements_over_the_public
-    surface: src/app/observatory/page.tsx
-    quote: "Daily measurements over the public x402 catalog: does each endpoint's payment wall"
-    means: "観測所のメタ説明。カタログの再取得が動いていること（最新スナップショットの取得件数）が前提"
-    check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "latestSnapshot.fetchedCount > 0"
-    verified_at: 2026-09-04
   - id: obs_measurements_accumulate_daily_after_that
     surface: src/app/observatory/page.tsx
     quote: "measurements accumulate daily after that."
@@ -740,14 +724,6 @@ claims:
     check:
       url: https://vet402.com/api/v1/observatory/state
       assert: "coverage7d.measuredLast7d > 0"
-    verified_at: 2026-09-04
-  - id: obs_every_endpoint_in_the_public
-    surface: src/app/observatory/page.tsx
-    quote: "Every endpoint in the public x402 discovery catalog: is it still listed, and does its"
-    means: "観測所の対象母集団は公開カタログ全件。ただしプローブはローリング（7日カバレッジ < 100%）"
-    check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "coverage7d.pct < 100"
     verified_at: 2026-09-04
   - id: state_daily_l0_probes_and_passes
     surface: src/app/observatory/state/page.tsx
@@ -841,13 +817,6 @@ claims:
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
-  - id: lp_opinion_never_mixed_with_l0
-    surface: src/app/page.tsx
-    quote: "opinion — never mixed with L0–L2"
-    means: "L3 は意見であって L0–L2 の測定記録と混ぜないという編集規約"
-    check: null
-    why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
-    verified_at: 2026-09-04
   - id: lp_four_levels_in_order_of
     surface: src/app/page.tsx
     quote: "Four levels, in order of what they cost us to run and what they prove. A result never"
@@ -855,9 +824,16 @@ claims:
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
+  - id: meth_deviation_recorded_never_paid
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "is recorded as a refusal, never paid."
+    means: "資産・チェーン・価格が宣言と違えば署名せず、拒否として記録する"
+    check: null
+    why_unverifiable: "署名前の拒否は x402-payer.ts の関門の性質で、公開 GET が数値で返す種類の主張ではない。拒否の行は /decisions に出る"
+    verified_at: 2026-11-02
   - id: lp_then_a_score_is_never
     surface: src/app/page.tsx
-    quote: "then. A score is never reported as an L0&ndash;L2 result."
+    quote: "A score is never reported as an L0&ndash;L2 result."
     means: "旧 0–100 スコアは移行期間中も API/SDK から使えるが、スコアを L0–L2 の測定結果として出すことはない"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
@@ -871,7 +847,7 @@ claims:
     verified_at: 2026-09-04
   - id: lp_payment_wall_answer_a_valid
     surface: src/app/page.tsx
-    quote: "payment wall answer a valid 402. The catalog is read in runs roughly two hours apart; endpoints are"
+    quote: "payment wall answers a valid 402. The catalog is read in runs roughly two hours apart; endpoints are"
     means: "LP のカタログ節。プローブは毎日ではなくローリング。7日カバレッジが 100% 未満であることが「rolling」表記の根拠で、100% に達したらこの文言は逆に過小申告になる（2026-08-13 の事故文言はここにあった）"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1006,7 +982,7 @@ claims:
     verified_at: 2026-09-04
   - id: faq_by_lookup_quota_a_score
     surface: src/components/site/faq-data.ts
-    quote: "by lookup quota. A score is never reported as an L0–L2 result."
+    quote: "A score is never reported as an L0–L2 result."
     means: "FAQ の回答が述べる製品の性質"
     check: null
     why_unverifiable: "製品の設計上の性質（保管しない・別 API である等）であって、公開 GET が数値で返す種類の主張ではない"
@@ -1120,7 +1096,7 @@ claims:
     verified_at: 2026-09-19
   - id: audit_e_decision_totals_span_the_window
     surface: src/app/decisions/page.tsx
-    quote: "The three counts in the header are the whole"
+    quote: "The three counts in the header are part of the"
     means: "見出しの 3 つの数は窓全体の集計であって、表示行の内訳ではない"
     check:
       url: https://vet402.com/api/v1/observatory/decisions?days=30
@@ -1261,7 +1237,7 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_lp_fig1_denominator_is_on_record
     surface: src/app/page.tsx
-    quote: "The first row is every endpoint on record, including the"
+    quote: "The first row is every endpoint on record and includes delisted ones"
     means: "Fig.1 の 1 行目は delisted を含む記録上の総数であって、いまカタログに載っている数ではない"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1269,7 +1245,7 @@ claims:
     verified_at: 2026-09-04
   - id: r4_lp_fig1_l0_row_is_listed_endpoints
     surface: src/app/page.tsx
-    quote: "L0 pass, currently listed"
+    quote: "L0 pass, active"
     means: "Fig.1 の L0 の段は掲載中の endpoint のうち最新の probe が pass のもの（publishedPassActive）。掲載落ちを含む publishedPass（2026-09-29 に 21,229 で掲載中 20,086 を上回っていた）ではない"
     check:
       url: https://vet402.com/api/v1/observatory/state
@@ -1526,7 +1502,7 @@ claims:
     verified_at: 2026-09-07
   - id: vocabulary_payee_recommendation_block_never_lifted
     surface: src/lib/observatory/vocabulary.ts
-    quote: "a caller's policy never lifts that: BLOCK is an operator-level refusal"
+    quote: "a caller's policy never lifts that. BLOCK is an operator-level refusal"
     means: "payee_recommendation_block の定義: BLOCK は呼び手の床では外れない（WARN は意見・BLOCK は遮断）"
     check: null
     why_unverifiable: "上の caller_policy_never_rewrites_recommendation_never_lifts_block と同じ不変条件の語彙側。SDK 側は packages/sdk/test-mutations.mjs M01/M02（BLOCK を requireVet402Allow:false で通す変異）が赤になることで固定する"

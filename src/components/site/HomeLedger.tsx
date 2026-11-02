@@ -5,6 +5,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { SUPPORTED_CHAINS } from "@/components/site/supported-chains-data";
 import { buttonClass } from "@/components/ui/Button";
 import { publicChainLabel } from "@/lib/observatory/chains";
+import { pinnedAssetOf } from "@/lib/observatory/settlement-assets";
 import type { ObservatoryStats } from "@/lib/observatory/reader";
 
 /**
@@ -29,6 +30,8 @@ export type HomeLedger = {
   settled: number;
   delivered: number;
   activeEndpoints: number;
+  /** Listings seen in the latest full read of the Bazaar (latestSnapshot.fetchedCount). null when unread. */
+  seenInLatestRead?: number | null;
   passActive: number;
   /** Active listings whose latest verdict is fail or unverified. */
   notPassActive: number;
@@ -38,16 +41,11 @@ export type HomeLedger = {
 
 /**
  * Settlement asset per public chain name. Lane rows in supported-chains-data.ts win, including
- * when the join key (stellar:pubnet, BSC, Arbitrum) differs from the public name. The methodology
- * sentence in src/lib/observatory/vocabulary.ts stays as a fallback for a name the lanes do not
- * list. tests/home-ledger.test.ts pins both sources. A chain named in neither prints "not named".
+ * when the join key (stellar:pubnet, BSC, Arbitrum) differs from the public name. The table in
+ * src/lib/observatory/settlement-assets.ts, which the methodology sentence is built from, is the
+ * fallback for a name the lanes do not list. tests/home-ledger.test.ts pins both sources. A chain
+ * named in neither prints "not named".
  */
-const ASSET_FROM_METHODOLOGY: Record<string, string> = {
-  Stellar: "USDC",
-  "BNB Chain": "USD1",
-  "Arbitrum One": "USDC",
-  "Avalanche C-Chain": "USDC",
-};
 export const NO_ASSET = "not named";
 
 export function settlementAssetOf(label: string): string {
@@ -57,7 +55,7 @@ export function settlementAssetOf(label: string): string {
       return row.asset;
     }
   }
-  return ASSET_FROM_METHODOLOGY[name] ?? ASSET_FROM_METHODOLOGY[label] ?? NO_ASSET;
+  return pinnedAssetOf(name) ?? pinnedAssetOf(label) ?? NO_ASSET;
 }
 
 function stamp(iso: string | undefined): { date: string; time: string } | null {
@@ -85,6 +83,7 @@ export function homeLedgerOf(stats: HomeLedgerStats | null | undefined): HomeLed
     settled: stats.l1.settled,
     delivered: stats.l1.delivered,
     activeEndpoints: stats.activeEndpoints,
+    seenInLatestRead: stats.latestSnapshot?.fetchedCount ?? null,
     passActive: stats.publishedPassActive,
     notPassActive: Math.max(0, stats.activeEndpoints - stats.publishedPassActive),
     chains: byChain
@@ -128,13 +127,19 @@ export function LedgerSection({ ledger }: { ledger: HomeLedger }) {
           </p>
         </div>
         <div className="border-t border-brand-deep pt-3">
-          <p className="doc-caption">Latest L0 verdict on listed endpoints</p>
+          <p className="doc-caption">Latest L0 verdict on active records</p>
           <p className="mt-2 text-[1.75rem] leading-[1.2]">
             <span className={NUM}>{fmt(ledger.passActive)}</span>
-            <span className="text-[0.9375rem] text-brand"> pass of {fmt(ledger.activeEndpoints)} listed</span>
+            <span className="text-[0.9375rem] text-brand"> pass of {fmt(ledger.activeEndpoints)} active</span>
           </p>
           <p className="mt-1 text-[0.84375rem] text-brand">
-            {fmt(ledger.notPassActive)} listed endpoints do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed.
+            {fmt(ledger.notPassActive)} active records do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed.
+          </p>
+          <p className="mt-1 text-[0.84375rem] text-brand">
+            Active means vet402 has not closed the record, and a Bazaar record is not closed at present.
+            {typeof ledger.seenInLatestRead === "number"
+              ? ` The latest full read of the Bazaar saw ${fmt(ledger.seenInLatestRead)}.`
+              : ""}
           </p>
         </div>
       </div>
@@ -205,7 +210,10 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
                 Delivered
               </th>
               <th scope="col" className="num">
-                Paid, not delivered
+                Settled, not delivered
+              </th>
+              <th scope="col" className="num">
+                Of which held (4xx)
               </th>
             </tr>
           </thead>
@@ -225,6 +233,7 @@ export function SettledChainsSection({ ledger }: { ledger: HomeLedger }) {
                 <td className="num">{fmt(r.settled)}</td>
                 <td className="num">{fmt(r.delivered)}</td>
                 <td className="num">{fmt(Math.max(0, r.settled - r.delivered))}</td>
+                <td className="num">{fmt(r.inconclusiveSettled)}</td>
               </tr>
             ))}
           </tbody>

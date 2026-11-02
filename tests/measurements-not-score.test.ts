@@ -11,7 +11,7 @@ const read = (rel: string) => readFileSync(rel, "utf8");
 const firstSentences = (s: string) => s.split(/(?<=\.)\s/);
 
 const Q3_OPENING =
-  "vet402 publishes three measurements. L0 asks whether the payment wall answers a valid 402. L1 asks whether a real purchase settled and the response arrived. L2 asks whether that response matches the seller's own declaration. The 0 to 100 score with ALLOW, WARN, or BLOCK is an older signal for API callers. A score is never printed as an L0 to L2 result.";
+  "vet402 publishes three measurements. L0 asks whether the payment wall answers a valid 402. L1 asks whether a real purchase settled and the paid request answered 2xx other than 202 with a non-empty body. L2 asks whether that response matches the seller's own declaration, when the seller publishes one. None of them checks that the content is right. The decision API returns ALLOW, WARN, or BLOCK from those records. A separate 0 to 100 score with its own recommendation is an older signal for API callers. A score is never printed as an L0 to L2 result.";
 
 test("/faq Q3 opens on the three measurements and the L0 sentence comes before L1 and L2", () => {
   const q3 = FAQS[2];

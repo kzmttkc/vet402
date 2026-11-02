@@ -131,8 +131,8 @@ export default async function PlaygroundPage() {
           {coverage && coverage.pct !== null ? (
             <>
               , and {coverage.measuredLast7d.toLocaleString()} of{" "}
-              {coverage.activeEndpoints.toLocaleString()} active listed endpoints ({coverage.pct}% of
-              active listed endpoints) carry an L0 measurement from the last 7 days
+              {coverage.activeEndpoints.toLocaleString()} active records ({coverage.pct}% of
+              active records) carry an L0 measurement from the last 7 days
             </>
           ) : null}
           .

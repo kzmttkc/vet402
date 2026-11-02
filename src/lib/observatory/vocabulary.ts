@@ -19,6 +19,11 @@
 // 両方を直す。tests/observatory-vocabulary.test.ts が両者の対応を検査する。
 // ============================================================
 import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH } from "@/lib/observatory/l0-probe";
+import {
+  EIP3009_CHAINS_TEXT,
+  PINNED_ASSETS_TEXT,
+  PINNED_ASSETS_WITH_ISSUER_TEXT,
+} from "@/lib/observatory/settlement-assets";
 
 export type VocabularyTerm = {
   /** 公開面・API・台帳で使っている語そのもの。 */
@@ -34,19 +39,19 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "L0",
     group: "levels",
     definition:
-      "L0 is one unpaid HTTP probe that asks whether a catalog-listed x402 endpoint answers HTTP 402 with a challenge consistent with what the catalog declares. It is free and side-effect free, so it runs across the whole catalog; it says nothing about whether the endpoint delivers what it sells.",
+      "L0 is one unpaid HTTP probe that asks whether a catalog-listed x402 endpoint answers HTTP 402 with a challenge consistent with what the catalog declares. It is free and asks for no work from a compliant server, and it runs on a rolling schedule across the catalog; it says nothing about whether the endpoint delivers what it sells.",
   },
   {
     term: "L1",
     group: "levels",
     definition:
-      "L1 is a real, budget-capped purchase of that chain's pinned asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD on XRPL, USD1 on BNB Chain). It is bought under vet402's own User-Agent, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.",
+      `L1 is a real, budget-capped purchase of that chain's pinned asset (${PINNED_ASSETS_TEXT}). It is bought under vet402's own User-Agent, at most once per endpoint per sweep window, and every refusal before a signature is recorded alongside every purchase.`,
   },
   {
     term: "L2",
     group: "levels",
     definition:
-      "L2 is a minimal structural check asking whether the paid response parses as JSON and carries the top-level keys the seller's own declared output schema marks as required. It runs only when the paid request returned 200, and it does not judge whether the values are correct.",
+      "L2 is a minimal structural check asking whether the paid response parses as JSON and carries the top-level keys the seller's own declared output schema marks as required. It runs only when the paid request answered 2xx other than 202 Accepted, and it does not judge whether the values are correct.",
   },
   {
     term: "L3",
@@ -94,13 +99,13 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "settled",
     group: "l1",
     definition:
-      "settled means vet402 re-read the transaction on-chain and found a transfer from the vet402 payer, to the catalog-declared payee, for the declared amount, in that chain's canonical settlement asset (USDC on Base, Arc, Celo, Solana and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain). How tightly that transfer is tied to the one purchase is published at two strengths, and each settled row is in exactly one. Nonce-bound means the re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. That value is the EIP-3009 authorization nonce on Base, Arc, Celo and BNB Chain, a memo vet402 wrote on Solana, the indexed memo of a TIP-20 TransferWithMemo on Tempo, or the hash of the signed blob on XRPL. Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset. Amount and payee means the re-read matched payer, payee, amount and asset and did not bind a one-time value. That tier holds the rows that settled before the binding shipped at 2026-09-04T12:00:00Z, and it holds Stellar rows. A transfer of the same amount between the same two wallets would also have matched. The counts are l1.settledNonceBound and l1.settledAmountPayeeOnly in /api/v1/observatory/state. It is a statement about the money, and it is never inferred from the seller's own claim.",
+      `settled means vet402 re-read the transaction on-chain and found a transfer from the vet402 payer, to the payee the catalog declares, for the declared amount, in that chain's pinned settlement asset. The asset is ${PINNED_ASSETS_WITH_ISSUER_TEXT}. On Tempo the directory lists no recipient, so the payee is the one L0 learned from the challenge. Through Circle Gateway on Arc one batch transaction settles many purchases and there is no separate transfer to the payee: Circle's Gateway API names the batch for the purchase's nonce, and vet402 checks the buyer's debit in that batch. How tightly that transfer is tied to the one purchase is published at two strengths, and each settled row is in exactly one. Nonce-bound means the re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. That value is the EIP-3009 authorization nonce on ${EIP3009_CHAINS_TEXT}, a memo vet402 wrote on Solana, the indexed memo of a TIP-20 TransferWithMemo on Tempo, or the hash of the signed blob on XRPL. Stellar is not in this count. The Stellar re-read checks payer, payee, amount and asset. Amount and payee means the re-read matched payer, payee, amount and asset and did not bind a one-time value. That tier holds the rows that settled before the binding shipped at 2026-09-04T12:00:00Z, and it holds Stellar rows. A transfer of the same amount between the same two wallets would also have matched. The counts are l1.settledNonceBound and l1.settledAmountPayeeOnly in /api/v1/observatory/state. It is a statement about the money, and it is never inferred from the seller's own claim.`,
   },
   {
     term: "delivered",
     group: "l1",
     definition:
-      "delivered means the attempt is settled and the paid request also answered HTTP 2xx other than 202 Accepted, with a non-empty body. settled is a statement about the money and delivered is a statement about the goods: a seller can take the payment and answer 400, and that row is settled and not delivered.",
+      "delivered means the attempt is settled and the paid request also answered HTTP 2xx other than 202 Accepted, with a non-empty body. settled is a statement about the money and delivered is a statement about the answer, not its content: vet402 does not check that the content is right, so a 200 with an error in its body can count as delivered. A seller can take the payment and answer 400, and that row is settled and not delivered.",
   },
   {
     term: "inconclusive",
@@ -155,13 +160,13 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "l1_inconclusive",
     group: "l1",
     definition:
-      "l1_inconclusive means vet402 has signed paid attempts against this resource, but none of them counts either way, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. Held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 or 5xx while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a counted paid attempt existed and nothing was delivered; a WARN, since rules 2026-09-29.3): facts.l1.n_inconclusive carries the count of held attempts. The decision also leaves out attempts where the row shows vet402's side of the fault, attempts awaiting on-chain verification and attempts that took no payment, and, since rules 2026-09-29.3, a failure where no money moved unless /sellers puts it on the seller's side (confirmed on two different UTC days). So l1_inconclusive can appear with n_inconclusive 0; the decision document's l1_basis.n_not_counted carries the full count, and when nothing was delivered the reason codes l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven (no money moved and the row cannot show vet402 was not at fault) and l1_not_counted_unconfirmed (no money moved, on the seller's side on one day only) say which were left out. Where no money moved, the decision counts only what /sellers puts on the seller's side, and then only toward a WARN. Where money moved, it is cautious for the payer: a paid attempt that took payment and did not deliver counts even when /sellers leaves it not sorted, and two of them since the last delivery (l1_paid_not_delivered) are the only L1 reason for a BLOCK.",
+      "l1_inconclusive means vet402 has signed paid attempts against this resource, but none of them counts either way, so there is no paid response to judge; this is a gap in our measurement, not evidence against the seller. Held attempts are a 4xx we attribute to our own request shape (no API key, or {} as the POST body where the seller declares none) or a 402 or 5xx while our own payer wallet was unfunded. It sits between l1_not_attempted (no paid attempt was signed) and l1_never_delivered (a counted paid attempt existed and nothing was delivered; a WARN, since rules 2026-09-29.3): facts.l1.n_inconclusive carries the count of held attempts. The decision also leaves out attempts where the row shows vet402's side of the fault, attempts awaiting on-chain verification and attempts that took no payment, and, since rules 2026-09-29.3, a failure where no money moved unless /sellers puts it on the seller's side (confirmed on two different UTC days). So l1_inconclusive can appear with n_inconclusive 0; the decision document's l1_basis.n_not_counted carries the full count, and when nothing was delivered the reason codes l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven (no money moved and the row cannot show vet402 was not at fault) and l1_not_counted_unconfirmed (no money moved, on the seller's side on one day only) say which were left out. Where no money moved, the decision counts only what /sellers puts on the seller's side, and then only toward a WARN. Where money moved, it is cautious for the payer: a paid attempt that took payment and did not deliver counts even when /sellers leaves it not sorted, and two or more of them on the seller's side since the last delivery (l1_paid_not_delivered) are the only L1 reason for a BLOCK; not sorted ones stay a WARN.",
   },
   {
     term: "match",
     group: "l2",
     definition:
-      "match means the paid response parses as JSON and every key the seller's declared output schema marks as required is present.",
+      "match means the paid response parses as JSON and every key the seller's declared output schema marks as required is present. With an example that marks no key as required, a JSON object or array is enough.",
   },
   {
     term: "mismatch",
@@ -179,7 +184,14 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "not_checked",
     group: "l2",
     definition:
-      "not_checked means there was no complete response body to check, so it is never counted as a failure. The paid request did not return 200, or (since 2026-09-29) the body was longer than the 256 KiB vet402 reads (raw_response_meta.l2.reason body_over_cap, with bodyTruncated true), or it stopped after some bytes arrived (body_timeout or body_read_error). For an older row read at 16,000 bytes, the decision treats a mismatch as not checked only when there is evidence the body was cut: a key recorded as missing shows at the top level of the stored start of the body. A complete body that is not valid JSON is a mismatch, not not_checked.",
+      "not_checked means there was no complete response body to check, so it is never counted as a failure. The paid request did not answer 2xx other than 202 Accepted, or (since 2026-09-29) the body was longer than the 256 KiB vet402 reads (raw_response_meta.l2.reason body_over_cap, with bodyTruncated true), or it stopped after some bytes arrived (body_timeout or body_read_error). For an older row read at 16,000 bytes, the decision treats a mismatch as not checked only when there is evidence the body was cut: a key recorded as missing shows at the top level of the stored start of the body. A complete body that is not valid JSON is a mismatch, not not_checked.",
+  },
+  {
+    // 2026-11-02 文言監査 H3: Bazaar の行は 10/30 から閉じない。active を「いま載っている」と読ませない。
+    term: "active",
+    group: "catalog",
+    definition:
+      "active means vet402 has not closed this record. A Bazaar record is not closed at present, so it stays active after it leaves the catalog. The count seen in the latest full read of the Bazaar is published separately as latestSnapshot.fetchedCount, and the record page shows when each endpoint was last seen.",
   },
   {
     term: "delisted",
@@ -201,7 +213,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "evidence.source=vet402",
     group: "evidence",
     definition:
-      "evidence.source=vet402 means the evidence row was observed in vet402's own L0\u2013L2 record: an unpaid probe, a real USDC purchase we made, or the schema check on what that purchase returned. It carries our purchase id and the public receipt URL, and it asks the reader to trust our measurement.",
+      "evidence.source=vet402 means the evidence row was observed in vet402's own L0\u2013L2 record: an unpaid probe, a real purchase vet402 made, or the schema check on what that purchase returned. It carries our purchase id and the public receipt URL, and it asks the reader to trust our measurement.",
   },
   {
     term: "evidence.source=subgraph",
@@ -237,7 +249,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "payee_recommendation_block",
     group: "policy",
     definition:
-      "payee_recommendation_block means vet402's recommendation for the resource or payee is BLOCK, and a caller's policy never lifts that: BLOCK is an operator-level refusal (a failing probe, a schema mismatch, wash-dominated volume, a global block list), not an opinion a floor can outweigh. WARN is an opinion and can be waived by a declared floor; BLOCK cannot.",
+      "payee_recommendation_block means vet402's recommendation for the resource or payee is BLOCK, and a caller's policy never lifts that. BLOCK is an operator-level refusal (two failed probes in a row, two paid failures on the seller's side, a mismatch with named missing keys, wash-dominated volume, a block list), not an opinion a floor can outweigh. WARN is an opinion and can be waived by a declared floor; BLOCK cannot.",
   },
   {
     term: "payee_recommendation_not_allow",

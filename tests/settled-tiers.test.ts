@@ -13,6 +13,9 @@
 // refuted にしない・2026-09-04 の決定）。強度を 2 層に分けて公開する。
 // この suite は層の定義そのもの（純関数）と、SQL 述語が同じ規則であることを固定する。
 // ============================================================
+import { FAQS } from "@/components/site/faq-data";
+import { OBSERVATORY_VOCABULARY } from "@/lib/observatory/vocabulary";
+import { PINNED_ASSETS_WITH_ISSUER_TEXT, USDC_CHAINS_TEXT } from "@/lib/observatory/settlement-assets";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -191,12 +194,10 @@ test("方法論ページが nonce 束縛と 2 層公開を述べている", () =
     src.includes("settledNonceBound") && src.includes("settledAmountPayeeOnly"),
     "方法論が state API の該当フィールド名を示していない",
   );
-  assert.ok(src.includes("USD1 on BNB Chain"), "方法論が BNB Chain の USD1 を書いていない");
-  // 列挙は折り返される。空白を潰してから見ないと "and Stellar" だけ消しても "USDC on Base, Arc, Celo" が残る。
-  assert.ok(
-    src.replace(/\s+/g, " ").includes("USDC on Base, Arc, Celo, Solana and Stellar"),
-    "方法論が Solana and Stellar までの USDC の列挙を書いていない",
-  );
+  // 2026-11-02: 列挙は手書きをやめて settlement-assets.ts の表から作る（Arbitrum・Avalanche が抜けた再発防止）。
+  assert.ok(src.includes("{PINNED_ASSETS_WITH_ISSUER_TEXT}"), "方法論が資産の列挙を表から出していない");
+  assert.ok(PINNED_ASSETS_WITH_ISSUER_TEXT.includes("USD1 on BNB Chain"), "資産の列挙に BNB Chain の USD1 が無い");
+  assert.ok(USDC_CHAINS_TEXT.includes("Solana, Stellar"), "USDC の列挙に Solana と Stellar が無い");
   assert.ok(src.includes("Stellar is not in this count"), "方法論が Stellar を nonce-bound から外していない");
   assert.ok(
     !/no re-reader[\s\S]{0,80}Stellar/.test(src) && !/no re-reader[\s\S]{0,80}BNB/.test(src),
@@ -205,10 +206,14 @@ test("方法論ページが nonce 束縛と 2 層公開を述べている", () =
 });
 
 test("FAQ と語彙は USD1 と Stellar を資産の列挙に含む", () => {
-  for (const rel of ["src/components/site/faq-data.ts", "src/lib/observatory/vocabulary.ts"]) {
-    const src = read(rel);
-    assert.ok(src.includes("USD1 on BNB Chain"), `${rel} に USD1 on BNB Chain が無い`);
-    assert.ok(src.includes("Solana and Stellar"), `${rel} に Solana and Stellar が無い`);
+  const rendered: [string, string][] = [
+    ["FAQ", FAQS.map((f) => f.answer).join(" ")],
+    ["vocabulary", OBSERVATORY_VOCABULARY.map((t) => t.definition).join(" ")],
+  ];
+  for (const [name, text] of rendered) {
+    assert.ok(text.includes("USD1 on BNB Chain"), `${name} に USD1 on BNB Chain が無い`);
+    assert.ok(text.includes(`USDC on ${USDC_CHAINS_TEXT}`), `${name} に USDC の列挙が無い`);
+    assert.ok(text.includes("Solana, Stellar"), `${name} に Solana と Stellar が無い`);
   }
 });
 

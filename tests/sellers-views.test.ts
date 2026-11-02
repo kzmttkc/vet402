@@ -101,7 +101,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse("2026-09-28T13:00:00Z"), revalidateSec: 300 }));
   assert.equal(leadCountSum(html), d.summary.listings);
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
-  assert.match(html, /reused for up to 5 min/);
+  assert.match(html, /Reused for up to 5 min/);
   // 2026-09-29: 表題は最新の購入日つきの事実の言い方（現在形の「Is … working?」をやめた）
   assert.match(html, /<h1[^>]*>shop\.example: x402 purchase results on Base, latest attempt 2026-09-14<\/h1>/);
   assert.doesNotMatch(html, /working\?/);
@@ -412,7 +412,7 @@ test("SellersIndexView: 検索欄・一覧・内訳・方法論・取得時刻",
   assert.match(html, /name="q"/);
   assert.match(html, /href="\/sellers\/shop\.example"/);
   assert.match(html, /href="\/sellers\/quiet\.example"/);
-  assert.match(html, /2 sellers with 6 Base listings; vet402 has tried to buy from 1 of\s+the sellers/);
+  assert.match(html, /2 sellers with 6 active Base records \(a record vet402 has not closed can stay active after it leaves the catalog\); vet402 has tried to buy from 1 of\s+the sellers/);
   assert.match(html, /<h1[^>]*>Find your purchase results \(Base, as of 2026-09-14\)<\/h1>/, "the heading says when");
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
   assert.match(html, /href="\/observatory\/methodology"/);

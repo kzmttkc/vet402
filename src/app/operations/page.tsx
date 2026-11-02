@@ -97,8 +97,9 @@ export default async function OperationsPage() {
         </h2>
         <p className="doc-p">
           Continuity: an operator you can replace is an operator you can trust long-term. The
-          entire operation — runbooks, schedules, budget gates, publication rules — exists as
-          code and documents in the repository, not in anyone&apos;s head.{" "}
+          measurement code, budget gates and publication rules are in the repository. The extra
+          purchase and probe runs are scheduled from the operator&apos;s own machine (a private
+          repository), and their effect shows in the timestamps of the public ledger.{" "}
           <Link href="/docs/api" className="underline">
             API reference
           </Link>

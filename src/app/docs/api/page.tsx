@@ -264,7 +264,7 @@ const endpoints: Endpoint[] = [
     path: "/api/v1/resources/:resourceId/decision?role=payer|payee&payer=…&caller_dialect=v1|v2&allow_without_l1=false&amount_usd=…&max_per_tx_usd=1&min_l1_deliveries=0&require_vet402_allow=true",
     note: (
       <>
-        {"The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not. The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"does this URL deliver as declared, right now?\" from L0 liveness, L1 settle-through and L2 conformance; role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is left out of the body unless you pass include_score=1 (0 or 1; anything else is 400 invalid_include_score), and then it carries superseded_by: \"recommendation\" and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. " + DECISION_RULES_TEXT + " " + METHOD_LIMIT_TEXT + " verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
+        {"The ledger column l2_schema stores match, mismatch, no_declaration, or not_checked. The decision document and the facts document store conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value (l2_reading) of the latest delivery is match. mismatch is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision word is not_checked when the current declaration names output (a required key or an example property), and undeclared when it does not. The canonical integration since 2026-09-02 (spec §8.3 / §9.1) — 1 unit per call with a key, or key-less at 10/min per IP with the same body (since 2026-09-07; 429 rate_limited when the window is spent; Idempotency-Key and customer allow/block lists apply to keyed calls only). role=payer (default) answers \"what did vet402 record when it paid this URL in the last 30 days?\" from L0 liveness, L1 settle-through and L2 conformance. An ALLOW can carry l2_undeclared: the listing declared no output to compare with. role=payee answers \"should this seller serve this payer?\" and requires payer. facts and recommendation always arrive in the same document; the transitional score is left out of the body unless you pass include_score=1 (0 or 1; anything else is 400 invalid_include_score), and then it carries superseded_by: \"recommendation\" and is not the basis of the recommendation. facts.l1.last_attempt_at is when we last attempted an L1 purchase against this resource (ISO 8601 UTC, null before the first attempt) — distinct from observed_at, which is when we last paid. spending_halted is vet402's own spending halt: a fact about the measurer, not the seller, and while it is true the L1 facts here are not today's observation. not_attempted_reason (spending_halted | no_eligible_accept) qualifies the reason code l1_not_attempted; it is null for the other ways an attempt ends before the signature, which are published per attempt in the decision ledger rather than summarised here. " + DECISION_RULES_TEXT + " " + METHOD_LIMIT_TEXT + " verified_terms (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed: pay_to, asset, amount (base units, 6 decimals), network, scheme, protocol and verified_at, or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Compare it with the 402 you received before you pay: if the 402's payTo, asset, network or scheme differ from verified_terms, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered; it is not a guarantee for a different recipient or a higher price. Each row of evidence[] names the ledger it was observed in: evidence[].source is vet402 for our own L0\u2013L2 record (the row carries purchase_id and a public receipt URL), and subgraph for a row read from The Graph's x402 subgraph. This route emits vet402 rows; "}
         the subgraph rows are added to the same array by the{" "}
         <a
           href="https://github.com/kzmttkc/vet402/blob/main/SKILL.md"
@@ -657,8 +657,8 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/health",
-    note: "Liveness for an uptime poller. The public body is up, degraded, or error, from a probe of both scoring engines. degraded and error answer HTTP 503. ?deep=1 returns per-check detail and requires the admin bearer token. Without that token it answers 403. The plain call is key-less.",
-    response: `HTTP 200 when the body is up. HTTP 503 when the body is degraded or error.`,
+    note: "Liveness for an uptime poller. The public body is {\"status\":\"ok\"}, degraded, or error, from a probe of both scoring engines. degraded and error answer HTTP 503. ?deep=1 returns per-check detail and requires the admin bearer token. Without that token it answers 403. The plain call is key-less.",
+    response: `HTTP 200 when the status is ok. HTTP 503 when the body is degraded or error.`,
   },
 ];
 
@@ -909,7 +909,9 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
           />
           <p className="mt-1 text-[0.84375rem] text-brand-lift">
             n paid attempts, m settled, each settled row carrying its on-chain{" "}
-            <code className="text-brand-deep">txHash</code>. This is the record vet402 exists to
+            <code className="text-brand-deep">txHash</code>. A Circle Gateway row on Arc carries{" "}
+            <code className="text-brand-deep">gatewayBatchTx</code> instead, because one batch
+            transaction settles many purchases. This is the record vet402 exists to
             keep. Swap the id for any endpoint on{" "}
             <Link href="/observatory" className="doc-link">
               the observatory
@@ -1961,10 +1963,12 @@ function verify(secret, rawBody, header, toleranceSec = 300) {
             reported, not alerted, to avoid backfill alert fatigue).
           </li>
           <li>
-            <strong>Status &amp; incidents.</strong> No hosted status page yet;
-            during beta, material incidents are communicated to integrators
-            directly. Point your own uptime monitor at <code>/api/health</code>{" "}
-            in the meantime.
+            <strong>Status &amp; incidents.</strong> See{" "}
+            <Link href="/status" className="doc-link">
+              /status
+            </Link>
+            . During beta, material incidents are communicated to integrators
+            directly. Your own uptime monitor can point at <code>/api/health</code>.
           </li>
         </ul>
       </section>

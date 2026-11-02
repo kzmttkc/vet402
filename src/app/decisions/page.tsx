@@ -59,6 +59,8 @@ export default async function DecisionsPage() {
   ]);
   const webPage = webPageJsonLd({ name: "Decisions", description: DECISIONS_DESCRIPTION, path: "/decisions" });
   const feed = await getDecisionFeed(DECISION_WINDOW_DAYS);
+  // 見出しの 3 つに入らない判定（受領証なしと、未確定の決済の主張）。行から数えず合計から出す。
+  const otherDecisions = Math.max(0, feed.totalDecisions - feed.totals.refused - feed.totals.paidSettled - feed.totals.paidNoSettlement);
   const backtest = await computeSpendGuardBacktest().catch(() => null);
 
   return (
@@ -125,8 +127,16 @@ export default async function DecisionsPage() {
           <span>The register</span>
         </h2>
         <p className="doc-p">
-          The three counts in the header are the whole {DECISION_WINDOW_DAYS}-day window
-          ({feed.totalDecisions.toLocaleString()} decisions).
+          The three counts in the header are part of the {DECISION_WINDOW_DAYS}-day window of{" "}
+          {feed.totalDecisions.toLocaleString()} decisions.
+          {otherDecisions > 0 ? (
+            <>
+              {" "}
+              The other {otherDecisions.toLocaleString()} are paid with no receipt (
+              {feed.totals.paidNoReceipt.toLocaleString()}) or carry a settlement claim vet402 has not
+              confirmed on-chain ({(otherDecisions - feed.totals.paidNoReceipt).toLocaleString()}).
+            </>
+          ) : null}
           {feed.totalDecisions > feed.rows.length ? (
             <>
               {" "}

@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 const SHOTS = [
-  ["0:05", "The public x402 catalog we track, measured every day"],
+  ["0:05", "The public x402 catalog vet402 tracks"],
   ["0:13", "One endpoint we bought from — the receipt is on the page"],
   ["0:23", "The same payment on-chain, on Base"],
   ["0:32", "Failures carry the same weight — paid, and nothing settled"],
