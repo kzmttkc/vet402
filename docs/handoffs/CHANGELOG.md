@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Stellar architecture document and day files for the SCF #46 submission
+
+- **What**: `docs/stellar/technical-architecture.md` moves to the figures as of 2026-11-02 09:13 UTC (210 attempts, 197 settled and delivered, 13 hosts, 8 hosts and 3 payees on the settled rows, Tranche 1 D2 count 197, roots for the 14 days from 2026-10-18 through 2026-10-31). It adds the testnet reset of 2026-12-16 with the recovery steps, makes T1 D3 a public page, adds a lost writer key and an expired root to the threat list and the failure modes, and aligns the T1 D1 check with the submission text. The 12 day files for 2026-10-20 through 2026-10-31 are copied byte for byte from the job's state directory into `docs/stellar/days/`.
+- **Why**: The SCF #46 submission links this document. The recommit after the reset needs the day files in the repository, and only 2026-10-18 and 2026-10-19 were there. The document said 53 attempts and 46 settled as of 2026-10-21.
+- **Impact**: Documentation and published data only. No code path, payer flag, budget or contract changes. All 14 day files rebuild to the root and count `get_root` returns on testnet (read 2026-11-02), their rows equal the public export field by field, and a secret scan found nothing. The job's day files after 2026-10-31 still reach the repository by hand until T1 D3. Recovery after the reset is manual today: `commit-day.sh` with the old state directory exits 0 without a commit, and with a new state directory and no pending file it rebuilds from the live export, so step 3 of the new section places each published file as `<date>.json.pending`.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Decision rules 2026-11-02.3: role=payee stops reading short payment gaps as retries
 
 - **What**: `decidePayee` no longer reads the gap share, and `retry_burst` is no longer returned. `facts.short_interval_payment_rate` carries the number under a name that says what it measures. `retry_burst_rate` stays beside it with the same value, marked deprecated in the OpenAPI file and the SDK type. `retry_burst` stays in `REASON_CODES` and the OpenAPI enum as a retired row (`retired: true`, effect none), so an older response or log can still be looked up. Text follows in `/docs/api`, `llms.txt`, `/corrections` and the generated rules text.

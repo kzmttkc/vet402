@@ -1,0 +1,489 @@
+{
+  "date": "2026-10-31",
+  "day": 20757,
+  "count": 16,
+  "root": "3098cb971c5e6a80444d80584b04a571be851192b3594f8c6e83db86a4e06d0d",
+  "source": "https://vet402.com/api/v1/observatory/export.csv",
+  "rows": [
+    {
+      "row": {
+        "attempted_at": "2026-10-31T00:00:53Z",
+        "resource_key": "agent402.tools/api/bestsellers",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "5000",
+        "spent_units": "5000",
+        "tx_hash": "7471ccde0ff185e4d2568a405001c547878d7ca49a114a1de2c45c849f27b89e",
+        "http_status_paid": "200",
+        "latency_ms": "7474",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "d352531054fd329c957e024388e0cc62ab89d22bbb05c9ea62d134a81bf2a750",
+        "confirmed_units": "5000",
+        "purchase_id": "0406a56f-c698-467e-848b-96a1b3727186",
+        "l2_reading": "match"
+      },
+      "digest": "8c77f6931a8a34ade2c437600ced276a06bcf87979df5dc3373bc9717970e726",
+      "proof": [
+        "9331835f058dc6a946b26e5119fa9254d6f619a4a36f84a92ea08fd579dd5577",
+        "14e6f12fd9edcdafb7845a94d584a61d17a9f625e7b787678f6446d4358df8df",
+        "511a48a2acd87774e8cd417428fb09144b9f38663067117f5a45f7379902990a",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T12:01:17Z",
+        "resource_key": "api.sitecheck-api.workers.dev/api/qr",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "2000",
+        "spent_units": "2000",
+        "tx_hash": "79d6416bc87019233ce61624b30c820466da67440a8f316420746111d32df258",
+        "http_status_paid": "200",
+        "latency_ms": "13877",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "6f1d858818d7a6b8815fa2b29ec21a3e3ed690ca45a69a131d66639cea38962f",
+        "confirmed_units": "2000",
+        "purchase_id": "5ee1970e-ddce-443f-9769-7579883e6a86",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "87afac02fc2b83fe364f55494add57a4abac1d14171bc70e5b83822866b19397",
+      "proof": [
+        "57744a221894b6842b32db824835c68d3474ed677009746cacbef27aa6745052",
+        "14e6f12fd9edcdafb7845a94d584a61d17a9f625e7b787678f6446d4358df8df",
+        "511a48a2acd87774e8cd417428fb09144b9f38663067117f5a45f7379902990a",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T09:31:01Z",
+        "resource_key": "agent402.tools/api/skill/earnings-watch",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "15000",
+        "spent_units": "15000",
+        "tx_hash": "62a2c21a5bc6c60ee8116ca33636b19dc89e3cb7183d0bc92faed67ab308212c",
+        "http_status_paid": "200",
+        "latency_ms": "9245",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "2a14d3c504fbe19edec9132056d595e6aae52f98a5eb29b7387db05604a3e6d9",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "15000",
+        "purchase_id": "62f942b6-a305-444e-b6f2-4af036f34a7c",
+        "l2_reading": "match"
+      },
+      "digest": "7a0f42e79f468f1fc6a125d8323a8070d4d95d6c4392ca35b784ebfa9e8a4f4d",
+      "proof": [
+        "85ff027d570a2ebd486eba9501350f84cd1c71a567c5df1c7dc3e80ca63f96d0",
+        "4d2dc48a65d045ee8d90cd9c0589014a2cced629a510dfdfb4e0cb41f5fcd144",
+        "511a48a2acd87774e8cd417428fb09144b9f38663067117f5a45f7379902990a",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T03:30:45Z",
+        "resource_key": "agent402.tools/api/weather-air-quality",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "2000",
+        "spent_units": "2000",
+        "tx_hash": "a71e8470e6c13b5c040138732a704d3feb3089296ea4ff6ae2ebe785b599bf75",
+        "http_status_paid": "200",
+        "latency_ms": "10841",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "a623888985786d9f5c93667aebdfd70e86440a0551829d9f5a95332654ed87ac",
+        "confirmed_units": "2000",
+        "purchase_id": "74ee3acc-9f6a-4e39-82f3-5b7d5cfe1564",
+        "l2_reading": "match"
+      },
+      "digest": "d23b2e278af88e4ab739806cd3f87bd77c198ddc09568c23a2ac8b1699fee33e",
+      "proof": [
+        "d5488f0899fe11c48b1597f77ebade6ed219cdc81ac18ed09d65d90565f04e94",
+        "4d2dc48a65d045ee8d90cd9c0589014a2cced629a510dfdfb4e0cb41f5fcd144",
+        "511a48a2acd87774e8cd417428fb09144b9f38663067117f5a45f7379902990a",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T21:31:06Z",
+        "resource_key": "agent402.tools/api/captcha-generate",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "1000",
+        "spent_units": "1000",
+        "tx_hash": "a0538d12e57309dfb90ade9ed7d271847a3f67c9125717b145e83801cf0ba667",
+        "http_status_paid": "200",
+        "latency_ms": "9561",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "b1f6410a4e463c8716cddcabb1396729166aa29c761b7f8dd6d6dbbcabc87e80",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "1000",
+        "purchase_id": "830bc85d-28d5-44cf-b7b4-756a6679d33e",
+        "l2_reading": "match"
+      },
+      "digest": "54ffd4e64989fb7421109b09c58affad85502d3429a324ed4f3dc1ceaafe11de",
+      "proof": [
+        "f286243b034b2f11b059279e948970fde485d8d9ca5c92ecc3422bde2dd7d730",
+        "d219938f574d81e8a596162b0dee6ff1f436d5f4e53c19e32b08d9916bc70c53",
+        "d6a36f00bcc301a25ab04072437d0e7d00dfa9f12a429f59c54dcdc1ea1257b5",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T06:01:06Z",
+        "resource_key": "agent402.tools/api/token-safety",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "5000",
+        "spent_units": "5000",
+        "tx_hash": "bbf1d1e488aa9c09ad681ff808d37aae25a9469c162842279922cd7732bd82a0",
+        "http_status_paid": "200",
+        "latency_ms": "10368",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "406c761d23c6f2c765e0cd887cf35cc4b2aa4de74ac0bd08e2c214fecfbb0aea",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "5000",
+        "purchase_id": "86c79722-b3f6-4fa6-8fc8-4feda7412c53",
+        "l2_reading": "match"
+      },
+      "digest": "4e0aaf46c5df2b70dff3fa6688b8b4b8e3dcff8aa737ea464cbaf905f4ae9582",
+      "proof": [
+        "876da0f5f8530ba71cc4e224715de43128cb0b3b715a135b848ce688b47ad822",
+        "d219938f574d81e8a596162b0dee6ff1f436d5f4e53c19e32b08d9916bc70c53",
+        "d6a36f00bcc301a25ab04072437d0e7d00dfa9f12a429f59c54dcdc1ea1257b5",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T15:31:00Z",
+        "resource_key": "api.healthtravel-api.workers.dev/api/travel/bringatrailer-auctions",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "2000",
+        "spent_units": "2000",
+        "tx_hash": "cbbedd6131d891fede4da418d42308d26686f012429d3586991e05ea17ad7299",
+        "http_status_paid": "200",
+        "latency_ms": "14507",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "b4fa3cdc8462231f48c91234a06adbc4680bf7ddeb0d4f678c8e096a822143c1",
+        "confirmed_units": "2000",
+        "purchase_id": "88060dda-7068-4a24-a194-226b392eb99d",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "cdf5b617ba1bd1e21a2cb23ea2ff68af8488fa43592b4657d96d89e16c0f137e",
+      "proof": [
+        "d2dcadf5a3622e253a9a31dc9e7650349a477ffa2e2b8e5ee34f81be53473f5c",
+        "65e638bc67f522a728d9f3116723a9eaf62efeda27247c4a084fce96617a5970",
+        "d6a36f00bcc301a25ab04072437d0e7d00dfa9f12a429f59c54dcdc1ea1257b5",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T09:31:31Z",
+        "resource_key": "agent402.tools/api/skill/content-grade",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "12000",
+        "spent_units": "12000",
+        "tx_hash": "31ee9aa581af87c2c82ed7d79d95650659cc097fdba71be51a19689014c0007d",
+        "http_status_paid": "200",
+        "latency_ms": "9157",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "d3045ef871ca0d3351b1f8555e1f963600a461fc07e458c25295cd4ffb2821d3",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "12000",
+        "purchase_id": "89694c3c-ec26-46bd-91f1-c2074528677d",
+        "l2_reading": "match"
+      },
+      "digest": "120fa3ec704f0c687f27e5ee7c487ab031703e458aa326c78632ea7eadc994b6",
+      "proof": [
+        "c1193441593a23df277835fc8c05cc07c1e9080a616fe2f0f0333db44fc2fd08",
+        "65e638bc67f522a728d9f3116723a9eaf62efeda27247c4a084fce96617a5970",
+        "d6a36f00bcc301a25ab04072437d0e7d00dfa9f12a429f59c54dcdc1ea1257b5",
+        "6ced096e6833b1e9027b827435aabdbba1c9a10c60171c7513046486ffa33d39"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T18:01:43Z",
+        "resource_key": "api.sitecheck-api.workers.dev/api/vat",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "2000",
+        "spent_units": "2000",
+        "tx_hash": "d27cdf9f1066d737f5c3204ac755fa7c15877b880c5620099308a718d9143bda",
+        "http_status_paid": "200",
+        "latency_ms": "15513",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "051ff9c9acb849d9190b10844b9d84db55a99ce087a98a2aad36fcdd278bc187",
+        "confirmed_units": "2000",
+        "purchase_id": "a292b452-2fa0-4d04-b882-e4d455066250",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "ff6a6edf73a925f7611e336ccb40d9b69ab1ebcbb09c53329388614878089d26",
+      "proof": [
+        "8d08950c2efdcd1ff70d743c419e92ab4c9f5c25361bf17243b411b7e3cc429c",
+        "43e5e61abc1c633b25000ab357b28173b3d8d0099ed848e8b84d5321a0425dff",
+        "6f7d4f1a454a193149a48916b22814cd8175ffa05d658bf86032c52b4ce928af",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T00:01:25Z",
+        "resource_key": "agent402.tools/api/http-headers",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "3000",
+        "spent_units": "3000",
+        "tx_hash": "dd8136308a76a86474283b5b6ad46a0a5a3e218c086c610fec40f7ef251f2cfa",
+        "http_status_paid": "200",
+        "latency_ms": "11736",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "1ab918cdce84df7aba2b5bfbfad7e84e159527ecd606ca2722831e65fba30c0e",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "3000",
+        "purchase_id": "b9ea5f68-05f0-405f-9a91-aa6f82dd9d16",
+        "l2_reading": "match"
+      },
+      "digest": "bf08d71231f57b6f325a839649824769a507afb00facf2e38fc61d203c4d1b75",
+      "proof": [
+        "c9a8c8d41d22f7f3326db78f46e999616f4d5c52f49cbcc0c82444795b1135c5",
+        "43e5e61abc1c633b25000ab357b28173b3d8d0099ed848e8b84d5321a0425dff",
+        "6f7d4f1a454a193149a48916b22814cd8175ffa05d658bf86032c52b4ce928af",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T03:31:24Z",
+        "resource_key": "agent402.tools/api/embed-large",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "10000",
+        "spent_units": "10000",
+        "tx_hash": "06d3197a7e2c0b6263402f5bf4b84634479ea992d8e14ee9ffa75847d1ce479d",
+        "http_status_paid": "200",
+        "latency_ms": "11585",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "7b001d37b906f6430db6feb556c9d48686ea0063682ce8a9549b1691111a8607",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "10000",
+        "purchase_id": "c4807c65-0763-40cf-add3-24e75b6d3241",
+        "l2_reading": "match"
+      },
+      "digest": "5ecd98e210d37de5e2e8a48a2805de76e34088ada0c5f26b263908aa59e61afd",
+      "proof": [
+        "02ab3a5e3d50d2d4a49e4808fb7707b497658ff9d9b9fcb29af32c0ab9cd1b6c",
+        "f9165a00edc0d97868c782665bc06e0cd1a2945ee1e22600c3f3ebc575af6416",
+        "6f7d4f1a454a193149a48916b22814cd8175ffa05d658bf86032c52b4ce928af",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T15:31:36Z",
+        "resource_key": "agent402.tools/api/exchange-rates",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "5000",
+        "spent_units": "5000",
+        "tx_hash": "87d61166cdf4e7053ec76e39f09dafe1c76d6488fbfc2c3edd97760cf9c30b09",
+        "http_status_paid": "200",
+        "latency_ms": "9588",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "436b4dc3aeff8253d0f27cbb538b8aa6db215a000fdc9e96dddb971a07234564",
+        "confirmed_units": "5000",
+        "purchase_id": "e1b88be4-cb77-4562-af2a-c16c659dc779",
+        "l2_reading": "match"
+      },
+      "digest": "56d9cc70c2adf2efb1551430f6fb9d2db447ea442b0e447c2e826583b2e8679d",
+      "proof": [
+        "c681fd717ea293851d9fd9304f0aeddcaa51119e9a2756b1b6f2a1bbbe22438c",
+        "f9165a00edc0d97868c782665bc06e0cd1a2945ee1e22600c3f3ebc575af6416",
+        "6f7d4f1a454a193149a48916b22814cd8175ffa05d658bf86032c52b4ce928af",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T21:31:41Z",
+        "resource_key": "agent402.tools/api/html-select",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "1000",
+        "spent_units": "1000",
+        "tx_hash": "6979886e8b878ef52e88205fe75383e50bd1dfd1e33364762f2e4a7e98465c74",
+        "http_status_paid": "200",
+        "latency_ms": "9436",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "900b8f8e820bab945874a43a8baeed1339fd6a689927c4bb5871daa9b112b122",
+        "settlement_source": "seller_claim",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "1000",
+        "purchase_id": "e5572be1-0b6b-4b26-90cc-5f2bae8262d5",
+        "l2_reading": "match"
+      },
+      "digest": "6b6edf0dfe3843d6d51001336f4e6bad7b57b6fe51f7c8455a67f99ace00558d",
+      "proof": [
+        "99ff8324a2c4deb5494575776c75dbf304d28f77790e20b172500a8f084cefc7",
+        "cf1935a190b48cdd8e366bb34ce191c512fa592e9a79e66fbb51760b2a877f09",
+        "5aa5f2c59c092396598c9343977951ed5fb071ff19cced67a41330052f76d2fd",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T18:01:10Z",
+        "resource_key": "api.chainmarket-api.workers.dev/api/finance/nomics-crypto",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "2000",
+        "spent_units": "2000",
+        "tx_hash": "f1ecf21b4ae21872e483f26277808907415a19b8c57025c337d967743e795010",
+        "http_status_paid": "200",
+        "latency_ms": "12899",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "b079905df0188aa9858c0ef32662bf7a4dcc8ebfda7aa4ddeb81b9ac99d7bb22",
+        "confirmed_units": "2000",
+        "purchase_id": "e6671dcc-6edc-4df4-abfe-88794f45453e",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "81fded090914bd66c9225418e2da2dbff342439e88da8c14890ff4fa2786b6e6",
+      "proof": [
+        "cc9ad84d21614a8b6c492c0859a5734c52b0f7235323b2342432a7728374659a",
+        "cf1935a190b48cdd8e366bb34ce191c512fa592e9a79e66fbb51760b2a877f09",
+        "5aa5f2c59c092396598c9343977951ed5fb071ff19cced67a41330052f76d2fd",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T03:31:48Z",
+        "resource_key": "agentpay.tools/v1/session/create",
+        "network": "stellar:pubnet",
+        "status": "delivered_no_receipt",
+        "amount_units": "10000",
+        "spent_units": "10000",
+        "tx_hash": "",
+        "http_status_paid": "200",
+        "latency_ms": "19323",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "56f8d72327b339543b215e85e8fb3e2760e82cdc6f898f450eacfbd919db034d",
+        "settlement_source": "",
+        "request_query": "empty",
+        "request_query_sha256": "",
+        "confirmed_units": "0",
+        "purchase_id": "f5218ede-ea6d-4361-b835-1729d419e37f",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "f20cc4d3667472ab2d2060d348777d6d2754839e147cd2ec7a7be98e027f2457",
+      "proof": [
+        "d8d2a4ec1a410558adf66d6c41c5042dccb4df1cc7f528d1821d4aca7e262e36",
+        "4f34900c0988996d395d31a3a16e3963509cfcc7003391caa8156234294ad0ff",
+        "5aa5f2c59c092396598c9343977951ed5fb071ff19cced67a41330052f76d2fd",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-31T06:01:46Z",
+        "resource_key": "agent402.tools/api/crypto-orderbook",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "1000",
+        "spent_units": "1000",
+        "tx_hash": "98a30c13cdf5070c8143e1017dec650fbb2d2e6677ce203f5c204ab2e9620755",
+        "http_status_paid": "200",
+        "latency_ms": "9515",
+        "l2_schema": "no_declaration",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "declared",
+        "request_query_sha256": "f1a8edd9839b6233b6c18df796f55b5e2121f56aff7cf68fb87ac99cbba9c712",
+        "confirmed_units": "1000",
+        "purchase_id": "fe650b7c-6c1e-4029-be08-2b7c570fb1ed",
+        "l2_reading": "no_declaration"
+      },
+      "digest": "1722220f8035ab1b92c46c7deb208e86801f7a72c0be2f3bc4f989b05846e892",
+      "proof": [
+        "f532de4796c168c65c55e22d4051b6a423a938ee8e9119fc60faaad7a49e8f52",
+        "4f34900c0988996d395d31a3a16e3963509cfcc7003391caa8156234294ad0ff",
+        "5aa5f2c59c092396598c9343977951ed5fb071ff19cced67a41330052f76d2fd",
+        "2dedf8a4c37d3dedffbbc71d3705973d68689cc52b5f2a49716fa1a7fce4ea63"
+      ]
+    }
+  ]
+}

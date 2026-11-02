@@ -2,7 +2,7 @@
 
 Stellar Community Fund #46, Build Award, Open track. This document covers only the Stellar integration: the mainnet payer, the public record of its purchases, the two Soroban contracts and the work the award would fund. vet402 also buys on other chains, and none of that is described here.
 
-Figures are as of 2026-10-21 23:23 UTC unless a line says otherwise. Live sources: https://vet402.com/observatory/state (the JSON behind it is https://vet402.com/api/v1/observatory/state) and every row at https://vet402.com/api/v1/observatory/export.csv.
+Figures are as of 2026-11-02 09:13 UTC unless a line says otherwise. Live sources: https://vet402.com/observatory/state (the JSON behind it is https://vet402.com/api/v1/observatory/state) and every row at https://vet402.com/api/v1/observatory/export.csv.
 
 ## 1. Summary
 
@@ -10,21 +10,22 @@ Figures are as of 2026-10-21 23:23 UTC unless a line says otherwise. Live source
 
 | Part | Network | State |
 |-|-|-|
-| x402 payer that buys from Stellar sellers in USDC | Stellar mainnet (`stellar:pubnet`) | live since 2026-10-18. 53 paid attempts across 4 hosts, 46 settled and 46 delivered (delivered means settled and the paid response was HTTP 2xx, and all 46 rows show HTTP 200 in the export) |
+| x402 payer that buys from Stellar sellers in USDC | Stellar mainnet (`stellar:pubnet`) | live since 2026-10-18. 210 paid attempts across 13 hosts from one account, 197 settled and 197 delivered (delivered means settled and the paid response was a non-empty HTTP 2xx other than 202, and all 197 rows show HTTP 200 in the export). The settled rows went to 3 sellers across 8 hosts, with sellers counted by payee address, for 2.479 USDC in total. 160 of the 197 also pass the schema check the escrow requires |
 | One public row per purchase, with the Stellar transaction hash | vet402.com export | live |
-| Daily Merkle root of the Stellar rows, committed to a Soroban contract | Stellar testnet | contract live since 2026-10-20. Roots for 2026-10-18, 2026-10-19 and 2026-10-20 are on chain |
+| Daily Merkle root of the Stellar rows, committed to a Soroban contract | Stellar testnet | contract live since 2026-10-20. Each of the 14 UTC days from 2026-10-18 through 2026-10-31 has a root on chain, 192 rows in all, read back on 2026-11-02 (section 6) |
 | Escrow that pays a reward only when the committed row shows delivery | Stellar testnet | sample live since 2026-10-20, with one recorded release and one recorded refund |
 | Decision API that answers "should my agent pay this endpoint?" | vet402.com | live, and it already answers from Stellar rows |
 
-Two facts about the current state that a reviewer should know:
+Three facts about the current state that a reviewer should know:
 
-1. The decision API already reads Stellar rows. For the image-ocr listing on agent402.tools it answers `ALLOW`, and its `verified_terms` name `stellar:pubnet`, the payee `GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL`, the USDC contract `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75` and the purchase `stellar:pubnet:cf9599017134ce255dba5919734484983fbbbddec34fcdb38d0ec361463b3814` (read 2026-10-21 23:30 UTC).
+1. The decision API already reads Stellar rows. For the image-ocr listing on agent402.tools it answers `ALLOW`, and its `verified_terms` name `stellar:pubnet`, the payee `GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL`, the USDC contract `CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75` and the purchase `stellar:pubnet:cf9599017134ce255dba5919734484983fbbbddec34fcdb38d0ec361463b3814` (read 2026-11-02 09:49 UTC).
 2. The daily testnet commit job runs every hour. It was broken from 2026-10-21 15:11 UTC until 2026-10-21 23:16 UTC (2026-10-22 08:16 JST) because the job passed the `stellar` CLI options after the separator that starts the contract function's own arguments, so the CLI read them as contract arguments. The fix is commit `78f8ad15` with a regression test (`tests/stellar-roots-writer-call.test.ts`). The 2026-10-20 root was committed after the fix (15 rows, ledger 5320195). Consecutive committed testnet days are counted from 2026-10-22. Roots already on testnet are not the Tranche 3 count. Tranche 3 counts 30 consecutive UTC days on the mainnet v2 contract only.
+3. The Stellar testnet reset scheduled for 2026-12-16 removes both contracts, every root and the recorded testnet transactions. The mainnet purchases, the export and the day files stay, and the day files are the source for the recommit (section 4, Testnet reset on 2026-12-16).
 
 ### What the award adds
 
-- Tranche 1: Stellar addresses, payee ids and transaction hashes become lookups in the resolve API, each Stellar settlement is tied to the nonce of the Soroban authorization entry vet402 signed, and a public tool rebuilds every day's root and checks it against the contract, with a daily coverage rate.
-- Tranche 2: escrow v2 (testnet USDC, indexer events, no front run on a purchase id), root contract v2 (writer rotation and pause) with a threat model and monitoring plan, and an integration guide with a funder script.
+- Tranche 1: Stellar addresses, payee ids and transaction hashes become lookups in the resolve API, each Stellar settlement is tied to the nonce of the Soroban authorization entry vet402 signed, day files publish automatically with each commit, a public page reruns the rebuild of every day's root against the contract, and a daily coverage rate is published.
+- Tranche 2: escrow v2 (testnet USDC, indexer events, no front run on a purchase id), root contract v2 (writer rotation, pause and zero-count days) with a threat model and monitoring plan, and an integration guide with a funder script.
 - Tranche 3: root contract v2 on mainnet with 30 consecutive daily roots, escrow v2 frozen and submitted to the SCF audit, and public monitoring with full docs.
 
 ## 2. Architecture overview
@@ -44,7 +45,7 @@ flowchart TB
     API["decision API<br/>GET /api/v1/resources/{id}/decision"]
   end
   subgraph Job["daily root job (hourly, acts after 14:30 UTC)"]
-    Day["day file<br/>days/YYYY-MM-DD.json"]
+    Day["day file<br/>docs/stellar/days/YYYY-MM-DD.json"]
     Tree["Merkle tree<br/>tools/roots.mjs"]
   end
   subgraph Soroban["Soroban (testnet today, mainnet in T3)"]
@@ -85,7 +86,7 @@ Source: `src/lib/observatory/stellar402-payer.ts`, called from `src/lib/observat
 - Signing. `createStellarPaymentPayload` builds the payment with the unmodified `ExactStellarScheme` and `createEd25519Signer` from `@x402/stellar` 2.28.0. The payer signs a Soroban authorization entry for the SEP-41 `transfer` on the USDC SAC. The authorization window is the seller's `maxTimeoutSeconds` clamped to 60 to 120 seconds. The seller's facilitator adds the fee, becomes the transaction source and submits it. The secret is read from the environment and is removed from every log and error.
 - Recording. Each paid attempt becomes one row in `x402_l1_purchases`. A seller that answers with a well formed settlement receipt puts the row at `settle_claimed`. vet402 does not call a row `settled` on the seller's word.
 - Re-read. The cron `/api/cron/verify-settlements` runs at 14:00 UTC (`vercel.json`). For Stellar it calls `verifyStellarSettlement` (`src/lib/observatory/settlement-verify-stellar.ts`), which reads Horizon directly. Horizon's network passphrase must be the public network's. The transaction must exist and be successful. Its operations and effects must contain a USDC move (classic or SAC) from the payer to the payee whose amount equals the signed amount in stroops exactly. A matching USDC move makes the row `settled`. A mismatch of payer, payee, amount or asset, a transaction with no USDC transfer, or a failed transaction makes the row `settle_claim_refuted`. A missing transaction, a Horizon passphrase other than the public network, a truncated page, or an unreadable response leaves the row at `settle_claimed` for the next run (`TRANSIENT_REASONS` in `src/lib/observatory/settlement-verifier.ts`).
-- Evidence strength today. Stellar settled rows are published in the weaker tier, `amount_payee_only` (`src/lib/observatory/settled-tier.ts`). The runner stores `sha256(payload.transaction)` as `auth_nonce`, but the facilitator's fee changes the transaction, so the re-read cannot bind that value. The state page shows `settledNonceBound: 0` and `settledAmountPayeeOnly: 46` for `stellar:pubnet`. Tranche 1 Deliverable 2 closes this.
+- Evidence strength today. Stellar settled rows are published in the weaker tier, `amount_payee_only` (`src/lib/observatory/settled-tier.ts`). The runner stores `sha256(payload.transaction)` as `auth_nonce`, but the facilitator's fee changes the transaction, so the re-read cannot bind that value. The state page shows `settledNonceBound: 0` and `settledAmountPayeeOnly: 197` for `stellar:pubnet`. Tranche 1 Deliverable 2 closes this.
 
 ### 3.2 Row format and digest
 
@@ -98,7 +99,7 @@ digest = sha256(canonical JSON of the row)
 canonical JSON: keys sorted, no whitespace, values JSON encoded as strings
 ```
 
-Example: purchase `1fb9b73c-09bc-4de7-879c-5bae20a41841` (agent402.tools domain-intel, 2026-10-19) has digest `4228da6218d13598d17c708926c3b1f7ba47c4e5c67b195988d4bcc09208a72d`. The canonical rows of the current export are at most 661 bytes.
+Example: purchase `1fb9b73c-09bc-4de7-879c-5bae20a41841` (agent402.tools domain-intel, 2026-10-19) has digest `4228da6218d13598d17c708926c3b1f7ba47c4e5c67b195988d4bcc09208a72d`. The canonical Stellar rows of the export are at most 696 bytes, as of 2026-11-02.
 
 ### 3.3 Day file
 
@@ -115,7 +116,7 @@ Example: purchase `1fb9b73c-09bc-4de7-879c-5bae20a41841` (agent402.tools domain-
 }
 ```
 
-`day` is days since 1970-01-01 UTC. The export keeps changing (a `settle_claimed` row later becomes `settled`), so the day file is the record a root covers, not a later export. Published day files today: `contracts/stellar-roots/days/2026-10-18.json` (3 rows) and `2026-10-19.json` (17 rows). The 2026-10-20 root is on chain, and its day file is still on the job's machine (the job copies day files into the repository by hand). Tranche 1 Deliverable 3 publishes them automatically.
+`day` is days since 1970-01-01 UTC. The export keeps changing (a `settle_claimed` row later becomes `settled`), so the day file is the record a root covers, not a later export. Published day files: `docs/stellar/days/` holds all 14 UTC days from 2026-10-18 through 2026-10-31 (192 rows), as of 2026-11-02. A later day stays on the job's machine until the next copy, because the job's day files reach the repository by hand today. Tranche 1 Deliverable 3 publishes them automatically.
 
 ### 3.4 Merkle construction and proof format
 
@@ -132,7 +133,7 @@ an odd node at the end of a level is carried up unchanged
 - A proof is the list of sibling hashes from the leaf up. A level where the node was carried up has no sibling and adds nothing. A one row day has an empty proof and its root is that row's leaf.
 - A proof has at most ceil(log2(count)) entries. The 17 row day has proofs of at most 5 entries. Sixteen proofs have 5 entries. The last row's proof has 1 entry, because that odd node is carried up.
 
-Anyone can rebuild a root from a day file with `tools/roots.mjs`. Rebuilding 2026-10-19 from its file gives `4d086a4ae9a2b202ac080cd136bbe4bdeda896dbc4fe5a536a5e12b739b23278`, the value `get_root` returns for day 20745.
+Anyone can rebuild a root from a day file with `tools/roots.mjs`. Rebuilding 2026-10-19 from its file gives `4d086a4ae9a2b202ac080cd136bbe4bdeda896dbc4fe5a536a5e12b739b23278`, the value `get_root` returns for day 20745. As of 2026-11-02, rebuilding each of the 14 days from its day file, and separately from the public export, gives the root `get_root` returns for that day.
 
 ### 3.5 Root contract (`contracts/stellar-roots`)
 
@@ -199,7 +200,7 @@ flowchart LR
 
 The answer is `ALLOW`, `WARN` or `BLOCK` with the facts behind it: L0 liveness, the L1 purchases of the last 30 days, the L2 schema reading, and `verified_terms`, the network, payee, asset and amount of the last purchase vet402 saw delivered. `verified_terms.amount` uses 6 decimal ledger units and `decimals` is 6. A Stellar 402 amount is a 7 decimal stroop integer, so divide that amount by 10 before comparing it. Do not pay when network, payee or asset differs, or when the divided amount is above `verified_terms.amount`. For the image-ocr row, `verified_terms.amount` 10000 is 100000 stroops. The facts count every row of the listing, Stellar rows included, and the evidence links cite purchase ids of the form `stellar:pubnet:<tx hash>`.
 
-What does not work for Stellar today is the lookup side. `GET /api/v1/resolve` classifies its query by shape (`src/lib/resolve/classify.ts`) and knows only EVM and base58 forms, so a Stellar G address, a payee id `stellar:pubnet:G...` and a Stellar transaction hash all return `invalid_query` (checked on vet402.com on 2026-10-21). Tranche 1 Deliverable 1 fixes that.
+What does not work for Stellar today is the lookup side. `GET /api/v1/resolve` classifies its query by shape (`src/lib/resolve/classify.ts`) and knows only EVM and base58 forms, so a Stellar G address, a payee id `stellar:pubnet:G...` and a Stellar transaction hash all return `invalid_query` (checked on vet402.com on 2026-11-02). Tranche 1 Deliverable 1 fixes that.
 
 ## 4. Security and trust model
 
@@ -234,26 +235,41 @@ What does not work for Stellar today is the lookup side. `GET /api/v1/resolve` c
 |-|-|-|
 | Missed commit (machine off, RPC down, job bug as on 2026-10-21) | `verify` returns false for that day until it is committed | the job retries every uncommitted day of the last 14 on every hourly run and writes an alert. A deposit whose deadline passes first is refunded, never paid wrongly |
 | Row still `settle_claimed` when its day is committed | that row can never release, because the root is fixed | the depositor is refunded after the deadline. The guide will advise deadlines well after the day's commit |
-| Archived root or escrow entry | the call fails until the entry is restored | anyone can restore. The job extends roots, instance and code daily |
-| Testnet reset | contracts and roots vanish | redeploy and recommit from the published day files, which do not change. The 2026-10-20 file is still only on the job machine, so that day cannot be recommitted from the repository until the file is published (T1 D3) |
+| Committed root expired from ledger storage, or an archived escrow entry | a `verify`, `get_root` or escrow call that reads the entry fails until the entry is restored, so a release for that day cannot run even with a good proof | anyone can restore. The job extends roots, instance and code once per UTC day by about 180 days, capped by the network. The threat model (T2 D2) names the signal and the trigger |
+| Testnet reset, scheduled for 2026-12-16 | the writer account, contracts, roots and testnet transactions vanish | redeploy and recommit from the published day files, which do not change (steps below) |
 | Writer key leaked | false roots for uncommitted days | v1 cannot rotate. v2 adds rotation and a pause of commits, and the threat model covers custody |
+| Writer key lost | no new root can be committed. Committed roots keep answering `get_root` and `verify` | v1 has no way to change the writer, so the only path is a new deployment with a new writer, recommitted from the day files under a new contract id. v2 adds an admin address that rotates the writer |
 | Front run on a purchase id | anyone can deposit first for a `purchase_id`, and the real depositor then gets `DuplicatePurchase` | the squatter can only pay a payee of its own choosing or get its own deposit back. Escrow v2 removes the block |
+
+### Testnet reset on 2026-12-16
+
+Stellar's network documentation (https://developers.stellar.org/docs/networks, read 2026-11-02) lists a testnet reset on 2026-12-16, and a reset clears all ledger entries. It removes the writer account, both contracts, every root and the testnet transactions in section 6. The mainnet purchases, the export and the day files stay.
+
+Today the recovery is a sequence of commands run by hand:
+
+1. Fund the writer again from Friendbot. The `vet402-roots-writer` identity is held locally by the `stellar` CLI, so the writer address can stay the same.
+2. Build the root contract from this repository and deploy it with that writer. On 2026-11-02 a local build gave the same wasm sha256 as the deployed code, `4ff8e33502298ebf9bc4e8434a6c74fce26f96b7a9bc14c193739207390b0c07`.
+3. Recommit from the published files. For each day, copy `docs/stellar/days/<date>.json` to `<date>.json.pending` in the `days` folder of a new job state directory, then run `commit-day.sh <date>` with `VET402_ROOTS_STATE` and `VET402_ROOTS_CONTRACT` set. That path commits the published root and does not read the export. A day not yet copied to the repository comes from the old state directory. Two wrong paths exist: with the old state directory the script stops at the `.committed` mark and exits 0 without a commit, and with a new state directory and no pending file it rebuilds the day from the live export. All three paths were run on 2026-11-02 against a fake `stellar` CLI.
+4. Point the hourly job at the new contract id and state directory only after step 3, because each run tries every uncommitted day of the last 14 from the live export.
+5. Deploy the escrow sample against the new root contract, and list the new ids here and in the READMEs.
+
+Tranche 1 Deliverable 3 adds a recommit mode to the job that takes the published day files, and checks the result against the contract live on the check date. A new recorded release and refund come with escrow v2 (T2 D1).
 
 ## 5. Planned work by tranche
 
 ### Tranche 1
 
 **D1. Stellar lookups in the resolve API.**
-Design: add Stellar shapes to `classifyQuery`. A G address is a 56 character StrKey that passes the checksum, and a lookup returns the listings whose Stellar accept pays it. A payee id `stellar:pubnet:G...` is accepted next to the `eip155:` and `solana:` forms. A 64 character hex string without `0x` is looked up as a transaction hash among the Stellar rows (and among any other network whose hashes share that shape), and the answer names the network of each match. `ACCEPTED_QUERY_FORMS`, the `invalid_query` message and `docs/openapi.yaml` list the new forms.
-Verified by: `GET /api/v1/resolve?q=` with the payee `GDNJXCKW7ZM7GEEVP674TWPU26YJNBQ2FI4ZIPRKTPTNUEJMDHFJWWRL`, with `stellar:pubnet:` plus that address, and with the hash of any settled Stellar row in the export each return the listing and its row instead of `invalid_query`.
+Design: add Stellar shapes to `classifyQuery`. A G address is a 56 character StrKey that passes the checksum, and a lookup returns the purchase rows paid to it. A payee id `stellar:pubnet:G...` is accepted next to the `eip155:` and `solana:` forms. A 64 character hex string without `0x` is looked up as a transaction hash among the Stellar rows (and among any other network whose hashes share that shape), and the answer names the network of each match. `ACCEPTED_QUERY_FORMS`, the `invalid_query` message and `docs/openapi.yaml` list the new forms.
+Verified by: take the transaction hash of one settled Stellar row from the export and read its payee on Horizon. Send `GET /api/v1/resolve?q=` with the hash, the G address and `stellar:pubnet:` plus that address. The hash query returns that row. The other two each return rows that include it. None of the three returns `invalid_query`.
 
 **D2. Nonce bound Stellar settlements.**
 Design: at signing, record the nonce of the Soroban authorization entry vet402 signed for the USDC `transfer`. The re-read fetches the transaction envelope, finds the authorization entry whose credentials address is the payer and whose root invocation is `transfer(payer, payee, amount)` on the USDC SAC, and requires that nonce, in addition to the existing checks on the USDC move. Soroban rejects a second use of the same nonce for the same address, so a match shows the transaction is the one vet402 authorized for this purchase. A mismatch refutes the row as other chains' nonce mismatches do. `settled-tier.ts` then puts these rows in `nonce_bound`. Rows settled before D2 keep the weaker tier, because vet402 does not demote a row on evidence it never held.
-Verified by: on the state page, `settled` minus `settledNonceBound` for `stellar:pubnet` stays fixed at the number of Stellar rows settled before D2 ships (46 as of 2026-10-21), so every Stellar row settled after D2 is nonce bound. Unit tests cover a matching nonce, a different nonce, a different address and a missing authorization entry.
+Verified by: on the state page, `settled` minus `settledNonceBound` for `stellar:pubnet` equals `settledAmountPayeeOnly` on the day D2 ships, and that difference does not grow after that day, so every Stellar row settled after D2 is nonce bound. As of 2026-11-02 09:13 UTC that count is 197, and it grows until D2 ships. Unit tests cover a matching nonce, a different nonce, a different address and a missing authorization entry.
 
 **D3. Root rebuild tool and coverage rate.**
-Design: a public tool, next to `roots.mjs`, that takes the published day files, rebuilds each root and count, reads `get_root` for each day from the contract, and reports match, mismatch or missing per day. The job publishes each day file automatically once its root is on chain. A daily coverage rate is published. The denominator is the number of `stellar:pubnet` USDC `exact` listings with `areFeesSponsored` true that pass the payer accept checks (section 3.1) that day. The numerator is how many of those listings have a `stellar:pubnet` row in the export within the 30 UTC days ending that day. Both counts and the list of listings in the denominator are published with the rate.
-Verified by: the rebuild tool matches every committed testnet root from 2026-10-18 on, and a third party can recompute the numerator from the export and check the denominator list against the catalog.
+Design: today day files reach the repository by a manual copy and the rebuild runs as a local command. The job publishes each day file automatically with its commit. A public page, built on rebuild code next to `roots.mjs`, takes the published day files, rebuilds each root and count, reads `get_root` for each day from the testnet contract, and shows match, mismatch or missing per day. The job gains the recommit mode described in section 4. A daily coverage rate is published. The denominator is the number of `stellar:pubnet` USDC `exact` listings with `areFeesSponsored` true that pass the payer accept checks (section 3.1) that day. The numerator is how many of those listings have a `stellar:pubnet` row in the export within the 30 UTC days ending that day. Both counts and the list of listings in the denominator are published with the rate.
+Verified by: the public page matches every committed root from 2026-10-18 on, on the testnet contract live on the check date. The Stellar testnet reset scheduled for 2026-12-16 removes the current contracts, so vet402 redeploys, recommits those days from the published day files and lists the new contract id. Day files appear with no manual step, and a third party can recompute the numerator from the export and check the denominator list against the catalog.
 
 ### Tranche 2
 
@@ -262,8 +278,8 @@ Design: testnet USDC instead of XLM. Events with the purchase id and the parties
 Verified by: the testnet contract id, one recorded release and one recorded refund in testnet USDC, and a test where a second account's deposit for the same purchase id succeeds after a first account deposited.
 
 **D2. Root contract v2, threat model and monitoring plan.**
-Design: an admin address, intended to be a Stellar multisig account, can rotate the writer and pause new commits. Pause never stops `verify` or `get_root`, and committed roots stay immutable. Rotation and pause emit events. v2 also records a UTC day with no Stellar rows (count 0 with a fixed empty root), so every day has an entry and a missing entry always means a missed commit. The threat model covers the writer key and the escrow: custody of the writer key, rotation after a leak, the day file as the public check, deadlines against late commits, and the trust a depositor places in vet402's rows. The monitoring plan names each signal and its alert.
-Verified by: the testnet contract id, a recorded rotation followed by a commit from the new writer that the old writer can no longer make, a recorded pause during which `verify` still answers, a recorded count 0 entry for one UTC day with no Stellar rows, and the published documents.
+Design: an admin address, intended to be a Stellar multisig account, can rotate the writer and pause new commits. Pause never stops `verify` or `get_root`, and committed roots stay immutable. Rotation and pause emit events. v2 also records a UTC day with no Stellar rows (count 0 with a fixed empty root), so every day has an entry and a missing entry always means a missed commit. The admin address is the recovery path when the writer key is lost. A public threat model covers a spoofed root, a leaked writer key, a lost writer key, a false release, a stuck deposit, and a committed root that has expired from ledger storage so `verify` fails. The monitoring plan names one signal and one trigger for each threat.
+Verified by: the testnet contract id, a recorded rotation followed by a commit from the new writer that the old writer can no longer make, a recorded pause during which `verify` still answers, a recorded count 0 entry for one UTC day with no Stellar rows, and a public URL with one section per threat stating the mitigation, the signal and the trigger.
 
 **D3. Integration guide and funder script.**
 Design: a guide for a funder that wants to pay Stellar sellers a reward only for delivered calls, and an example script that deposits for a listing's purchase, waits for the day's root, fetches the row and proof from the day file and calls `release`, or calls `refund` after the deadline.
@@ -299,19 +315,20 @@ The daily job has a Node test for the argument order bug of 2026-10-21 (`tests/s
 |-|-|
 | root for 2026-10-18 (3 rows) | https://stellar.expert/explorer/testnet/tx/49cd6604e0dc6a19acc79aee8e80aea8a6ebad7896f10333fb9c3d6964267e33 |
 | root for 2026-10-19 (17 rows) | https://stellar.expert/explorer/testnet/tx/1df1de96620bc0208e8bd3989a3ee90ed87f4ed9955126c4a30c4ec01b401535 |
-| root for 2026-10-20 (15 rows) | ledger 5320195, readable with `get_root` for day 20746 |
+| root for 2026-10-20 (15 rows) | https://stellar.expert/explorer/testnet/tx/05b1c7af883eb9f234394acb1a5a91d32ea439ff9edc8448d39ad20d3c9b779a (ledger 5320195) |
+| roots for 2026-10-21 through 2026-10-31 (18, 17, 17, 13, 12, 17, 10, 11, 13, 13 and 16 rows) | committed by the daily job, readable with `get_root` for days 20747 through 20757 and listed at https://stellar.expert/explorer/testnet/contract/CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB |
 | deposit of 1 XLM for purchase `1fb9b73c-09bc-4de7-879c-5bae20a41841` | https://stellar.expert/explorer/testnet/tx/54f18e27f2f418ba2e65b41c1c36f3906faea50650a42c097199ca2a096639ab |
 | release of that deposit with the row and proof from the 2026-10-19 day file | https://stellar.expert/explorer/testnet/tx/488eac7623d699f16f06964f3ba2f641a07ee712607e4e0ddbcdd8263630d7bc |
 | deposit for a purchase whose row says `settle_failed`, then `release` refused with `NotDelivered` | https://stellar.expert/explorer/testnet/tx/375a34f263b86ea3186fd4c433b06c29a091974a8365d4465bee08b9ada44811 |
 | refund of that deposit after the deadline | https://stellar.expert/explorer/testnet/tx/c9d167d83982b62bb091bc8ebee15b3aedde10b5524e3e8d923530c25911cde2 |
 
-Read back on 2026-10-21 23:22 UTC: `get_root` for days 20744, 20745 and 20746 returns 3, 17 and 15 rows, `verify` for the first row of 2026-10-19 with its published proof returns true, and the escrow's `roots()` returns the root contract id.
+Read back on 2026-11-02 09:51 UTC: `get_root` for days 20744 through 20757 returns 3, 17, 15, 18, 17, 17, 13, 12, 17, 10, 11, 13, 13 and 16 rows, each with the root in its published day file, `verify` for the first row of each day with its published proof returns true, and the escrow's `roots()` returns the root contract id. The reset scheduled for 2026-12-16 removes these testnet transactions (section 4).
 
 ### Tests per tranche
 
 - T1 D1: classifier unit tests for each Stellar shape and for shapes that must stay `invalid_query` (a bad StrKey checksum, a C contract address where a G address is expected), and API tests against fixture rows.
 - T1 D2: verifier tests with recorded Horizon responses for a matching nonce, a reused or different nonce, a different credentials address and a missing authorization entry, plus the tier test that fixes what `nonce_bound` means for `stellar:pubnet`.
-- T1 D3: the rebuild tool run against every committed testnet day, and a test that a changed row in a day file is reported as a mismatch.
+- T1 D3: the public page run against every committed testnet day, a test that a changed row in a day file is reported as a mismatch, and a test that the recommit mode commits the published root without reading the export.
 - T2 D1: the 13 escrow tests carried over to USDC, plus tests for two depositors on one purchase id, one depositor twice on one purchase id, and the event topics.
 - T2 D2: tests that only the admin rotates and pauses, that the old writer fails after rotation, that a pause blocks `commit_root` and nothing else, that a committed root cannot be replaced in any state, and that a day with no rows is recorded as count 0 with the fixed empty root and cannot be committed again.
 - T2 D3: the funder script run end to end on testnet, release and refund.

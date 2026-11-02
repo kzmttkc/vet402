@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-18",
+  "day": 20744,
+  "count": 3,
+  "root": "4a08d326b3d6b9c8d40501e1bc349aa1d2d95c8dd156bf37384d8c52111e382b",
+  "source": "https://vet402.com/api/v1/observatory/export.csv",
+  "rows": [
+    {
+      "row": {
+        "attempted_at": "2026-10-18T21:30:44Z",
+        "resource_key": "agent402.tools/api/image-ocr",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "10000",
+        "spent_units": "10000",
+        "tx_hash": "cf9599017134ce255dba5919734484983fbbbddec34fcdb38d0ec361463b3814",
+        "http_status_paid": "200",
+        "latency_ms": "10881",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "declared",
+        "request_body_sha256": "44c029212fc64ff0bac626958a1d6868a3526d6e1f3a66558997630d9dfd1e79",
+        "settlement_source": "seller_claim",
+        "request_query": "",
+        "request_query_sha256": "",
+        "confirmed_units": "10000",
+        "purchase_id": "5c1979b9-acbd-41bb-90a6-17a1abe27c75",
+        "l2_reading": "match"
+      },
+      "digest": "3fd8836b9a74afdc2c6a4150054fbe37c6ed6a1525d941417384d6849c960cf2",
+      "proof": [
+        "fda62b8d60b774265d66252211f12f9d51f8ffce3398d0006c0be1a6108fc029",
+        "5d8b5c7a539060089a0b584fefcccc306e5772ae2f5024bc1805f926a4bb23aa"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-18T21:30:55Z",
+        "resource_key": "agent402.tools/api/gas-estimate",
+        "network": "stellar:pubnet",
+        "status": "settled",
+        "amount_units": "1000",
+        "spent_units": "1000",
+        "tx_hash": "5dbfb4a6b265651f4b05ad5084e7e173673d272e75b82a49edd9f7d6bb51312b",
+        "http_status_paid": "200",
+        "latency_ms": "9001",
+        "l2_schema": "match",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "seller_claim",
+        "request_query": "",
+        "request_query_sha256": "",
+        "confirmed_units": "1000",
+        "purchase_id": "8400cafb-9ba4-40e3-a133-72b42905a976",
+        "l2_reading": "match"
+      },
+      "digest": "cfa24d1d6c34a4adee95849ecf060fec385d9a9ef0a93f4cbc899f68c9e5ea1f",
+      "proof": [
+        "5fa9bcbff24c9008b0520000a5e36697f7852e9ed08e689027c87d71356cf846",
+        "5d8b5c7a539060089a0b584fefcccc306e5772ae2f5024bc1805f926a4bb23aa"
+      ]
+    },
+    {
+      "row": {
+        "attempted_at": "2026-10-18T21:30:42Z",
+        "resource_key": "api.carbon-cashmere.de/v1/subtensor-derivatives/transfer-flow",
+        "network": "stellar:pubnet",
+        "status": "settle_failed",
+        "amount_units": "50000",
+        "spent_units": "50000",
+        "tx_hash": "",
+        "http_status_paid": "402",
+        "latency_ms": "2906",
+        "l2_schema": "not_checked",
+        "held_reason": "",
+        "request_body": "none",
+        "request_body_sha256": "",
+        "settlement_source": "",
+        "request_query": "",
+        "request_query_sha256": "",
+        "confirmed_units": "0",
+        "purchase_id": "a6d54feb-8eb7-447b-8539-f3801ad76195",
+        "l2_reading": "not_checked"
+      },
+      "digest": "8945ac0ec7b21bc1474c33a9d913ef45319045be3dda5a32e1133ab6f5f90241",
+      "proof": [
+        "fdc13221243a01dd3b47fec7a078bf0d2c7bfb5ba0e742fdf0ee27ec720bb7c9"
+      ]
+    }
+  ]
+}
