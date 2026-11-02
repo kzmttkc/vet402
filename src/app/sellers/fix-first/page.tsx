@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
-import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { boardAsOfDay, type SellerBoard } from "@/lib/sellers/board";
 import { getSellerBoardCached } from "@/lib/sellers/cached";
 import { FixFirstView, SellersNotice } from "@/components/site/sellers/SellersViews";
