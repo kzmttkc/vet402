@@ -249,7 +249,7 @@ export default async function Home() {
         {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
         <dl className="mx-auto mt-8 grid max-w-[62ch] gap-1 text-[0.84375rem] text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-4">
           <dt className="font-semibold">What this is</dt>
-          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a success and a body (a non-empty 2xx other than 202). That shows who answers once paid. It does not check that the content is right.</dd>
+          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. An error, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>
           <dt className="font-semibold">What you give us</dt>
           <dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>
           <dt className="font-semibold">What vet402 does not do</dt>

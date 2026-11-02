@@ -194,7 +194,7 @@ test("direction C keeps the seller search, the two entries, and the three defini
   const defs = HOME.slice(HOME.indexOf("<dl "), HOME.indexOf("</dl>") + 5);
   for (const piece of [
     '<dt className="font-semibold">What this is</dt>',
-    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a success and a body (a non-empty 2xx other than 202). That shows who answers once paid. It does not check that the content is right.</dd>",
+    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. An error, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>",
     '<dt className="font-semibold">What you give us</dt>',
     "<dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>",
     '<dt className="font-semibold">What vet402 does not do</dt>',

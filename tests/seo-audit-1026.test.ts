@@ -226,16 +226,15 @@ test("x402 payments for AI agents はトップの頁だけが使う", () => {
   assert.deepEqual(home.title, { absolute: "vet402: verify x402 payments for AI agents" });
 });
 
+// 2026-11-02: layout.tsx を外した。/rwa と Tokyo の凍結は 2026-10-23 に解除済みで、この固定はそのあとに残ったもの。
+// SITE_DESCRIPTION が "verifies fulfillment" のままになっていた（公開面の文言監査 H4）。
 test("凍結面のファイルは origin/main と同じで、ethonline の og alt も同じ", () => {
   const diff = execFileSync(
     "git",
-    ["diff", "origin/main", "--", "src/app/layout.tsx", "src/app/rwa", "src/app/tokyo", "src/app/ethonline", "AI_USAGE.md", "contracts"],
+    ["diff", "origin/main", "--", "src/app/rwa", "src/app/tokyo", "src/app/ethonline", "AI_USAGE.md", "contracts"],
     { encoding: "utf8" },
   );
   assert.equal(diff, "");
-  const layout = read("src/app/layout.tsx");
-  const origin = execFileSync("git", ["show", "origin/main:src/app/layout.tsx"], { encoding: "utf8" });
-  assert.equal(layout, origin);
   const eth = pageMetadata({ title: "payOrRefuse — ETHOnline 2026", description: "d", path: "/ethonline" });
   const images = (eth.openGraph as { images: Array<{ alt?: string }> }).images;
   assert.equal(images[0].alt, ETHONLINE_OG_IMAGE_ALT);

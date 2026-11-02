@@ -37,9 +37,6 @@ const FROZEN_OR_QUOTING = [
 const TEMPORARY_OTHER_SESSION = [
   // public/llms.txt と同じ言い方が残る。2026-11-02 時点で llms は ~/vouch-wt-facts の持ち場。
   "src/app/llms-full.txt/",
-  // SITE_DESCRIPTION に "verifies fulfillment" が残る。tests/seo-audit-1026.test.ts が凍結面として
-  // origin/main との一致を求める（/rwa の OG カードがこの文を継承する）。オーナーの判断待ち。
-  "src/app/layout.tsx",
 ];
 
 const FORBIDDEN: { pattern: RegExp; why: string }[] = [
