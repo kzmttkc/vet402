@@ -82,7 +82,7 @@ function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-11-02.2", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.2"));
+test("版: 2026-11-02.3", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.3"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗
@@ -362,6 +362,7 @@ test("rules.ts（payee）が出しうる語は全部、表にある", () => {
   const base: BuyerFacts = {
     settled_count_30d: 12,
     unique_payees_30d: 4,
+    short_interval_payment_rate: 0.05,
     retry_burst_rate: 0.05,
     sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] },
     erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null },
@@ -373,12 +374,12 @@ test("rules.ts（payee）が出しうる語は全部、表にある", () => {
     base,
     { ...base, erc8004: { agent_id: "1", feedback_with_payment_proof_ratio: null } },
     { ...base, settled_count_30d: 1, first_seen: daysAgo(1), sybil: { ...base.sybil, shared_funder: true } },
-    { ...base, sybil: { multi_agent_owner: true, shared_funder: true, cluster_id: "c", unavailable: ["settlements", "funder_index", "erc8004"] }, retry_burst_rate: 0.9 },
+    { ...base, sybil: { multi_agent_owner: true, shared_funder: true, cluster_id: "c", unavailable: ["settlements", "funder_index", "erc8004"] }, short_interval_payment_rate: 0.9, retry_burst_rate: 0.9 },
   ];
   for (const v of variants) for (const bl of [false, true]) for (const c of decidePayee(v, { now: NOW, operatorBlacklist: bl }).reason_codes) seen.add(c);
   const missing = [...seen].filter((c) => reasonCodeDocOf(c) === null);
   assert.deepEqual(missing, [], `表に無い語: ${missing.join(", ")}`);
-  const payeeFixed = REASON_CODES.filter((r) => !r.pattern && r.role === "payee").map((r) => r.code);
+  const payeeFixed = REASON_CODES.filter((r) => !r.pattern && !r.retired && r.role === "payee").map((r) => r.code);
   assert.deepEqual(payeeFixed.filter((c) => !seen.has(c)), []);
 });
 

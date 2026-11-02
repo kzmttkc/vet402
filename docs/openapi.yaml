@@ -4415,7 +4415,7 @@ components:
     DecisionReasonCode:
       type: string
       description: >-
-        Since 2026-11-02.2. The reason codes of `DecisionResult.reason_codes`:
+        Since 2026-11-02.3. The reason codes of `DecisionResult.reason_codes`:
         the fixed words in `enum`, plus the families in `x-vet402-patterns`
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
@@ -4453,7 +4453,7 @@ components:
             Machine-readable reasons. Every code, with its meaning, what it
             means for the payer and whether the seller can fix it, is in
             `DecisionReasonCode` and in the table at /docs/api#reason-codes.
-            Rules 2026-11-02.2 (rules_version). Each paid attempt (one L1
+            Rules 2026-11-02.3 (rules_version). Each paid attempt (one L1
             purchase row) is sorted by one function, the same one /sellers,
             /api/v1/sellers/export.csv and this decision read: whether money
             moved, whether it delivered, and whose side a failure is on.
@@ -5108,14 +5108,19 @@ components:
     BuyerFacts:
       type: object
       description: §8.2 buyer facts for a Payer / Agent (role=payee decisions).
-      required: [settled_count_30d, unique_payees_30d, retry_burst_rate, sybil, erc8004, first_seen, last_seen]
+      required: [settled_count_30d, unique_payees_30d, short_interval_payment_rate, retry_burst_rate, sybil, erc8004, first_seen, last_seen]
       properties:
         settled_count_30d: { type: integer }
         unique_payees_30d: { type: integer }
+        short_interval_payment_rate:
+          type: number
+          nullable: true
+          description: Share of the gaps between this payer's settled payments to the same resource that are 60 s or shorter, over each raw settlement row of the 30-day window. It describes payment timing and does not change the recommendation. null with no data.
         retry_burst_rate:
           type: number
           nullable: true
-          description: Share of re-signatures against the same resource within 60 s, over each raw settlement row of the 30-day window. null with no data.
+          deprecated: true
+          description: Former name of short_interval_payment_rate, with the same value. Settled rows do not show whether a payment was a retry.
         sybil:
           type: object
           required: [multi_agent_owner, shared_funder, cluster_id, unavailable]

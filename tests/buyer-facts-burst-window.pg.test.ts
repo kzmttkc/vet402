@@ -1,6 +1,6 @@
 // ============================================================
-// retry_burst_rate は窓の全行で数える（2026-11-02・監査 M1）。古い方の 2,000 行で切っていたので、新しい行にしか
-// 再署名の無い payer は retry_burst を逃し、古い行だけに再署名のある payer は誤って BLOCK になっていた。
+// short_interval_payment_rate は窓の全行で数える（2026-11-02・監査 M1）。古い方の 2,000 行で切っていた。
+// 2026-11-02.3 から判定には使わないが、facts の数は同じ定義のまま。古い名前 retry_burst_rate は同じ値。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/<test db> \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/buyer-facts-burst-window.pg.test.ts
@@ -16,11 +16,10 @@ if (!TEST_DB) {
   assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
-  test("retry_burst_rate: 2,000 行を超えても全行で数え、純関数の定義と一致する", async () => {
+  test("short_interval_payment_rate: 2,000 行を超えても全行で数え、純関数の定義と一致する", async () => {
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
-    const { loadBuyerFacts, retryBurstRate } = await import("@/lib/decision/buyer-facts");
-    const { decidePayee } = await import("@/lib/decision/rules");
+    const { loadBuyerFacts, shortIntervalPaymentRate } = await import("@/lib/decision/buyer-facts");
     const db = getDb()!;
     await db.execute(sql`TRUNCATE settlements, settlement_daily, funder_wallets`);
 
@@ -44,32 +43,31 @@ if (!TEST_DB) {
       return rows.map((r) => ({ resourceId: r.resource_id, at: new Date(r.at) }));
     };
 
-    // 古い 2,000 行に再署名なし（10 分間隔）、新しい 1,500 行が 10 秒間隔。以前は 0 と読んだ。
+    // 古い 2,000 行に短い間隔の支払いなし（10 分間隔）、新しい 1,500 行が 10 秒間隔。以前は 0 と読んだ。
     const lateBurst = "eip155:8453:0x00000000000000000000000000000000000000c1";
     await seed(lateBurst, "a", [
       { n: 2000, resource: "r1", startMinAgo: 25 * 24 * 60, stepSec: 600 },
       { n: 1500, resource: "r1", startMinAgo: 300, stepSec: 10 },
     ]);
     const a = await loadBuyerFacts(lateBurst);
-    assert.ok(a.retry_burst_rate !== null && a.retry_burst_rate > 0.3, String(a.retry_burst_rate));
-    assert.ok(Math.abs(a.retry_burst_rate! - retryBurstRate(await rowsOfPayer(lateBurst))!) < 1e-9, "純関数と一致");
-    assert.ok(decidePayee(a, { now: new Date() }).reason_codes.includes("retry_burst"));
+    assert.ok(a.short_interval_payment_rate !== null && a.short_interval_payment_rate > 0.3, String(a.short_interval_payment_rate));
+    assert.equal(a.retry_burst_rate, a.short_interval_payment_rate, "古い名前は同じ値");
+    assert.ok(Math.abs(a.short_interval_payment_rate! - shortIntervalPaymentRate(await rowsOfPayer(lateBurst))!) < 1e-9, "純関数と一致");
 
-    // 古い 2,000 行が全部再署名、新しい 6,000 行は間隔あり。以前は 1.0 と読んで BLOCK。
+    // 古い 2,000 行が全部短い間隔の支払い、新しい 6,000 行は間隔あり。以前は 1.0 と読んで BLOCK。
     const earlyBurst = "eip155:8453:0x00000000000000000000000000000000000000c2";
     await seed(earlyBurst, "b", [
       { n: 2000, resource: "r2", startMinAgo: 25 * 24 * 60, stepSec: 10 },
       { n: 6000, resource: "r2", startMinAgo: 20 * 24 * 60, stepSec: 240 },
     ]);
     const b = await loadBuyerFacts(earlyBurst);
-    assert.ok(b.retry_burst_rate !== null && b.retry_burst_rate < 0.3, String(b.retry_burst_rate));
-    assert.ok(Math.abs(b.retry_burst_rate! - retryBurstRate(await rowsOfPayer(earlyBurst))!) < 1e-9, "純関数と一致");
-    assert.ok(!decidePayee(b, { now: new Date() }).reason_codes.includes("retry_burst"));
+    assert.ok(b.short_interval_payment_rate !== null && b.short_interval_payment_rate < 0.3, String(b.short_interval_payment_rate));
+    assert.ok(Math.abs(b.short_interval_payment_rate! - shortIntervalPaymentRate(await rowsOfPayer(earlyBurst))!) < 1e-9, "純関数と一致");
 
     // resource の付かない行は分母に入れない。全部付かなければ null。
     const noResource = "eip155:8453:0x00000000000000000000000000000000000000c3";
     await seed(noResource, "c", [{ n: 5, resource: null, startMinAgo: 60, stepSec: 5 }]);
-    assert.equal((await loadBuyerFacts(noResource)).retry_burst_rate, null);
+    assert.equal((await loadBuyerFacts(noResource)).short_interval_payment_rate, null);
 
     // 別の resource にまたがる間隔は数えない。
     const twoResources = "eip155:8453:0x00000000000000000000000000000000000000c4";
@@ -77,12 +75,12 @@ if (!TEST_DB) {
       { n: 3, resource: "x", startMinAgo: 60, stepSec: 30 },
       { n: 2, resource: "y", startMinAgo: 60, stepSec: 90 },
     ]);
-    assert.equal((await loadBuyerFacts(twoResources)).retry_burst_rate, 2 / 3);
+    assert.equal((await loadBuyerFacts(twoResources)).short_interval_payment_rate, 2 / 3);
 
-    // ちょうど 60 秒は再署名に数え、61 秒は数えない（純関数の <= と同じ）。
+    // ちょうど 60 秒は短い間隔の支払いに数え、61 秒は数えない（純関数の <= と同じ）。
     const exact = "eip155:8453:0x00000000000000000000000000000000000000c5";
     await seed(exact, "e", [{ n: 2, resource: "z60", startMinAgo: 60, stepSec: 60 }, { n: 2, resource: "z61", startMinAgo: 60, stepSec: 61 }]);
-    assert.equal((await loadBuyerFacts(exact)).retry_burst_rate, 1 / 2);
+    assert.equal((await loadBuyerFacts(exact)).short_interval_payment_rate, 1 / 2);
 
     // 31 日前の行は窓の外なので数えない。窓の中の 2 行（間隔あり）だけで 0。
     const oldRow = "eip155:8453:0x00000000000000000000000000000000000000c6";
@@ -90,7 +88,7 @@ if (!TEST_DB) {
       { n: 2, resource: "r31", startMinAgo: 31 * 24 * 60, stepSec: 10 },
       { n: 2, resource: "r31", startMinAgo: 120, stepSec: 600 },
     ]);
-    assert.equal((await loadBuyerFacts(oldRow)).retry_burst_rate, 0, "31 日前の再署名を数えない");
+    assert.equal((await loadBuyerFacts(oldRow)).short_interval_payment_rate, 0, "31 日前の短い間隔の支払いを数えない");
 
     await db.execute(sql`TRUNCATE settlements, settlement_daily, funder_wallets`);
   });

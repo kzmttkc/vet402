@@ -59,6 +59,19 @@ type Correction = {
 const CORRECTIONS: Correction[] = [
   {
     date: "2026-11-02",
+    subject: "role=payee answering BLOCK with retry_burst for payers who buy from one resource often",
+    wrong:
+      "role=payee answered BLOCK with retry_burst when more than 30% of the gaps between a payer's payments to one resource were 60 seconds or shorter, and the text called those payments retry bursts. " +
+      "A settled row is a payment that moved money. It does not show whether an earlier try was refused, so an agent calling the same API once a minute read as a retry pattern. " +
+      "Read on 2026-11-02T09:01Z over the 30-day window: 9,455 of the 11,819 payers with a measured gap were over the line, 9,304 of the 11,086 on Base.",
+    action:
+      "Changed on 2026-11-02 in decision rules 2026-11-02.3. Short gaps do not affect role=payee now, and the code retry_burst is retired. " +
+      "The share stays in facts as short_interval_payment_rate, and retry_burst_rate stays beside it with the same value, marked deprecated. " +
+      "The BLOCK for a block list, a sybil signal and an input that could not be read did not change. The sybil signal needs a shared funder. Read on 2026-11-02T09:16Z, the funder index held 39 wallets and no payer in the window shared a funder in it, so an ALLOW here does not show that a payer is independent. " +
+      "Run over the same read, before any caller's own block list, 9,455 answers move off BLOCK: 5,361 to WARN, most of them payers first seen less than 7 days ago, and 4,094 to ALLOW.",
+  },
+  {
+    date: "2026-11-02",
     subject: "/decision reading L2 from the last 30 days of deliveries",
     wrong:
       "The published rule reads L2 from the latest delivery. /decision and the facts API looked at deliveries from the last 30 days and no further, so a checked mismatch read not_checked once its delivery left the window, and its BLOCK became a WARN with no new purchase. " +

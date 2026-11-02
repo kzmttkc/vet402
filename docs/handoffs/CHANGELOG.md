@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Decision rules 2026-11-02.3: role=payee stops reading short payment gaps as retries
+
+- **What**: `decidePayee` no longer reads the gap share, and `retry_burst` is no longer returned. `facts.short_interval_payment_rate` carries the number under a name that says what it measures. `retry_burst_rate` stays beside it with the same value, marked deprecated in the OpenAPI file and the SDK type. `retry_burst` stays in `REASON_CODES` and the OpenAPI enum as a retired row (`retired: true`, effect none), so an older response or log can still be looked up. Text follows in `/docs/api`, `llms.txt`, `/corrections` and the generated rules text.
+- **Why**: `settlements` holds payments that moved money. A refused try signed again leaves no row, so the rows cannot show a retry. `x402_payments` also holds verified transactions only. Read on 2026-11-02T09:01Z over the 30-day window: 9,455 of the 11,819 payers with a measured gap were over 0.3, 9,304 of the 11,086 on Base. The median gap on Base is 14 s. With `> now() - interval '30 days'`, `wash_flag = 'none'`, Base and at least 100 rows the count is 1,413 of 1,696, the figure that opened this work. The `erc8004_unavailable` BLOCK hid this until the index-owners fix earlier today.
+- **Impact**: The real old and new `decidePayee` over all 15,392 payers with a resource-linked raw row in the window (facts read by SQL with the definitions in `buyer-facts.ts`, read 2026-11-02T09:01Z): 9,455 move off BLOCK, 5,361 to WARN (`new_payer` 5,267, `thin_history` 68, both 26) and 4,094 to ALLOW. 0 of them have `shared_funder`, so `sybil_high` cannot hold any of them whatever the live agent lookup returns. A caller's own block list and a read failure are outside this count. Response field added, none removed, so existing callers keep working. The SDK source and dist have the new type field; the npm package needs a publish for outside users to see it. `role=payer`, `pay_if_trusted` and `/sellers` do not read this code or number. Calls by role are not recorded: `client_usage_daily` has no role column and `decision_usage_daily` has 0 rows, so how many callers read `role=payee` is unknown. `retry_burst_rate` still counts wash-flagged rows, as it did. Not changed: the rate's definition, the sybil, block list and `<input>_unavailable` rules.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Avalanche C-Chain joins the chain list and gets its guide page
 
 - **What**: `SUPPORTED_CHAINS` has an Avalanche lane row (USDC over x402, join key `Avalanche`). `x402-guides.ts` has its lead and its EIP-3009 tie, so `/x402/chains/avalanche-c-chain` exists and the sitemap, the `/x402/chains` hub, the home chain table and the stablecoin asset sentence pick it up from that row. `public/llms.txt` carries the rebuilt Which chains sentence and the new URL. Tests pin the row, the join key, the slug and the sentence.

@@ -113,7 +113,9 @@ export type SellerFacts = {
 export type BuyerFacts = {
   settled_count_30d: number;
   unique_payees_30d: number;
-  /** 同一 resource に対する 60 秒以内の再署名率。データ 0 なら null。 */
+  /** 同じ resource への決済済みの支払いの間隔のうち、60 秒以内の割合。データ 0 なら null。判定には使わない（2026-11-02.3）。 */
+  short_interval_payment_rate: number | null;
+  /** @deprecated short_interval_payment_rate の古い名前。同じ値。決済済みの行はリトライを表さない。 */
   retry_burst_rate: number | null;
   sybil: { multi_agent_owner: boolean; shared_funder: boolean; cluster_id: string | null; unavailable: string[] };
   erc8004: { agent_id: string | null; feedback_with_payment_proof_ratio: number | null };

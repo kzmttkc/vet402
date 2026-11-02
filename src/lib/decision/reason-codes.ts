@@ -27,6 +27,8 @@ export type ReasonCodeDoc = {
   /** 払う側にとっての意味。 */
   forPayer: string;
   sellerCanFix: SellerCanFix;
+  /** 判定がもう出さない語。古い応答やログを読む呼び手が引けるよう、表と enum に残す。 */
+  retired?: true;
 };
 
 export const REASON_CODES: readonly ReasonCodeDoc[] = [
@@ -289,10 +291,12 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
   {
     code: "retry_burst",
     role: "payee",
-    effect: "BLOCK",
-    meaning: "More than 30% of the payer's recent payments are retry bursts.",
-    forPayer: "For the seller: an unusual retry pattern.",
+    effect: "none",
+    meaning:
+      "Retired in rules 2026-11-02.3 and not returned since. It read short gaps between settled payments as retries, which settled rows cannot show. The number stays in facts as short_interval_payment_rate.",
+    forPayer: "For the seller: in an older response or log, read it as no signal about the payer.",
     sellerCanFix: "n/a",
+    retired: true,
   },
   {
     code: "<input>_unavailable",
@@ -339,7 +343,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "history_ok",
     role: "payee",
     effect: "none",
-    meaning: "None of the payee checks above fired.",
+    meaning: "None of the payee checks above fired. The funder index covers few wallets, so a payer outside it reads as no shared funder, which does not show it is independent.",
     forPayer: "For the seller: ALLOW.",
     sellerCanFix: "n/a",
   },

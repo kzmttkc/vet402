@@ -258,6 +258,7 @@ const SURFACES: Surface[] = [
     fields: [
       "settled_count_30d",
       "unique_payees_30d",
+      "short_interval_payment_rate",
       "retry_burst_rate",
       "sybil",
       "erc8004",

@@ -19,7 +19,7 @@ const ok: SellerFacts = {
   wash_dominated: false,
 };
 
-test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.2"));
+test("版が固定されている", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.3"));
 
 /** 鮮度（2026-09-29.2）の基準時刻。フィクスチャの observed_at（09-01）の翌日。 */
 const T = { now: new Date("2026-09-02T00:00:00Z") };
@@ -86,6 +86,7 @@ const now = new Date("2026-09-02T00:00:00Z");
 const buyer: BuyerFacts = {
   settled_count_30d: 12,
   unique_payees_30d: 4,
+  short_interval_payment_rate: 0.05,
   retry_burst_rate: 0.05,
   sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] },
   erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null },
@@ -105,8 +106,7 @@ test("payee 判定: shared_funder / 新規 / thin は WARN", () => {
   assert.equal(decidePayee({ ...buyer, settled_count_30d: 1 }, { now }).recommendation, "WARN");
 });
 
-test("payee 判定: sybil 高 / retry 超過 / degraded / blacklist は BLOCK", () => {
-  assert.equal(decidePayee({ ...buyer, retry_burst_rate: 0.5 }, { now }).recommendation, "BLOCK");
+test("payee 判定: sybil 高 / degraded / blacklist は BLOCK", () => {
   assert.equal(decidePayee({ ...buyer, sybil: { ...buyer.sybil, multi_agent_owner: true, shared_funder: true } }, { now }).recommendation, "BLOCK");
   const degraded = decidePayee({ ...buyer, sybil: { ...buyer.sybil, unavailable: ["funder_index"] } }, { now });
   assert.equal(degraded.recommendation, "BLOCK");

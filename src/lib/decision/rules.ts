@@ -86,6 +86,11 @@
 //         書かない: 出力の宣言が無ければ undeclared、あれば not_checked（l2-check.ts legacyL2SchemaOf）。
 //     (3) role=payee の retry_burst_rate は窓の全行で数える（buyer-facts.ts。古い方の 2,000 行で切っていた）。
 //     (4) role=payee の <input>_unavailable は BLOCK のまま（fail-closed）。直したのは読めない原因（vercel.json の index-owners）。
+//   2026-11-02.3（role=payee の retry_burst をやめた）: 規則が変わるので版を上げた。
+//     settlements の行は決済済みの送金で、断られて署名し直した試行は行にならない。同じ resource への 60 秒以内の間隔は、毎分同じ API を
+//     使う買い手でも高く出る（読み取り 2026-11-02T09:01Z: 間隔が測れる 11,819 payer のうち 9,455 が 0.3 超）。測れないものを理由に BLOCK に
+//     しない。数は facts.short_interval_payment_rate に残す（retry_burst_rate は同じ値の deprecated）。語 retry_burst は出さず、古い応答を
+//     読む呼び手のために表と enum に retired で残す。sybil・ブラックリスト・<input>_unavailable の BLOCK は変えない。
 //   BLOCK if l0 = fail ∨ paid_undelivered_seller_side_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if l0 = unverified ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
@@ -113,7 +118,7 @@
 // 必ず載せるが、それ単独では ALLOW を妨げない（他の WARN 事由があれば WARN）。
 //
 // 提供前（売り手 → 買い手・role=payee）:
-//   BLOCK if operator_blacklist ∨ sybil 高 ∨ retry_burst 超過 ∨ degraded 入力
+//   BLOCK if operator_blacklist ∨ sybil 高 ∨ degraded 入力
 //   WARN  if thin history ∨ shared_funder ∨ 新規（first_seen < 7d）
 //   ALLOW 上記なし
 //
@@ -141,7 +146,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-11-02.2";
+export const DECISION_RULES_VERSION = "2026-11-02.3";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
@@ -152,7 +157,6 @@ export const L1_PAID_UNDELIVERED_BLOCK = 2;
 export const L1_FRESH_DAYS = 30;
 /** L1 の事実を数える窓（seller-facts.ts の SQL と同じ 30 日）。 */
 export const L1_WINDOW_DAYS = 30;
-export const RETRY_BURST_BLOCK = 0.3;
 export const THIN_HISTORY_MAX = 2;
 export const NEW_PAYER_DAYS = 7;
 
@@ -461,14 +465,12 @@ export function decidePayee(f: BuyerFacts, o: PayeeOptions): Decision {
   const r: string[] = [];
   const degraded = f.sybil.unavailable.length > 0;
   const sybilHigh = f.sybil.multi_agent_owner && f.sybil.shared_funder;
-  const burst = f.retry_burst_rate !== null && f.retry_burst_rate > RETRY_BURST_BLOCK;
   const ageDays = f.first_seen ? (o.now.getTime() - Date.parse(f.first_seen)) / 86_400_000 : null;
 
   if (o.operatorBlacklist) r.push("operator_blacklist");
   if (sybilHigh) r.push("sybil_high");
-  if (burst) r.push("retry_burst");
   if (degraded) r.push(...f.sybil.unavailable.map((u) => `${u}_unavailable`));
-  if (o.operatorBlacklist || sybilHigh || burst || degraded) return { recommendation: "BLOCK", reason_codes: r };
+  if (o.operatorBlacklist || sybilHigh || degraded) return { recommendation: "BLOCK", reason_codes: r };
 
   if (f.settled_count_30d <= THIN_HISTORY_MAX) r.push("thin_history");
   if (f.sybil.shared_funder) r.push("shared_funder");

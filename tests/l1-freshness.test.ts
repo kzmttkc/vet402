@@ -73,6 +73,7 @@ const sellerNoL1: SellerFacts = {
 const buyer: BuyerFacts = {
   settled_count_30d: 5,
   unique_payees_30d: 2,
+  short_interval_payment_rate: 0,
   retry_burst_rate: 0,
   sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] },
   erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null },

@@ -408,6 +408,9 @@ export type SellerFacts = {
 export type BuyerFacts = {
   settled_count_30d: number;
   unique_payees_30d: number;
+  /** Share of the gaps between settled payments to the same resource that are 60 s or shorter. It does not change the recommendation. */
+  short_interval_payment_rate: number | null;
+  /** @deprecated Former name of short_interval_payment_rate, with the same value. */
   retry_burst_rate: number | null;
   sybil: { multi_agent_owner: boolean; shared_funder: boolean; cluster_id: string | null; unavailable: string[] };
   erc8004: { agent_id: string | null; feedback_with_payment_proof_ratio: number | null };

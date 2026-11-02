@@ -193,7 +193,7 @@ test("buildDecision: role=payer は verified_terms を載せ（省略は null）
     role: "payee",
     subject,
     payer: "eip155:8453:0x" + "33".repeat(20),
-    facts: { settled_count_30d: 0, unique_payees_30d: 0, retry_burst_rate: 0, sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] }, erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null }, first_seen: null, last_seen: null },
+    facts: { settled_count_30d: 0, unique_payees_30d: 0, short_interval_payment_rate: 0, retry_burst_rate: 0, sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] }, erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null }, first_seen: null, last_seen: null },
     operatorBlacklist: false,
     registry: { status: "off", tx_hash: null },
     now,

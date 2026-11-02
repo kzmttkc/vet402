@@ -1,9 +1,10 @@
 // ============================================================
-// §8.2 買い手事実（Payer / Agent）。主材料は実決済の多様性・異常リトライ・シビル信号。
+// §8.2 買い手事実（Payer / Agent）。主材料は実決済の多様性・シビル信号。
 // 自己申告のバッジではない。ERC-8004 identity は加点材料に留める（判定側で weight 0.05 相当）。
 //
 //   settled_count_30d / unique_payees_30d  settlements（wash 'none'）から
-//   retry_burst_rate                        同一 resource への 60 秒以内の再署名率
+//   short_interval_payment_rate             同じ resource への支払いの間隔のうち 60 秒以内の割合（判定には使わない）
+//   retry_burst_rate                        上の古い名前。同じ値（2026-11-02.3 から deprecated）
 //   sybil.shared_funder                     funder_wallets で他の payer と funder を共有
 //   sybil.multi_agent_owner                 8004 owner が 3 体以上を保有
 //   erc8004.feedback_with_payment_proof_ratio  同 payer の feedback のうち settlements に tx がある比率
@@ -17,14 +18,16 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { logServerErrorChainSafe } from "@/lib/util/log-safe";
 import type { BuyerFacts } from "./types";
 
-export const RETRY_BURST_WINDOW_MS = 60_000;
+export const SHORT_INTERVAL_WINDOW_MS = 60_000;
 export const MULTI_AGENT_OWNER_MIN = 3;
 
 /**
- * 再署名率の定義（純関数）: (resource_id, 時刻) の列から 60 秒以内の再署名率を出す。列 < 2 なら null。
- * 本番は同じ定義を SQL で全行に当てる（loadBuyerFacts。tests/buyer-facts-burst-window.pg.test.ts が一致を固定する）。
+ * 短い間隔の支払いの割合の定義（純関数）: (resource_id, 時刻) の列から、同じ resource への間隔のうち 60 秒以内の割合を出す。
+ * 間隔が 1 つも無ければ null。本番は同じ定義を SQL で全行に当てる（loadBuyerFacts。tests/buyer-facts-burst-window.pg.test.ts が
+ * 一致を固定する）。settlements は決済済みの送金で、断られて署名し直した試行を表さない。毎分同じ API を使う買い手も高く出る
+ * ので、リトライとは読まない（2026-11-02.3）。
  */
-export function retryBurstRate(events: readonly { resourceId: string | null; at: Date }[]): number | null {
+export function shortIntervalPaymentRate(events: readonly { resourceId: string | null; at: Date }[]): number | null {
   const byResource = new Map<string, number[]>();
   for (const e of events) {
     const key = e.resourceId ?? "";
@@ -39,7 +42,7 @@ export function retryBurstRate(events: readonly { resourceId: string | null; at:
     times.sort((a, b) => a - b);
     for (let i = 1; i < times.length; i++) {
       total++;
-      if (times[i] - times[i - 1] <= RETRY_BURST_WINDOW_MS) bursts++;
+      if (times[i] - times[i - 1] <= SHORT_INTERVAL_WINDOW_MS) bursts++;
     }
   }
   return total === 0 ? null : bursts / total;
@@ -51,6 +54,7 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
   const empty: BuyerFacts = {
     settled_count_30d: 0,
     unique_payees_30d: 0,
+    short_interval_payment_rate: null,
     retry_burst_rate: null,
     sybil: { multi_agent_owner: false, shared_funder: false, cluster_id: null, unavailable: [] },
     erc8004: { agent_id: null, feedback_with_payment_proof_ratio: null },
@@ -110,7 +114,7 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
     )
   )[0];
 
-  // retry_burst_rate は「60 秒以内の再署名」なので個票の時刻が要る。畳んだ日の
+  // short_interval_payment_rate は「60 秒以内の間隔」なので個票の時刻が要る。畳んだ日の
   // 時刻は残らないため、これだけは生行の窓（RAW_RETENTION_DAYS 日）で測る。
   // 30 日ぶんを日次集約から復元することはできない（丸めた値を出すよりも、
   // 短い窓の正しい値を出す）。
@@ -128,12 +132,12 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
         SELECT at - lag(at) OVER (PARTITION BY resource_id ORDER BY at) AS gap FROM ev
       )
       SELECT count(gap)::int AS total,
-             count(*) FILTER (WHERE gap <= ${sql.raw(`interval '${RETRY_BURST_WINDOW_MS / 1000} seconds'`)})::int AS bursts
+             count(*) FILTER (WHERE gap <= ${sql.raw(`interval '${SHORT_INTERVAL_WINDOW_MS / 1000} seconds'`)})::int AS bursts
       FROM gaps
     `),
   )[0];
   const burstTotal = Number(burst?.total ?? 0);
-  const retryRate = burstTotal === 0 ? null : Number(burst?.bursts ?? 0) / burstTotal;
+  const shortIntervalRate = burstTotal === 0 ? null : Number(burst?.bursts ?? 0) / burstTotal;
 
   let sharedFunder = false;
   let clusterId: string | null = null;
@@ -189,7 +193,8 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
   return {
     settled_count_30d: Number(agg?.n ?? 0),
     unique_payees_30d: Number(agg?.payees ?? 0),
-    retry_burst_rate: retryRate,
+    short_interval_payment_rate: shortIntervalRate,
+    retry_burst_rate: shortIntervalRate,
     sybil: { multi_agent_owner: multiAgentOwner, shared_funder: sharedFunder, cluster_id: clusterId, unavailable },
     erc8004: { agent_id: agentId, feedback_with_payment_proof_ratio: proofRatio },
     first_seen: lifetime?.first_seen ?? agg?.first_seen ?? null,

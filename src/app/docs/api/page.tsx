@@ -1267,6 +1267,11 @@ app.use("/api/paid", createExpressGate({
           &ldquo;Verdict&rdquo; is what the code causes on its own; &mdash; means it explains without
           changing the verdict. Codes in angle brackets stand for a family.
         </p>
+        <p className="text-[0.84375rem] text-brand-lift">
+          With <code>role=payee</code>, <code>facts.short_interval_payment_rate</code> is the share of gaps of 60 s or
+          shorter between a payer&rsquo;s settled payments to the same resource. It describes payment timing and does not
+          change the verdict. Settled payments do not show whether a payment was a retry.
+        </p>
         <TableScroll label="Decision reason codes">
           <table className="fact-table">
             <caption className="sr-only">
