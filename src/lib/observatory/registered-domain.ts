@@ -132,6 +132,16 @@ export const POOLED_SUFFIXES: readonly string[] = [
   "serveo.net",
 ];
 
+/**
+ * 登録ドメインの実績（budget.ts PROVEN_MIN_*）に数えないサフィックス（2026-11-02 独立レビュー）。1 つの枠に数える共有ドメインと、
+ * 本番で実績に上がった無料の共有サブドメイン。ここでは別の持ち主が 1 つの単位に見えるので、誰かの配達を別の人の実績にしない。
+ * 受取先の実績は今までどおり効く。支出の上限（$3）の単位は変えない。
+ */
+export const NO_DOMAIN_TRACK_RECORD: readonly string[] = [...POOLED_SUFFIXES, "val.run", "code.run", "my.id", "net.co", "hstgr.cloud"];
+
+/** SQL の jsonb_array_elements_text に渡す形。 */
+export const NO_DOMAIN_TRACK_RECORD_JSON = JSON.stringify(NO_DOMAIN_TRACK_RECORD);
+
 const LABEL = /^(\*|[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)$/;
 for (const s of PUBLIC_SUFFIXES) {
   // SQL へ文字列として埋めるので、形を読み込み時に固定する（引用符・バックスラッシュが入る余地を無くす）。

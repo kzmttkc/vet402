@@ -38,7 +38,15 @@ import {
   DECLARED_QUERY_MAX_PARAMS,
   DECLARED_URL_MAX_BYTES,
 } from "@/lib/observatory/declared-input";
-import { CENSUS_PER_RUN, DAILY_BUDGET_USD } from "@/lib/observatory/budget";
+import {
+  CENSUS_PER_RUN,
+  DAILY_BUDGET_USD,
+  OVER_DIME_DAILY_CAP_USD_DEFAULT,
+  PROVEN_MIN_AGE_DAYS,
+  PROVEN_MIN_DELIVERED_DAYS,
+  UNPROVEN_DAILY_CAP_USD_DEFAULT,
+  UNPROVEN_PURCHASE_CAP_USD_DEFAULT,
+} from "@/lib/observatory/budget";
 import { REQUIRED_CONFIRMATIONS } from "@/lib/observatory/settlement-verify";
 import { LATE_SETTLEMENT_BACKDATE_MINUTES, LATE_SETTLEMENT_WINDOW_MINUTES } from "@/lib/settlements/recover-late";
 import { L1_CELO_PAID_TIMEOUT_MS, L1_CELO_PAID_TIMEOUT_SINCE, L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
@@ -695,6 +703,19 @@ export default async function ObservatoryMethodologyPage() {
           stays on the record whether or not the seller delivers. On {EIP3009_CHAINS_TEXT}
           the signature is an EIP-3009 authorization, and a signed EIP-3009 authorization is live
           money the moment it exists.
+        </p>
+        <p className="doc-p">
+          <strong>Sellers without a track record.</strong> Since 2026-11-02 a seller has a track
+          record once its payee or its registered domain has delivered purchases on at least{" "}
+          {PROVEN_MIN_DELIVERED_DAYS} different UTC days, and the first of those is at least{" "}
+          {PROVEN_MIN_AGE_DAYS} days old. A shared suffix where different owners cannot be told apart
+          does not earn a track record as a domain. Until then a purchase from that seller is limited to $
+          {UNPROVEN_PURCHASE_CAP_USD_DEFAULT.toFixed(2)}, and sellers without a track record share $
+          {UNPROVEN_DAILY_CAP_USD_DEFAULT} per UTC day, inside the ${DAILY_BUDGET_USD} budget for that
+          day. A listing above that price, or one whose declared price cannot be read, is not bought for now
+          and gets no row: this is a limit on our spending, not a finding about the seller. Purchases
+          above $0.10 share ${OVER_DIME_DAILY_CAP_USD_DEFAULT} per UTC day, with or without a track
+          record, on the same terms.
         </p>
         <p className="doc-p">
           <strong>Tempo (MPP).</strong> Tempo has no x402 wall. Services listed in the MPP directory

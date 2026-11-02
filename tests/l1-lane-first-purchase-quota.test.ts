@@ -33,7 +33,9 @@ test("reserveSpend: 初回購入の枠の条件は firstQuotaApplies（= 別枠�
   );
   assert.match(src, /if \(firstQuotaApplies && row\.is_first === true\) \{/, "first_purchase_quota の判定が別枠チェーンにも掛かる");
   // 枠を外しても、日次 $25・別枠・dup（掃引窓）の条件は同じ 1 文に残っている。
-  assert.match(src, /WHERE NOT dup\.taken\s*\n\s*AND day\.spent \+ \$\{amountUnits\}::numeric <= \$\{String\(DAILY_BUDGET_UNITS\)\}::numeric/);
+  assert.match(src, /const reserveGates = sql`NOT dup\.taken\s*\n\s*AND day\.spent \+ \$\{amountUnits\}::numeric <= \$\{String\(DAILY_BUDGET_UNITS\)\}::numeric/);
+  // 行を書く INSERT と、共有の枠の 2 つの行を足す INSERT が同じ条件を見る（2026-11-02）。
+  assert.equal(src.match(/WHERE \$\{reserveGates\}/g)?.length, 3);
   assert.match(src, /AND chain_day\.spent \+ \$\{amountUnits\}::numeric <= \$\{capUnits\}::numeric/);
 });
 

@@ -1419,6 +1419,25 @@ export const x402DiscoveryPayees = pgTable(
   ],
 );
 
+/**
+ * x402_l1_spend_pool_daily — L1 の共有の日次枠の、枠ごと・UTC 日ごとの支出（2026-11-02 資金経路の監査 H-1 と独立レビュー）。
+ * pool は unproven（実績のない売り手全体）と over_dime（$0.10 を超える購入全体）。
+ * reserveSpend の 1 文の中で ON CONFLICT DO UPDATE ... WHERE する。行ロックのあとで最新の値を読み直すので、同時の予約でも
+ * 上限（budget.ts）を超えない。台帳の合計を読むだけでは、互いの INSERT が見えない 2 文が超える。
+ * 予約を戻しても（spent_units を 0 にしても）減らさない: 締まる側に倒れるだけで、翌 UTC 日の別の行で元に戻る。
+ * SQL: scripts/sql/2026-11-02-l1-spend-pool-daily.sql
+ */
+export const x402L1SpendPoolDaily = pgTable(
+  "x402_l1_spend_pool_daily",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    pool: text("pool").notNull(),
+    spentUnits: numeric("spent_units").notNull().default("0"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.pool] })],
+);
+
 export const runtimeFlags = pgTable("runtime_flags", {
   name: text("name").primaryKey(),
   enabled: boolean("enabled").notNull(),

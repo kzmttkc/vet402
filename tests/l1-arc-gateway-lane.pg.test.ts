@@ -229,6 +229,29 @@ if (!TEST_DB) {
       }
     });
 
+    await t.test("監査 L-4: 残高の読みから未決済の認可を引く。足りなければ署名しない。窓の外と settled は引かない", async () => {
+      process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";
+      const seedOutstanding = async (status: string, spent: string, ageSeconds: number) => {
+        await db.execute(sql`
+          INSERT INTO x402_l1_purchases (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units, raw_response_meta, attempted_at)
+          SELECT id, ${status}, 'seed', 'eip155:5042', 'usdc', 'seed-payee', ${spent}, ${spent}, '{"circleGatewayRail":"true"}'::jsonb, now() - make_interval(secs => ${ageSeconds}::double precision)
+          FROM x402_endpoints WHERE resource_url = ${BASE_URL}`);
+      };
+      await seed([GW_URL, BASE_URL]);
+      await seedOutstanding("settle_failed", "4999990", 86_400);
+      let w = wall();
+      const s = await run(w.fetchImpl, async () => 5_000_000n);
+      assert.equal(w.seen.filter((x) => x.url === GW_URL && x.paid).length, 0, "balance minus outstanding is short");
+      assert.ok(s.payerUnfundedChains.includes("arc_gateway"));
+
+      await seed([GW_URL, BASE_URL]);
+      await seedOutstanding("settled", "4999990", 86_400);
+      await seedOutstanding("settle_failed", "4999990", 604_901);
+      w = wall();
+      await run(w.fetchImpl, async () => 5_000_000n);
+      assert.equal(w.seen.filter((x) => x.url === GW_URL && x.paid).length, 1, "settled and expired rows are not subtracted");
+    });
+
     await t.test("Gateway だけの出品は Gateway で署名し、tx_hash は空の settle_claimed", async () => {
       await seed([GW_URL]);
       process.env.OBSERVATORY_ARC_GATEWAY_L1_ENABLED = "true";

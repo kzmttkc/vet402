@@ -39,10 +39,13 @@ import { invalidateDecisionCache } from "@/lib/decision/cache";
 import { readBodyCapped, readBodyCappedDetailed } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl, type SafeFetchCallOptions } from "@/lib/net/safe-fetch";
 import { redactForLog, redactedError } from "./redact";
+import { MAX_SELLER_JSON_DEPTH } from "./json-depth";
 import { createDeadline } from "@/lib/util/deadline";
 import { CENSUS_PER_RUN, CHAIN_DAILY_CAPS, LANE_FLOOR_FETCH_MAX, LANE_FLOOR_MAX_PER_HOST, LANE_FLOOR_OVERSAMPLE, cappedChainFor, chainDailyCapUnits, checkL1Budget, domainDailyCapUnits, isCensusEnabled, isL1Enabled, laneFloorPerRun, sellerDailyCapUnits, DAILY_BUDGET_USD, type CappedChain } from "./budget";
 // census の枠（2026-09-29）。別の import 行に分けてある（同じ行を触る並行ブランチとの衝突を避ける）。
 import { censusFirstPurchaseQuota, censusMinPerRun, laneTimeShare } from "./budget";
+// 実績のない売り手の上限（2026-11-02・監査 H-1）。
+import { OVER_DIME_THRESHOLD_UNITS, PROVEN_MIN_AGE_DAYS, PROVEN_MIN_DELIVERED_DAYS, overDimeDailyCapUnits, unprovenDailyCapUnits, unprovenPurchaseCapUnits } from "./budget";
 import { isSpendingHalted, type HaltVerdict } from "./kill-switch";
 import { addDerivedOperatorAddresses, isOperatorPayTo, operatorPayToDenylist } from "./operator";
 import { operatorExclusionPredicate } from "./operator-sql";
@@ -91,13 +94,14 @@ import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
 import { censusHostSql, RETEST_LISTINGS_SQL, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
-import { registeredDomainOf, registeredDomainSql } from "./registered-domain";
+import { NO_DOMAIN_TRACK_RECORD_JSON, registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { requestBodyRecord } from "./request-body";
-import { isDeliveryHttp } from "./delivery";
+import { deliveredPredicate, isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
 import {
+  ARC_GATEWAY_MAX_TIMEOUT_SECONDS,
   arcGatewayCapOpen,
   arcGatewayFundsOk,
   chainCapNetworkSql,
@@ -178,7 +182,8 @@ export type L1BatchSummary = {
    */
   halted: boolean;
   haltReason: string | null;
-  disabledReason: "l1_disabled" | "wallet_key_missing" | "spending_halted" | null;
+  /** spend_pool_table_missing: 共有の日次枠の表（scripts/sql/2026-11-02-l1-spend-pool-daily.sql）がまだ本番に無い。1 リクエストも出さない。 */
+  disabledReason: "l1_disabled" | "wallet_key_missing" | "spending_halted" | "spend_pool_table_missing" | null;
   /**
    * 購入元の USDC 残高が足りない（または読めない）ために署名しなかった候補の数
    * （2026-09-17 Issue #29・payer-funds.ts）。台帳には行を書かないので、ここと
@@ -190,6 +195,22 @@ export type L1BatchSummary = {
    * 予約が断った件と、同じバッチで同じ受取先・ホストの残りを飛ばした件の合計（skipped にも含まれる）。行は書かない。
    */
   sellerCapped: number;
+  /**
+   * 実績のない売り手の上限（budget.ts UNPROVEN_*・2026-11-02 監査 H-1）で署名しなかった候補の数。予約が断った件と、
+   * 日次合計が尽きたあと同じバッチの実績のない売り手を飛ばした件の合計（skipped にも含まれる）。行は書かない。
+   */
+  unprovenCapped: number;
+  /**
+   * バッチの開始時に、実績のない売り手の 1 件の上限で候補から外した出品の数（$1 以下で上限より高いか、宣言額が読めない）。
+   * カタログの active の数で、L0 の結果は問わない。読めなければ null。1 件指定の実行では数えない。
+   */
+  unprovenPriceExcluded: number | null;
+  /** 実績のない売り手全体の日次合計に届いたか（バッチの開始時か途中）。届いた日は実績のない売り手を買わない。 */
+  unprovenPoolClosed: boolean;
+  /** $0.10 を超える購入全体の日次枠（budget.ts OVER_DIME_*）で署名しなかった候補の数（skipped にも含まれる）。行は書かない。 */
+  overDimeCapped: number;
+  /** 上の枠に届いたか（バッチの開始時か途中）。届いた日は $0.10 を超える出品を買わない。 */
+  overDimePoolClosed: boolean;
   /**
    * 上の payerUnfunded のうち、残高を**読めなかった**チェーンの名前（2026-09-20・Issue #29 レビューの宿題 ⓒ）。
    * 読み取りはチェーンごとに 1 バッチ 1 回で、失敗もそのバッチの間は使い回すので、1 回の RPC 障害で
@@ -304,6 +325,7 @@ export type L1BatchSummary = {
 // gatewayPostBodyUnknownActive・gatewayPostBodyUnknownSignSkipped（2026-10-28/29）も出さない: Gateway 形の関門の内訳。
 // primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
 // payerUnfundedChains（2026-11-02）も出さない: どの購入元が空かは運用の内訳で、cron の応答だけに載せる。
+// unprovenCapped・unprovenPriceExcluded・unprovenPoolClosed・overDimeCapped・overDimePoolClosed（2026-11-02）も出さない: 上限の内訳で、その 1 件の計測の事実ではない。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
   | "haltReason"
@@ -313,6 +335,11 @@ export type PublicL1BatchSummary = Omit<
   | "retestCandidates"
   | "sellerRequestCandidates"
   | "sellerCapped"
+  | "unprovenCapped"
+  | "unprovenPriceExcluded"
+  | "unprovenPoolClosed"
+  | "overDimeCapped"
+  | "overDimePoolClosed"
   | "laneSkippedForTime"
   | "gatewayPostBodyUnknownActive"
   | "gatewayPostBodyUnknownSignSkipped"
@@ -1152,6 +1179,130 @@ function sellerCapExclusionSql(): SQL {
         GROUP BY 1 HAVING coalesce(sum(cp_du.spent_units::numeric), 0) >= ${domainCap}::numeric)`;
 }
 
+/**
+ * 「実績がある」の条件（budget.ts PROVEN_MIN_*）を、delivered の行の集まりに掛ける式。alias の行は delivered に絞ってある前提。
+ * `filter` を渡すと FILTER (WHERE ...) の中で数える（reserveSpend は受取先と登録ドメインを 1 回の走査で数える）。
+ */
+function provenAggregateSql(alias: string, filter?: SQL): SQL {
+  const at = sql.raw(`${alias}.attempted_at`);
+  const where = filter ? sql` FILTER (WHERE ${filter})` : sql``;
+  return sql`(count(DISTINCT (${at} AT TIME ZONE 'utc')::date)${where} >= ${PROVEN_MIN_DELIVERED_DAYS}
+    AND min(${at})${where} <= now() - make_interval(days => ${PROVEN_MIN_AGE_DAYS}))`;
+}
+
+/**
+ * 実績のない売り手の関門の、バッチごとの読み（2026-11-02・監査 H-1）。**上限を締めるのは reserveSpend** で、これは 402 を取りに
+ * 行く無駄と、行を書かずに毎回選ばれ直す形を省くだけ。実績は delivered の行が増えるほど増えるだけなので、開始時の値で足りる。
+ */
+/** x402_l1_spend_pool_daily.pool の値。 */
+const SPEND_POOL_UNPROVEN = "unproven";
+const SPEND_POOL_OVER_DIME = "over_dime";
+
+export type UnprovenGate = {
+  provenPayTos: ReadonlySet<string>;
+  provenDomains: ReadonlySet<string>;
+  /** 候補 SQL に渡す JSON（jsonb_array_elements_text で読む）。 */
+  provenPayTosJson: string;
+  provenDomainsJson: string;
+  purchaseCapUnits: bigint;
+  /** 日次合計にまだ空きがあるか。 */
+  poolOpen: boolean;
+  /** $0.10 を超える購入全体の枠にまだ空きがあるか。 */
+  overDimeOpen: boolean;
+};
+
+export async function loadUnprovenGate(db: NonNullable<ReturnType<typeof getDb>>): Promise<UnprovenGate> {
+  const delivered = sql.raw(deliveredPredicate("pv"));
+  const raw = await db.execute(sql`
+    SELECT 'payto' AS kind, ${payToNormSql(sql`pv.pay_to`)} AS unit
+    FROM x402_l1_purchases pv
+    WHERE ${delivered} AND pv.pay_to IS NOT NULL
+    GROUP BY 2 HAVING ${provenAggregateSql("pv")}
+    UNION ALL
+    SELECT 'domain' AS kind, ${registeredDomainSql(censusHostSql(sql`ve.resource_key`))} AS unit
+    FROM x402_l1_purchases pv JOIN x402_endpoints ve ON ve.id = pv.endpoint_id
+    WHERE ${delivered}
+      AND ${registeredDomainSql(censusHostSql(sql`ve.resource_key`))} NOT IN (SELECT jsonb_array_elements_text(${NO_DOMAIN_TRACK_RECORD_JSON}::jsonb))
+    GROUP BY 2 HAVING ${provenAggregateSql("pv")}
+  `);
+  const provenPayTos = new Set<string>();
+  const provenDomains = new Set<string>();
+  for (const r of rowsOf(raw)) {
+    if (typeof r.unit !== "string") continue;
+    (r.kind === "payto" ? provenPayTos : provenDomains).add(r.unit);
+  }
+  const poolRaw = await db.execute(sql`
+    SELECT pool, spent_units::text AS spent FROM x402_l1_spend_pool_daily WHERE day = (now() AT TIME ZONE 'utc')::date`);
+  const spentOf = (pool: string): bigint => {
+    const text = rowsOf(poolRaw).find((r) => r.pool === pool)?.spent;
+    return typeof text === "string" ? BigInt(text.split(".")[0]) : 0n;
+  };
+  return {
+    provenPayTos,
+    provenDomains,
+    provenPayTosJson: JSON.stringify([...provenPayTos]),
+    provenDomainsJson: JSON.stringify([...provenDomains]),
+    purchaseCapUnits: unprovenPurchaseCapUnits(),
+    poolOpen: spentOf(SPEND_POOL_UNPROVEN) < unprovenDailyCapUnits(),
+    overDimeOpen: spentOf(SPEND_POOL_OVER_DIME) < overDimeDailyCapUnits(),
+  };
+}
+
+/**
+ * カタログの宣言額を台帳の 6 桁へ換算する式。e.price_amount は先頭の accept（e.network）の桁: BNB の USD1 は 18 桁、Stellar は 7 桁、
+ * XRPL の RLUSD は小数の表記。読めなければ NULL（CASE の中でだけ numeric へ落とす: 壊れた額で文全体を落とさない）。
+ */
+function listingLedgerUnitsSql(): SQL {
+  return sql`(CASE
+    WHEN e.network = ${XRPL_MAINNET_CAIP2} AND e.price_amount ~ '^[0-9]{1,18}([.][0-9]{1,6})?$' THEN e.price_amount::numeric * 1000000
+    WHEN e.price_amount ~ '^[0-9]{1,30}$' THEN (CASE
+      WHEN e.network = ${BNB_CAIP2} THEN e.price_amount::numeric / 1000000000000
+      WHEN e.network = ${STELLAR_PUBNET_CAIP2} THEN e.price_amount::numeric / 10
+      ELSE e.price_amount::numeric END)
+  END)`;
+}
+
+/**
+ * 候補 SQL の、実績のない売り手の上限（x402_endpoints e に対する AND 句）。実績のない売り手の出品は、宣言額が読めて 1 件の上限以下で、
+ * 日次合計に空きがある日だけ候補にする。行を書かずに断る候補を外しておかないと、同じ出品が毎回選ばれてバッチの時間を食う。
+ * 読めない宣言額を外すのも同じ理由（宣言が無ければ額の照合が効かず、402 を読むまで額が分からない）。
+ */
+function unprovenExclusionSql(gate: UnprovenGate | null | undefined): SQL {
+  if (!gate) return sql``;
+  // $0.10 を超える購入全体の枠が尽きた日は、実績の有無を問わず $0.10 を超える出品を外す。読めない額は予約に任せる。
+  const overDime = gate.overDimeOpen ? sql`` : sql`AND coalesce(${listingLedgerUnitsSql()} <= ${String(OVER_DIME_THRESHOLD_UNITS)}::numeric, true)`;
+  const cheap = gate.poolOpen ? sql`${listingLedgerUnitsSql()} <= ${String(gate.purchaseCapUnits)}::numeric` : sql`false`;
+  return sql`${overDime} AND (${cheap}
+      OR ${payToNormSql(sql`e.pay_to`)} IN (SELECT jsonb_array_elements_text(${gate.provenPayTosJson}::jsonb))
+      OR ${registeredDomainSql(censusHostSql(sql`e.resource_key`))} IN (SELECT jsonb_array_elements_text(${gate.provenDomainsJson}::jsonb)))`;
+}
+
+/** listingLedgerUnitsSql の JS 版（整数の表記だけ・読めなければ null）。バッチの途中で枠が尽きたあと、402 を取りに行かないために使う。 */
+function listingLedgerUnitsOf(network: string | null, price: string | null): bigint | null {
+  if (price === null || !/^[0-9]{1,30}$/.test(price) || network === XRPL_MAINNET_CAIP2) return null;
+  const units = BigInt(price);
+  if (network === BNB_CAIP2) return units / 1_000_000_000_000n;
+  if (network === STELLAR_PUBNET_CAIP2) return units / 10n;
+  return units;
+}
+
+/** 上の句が 1 件の上限で外す出品の数（$1 を超える出品はもともと買わないので数えない）。 */
+export async function countUnprovenPriceExcluded(db: NonNullable<ReturnType<typeof getDb>>, gate: UnprovenGate): Promise<number> {
+  const raw = await db.execute(sql`
+    SELECT count(*)::int AS n FROM (
+      SELECT e.pay_to, e.resource_key FROM x402_endpoints e
+      WHERE e.status = 'active' AND e.pay_to IS NOT NULL AND e.pay_to <> '' AND lower(e.resource_url) LIKE 'https://%'
+        AND coalesce(${listingLedgerUnitsSql()} > ${String(gate.purchaseCapUnits)}::numeric
+                     AND ${listingLedgerUnitsSql()} <= ${String(MAX_PER_PURCHASE_UNITS)}::numeric, true)
+      OFFSET 0
+    ) over_cap
+    WHERE ${payToNormSql(sql`over_cap.pay_to`)} NOT IN (SELECT jsonb_array_elements_text(${gate.provenPayTosJson}::jsonb))
+      AND ${registeredDomainSql(censusHostSql(sql`over_cap.resource_key`))} NOT IN (SELECT jsonb_array_elements_text(${gate.provenDomainsJson}::jsonb))
+  `);
+  const n = rowsOf(raw)[0]?.n;
+  return typeof n === "number" ? n : Number(n);
+}
+
 /** census の売り手の単位（SQL の censusHostSql と同じ規則: 小文字・末尾の `:ポート` を落とす）。 */
 export function censusHostOf(host: string): string {
   return host.toLowerCase().replace(/:[0-9]+$/, "");
@@ -1196,8 +1347,16 @@ type Reservation =
          * `scope` はどの単位で届いたか（複数なら payto → host → domain の順で先のもの）。
          * domain は登録ドメイン（eTLD+1）ごとの上限（DOMAIN_DAILY_CAP_USD・2026-09-29 監査 6 周目）。
          */
-        | "seller_daily_cap";
+        | "seller_daily_cap"
+        /**
+         * 実績のない売り手の上限（budget.ts UNPROVEN_*・2026-11-02 監査 H-1）に届かなかった。
+         * amount は 1 件の上限、pool は全体の日次合計。
+         */
+        | "unproven_cap"
+        /** $0.10 を超える購入全体の日次枠（budget.ts OVER_DIME_*）に届かなかった。 */
+        | "over_dime_cap";
       scope?: "payto" | "host" | "domain";
+      unprovenScope?: "amount" | "pool";
     };
 
 /**
@@ -1209,9 +1368,14 @@ type Reservation =
  * Written as a single statement on purpose — production runs on neon-http,
  * where every query is its own connection and implicit transaction, so
  * multi-statement locking (advisory locks, SELECT ... FOR UPDATE) cannot span
- * a check and its write. What is left uncovered is only the sub-millisecond
- * overlap of two INSERTs whose snapshots predate each other's commit, and its
- * cost is bounded by one purchase (≤ $1), not by a second daily budget.
+ * a check and its write. What is left uncovered is the overlap of INSERTs whose
+ * snapshots predate each other's commit: the sums are not atomic, so N batches
+ * running at once can overrun by up to N - 1 purchases, and can buy one endpoint
+ * twice (2026-11-02 audit L-3: six batches without the lease reached $27 and bought
+ * six endpoints twice). Production never runs that way, because the cron lease
+ * (cron/lease-fail-closed.ts) refuses a second batch. The caps that hold
+ * without the lease are the two spend pools below: each counts on one row, and a
+ * conflicting update re-reads that row after the lock.
  */
 async function reserveSpend(input: {
   db: NonNullable<ReturnType<typeof getDb>>;
@@ -1274,6 +1438,22 @@ async function reserveSpend(input: {
   // 上限を回避する形を、持ち主の単位で締める。単位は registered-domain.ts（候補 SQL と同じ式）。
   const domainCap = String(domainDailyCapUnits());
   const payToKey = normalizedPayTo(payTo);
+  // 実績のない売り手の上限（2026-11-02 監査 H-1）。実績は受取先か登録ドメインのどちらかで足りる: 受取先の実績は受取先の $2、
+  // 登録ドメインの実績は登録ドメインの $3 がそのまま縛るので、実績のある相手 1 人が取れる額は増えない。
+  const unprovenPurchaseCap = unprovenPurchaseCapUnits();
+  const unprovenDailyCap = String(unprovenDailyCapUnits());
+  // $0.10 を超える購入全体の日次枠（2026-11-02 独立レビュー）。実績の有無を問わない。
+  const overDimeCap = String(overDimeDailyCapUnits());
+  const overDimeLine = String(OVER_DIME_THRESHOLD_UNITS);
+  const deliveredRow = sql.raw(deliveredPredicate("pv"));
+  // 予約の条件。行を書く INSERT と、数の行を足す INSERT が同じ条件を見る（断られた予約で数の行を増やさない）。
+  const reserveGates = sql`NOT dup.taken
+        AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
+        AND seller_day.payto_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
+        AND seller_day.host_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
+        AND seller_day.domain_spent + ${amountUnits}::numeric <= ${domainCap}::numeric
+        ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
+        ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${firstQuota})` : sql``}`;
   const raw = await db.execute(sql`
     WITH day AS (
       SELECT coalesce(sum(spent_units::numeric), 0) AS spent
@@ -1315,19 +1495,57 @@ async function reserveSpend(input: {
         ), 0) AS domain_spent
       FROM x402_l1_purchases sp JOIN x402_endpoints se ON se.id = sp.endpoint_id
       WHERE sp.attempted_at >= ${utcDayStart()}
+    ), target_domain AS (
+      SELECT ${registeredDomainSql(censusHostSql(sql`xp.resource_key`))} AS domain FROM x402_endpoints xp WHERE xp.id = ${endpointId}::uuid
+    ), seller_proven AS (
+      -- 実績（budget.ts PROVEN_MIN_*）: delivered の行が別々の UTC 日に 3 日以上・最初の delivered から 14 日以上。受取先か登録ドメインの片方で足りる。
+      -- 無料の共有ドメイン（NO_DOMAIN_TRACK_RECORD）は登録ドメインの実績に数えない。
+      SELECT coalesce(${provenAggregateSql("pv", sql`${payToNormSql(sql`pv.pay_to`)} = ${payToKey}`)}, false)
+             OR ((SELECT domain FROM target_domain) NOT IN (SELECT jsonb_array_elements_text(${NO_DOMAIN_TRACK_RECORD_JSON}::jsonb))
+                 AND coalesce(${provenAggregateSql("pv", sql`${registeredDomainSql(censusHostSql(sql`pe.resource_key`))} = (SELECT domain FROM target_domain)`)}, false)) AS proven
+      FROM x402_l1_purchases pv JOIN x402_endpoints pe ON pe.id = pv.endpoint_id
+      -- position は正規表現の前の絞り込み（登録ドメインはホストの部分文字列）。本番の実測で 460ms → 90ms（delivered 11,702 行）。
+      WHERE ${deliveredRow}
+        AND (${payToNormSql(sql`pv.pay_to`)} = ${payToKey} OR position((SELECT domain FROM target_domain) in lower(pe.resource_key)) > 0)
+    ), over_dime_claim AS (
+      -- $0.10 を超える購入全体の日次枠。数え方は下の枠と同じ。実績のない売り手の上限で断られる予約は数えない。
+      -- 既定では下の枠と重ならない（実績のない売り手の 1 件は $0.10 まで）。環境変数で 1 件の上限を上げた日に下の枠が断ると、
+      -- ここの数だけ残る（締まる側に倒れる・翌 UTC 日の別の行で元に戻る）。
+      INSERT INTO x402_l1_spend_pool_daily AS o (day, pool, spent_units)
+      SELECT (now() AT TIME ZONE 'utc')::date, ${SPEND_POOL_OVER_DIME}, ${amountUnits}::numeric
+      FROM day, chain_day, dup, first_day, seller_day, seller_proven
+      WHERE ${reserveGates}
+        AND ${amountUnits}::numeric > ${overDimeLine}::numeric
+        AND ${amountUnits}::numeric <= ${overDimeCap}::numeric
+        AND (seller_proven.proven OR (${amountUnits}::numeric <= ${String(unprovenPurchaseCap)}::numeric AND ${amountUnits}::numeric <= ${unprovenDailyCap}::numeric))
+      ON CONFLICT (day, pool) DO UPDATE
+        SET spent_units = o.spent_units + EXCLUDED.spent_units, updated_at = now()
+        WHERE o.spent_units + EXCLUDED.spent_units <= ${overDimeCap}::numeric
+      RETURNING 1 AS claimed
+    ), unproven_claim AS (
+      -- 実績のない売り手全体の日次合計。台帳の合計ではなく 1 行で数える: DO UPDATE は行ロックのあとで最新の値を読み直すので、
+      -- 互いの INSERT が見えない同時の予約でも超えない。条件を落ちた文は数の行を増やさない。この文が巻き戻れば数も戻る。
+      INSERT INTO x402_l1_spend_pool_daily AS u (day, pool, spent_units)
+      SELECT (now() AT TIME ZONE 'utc')::date, ${SPEND_POOL_UNPROVEN}, ${amountUnits}::numeric
+      FROM day, chain_day, dup, first_day, seller_day, seller_proven
+      WHERE ${reserveGates}
+        AND NOT seller_proven.proven
+        AND ${amountUnits}::numeric <= ${String(unprovenPurchaseCap)}::numeric
+        AND ${amountUnits}::numeric <= ${unprovenDailyCap}::numeric
+        AND (${amountUnits}::numeric <= ${overDimeLine}::numeric OR EXISTS (SELECT 1 FROM over_dime_claim))
+      ON CONFLICT (day, pool) DO UPDATE
+        SET spent_units = u.spent_units + EXCLUDED.spent_units, updated_at = now()
+        WHERE u.spent_units + EXCLUDED.spent_units <= ${unprovenDailyCap}::numeric
+      RETURNING 1 AS claimed
     ), ins AS (
       INSERT INTO x402_l1_purchases
         (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units${metaJson === null ? sql`` : sql`, raw_response_meta`}${challengeJson === null ? sql`` : sql`, challenge_402`})
       SELECT ${endpointId}::uuid, 'in_flight', ${payer}, ${network}, ${asset},
              ${payTo}, ${amountUnits}, ${amountUnits}${metaJson === null ? sql`` : sql`, ${metaJson}::jsonb`}${challengeJson === null ? sql`` : sql`, ${challengeJson}::jsonb`}
-      FROM day, chain_day, dup, first_day, seller_day
-      WHERE NOT dup.taken
-        AND day.spent + ${amountUnits}::numeric <= ${String(DAILY_BUDGET_UNITS)}::numeric
-        AND seller_day.payto_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
-        AND seller_day.host_spent + ${amountUnits}::numeric <= ${sellerCap}::numeric
-        AND seller_day.domain_spent + ${amountUnits}::numeric <= ${domainCap}::numeric
-        ${capUnits === null ? sql`` : sql`AND chain_day.spent + ${amountUnits}::numeric <= ${capUnits}::numeric`}
-        ${firstQuotaApplies ? sql`AND (NOT first_day.is_first OR first_day.n < ${firstQuota})` : sql``}
+      FROM day, chain_day, dup, first_day, seller_day, seller_proven
+      WHERE ${reserveGates}
+        AND (${amountUnits}::numeric <= ${overDimeLine}::numeric OR EXISTS (SELECT 1 FROM over_dime_claim))
+        AND (seller_proven.proven OR EXISTS (SELECT 1 FROM unproven_claim))
       RETURNING id
     )
     SELECT (SELECT id FROM ins)::text AS row_id, (SELECT taken FROM dup) AS taken,
@@ -1336,7 +1554,10 @@ async function reserveSpend(input: {
            (SELECT n FROM first_day)::text AS first_day_count,
            (SELECT payto_spent FROM seller_day)::text AS payto_spent,
            (SELECT host_spent FROM seller_day)::text AS host_spent,
-           (SELECT domain_spent FROM seller_day)::text AS domain_spent
+           (SELECT domain_spent FROM seller_day)::text AS domain_spent,
+           (SELECT spent FROM day)::text AS day_spent,
+           (SELECT proven FROM seller_proven) AS seller_proven,
+           EXISTS (SELECT 1 FROM over_dime_claim) AS over_dime_claimed
   `);
   const row = rowsOf(raw)[0];
   // No row back at all means the statement did not run as written — refuse to
@@ -1375,6 +1596,16 @@ async function reserveSpend(input: {
     // 読めなければ別枠の判定とみなす（行を書かない側へ倒す——書くと 6 日締め出す）
     if (chainSpent === null || chainSpent + BigInt(amountUnits) > chainDailyCapUnits(spendCap)) {
       return { ok: false, reason: "chain_daily_cap" };
+    }
+  }
+  // 実績のない売り手の上限。読めなければ実績のない側へ倒す（行を書かない）。日次 $25 にも届いていれば従来の断り方を残す。
+  {
+    const amount = BigInt(amountUnits);
+    if (row.seller_proven !== true && amount > unprovenPurchaseCap) return { ok: false, reason: "unproven_cap", unprovenScope: "amount" };
+    const daySpent = typeof row.day_spent === "string" && /^[0-9]+(\.[0-9]+)?$/.test(row.day_spent) ? BigInt(row.day_spent.split(".")[0]) : null;
+    if (daySpent === null || daySpent + amount <= DAILY_BUDGET_UNITS) {
+      if (amount > OVER_DIME_THRESHOLD_UNITS && row.over_dime_claimed !== true) return { ok: false, reason: "over_dime_cap" };
+      if (row.seller_proven !== true) return { ok: false, reason: "unproven_cap", unprovenScope: "pool" };
     }
   }
   return { ok: false, reason: "daily_budget_exceeded" };
@@ -1699,6 +1930,8 @@ export type L1TargetsSqlContext = {
   laneExclusions: SQL[];
   firstPurchasesSelectable: boolean;
   censusFirstSelectable: boolean;
+  /** 実績のない売り手の上限（2026-11-02）。省略または null なら候補 SQL は変わらない（締めるのは予約）。 */
+  unprovenGate?: UnprovenGate | null;
   /**
    * Test seam（2026-10-27）: false でレーン枠の前置きの絞り込み（laneNetworkPrefilterSql）を外す。DB 試験が
    * 「足しても選ぶ行と並びが同じ」を、足す前の文と並べて確かめるためだけに使う。本番の呼び手は渡さない（既定 true）。
@@ -1864,7 +2097,9 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
       AND (e.source <> ${CATALOG_SOURCE} OR e.last_seen_at > now() - make_interval(hours => ${CDP_BAZAAR_L1_FRESH_HOURS}))
       -- 売り手ごとの日次上限（budget.ts SELLER_DAILY_CAP_USD）に当日もう届いた受取先・ホストは候補にしない。
       -- 締めるのは reserveSpend の同じ 1 文（ここは 402 を取りに行く無駄を省くだけ・バッチ開始時点の値）。
-      ${sellerCapExclusionSql()}`;
+      ${sellerCapExclusionSql()}
+      -- 実績のない売り手の上限（budget.ts UNPROVEN_*）。締めるのは reserveSpend の同じ 1 文。
+      ${unprovenExclusionSql(ctx.unprovenGate)}`;
     // 購入表を 1 行ずつ引く条件（初回購入の枠・スイープ窓・冷却）。主候補の文（lazyPrimaryTargetsSql）は、購入行の無い
     // エンドポイントではこの 3 つを評価しない（答えが決まっているので）ため、coreWhere と分けて渡す。
     const purchaseWhere = sql`
@@ -2121,6 +2356,11 @@ export async function runL1Batch(
     disabledReason: null,
     payerUnfunded: 0,
     sellerCapped: 0,
+    unprovenCapped: 0,
+    unprovenPriceExcluded: null,
+    unprovenPoolClosed: false,
+    overDimeCapped: 0,
+    overDimePoolClosed: false,
     payerFundsUnreadable: [],
     payerUnfundedChains: [],
     laneFloor: {},
@@ -2165,6 +2405,19 @@ export async function runL1Batch(
     summary.haltReason = batchHalt.reason;
     summary.disabledReason = "spending_halted";
     return summary;
+  }
+
+  // 1.3 共有の日次枠の表（2026-11-02）。無いと予約の文が毎回落ちるので、1 リクエストも出さず、応答で分かる形にして降りる。
+  //     ほかの読み取りの失敗では降りない（締めるのは予約で、落ちれば買わない）。
+  try {
+    await db.execute(sql`SELECT 1 FROM x402_l1_spend_pool_daily LIMIT 1`);
+  } catch (error) {
+    if (isMissingSchemaError(error)) {
+      logServerErrorSafe("observatory.l1.spend_pool_table_missing", redactedError(error));
+      summary.disabledReason = "spend_pool_table_missing";
+      return summary;
+    }
+    logServerErrorSafe("observatory.l1.spend_pool_table_read", redactedError(error));
   }
 
   const account = privateKeyToAccount(pk as `0x${string}`);
@@ -2339,6 +2592,30 @@ export async function runL1Batch(
     censusFirstSelectable = false;
   }
 
+  // 2.7 実績のない売り手の関門（2026-11-02・監査 H-1）。読めなければ候補は絞らない（締めるのは予約で、読めない日も上限は効く）。
+  let unprovenGate: UnprovenGate | null = null;
+  try {
+    unprovenGate = await loadUnprovenGate(db);
+    summary.unprovenPoolClosed = !unprovenGate.poolOpen;
+    summary.overDimePoolClosed = !unprovenGate.overDimeOpen;
+    if (!onlyEndpointId) summary.unprovenPriceExcluded = await countUnprovenPriceExcluded(db, unprovenGate);
+  } catch (error) {
+    logServerErrorSafe("observatory.l1.unproven_gate_read", redactedError(error));
+  }
+  /** 日次合計が尽きたあとの実績のない売り手か（402 を取りに行かない）。関門を読めなかったバッチは飛ばさず、予約に任せる。 */
+  const unprovenPoolShut = (payTo: string | null, resourceUrl: string): boolean =>
+    summary.unprovenPoolClosed &&
+    unprovenGate !== null &&
+    !(payTo !== null && unprovenGate.provenPayTos.has(normalizedPayTo(payTo))) &&
+    !unprovenGate.provenDomains.has(sellerDomainOf(resourceUrl));
+
+  /** $0.10 を超える購入全体の枠が尽きたあとの、$0.10 を超える出品か（402 を取りに行かない）。読めない額は予約に任せる。 */
+  const overDimePoolShut = (network: string | null, price: string | null): boolean => {
+    if (!summary.overDimePoolClosed) return false;
+    const units = listingLedgerUnitsOf(network, price);
+    return units !== null && units > OVER_DIME_THRESHOLD_UNITS;
+  };
+
   // 3. Targets: L0-passing active endpoints. Priority sellers (verified
   //    organic demand, PRIORITY_SELLER_HOSTS) are pinned to the head and
   //    re-enter daily so their receipt series accumulates; the long tail
@@ -2354,6 +2631,7 @@ export async function runL1Batch(
     laneExclusions,
     firstPurchasesSelectable,
     censusFirstSelectable,
+    unprovenGate,
   });
   const primaryStartedAt = now();
   const rawTargets = await withDailyFallback(
@@ -2521,10 +2799,15 @@ export async function runL1Batch(
   const readArcGatewayAvailable = async (): Promise<bigint | null> => {
     if (!gatewayRead) {
       const read = options.readArcGatewayAvailable ?? (() => readArcGatewayAvailableProd(account.address));
+      // 2026-11-02 監査 L-4: Gateway の認可は署名から 7 日 + 100 秒、売り手が決済できる。残高 API に出るのは決済のあとなので、
+      // 署名済みで未決済のぶんを引いてから足りるかを見る。読めなければ残高が読めないのと同じ（買わない）。
       gatewayRead = Promise.resolve()
-        .then(() => read())
+        .then(async () => {
+          const available = await read();
+          return typeof available === "bigint" && available >= 0n ? available - (await arcGatewayOutstandingUnits(db)) : null;
+        })
         .then(
-          (v) => (typeof v === "bigint" && v >= 0n ? v : null),
+          (v) => (typeof v === "bigint" ? (v > 0n ? v : 0n) : null),
           (error) => {
             logServerErrorSafe("observatory.l1.arc_gateway_balance", error);
             return null;
@@ -2583,6 +2866,11 @@ export async function runL1Batch(
       ) {
         summary.skipped++;
         summary.sellerCapped++;
+        continue;
+      }
+      if (unprovenPoolShut(req.payTo, resolveSellerRetestUrl(req.url, account.address))) {
+        summary.skipped++;
+        summary.unprovenCapped++;
         continue;
       }
       try {
@@ -2665,6 +2953,14 @@ export async function runL1Batch(
           if (outcome.sellerCap.scope === "payto") cappedPayTos.add(outcome.sellerCap.payTo);
           else if (outcome.sellerCap.scope === "host") cappedHosts.add(outcome.sellerCap.host);
           else cappedDomains.add(outcome.sellerCap.domain);
+        } else if (outcome.kind === "unproven_capped") {
+          summary.skipped++;
+          summary.unprovenCapped++;
+          if (outcome.unprovenScope === "pool") summary.unprovenPoolClosed = true;
+        } else if (outcome.kind === "over_dime_capped") {
+          summary.skipped++;
+          summary.overDimeCapped++;
+          summary.overDimePoolClosed = true;
         } else if (outcome.kind === "payer_unfunded") {
           // 依頼 1 件だけ見送り。他の依頼と主候補は続ける。
         } else {
@@ -2749,6 +3045,16 @@ export async function runL1Batch(
     ) {
       summary.skipped++;
       summary.sellerCapped++;
+      continue;
+    }
+    if (unprovenPoolShut(candidate.payTo, candidate.resourceUrl)) {
+      summary.skipped++;
+      summary.unprovenCapped++;
+      continue;
+    }
+    if (overDimePoolShut(candidate.network, candidate.priceAmount)) {
+      summary.skipped++;
+      summary.overDimeCapped++;
       continue;
     }
     try {
@@ -2882,6 +3188,16 @@ export async function runL1Batch(
           else if (outcome.sellerCap.scope === "host") cappedHosts.add(outcome.sellerCap.host);
           else cappedDomains.add(outcome.sellerCap.domain);
         }
+      } else if (outcome.kind === "unproven_capped") {
+        // 実績のない売り手の上限。行は無い。1 件の上限なら同じ売り手の安い出品は買えるので閉じない。日次合計なら以後の実績のない売り手を飛ばす。
+        summary.skipped++;
+        summary.unprovenCapped++;
+        if (outcome.unprovenScope === "pool") summary.unprovenPoolClosed = true;
+      } else if (outcome.kind === "over_dime_capped") {
+        // $0.10 を超える購入全体の枠。行は無い。安い候補は続けて買う。
+        summary.skipped++;
+        summary.overDimeCapped++;
+        summary.overDimePoolClosed = true;
       } else if (outcome.kind === "budget_denied") {
         summary.budgetDenied++;
         // Budget exhausted for anything at this price — later candidates may
@@ -3319,7 +3635,9 @@ async function purchaseOne(input: {
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "seller_capped";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "seller_capped" | "unproven_capped" | "over_dime_capped";
+  /** kind === "unproven_capped" のとき、1 件の上限か全体の日次合計か。 */
+  unprovenScope?: "amount" | "pool";
   /** kind === "seller_capped" のとき、どちらの単位で届いたかと、その売り手（受取先・ホスト）。 */
   sellerCap?: { scope: "payto" | "host" | "domain"; payTo: string; host: string; domain: string };
   settled: boolean;
@@ -3396,13 +3714,17 @@ async function purchaseOne(input: {
         : safe.changed && typeof safe.value === "object" && safe.value !== null && !Array.isArray(safe.value)
           ? { ...(safe.value as Record<string, unknown>), ...pgSanitizedMark(["rawResponseMeta"]) }
           : safe.value;
-    await db.insert(x402L1Purchases).values({
-      endpointId: candidate.id,
-      status: "request_error",
-      payer: payerLabel,
-      ...row,
-      ...(safeMeta !== undefined ? { rawResponseMeta: safeMeta } : {}),
-    });
+    await insertRecordOrMinimal(
+      db,
+      {
+        endpointId: candidate.id,
+        status: "request_error",
+        payer: payerLabel,
+        ...row,
+        ...(safeMeta !== undefined ? { rawResponseMeta: safeMeta } : {}),
+      },
+      selectionMeta,
+    );
     invalidateDecisionCache(candidate.id); // 購入結果は判定材料（このインスタンスのみ・cache.ts 参照）
   };
 
@@ -3965,6 +4287,15 @@ async function purchaseOne(input: {
           domain: sellerDomainOf(candidate.resourceUrl),
         },
       };
+    }
+    if (reservation.reason === "unproven_cap") {
+      // 実績のない売り手の上限（2026-11-02 監査 H-1）。行を書かない: 売り手の失敗でも我々の失敗でもなく、書くと掃引の窓のあいだ
+      // 再選択されない。翌 UTC 日にまた候補になる。候補 SQL が先に外すので、ここへ来るのは日次合計が尽きた瞬間と、402 の額が宣言と違う形だけ。
+      return { kind: "unproven_capped", settled: false, spent: 0n, unprovenScope: reservation.unprovenScope ?? "pool" };
+    }
+    if (reservation.reason === "over_dime_cap") {
+      // $0.10 を超える購入全体の日次枠（2026-11-02）。行を書かない: 売り手の失敗ではなく、書くと掃引の窓のあいだ再選択されない。翌 UTC 日にまた候補になる。
+      return { kind: "over_dime_capped", settled: false, spent: 0n };
     }
     if (reservation.reason === "chain_daily_cap") {
       // そのチェーン（Solana・Arc）の別枠に届かなかった。行を書かない——書くとこの売り手は
@@ -4811,6 +5142,44 @@ function isDuplicateTxHashError(error: unknown): boolean {
 }
 
 /**
+ * Gateway で署名したまま決済を確かめていない額（有効な認可の窓の内側）。settled の行は残高 API の側で引かれている。
+ * settle_claimed も入るので、決済済みのぶんを二重に引くことはあるが、足りない側へ倒れるだけ。
+ */
+async function arcGatewayOutstandingUnits(db: NonNullable<ReturnType<typeof getDb>>): Promise<bigint> {
+  const raw = await db.execute(sql`
+    SELECT coalesce(sum(spent_units::numeric), 0)::text AS outstanding
+    FROM x402_l1_purchases
+    WHERE raw_response_meta->>'circleGatewayRail' = 'true'
+      AND status <> 'settled'
+      AND attempted_at > now() - make_interval(secs => ${ARC_GATEWAY_MAX_TIMEOUT_SECONDS}::double precision)`);
+  const text = rowsOf(raw)[0]?.outstanding;
+  if (typeof text !== "string") throw new Error("gateway outstanding read returned no row");
+  return BigInt(text.split(".")[0]);
+}
+
+/**
+ * 署名の前の結果の行を書く（2026-11-02 監査 M-1）。売り手の文字列で書き込みが落ちても、status だけの行を残す: 行が無いと窓にも冷却にも
+ * 入らず、同じ売り手が毎回選ばれてバッチの持ち時間を使える。2 回目も落ちたら投げる（DB の障害を握りつぶさない）。
+ */
+export async function insertRecordOrMinimal(
+  db: NonNullable<ReturnType<typeof getDb>>,
+  values: typeof x402L1Purchases.$inferInsert,
+  selectionMeta: Record<string, unknown> | null | undefined,
+): Promise<void> {
+  try {
+    await db.insert(x402L1Purchases).values(values);
+  } catch (error) {
+    logServerErrorSafe("observatory.l1.record_minimal", redactedError(error));
+    await db.insert(x402L1Purchases).values({
+      endpointId: values.endpointId,
+      status: values.status,
+      payer: values.payer,
+      rawResponseMeta: { ...(selectionMeta ?? {}), phase: "record", reason: "record_write_failed" },
+    });
+  }
+}
+
+/**
  * 購入ごとの証拠（challenge_402 / payment_payload）を組む（2026-10-27）。組み立ての不具合で購入を止めない:
  * 例外は印だけの記録にして、ログには列の名前と誤りの型だけを出す（中身・ヘッダーの値は出さない）。
  * 書き込みの失敗は別で、呼び手の INSERT / UPDATE ごと落ちる（予約・auth_nonce と同じ扱い）。
@@ -4854,16 +5223,34 @@ export function pgSafeText(value: string): string {
     .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD");
 }
 
-/** pgSafeText を JSON の値の全ての文字列（キーを含む）に掛ける。文字列以外の葉はそのまま。 */
-export function pgSafeJson<T>(value: T): T {
-  if (typeof value === "string") return pgSafeText(value) as T;
-  if (Array.isArray(value)) return value.map((v) => pgSafeJson(v)) as T;
-  if (value !== null && typeof value === "object" && !(value instanceof Date)) {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[pgSafeText(k)] = pgSafeJson(v);
-    return out as T;
+/** 深さの上限（json-depth.ts）で打ち切った値の代わりに置く文字列。 */
+const PG_SAFE_DEPTH_MARK = "[nesting over the limit]";
+
+function pgSafeWalk(value: unknown, depth: number, state: { changed: boolean }): unknown {
+  if (typeof value === "string") {
+    const safe = pgSafeText(value);
+    if (safe !== value) state.changed = true;
+    return safe;
   }
-  return value;
+  if (value === null || typeof value !== "object" || value instanceof Date) return value;
+  // 2026-11-02 監査 M-1: 再帰は深さで打ち切る。無制限だと深い 402 で RangeError になり、行が書かれない。
+  if (depth >= MAX_SELLER_JSON_DEPTH) {
+    state.changed = true;
+    return PG_SAFE_DEPTH_MARK;
+  }
+  if (Array.isArray(value)) return value.map((v) => pgSafeWalk(v, depth + 1, state));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    const key = pgSafeText(k);
+    if (key !== k) state.changed = true;
+    out[key] = pgSafeWalk(v, depth + 1, state);
+  }
+  return out;
+}
+
+/** pgSafeText を JSON の値の全ての文字列（キーを含む）に掛ける。文字列以外の葉はそのまま。深さの上限を超えた部分は印に置き換える。 */
+export function pgSafeJson<T>(value: T): T {
+  return pgSafeWalk(value, 0, { changed: false }) as T;
 }
 
 /**
@@ -4871,8 +5258,9 @@ export function pgSafeJson<T>(value: T): T {
  * raw_response_meta.pgSanitized に印を残す——台帳の文字列が売り手の原文そのものではないことを後から言えるように。
  */
 export function pgSafeJsonChanged<T>(value: T): { value: T; changed: boolean } {
-  const out = pgSafeJson(value);
-  return { value: out, changed: JSON.stringify(out) !== JSON.stringify(value) };
+  const state = { changed: false };
+  const out = pgSafeWalk(value, 0, state) as T;
+  return { value: out, changed: state.changed };
 }
 
 /** pgSanitized の印（変わった列の名前）。変わっていなければ空。 */

@@ -17,6 +17,7 @@
 // 支払いヘッダー 1 本の値のデコード結果だけ。他の要求ヘッダー・API キー・RPC の URL・鍵は受け取りもしない。
 // 列ごとに PURCHASE_EVIDENCE_MAX_BYTES で切り詰め、切ったら `truncated` の印を付ける。
 // ============================================================
+import { MAX_SELLER_JSON_DEPTH, parseSellerJson } from "./json-depth";
 import { parseChallenge } from "./x402-payer";
 
 /** 1 列あたりの上限（JSON に直したときの UTF-8 バイト数）。 */
@@ -24,6 +25,9 @@ export const PURCHASE_EVIDENCE_MAX_BYTES = 32 * 1024;
 
 /** 記録の形の版。読み手が形の変化を見分けるため。 */
 export const PURCHASE_EVIDENCE_VERSION = 1;
+
+/** 深さの上限で打ち切った値の代わりに置く文字列。 */
+export const PURCHASE_EVIDENCE_DEPTH_MARK = "[nesting over the limit]";
 
 type Json = Record<string, unknown>;
 
@@ -42,16 +46,17 @@ function pgSafeText(value: string): string {
     .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "�");
 }
 
-function pgSafe(value: unknown): unknown {
+/** 深さの上限で打ち切る（2026-11-02 監査 L-1）。深い値で例外にすると、列が印だけになって証拠が消える。 */
+function pgSafe(value: unknown, depth = 0): unknown {
   if (typeof value === "string") return pgSafeText(value);
-  if (Array.isArray(value)) return value.map((v) => pgSafe(v));
-  if (value !== null && typeof value === "object" && !(value instanceof Date)) {
-    const out: Json = {};
-    for (const [k, v] of Object.entries(value as Json)) out[pgSafeText(k)] = pgSafe(v);
-    return out;
-  }
-  return value;
+  if (value === null || typeof value !== "object" || value instanceof Date) return value;
+  if (depth >= MAX_SELLER_JSON_DEPTH) return PURCHASE_EVIDENCE_DEPTH_MARK;
+  if (Array.isArray(value)) return value.map((v) => pgSafe(v, depth + 1));
+  const out: Json = {};
+  for (const [k, v] of Object.entries(value as Json)) out[pgSafeText(k)] = pgSafe(v, depth + 1);
+  return out;
 }
+
 
 /** 文字列を UTF-8 で maxBytes 以下に切る（文字の途中で切らない）。 */
 function utf8Prefix(text: string, maxBytes: number): string {
@@ -114,7 +119,7 @@ export function capPurchaseEvidence(value: Json, bulkyKey: string, maxBytes = PU
 
 function decodeBase64Json(value: string): unknown {
   try {
-    return JSON.parse(Buffer.from(value, "base64").toString("utf8"));
+    return parseSellerJson(Buffer.from(value, "base64").toString("utf8"));
   } catch {
     return undefined;
   }
@@ -122,7 +127,7 @@ function decodeBase64Json(value: string): unknown {
 
 function decodeBase64UrlJson(value: string): unknown {
   try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    return parseSellerJson(Buffer.from(value, "base64url").toString("utf8"));
   } catch {
     return undefined;
   }
@@ -156,7 +161,7 @@ export function x402ChallengeEvidence(input: {
   let bodyDoc: unknown = undefined;
   if (!headerParses && input.bodyText) {
     try {
-      bodyDoc = JSON.parse(input.bodyText);
+      bodyDoc = parseSellerJson(input.bodyText);
     } catch {
       bodyDoc = undefined;
     }

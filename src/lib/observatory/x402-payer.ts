@@ -34,6 +34,7 @@
 //    live sellers still speak it, so both are supported and the CHALLENGE
 //    decides which we answer with.
 // ============================================================
+import { parseSellerJson } from "./json-depth";
 import { randomBytes } from "node:crypto";
 import { isAddress, type Account } from "viem";
 import { chainLabel, publicChainLabel } from "./chains";
@@ -517,16 +518,16 @@ export function parseChallenge(
   const headerB64 = input.headers.get("PAYMENT-REQUIRED");
   if (headerB64) {
     try {
-      candidates.push(JSON.parse(Buffer.from(headerB64, "base64").toString("utf8")));
+      candidates.push(parseSellerJson(Buffer.from(headerB64, "base64").toString("utf8")));
     } catch {
       /* fall through to body */
     }
   }
   if (input.bodyText) {
     try {
-      candidates.push(JSON.parse(input.bodyText));
+      candidates.push(parseSellerJson(input.bodyText));
     } catch {
-      /* not JSON */
+      /* not JSON, or nested deeper than MAX_SELLER_JSON_DEPTH (the row is written as an unreadable 402) */
     }
   }
 

@@ -65,6 +65,9 @@ if (!TEST_DB) {
       restore("L1_SELLER_DAILY_CAP_USD", saved.cap);
       restore("L1_DOMAIN_DAILY_CAP_USD", saved.dcap);
     });
+    // 実績のない売り手の上限（2026-11-02）を開けて、このファイルが測る既存の上限だけを見る。
+    process.env.L1_UNPROVEN_PURCHASE_CAP_USD = "1";
+    process.env.L1_UNPROVEN_DAILY_CAP_USD = "25";
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
     delete process.env.L1_SELLER_DAILY_CAP_USD; // 既定 $2

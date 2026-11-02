@@ -13,6 +13,69 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 L1 spend pools: rollout order, and what a missing table looks like
+
+- **What**: `runL1Batch` checks for `x402_l1_spend_pool_daily` before any request goes out. If the table is missing it returns with `disabledReason: "spend_pool_table_missing"` and logs `observatory.l1.spend_pool_table_missing`, so it still does not buy, and the cron response says why.
+- **Why**: Independent review of the cap changes. Without this check a missing table showed up only as one logged failure per candidate.
+- **Impact**: **Order: run `scripts/sql/2026-11-02-l1-spend-pool-daily.sql` on production first, check the table in `information_schema`, then push.** To roll back, revert the code first; the table can be dropped afterwards. A row on the table for the current UTC day starts at the first purchase after deploy, so spending earlier that day is not counted in the pools.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 L1 daily pool for purchases above $0.10
+
+- **What**: Purchases above $0.10 share $15 per UTC day (`OVER_DIME_DAILY_CAP_USD_DEFAULT`, `L1_OVER_DIME_DAILY_CAP_USD`), with or without a track record. Exactly $0.10 is outside it. It is counted on one row in the reservation statement, in the same way as the shared total for sellers without a track record. The table is `x402_l1_spend_pool_daily`, one row per pool and UTC day. Candidates above $0.10 are left out once the pool is reached, and refused candidates write no row. The cron response gains `overDimeCapped` and `overDimePoolClosed`; `publicL1Summary` leaves them out. The methodology page describes the pool.
+- **Why**: Independent review of the cap changes: the caps for sellers without a track record do not bind once a seller has one.
+- **Impact**: Read from production on 2026-11-02 at 01:17Z, last 30 days: spend above $0.10 from sellers with a track record peaked at $12.72 in one day, so $15 would have stopped no such row. Existing caps and values are unchanged.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 Shared suffixes earn no domain track record
+
+- **What**: `NO_DOMAIN_TRACK_RECORD` in `registered-domain.ts` lists suffixes where different owners count as one unit: `POOLED_SUFFIXES` and five more seen in the production ledger. Delivered rows there no longer give a track record as a domain, in the candidate read and in the reservation. A payee track record still counts. New tests lower the caps after the candidate query, so the reservation statement alone has to refuse, and they were checked by breaking each condition in turn.
+- **Why**: Independent review of the cap changes.
+- **Impact**: Read from production on 2026-11-02 at 01:17Z: 10 of those suffixes had a domain track record, which no longer counts. 769 payees and 704 domains still have one.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 Gateway balance gate subtracts unsettled authorizations
+
+- **What**: The Gateway balance read in `runL1Batch` subtracts Gateway rows that are not `settled` and are inside the 7 days + 100 seconds authorization window. An unreadable sum counts as an unreadable balance, so the rail does not buy. `docs/INCIDENT_RUNBOOK.md` states that the spending halt cannot cancel these authorizations and gives the query for the amount. The `reserveSpend` comment now states the measured overrun without the cron lease.
+- **Why**: Audit findings L-4 and L-3 of 2026-11-02.
+- **Impact**: The gate only gets stricter. Read from production on 2026-11-02 at 01:17Z, $0.30 was in that state (3 `settle_failed` rows). No new payment path. L-3 itself stays open: the lease is what prevents it, and the audit read of 2026-11-02 found 0 days over $25 in 90 days.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 Gateway price ceiling converts the declared price to ledger digits
+
+- **What**: `selectArcGatewayAccept` converts the catalog price to 6 digits by declared network (`declaredLedgerUnits`): BNB from 18, Stellar from 7. A price that does not divide evenly, or a network whose digits are not known, closes the other-chain exemption, so the accept must equal the declared price.
+- **Why**: Audit finding L-2 of 2026-11-02. The ceiling compared the raw declared number to a 6-digit amount.
+- **Impact**: On 2026-11-02 all 48 Gateway rows in production were declared on Arc itself, which takes the exact-match path, so none would have changed. The $1 ceiling and seller caps are unchanged.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 Deeply nested 402 documents are unreadable and always leave a row
+
+- **What**: New `src/lib/observatory/json-depth.ts` with a limit of 64 levels. `parseChallenge`, the MPP challenge decode and the purchase evidence read seller JSON through it, so a document over the limit is an unreadable 402 (`no_eligible_accept`, the same as bad JSON). `pgSafeJson` and the evidence cleaner stop at the limit and put a mark in place of the rest; `pgSafeJsonChanged` tracks changes while walking instead of comparing `JSON.stringify` output. `record` now goes through `insertRecordOrMinimal`: if the write fails, it writes a row with the status alone. A second failure still throws.
+- **Why**: Audit findings M-1 and L-1 of 2026-11-02. Deep nesting could stop a row from being written, so the same listing kept being chosen, and could leave the two evidence columns with only a marker.
+- **Impact**: On 2026-11-02 the deepest stored 402 in production was 22 levels including our envelope (1,343 rows in `challenge_402`), so no seller reached the limit at that read. No change to budgets, caps, signing or decision rules.
+- **Commits**: this entry.
+
+---
+
+## 2026-11-02 L1 caps for sellers without a track record
+
+- **What**: A seller has a track record once its payee or registered domain has delivered purchases (`deliveredPredicate`) on 3 or more different UTC days and the first is 14 or more days old (`PROVEN_MIN_DELIVERED_DAYS`, `PROVEN_MIN_AGE_DAYS`). Without one, a purchase is limited to $0.10 (`L1_UNPROVEN_PURCHASE_CAP_USD`) and such sellers share $3 per UTC day (`L1_UNPROVEN_DAILY_CAP_USD`). Both are checked in the one reservation statement. The shared total is one row per day, because a conflicting update re-reads the row after the lock, which summing ledger rows does not. Candidate SQL leaves out listings over the cap or with an unreadable price, and all unproven sellers once the shared total is reached. Refused candidates write no row. The cron response gains `unprovenCapped`, `unprovenPriceExcluded` and `unprovenPoolClosed`; `publicL1Summary` leaves them out. The methodology page describes the caps.
+- **Why**: The security audit of 2026-11-02 (H-1) found that the existing per-owner caps do not bound one person who can create many free subdomains. Existing caps and values are unchanged ($1, $25, $2, $2, $3).
+- **Impact**: See the rollout entry above for the order of SQL and push. Read from production on 2026-11-02 at 01:17Z, last 30 days, 7,944 spend rows, each judged by the track record it had at that time: 2,628 rows were from sellers without one, and 58 of those were above $0.10 (census 25, retest 14, primary 19). At or under $0.10, the most any one day spent on such sellers was $2.50; a $2 shared total would have stopped 38 rows and $3 stopped 0. At that read, 735 of 117,473 active listings were left out (633 by price, 102 by unreadable price), and 121 seller domains had no listing the cap allows (66 priced above $0.10 up to $1, 19 above $1, 36 with no readable price), so they are not bought until the cap is changed for them. `DECISION_RULES_VERSION` does not move: no rule changed, and a listing not bought stays `l1_not_attempted`. A released reservation does not give back its share of the row for that UTC day; the same read found 0 released reservations with an amount in those 30 days.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 Public wording matches what is measured: delivered, active, settled through Gateway, chain lists
 
 - **What**: Fixes the public-page wording audit (`output/1102/audit/public_pages.md`, HIGH 7, MEDIUM 22 of 23, LOW 8). (1) `/`, `/faq`, `/blog`, methodology and the vocabulary stop saying a response "arrived" or that delivered is about "the goods": delivered is settled plus a non-empty 2xx other than 202, and the content is not checked. "Paid is on chain. Delivered is not." is unchanged. (2) The site description in `src/app/layout.tsx`, `manifest.ts` and `package.json` is now "vet402 pays x402 APIs itself and publishes which paid requests came back with a non-empty 2xx, so you can check a seller before your agent pays it." The home, Abstract, README and `public/llms.txt` summaries drop "verifies fulfillment against the seller's own declaration" as well. `layout.tsx` is off the frozen list in `tests/seo-audit-1026.test.ts`: the `/rwa` and Tokyo freezes ended on 2026-10-23, so `/rwa`'s inherited OG card now carries the new sentence too. (3) `active` is defined as "not closed" and gets its own vocabulary term. `/`, `/observatory`, `/observatory/state`, `/impact`, `/playground`, `/sellers` and `/accuracy` stop saying "currently listed", and the first four also print `latestSnapshot.fetchedCount`, the count seen in the latest full read of the Bazaar. The unrendered `LedgerSection` is removed. (4) New `src/lib/observatory/settlement-assets.ts`: chain, asset and binding lists are built from one table, which adds Arbitrum One and Avalanche C-Chain, and a test compares the table with `EVM_PAY_CHAINS`. (5) Circle Gateway rows: the record page and `GET .../purchases` show the batch transaction (new `gatewayBatchTx`, from `raw_response_meta.circleGateway.batchTx`), and the definitions say how Gateway settles. (6) `l1.settledCircleGateway` is new in `/api/v1/observatory/state`, for the `/impact` split. (7) `BenchmarkReport` gains `lastScanAddresses` and `lastBroadScan`, so `/accuracy` no longer shows a one-address scan as the latest pass. (8) `/docs/api`, `/legal/terms` (Last updated moved to November 2), `/partners`, `/live`, `/demo`, `/decisions`, `/operations`, `/observatory/state` header (branches on `complete`) and the home chain table (settled, not delivered, with held 4xx beside it).

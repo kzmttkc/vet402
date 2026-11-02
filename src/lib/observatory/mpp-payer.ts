@@ -26,6 +26,7 @@
 // 資金の関門は payer-funds.ts（USDC.e の balanceOf）、日次の別枠は budget.ts の
 // CHAIN_DAILY_CAPS.tempo（既定 $2・全チェーン共有の $25 の内側）、予約は l1-runner.reserveSpend の 1 文。
 // ============================================================
+import { parseSellerJson } from "./json-depth";
 import { isAddress, keccak256, toBytes, type Account } from "viem";
 import { MAX_PER_PURCHASE_UNITS, type ChallengeAccept } from "./x402-payer";
 
@@ -111,7 +112,7 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 export function decodeBase64UrlJson(value: string): unknown {
   try {
     const text = Buffer.from(value, "base64url").toString("utf8");
-    return JSON.parse(text);
+    return parseSellerJson(text);
   } catch {
     return undefined;
   }

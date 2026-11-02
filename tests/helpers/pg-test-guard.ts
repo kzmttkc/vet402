@@ -21,4 +21,8 @@ export function assertTestDatabaseIsNotProduction(url: string | undefined): void
         "use a local or CI database (scripts/report-test-gates.mjs に手順)",
     );
   }
+  // 共有の日次枠（2026-11-02）は UTC 日ごとの 1 行に積もり、各テストの TRUNCATE は台帳だけを消す。既定のままだと、
+  // 前のテストの支出で後のテストが落ちる。この上限を測るテスト（l1-unproven-cap.pg.test.ts）は自分で消して既定へ戻す。
+  process.env.L1_UNPROVEN_DAILY_CAP_USD ??= "25";
+  process.env.L1_OVER_DIME_DAILY_CAP_USD ??= "25";
 }

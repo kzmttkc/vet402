@@ -67,6 +67,9 @@ if (!TEST_DB) {
       restore("OBSERVATORY_SOLANA_SECRET_KEY", saved.solKey);
       restore("L1_LANE_FLOOR_PER_RUN", saved.floor);
     });
+    // 実績のない売り手の上限（2026-11-02）を開けて、このファイルが測る既存の上限だけを見る。
+    process.env.L1_UNPROVEN_PURCHASE_CAP_USD = "1";
+    process.env.L1_UNPROVEN_DAILY_CAP_USD = "25";
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
     process.env.OBSERVATORY_ARC_L1_ENABLED = "true";

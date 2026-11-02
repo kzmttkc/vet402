@@ -12,6 +12,8 @@ import { chainDailyCapUnits, type CappedChain } from "./budget";
 import {
   ARC_CAIP2,
   ARC_USDC,
+  BNB_CAIP2,
+  bnbLedgerUnits,
   EVM_PAY_CHAINS,
   encodePaymentHeader,
   hasSignableEnabledEvmAccept,
@@ -221,6 +223,26 @@ function declaredUnitsOf(amount: string | null): bigint | null {
   }
 }
 
+/** 宣言額の桁が USDC と同じ 6 桁と分かっている、EVM_PAY_CHAINS 以外の表記（カタログの e.network の生の値）。 */
+const SIX_DIGIT_DECLARED_NETWORKS: ReadonlySet<string> = new Set([
+  "base",
+  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+  "eip155:4217",
+]);
+
+/**
+ * カタログの宣言額を台帳の 6 桁へ換算する（2026-11-02 監査 L-2）。宣言額は先頭の accept（declaredNetwork）の桁で書かれている:
+ * BNB の USD1 は 18 桁・Stellar は 7 桁。換算できない宣言（割り切れない・桁の分からない network）は null で、別チェーンの免除を開かない。
+ */
+export function declaredLedgerUnits(amount: string | null, declaredNetwork: string | null): bigint | null {
+  const units = declaredUnitsOf(amount);
+  if (units === null || declaredNetwork === null) return null;
+  if (declaredNetwork === BNB_CAIP2) return bnbLedgerUnits(units);
+  if (declaredNetwork === "stellar:pubnet") return units % 10n === 0n ? units / 10n : null;
+  if (SIX_DIGIT_DECLARED_NETWORKS.has(declaredNetwork) || EVM_PAY_CHAINS.some((c) => c.caip2 === declaredNetwork)) return units;
+  return null;
+}
+
 function gatewayTimeoutTooLong(raw: unknown): boolean {
   const rec = asRecord(raw);
   if (!rec || rec.scheme !== "exact" || rec.network !== ARC_CAIP2) return false;
@@ -267,7 +289,7 @@ export function selectArcGatewayAccept(
 
   const declaredNetwork = options.declaredNetwork ?? null;
   const onDeclaredArc = declaredNetwork === ARC_CAIP2;
-  const declaredUnits = declaredUnitsOf(options.declaredAmount);
+  const declaredUnits = declaredLedgerUnits(options.declaredAmount, declaredNetwork);
   const relativeCap = declaredUnits === null ? null : declaredUnits < MAX_PER_PURCHASE_UNITS ? declaredUnits : MAX_PER_PURCHASE_UNITS;
 
   for (const accept of eligible) {

@@ -46,6 +46,17 @@ SELECT attempted_at, status, spent_units, amount_units, pay_to, tx_hash
 FROM x402_l1_purchases ORDER BY attempted_at DESC LIMIT 20;
 ```
 
+**Circle Gateway の認可は停止スイッチで取り消せない。** 署名から最大 7 日と 100 秒、売り手は決済に出せる。
+止めても未決済のぶんはその間動きうる。額はこの SQL で読める（購入元の残高の関門も同じ額を引いて見ている）。
+
+```sql
+SELECT status, count(*), sum(spent_units::numeric) / 1e6 AS usd
+FROM x402_l1_purchases
+WHERE raw_response_meta->>'circleGatewayRail' = 'true' AND status <> 'settled'
+  AND attempted_at > now() - interval '7 days 100 seconds'
+GROUP BY 1;
+```
+
 停止で落ちた行は `status='halted'` / `spent_units='0'`（署名していない）。
 `in_flight` が残っていれば「予約は書かれたが結果が書かれなかった」——30 分後の
 孤児掃除が拾うが、金が動いた可能性のある行なので個別に照合する。

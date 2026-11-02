@@ -152,6 +152,87 @@ export function domainDailyCapUnits(): bigint {
   return BigInt(Math.round(usd * 1_000_000));
 }
 
+/**
+ * 実績のない売り手の 1 件の上限（2026-11-02 資金経路の監査 H-1）。受取先 $2・ホスト $2・登録ドメイン $3 は「1 人の持ち主」の
+ * 上限だが、無料のサブドメイン（vercel.app など）は 1 つ下を別の持ち主に数えるので、名前を増やすほど枠が増える。そこで
+ * 「実績のない売り手」全体に、1 件の上限とこの下の日次合計の上限を足す。既存の上限（1 件 $1・日次 $25・$2・$3）は変えない。
+ *
+ * 「実績」は PROVEN_MIN_DELIVERED_DAYS と PROVEN_MIN_AGE_DAYS で決める。判定は台帳の 1 文（l1-runner の seller_proven）。
+ *
+ * 本番の実測（2026-11-02 に読んだ直近 30 日の支出行 7,944 行・各行をその時点の実績で分けた）: 実績のない売り手への支出は
+ * 2,628 行。$0.10 を超えるのは 58 行で全支出行の 0.7%（census 25・retest 14・主候補 19）。
+ * 環境変数 L1_UNPROVEN_PURCHASE_CAP_USD で変えられる（0 で実績のない売り手には払わない・上限は 1 件 $1）。壊れた値は既定へ倒す。
+ */
+export const UNPROVEN_PURCHASE_CAP_USD_DEFAULT = 0.1;
+
+/**
+ * 実績のない売り手全体の 1 UTC 日の合計の上限（2026-11-02 同上）。数えるのは reserveSpend の同じ 1 文の中の、
+ * 1 行の数（x402_l1_spend_pool_daily）。台帳の合計を読むだけでは同時の 2 文が互いの INSERT を見ないので超える
+ * （監査 L-3 の再現）。行の更新は行ロックのあとで最新の値を読み直すので、同時でも超えない。
+ *
+ * 本番の実測（同じ 30 日・1 件 $0.10 の上限を掛けたあと）: 1 日の最大は $2.50。$3 で止まる行は 0、$2 では 38 行。
+ * 環境変数 L1_UNPROVEN_DAILY_CAP_USD で変えられる（0 で実績のない売り手には払わない・上限は日次 $25）。壊れた値は既定へ倒す。
+ */
+export const UNPROVEN_DAILY_CAP_USD_DEFAULT = 3;
+
+/**
+ * 実績の定義（2026-11-02）: 受取先または登録ドメインの単位で、delivered の行（delivery.ts の deliveredPredicate）が
+ * **別々の UTC 日に PROVEN_MIN_DELIVERED_DAYS 日以上**あり、**最初の delivered から PROVEN_MIN_AGE_DAYS 日以上**たっていること。
+ * 1 回の配達でも、同じ日の配達の山でも、数日の配達でも抜けられない。同じ出品の買い直しは掃引の窓（6 日）ごとなので、
+ * 出品が 1 つの正直な売り手でも 14 日で 3 回に届く。
+ */
+export const PROVEN_MIN_DELIVERED_DAYS = 3;
+export const PROVEN_MIN_AGE_DAYS = 14;
+
+/**
+ * $0.10 を超える購入全体の 1 UTC 日の上限（2026-11-02 独立レビュー）。実績のある売り手にも掛かる。上の 2 つは実績のない売り手だけを
+ * 縛るので、実績を作ったあとの高い出品は $2・$3 と日次 $25 にしか当たらない。支出が大きいのはこの帯なので、ここに枠を置く。
+ * 数え方は実績のない売り手の枠と同じ（x402_l1_spend_pool_daily の 1 行）。ちょうど $0.10 は数えない。
+ *
+ * 本番の実測（2026-11-02 に読んだ直近 30 日）: 実績のある売り手への $0.10 超は 1 日の最大が $12.72（10/07 は全体で $15.62 だが、
+ * その差は実績のない売り手で、1 件の上限で止まる）。環境変数 L1_OVER_DIME_DAILY_CAP_USD で変えられる（0 で $0.10 超を買わない・
+ * 上限は日次 $25）。壊れた値は既定へ倒す。
+ */
+export const OVER_DIME_DAILY_CAP_USD_DEFAULT = 15;
+/** 上の枠に数える境目（USDC 基本単位）。環境変数では変えない: 実績のない売り手の 1 件の上限を下げても、この帯は動かさない。 */
+export const OVER_DIME_THRESHOLD_UNITS = 100_000n;
+
+/** $0.10 を超える購入全体の日次の上限（USDC 基本単位）。壊れた値は既定へ倒し、共有の日次上限で頭打ち。 */
+export function overDimeDailyCapUnits(): bigint {
+  const raw = process.env.L1_OVER_DIME_DAILY_CAP_USD;
+  let usd = OVER_DIME_DAILY_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, DAILY_BUDGET_USD);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
+/** 実績のない売り手の 1 件の上限（USDC 基本単位）。壊れた値は既定へ倒し、1 件 $1 で頭打ち。 */
+export function unprovenPurchaseCapUnits(): bigint {
+  const raw = process.env.L1_UNPROVEN_PURCHASE_CAP_USD;
+  let usd = UNPROVEN_PURCHASE_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, 1);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
+/** 実績のない売り手全体の日次の上限（USDC 基本単位）。壊れた値は既定へ倒し、共有の日次上限で頭打ち。 */
+export function unprovenDailyCapUnits(): bigint {
+  const raw = process.env.L1_UNPROVEN_DAILY_CAP_USD;
+  let usd = UNPROVEN_DAILY_CAP_USD_DEFAULT;
+  if (raw !== undefined && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) usd = n;
+  }
+  usd = Math.min(usd, DAILY_BUDGET_USD);
+  return BigInt(Math.round(usd * 1_000_000));
+}
+
 /** 別枠を持つチェーン。Base は持たない（共有 $25 だけ）。 */
 export type CappedChain = "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway" | "avalanche";
 
