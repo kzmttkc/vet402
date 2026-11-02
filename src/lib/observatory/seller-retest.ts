@@ -36,7 +36,9 @@ export type SellerRequestUnpaid = {
 /** raw_response_meta.selection = "seller_request" */
 export const SELLER_REQUEST_SELECTION = "seller_request" as const;
 
-const SELLER_RESPONSE_HEADERS = ["x-goldsky-x402-balance"] as const;
+// 2026-11-02 Goldsky（Elliott）: 支払いの扱いは x-goldsky-x402-funding で読む（settled / credit / pending / unpaid）。売り手の申告なので
+// 行の status は変えない。保存するだけ。
+const SELLER_RESPONSE_HEADERS = ["x-goldsky-x402-balance", "x-goldsky-x402-funding"] as const;
 
 export function sellerResponseHeadersOf(headers: Headers): Record<string, string> | null {
   const out: Record<string, string> = {};

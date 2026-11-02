@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Keep the funding header Goldsky sends on paid calls
+
+- **What**: `sellerResponseHeadersOf` also stores `x-goldsky-x402-funding` (`settled`, `credit`, `pending` or `unpaid`) next to `x-goldsky-x402-balance`.
+- **Why**: Goldsky told vet402 this header is how to read balance-paid calls, which carry no `PAYMENT-RESPONSE`. It is the seller's statement, so it is only stored.
+- **Impact**: One more key in `responseHeaders`. No status changes.
+
 ## 2026-11-02 Late settlement read on BNB locates its blocks and decides from the authorization state
 
 - **What**: `makeBnbTransferReader` estimates at 0.45 seconds per block (measured 0.4502 over the last 1,000,000 blocks) and corrects from the real time between the block it read and the head. The margin around the window is 200 blocks. The BNB lane reads `authorizationState` before it reads logs: an unused authorization decides the row without logs, and a used one is marked for another read behind the unread rows. `index-settlements` passes `readAuthorizationState`.
