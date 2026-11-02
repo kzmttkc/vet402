@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Late settlement read on BNB locates its blocks and decides from the authorization state
+
+- **What**: `makeBnbTransferReader` estimates at 0.45 seconds per block (measured 0.4502 over the last 1,000,000 blocks) and corrects from the real time between the block it read and the head. The margin around the window is 200 blocks. The BNB lane reads `authorizationState` before it reads logs: an unused authorization decides the row without logs, and a used one is marked for another read behind the unread rows. `index-settlements` passes `readAuthorizationState`.
+- **Why**: Purchases that got no answer can settle later. The BNB read stopped before it asked for logs, so those rows kept `settle_failed` without a transaction. An authorization lasts at most 120 seconds and a row reaches this step at least 35 minutes after the attempt, so an unused one will stay unused. Linking still needs the authorization nonce in the receipt, and the verifier still decides `settled`.
+- **Impact**: Reads, plus the `lateChainRead` mark and the link on rows that match. No payer flag, budget or contract changes.
+
 ## 2026-11-02 Stellar architecture document and day files for the SCF #46 submission
 
 - **What**: `docs/stellar/technical-architecture.md` moves to the figures as of 2026-11-02 09:13 UTC (210 attempts, 197 settled and delivered, 13 hosts, 8 hosts and 3 payees on the settled rows, Tranche 1 D2 count 197, roots for the 14 days from 2026-10-18 through 2026-10-31). It adds the testnet reset of 2026-12-16 with the recovery steps, makes T1 D3 a public page, adds a lost writer key and an expired root to the threat list and the failure modes, and aligns the T1 D1 check with the submission text. The 12 day files for 2026-10-20 through 2026-10-31 are copied byte for byte from the job's state directory into `docs/stellar/days/`.

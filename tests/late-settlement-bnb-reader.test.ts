@@ -21,13 +21,14 @@ const TO = new Date(ANCHOR_MS + 30 * 60_000);
 
 type Log = { blockNumber: bigint | null; transactionHash: string | null; args: { from: string; to: string; value?: bigint } };
 
-function fakeBnb(o: { chainId?: number; logs?: Log[] } = {}) {
-  const timeOf = (n: bigint) => ANCHOR_MS + Number(n - ANCHOR_BLOCK) * 1000;
+function fakeBnb(o: { chainId?: number; logs?: Log[]; msPerBlock?: number; head?: bigint } = {}) {
+  const msPerBlock = o.msPerBlock ?? 1000;
+  const timeOf = (n: bigint) => ANCHOR_MS + Number(n - ANCHOR_BLOCK) * msPerBlock;
   const getLogsCalls: { address: string; fromBlock: bigint; toBlock: bigint }[] = [];
   const client = {
     getChainId: async () => o.chainId ?? 56,
     getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
-      const n = q.blockNumber ?? HEAD;
+      const n = q.blockNumber ?? o.head ?? HEAD;
       return { number: n, timestamp: BigInt(Math.floor(timeOf(n) / 1000)) };
     },
     getLogs: async (q: { address: string; fromBlock: bigint; toBlock: bigint }) => {
@@ -75,4 +76,23 @@ test("BNB late reader: 18 桁の USD1 を 6 桁で返し、割り切れない額
     if (saved === undefined) delete process.env.BNB_RPC_URL;
     else process.env.BNB_RPC_URL = saved;
   }
+});
+
+test("BNB late reader: 0.45 秒間隔のチェーンで、14 日前の窓の両端の着金を読める", async () => {
+  // 2026-11-02 実測の間隔。1 秒の見積もりでは窓のブロックを特定できず、毎回例外で何も読めなかった。
+  const msPerBlock = 450;
+  const blockAt = (ms: number) => ANCHOR_BLOCK + BigInt(Math.round((ms - ANCHOR_MS) / msPerBlock));
+  const head = blockAt(ANCHOR_MS + 14 * 86_400_000);
+  const value = 10n ** 17n;
+  const rpc = fakeBnb({
+    msPerBlock,
+    head,
+    logs: [
+      { blockNumber: blockAt(FROM.getTime()), transactionHash: TX, args: { from: PAYER, to: PAY_TO, value } },
+      { blockNumber: blockAt(TO.getTime()), transactionHash: "0x" + "cd".repeat(32), args: { from: PAYER, to: PAY_TO, value } },
+    ],
+  });
+  const out = await makeBnbTransferReader(rpc.client)(query);
+  assert.deepEqual(out?.map((t) => t.txHash), [TX, "0x" + "cd".repeat(32)]);
+  for (const c of rpc.getLogsCalls) assert.ok(c.toBlock - c.fromBlock + 1n <= BNB_TRANSFER_READ_CHUNK_BLOCKS);
 });

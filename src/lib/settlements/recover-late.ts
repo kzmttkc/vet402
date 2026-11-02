@@ -167,6 +167,9 @@ export const AMBIGUOUS_RECEIPTS_PER_RUN = 60;
 /** tx の中で payer が消費した EIP-3009 nonce（小文字）。読めなければ null（＝貼らない）。 */
 export type NonceReader = (input: { network: string; txHash: string; payer: string }) => Promise<string[] | null>;
 
+/** 認可がチェーンで使われたか。true＝使われた、false＝使われていない、null＝読めない（settlement-verify の readAuthorizationState）。 */
+export type AuthorizationStateReader = (input: { network: string; payer: string; nonce: string }) => Promise<boolean | null>;
+
 /** チェーンから直接読んだ USDC の Transfer（blockTime は ISO8601 UTC）。 */
 export type ChainTransfer = { txHash: string; from: string; to: string; value: string; blockTime: string };
 /** from → to の USDC Transfer を時刻の窓で読む。対象外のチェーン・読めないときは null（＝貼らない・読んだ印も付けない）。 */
@@ -263,6 +266,8 @@ export async function recoverLateSettlements(
   options: {
     readNonces?: NonceReader;
     readTransfers?: TransferReader;
+    /** BNB のレーンが「着金なし」と決める根拠。無ければそのレーンは決めない（行を変えない）。 */
+    readAuthorizationState?: AuthorizationStateReader;
     /** チェーンを直接読む行の上限。**レーンごと**（Base と Celo がそれぞれこの数まで）。 */
     chainReadLimit?: number;
     /** Base のレーンの持ち時間（ms）。 */
@@ -419,6 +424,7 @@ export async function recoverLateSettlements(
           ),
           errors,
           options.readNonces,
+          options.readAuthorizationState,
         )
       : { linked: [], read: 0, unread: 0 };
   // 2026-10-22: Arbitrum のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
@@ -865,10 +871,20 @@ type ChainReadLane = {
   nonceBound: boolean;
   noAnswerFirst: boolean;
   rowWindows: boolean;
+  /**
+   * 行を、ログの結果ではなく認可の状態で決める（2026-11-02・BNB）。ログを読む前に状態を読む。
+   * 使われていない → decided: true でログを読まない。使われた → decided: false の印（tries は増やさない）で未読の後ろへ回し、
+   * ログを読んで貼る。読めない → 行を変えず、ログだけ読む。ログの 0 件や失敗は根拠にしない。
+   */
+  decidesByAuthorizationState?: boolean;
 };
 const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
 const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
-const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
+// 2026-11-02 実測: 本番の BNB_RPC_URL（PublicNode）は USD1 の eth_getLogs に、同じ範囲で 406 件と 0 件を返し分ける
+// （約 7 日以内の 2,000 ブロック・24 回中 21 回が 0 件）。それより古い範囲は断る。ログの 0 件で決めると、実在の着金を
+// 永久に見落とすので、このレーンは認可の状態で決める。認可は最長 120 秒で、行はこの段に来た時点で 35 分以上前なので、
+// 使われていなければ、この先も使われない。
+const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true, decidesByAuthorizationState: true };
 const ARBITRUM_CHAIN_READ_LANE: ChainReadLane = { key: "arbitrum", networks: [ARBITRUM_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 const AVALANCHE_CHAIN_READ_LANE: ChainReadLane = { key: "avalanche", networks: [AVALANCHE_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 /** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
@@ -889,6 +905,7 @@ async function linkFromChain(
   budgetMs: number,
   errors: { count: number } = { count: 0 },
   readNonces?: NonceReader,
+  readAuthorizationState?: AuthorizationStateReader,
 ): Promise<{ linked: LinkedRow[]; read: number; unread: number }> {
   // nonce で決めるレーンは、nonce の読み手が無ければ何もしない（行を選ばない＝印も付けない）。
   if (lane.nonceBound && !readNonces) return { linked: [], read: 0, unread: 0 };
@@ -900,6 +917,7 @@ async function linkFromChain(
     : sql``;
   const batchRaw = await db.execute(sql`
     SELECT pu.id::text AS purchase_id, pu.network, lower(pu.payer) AS payer, lower(pu.pay_to) AS pay_to, pu.amount_units,
+           lower(btrim(pu.auth_nonce)) AS auth_nonce,
            to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS attempted_at
     FROM x402_l1_purchases pu
     WHERE ${RECOVERABLE_ROW}
@@ -924,7 +942,7 @@ async function linkFromChain(
                OR coalesce(pu.raw_response_meta ? 'outcomeWriteFailed', false)) DESC,
              pu.attempted_at DESC
     LIMIT ${Math.max(0, Math.trunc(limit))}`);
-  type B = { purchase_id: string; network: string; payer: string; pay_to: string; amount_units: string; attempted_at: string };
+  type B = { purchase_id: string; network: string; payer: string; pay_to: string; amount_units: string; auth_nonce: string | null; attempted_at: string };
   const batch = rowsOfRaw<B>(batchRaw);
   const winMs = LATE_SETTLEMENT_WINDOW_MINUTES * 60_000;
   const backMs = LATE_SETTLEMENT_BACKDATE_MINUTES * 60_000;
@@ -963,7 +981,43 @@ async function linkFromChain(
     const u = unread.get(reason) ?? { groups: 0, rows: 0, error };
     unread.set(reason, { groups: u.groups + 1, rows: u.rows + rows, error: u.error ?? error });
   };
-  for (const list of groups.values()) {
+  for (const group of groups.values()) {
+    let list = group;
+    if (lane.decidesByAuthorizationState) {
+      const unspent: string[] = [];
+      const spent: string[] = [];
+      const undecided: B[] = [];
+      for (const b of group) {
+        const left = budgetMs - (Date.now() - startedAt);
+        const state =
+          readAuthorizationState && b.auth_nonce && left >= CHAIN_READ_MIN_REMAINING_MS
+            ? await withTimeout(readAuthorizationState({ network: b.network, payer: b.payer, nonce: b.auth_nonce }), left).catch(() => null)
+            : null;
+        if (state === false) {
+          unspent.push(b.purchase_id);
+          continue;
+        }
+        if (state === true) spent.push(b.purchase_id);
+        undecided.push(b);
+      }
+      for (const [ids, decided] of [
+        [unspent, true],
+        [spent, false],
+      ] as const) {
+        if (ids.length === 0) continue;
+        await db.execute(sql`
+          UPDATE x402_l1_purchases
+          SET raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object('lateChainRead', jsonb_build_object(
+                'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                'decided', ${decided}::boolean,
+                'by', 'authorization_state',
+                'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0)))
+          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
+      }
+      read += unspent.length;
+      if (undecided.length === 0) continue;
+      list = undecided;
+    }
     // 持ち時間を過ぎたら残りは次回（読んでいない行には印を付けないので、次の実行でまた選ばれる）。
     // RPC の読みには残り時間を timeout として渡す（2026-09-29 独立レビュー WARNING 1: 以前は組と組の間でしか
     // 確かめておらず、1 回の読みが 20 秒 × 再試行 3 回まで延びうた）。
@@ -1078,6 +1132,13 @@ async function linkFromChain(
       });
     };
     const unlinked = list.filter((b) => !linkedIds.has(b.purchase_id));
+    if (lane.decidesByAuthorizationState) {
+      if (unlinked.length > 0) {
+        read -= unlinked.length;
+        noteUnread("the authorization was used or unreadable and no transfer was linked", unlinked.length);
+      }
+      continue;
+    }
     for (const decided of [true, false]) {
       const ids = unlinked.filter((b) => !inWindow(b) === decided).map((b) => b.purchase_id);
       if (ids.length === 0) continue;
@@ -1385,12 +1446,17 @@ function boundedCeloClient(timeoutMs: number | undefined): CeloTransferClient | 
   }) as unknown as CeloTransferClient;
 }
 
-/** BNB のブロック間隔（秒）。2026-10-19 には測っていない。Celo と同じ 1 秒で見積もり、ブロックの実時刻で直す。 */
-const BNB_BLOCK_SECONDS = 1;
+/**
+ * BNB のブロック間隔（秒）。2026-11-02 実測: 直近 1,000,000 ブロックの時刻差から 0.4502 秒。
+ * それまでの 1 秒は 3 回の補正で許容 30 秒に届かず、窓のブロックを特定できなかった。補正は読んだブロックと先端の実の間隔で
+ * 行う。窓と先端の間で間隔が変わると特定できないことがあり、そのときは例外になる（行は変えない）。
+ */
+const BNB_BLOCK_SECONDS = 0.45;
 /** Celo の読み手と同じ幅。BSC の eth_getLogs の上限は 2026-10-19 に測っていないので、それより広い範囲は問わない。 */
 export const BNB_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
 const BNB_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
-const BNB_TRANSFER_READ_MARGIN_BLOCKS = 35n;
+// 余裕は許容 30 秒より広く取る。0.45 秒間隔で 200 ブロックは 90 秒。
+const BNB_TRANSFER_READ_MARGIN_BLOCKS = 200n;
 
 type BnbTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
@@ -1399,7 +1465,8 @@ type BnbTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | 
  * 規則は makeCeloTransferReader と同じ。違いはトークンと額だけ: チェーン上の額は 18 桁で、返す value は
  * 6 桁（evmIndexLedgerAmount）。10^12 で割り切れない額は配列に入れない（記録しない）。
  * BNB 以外の network は null。BNB_RPC_URL が無い・chainId が 56 でない・先端が窓に届いていない・
- * 時刻からブロックを特定できないときは null か例外（空配列は、窓を読み切って記録できる Transfer が無かったときだけ）。
+ * 時刻からブロックを特定できないときは null か例外。空配列は「RPC が 0 件と答えた」だけで、着金が無いことを意味しない
+ * （BNB_CHAIN_READ_LANE の注記）。
  */
 export function makeBnbTransferReader(client?: BnbTransferClient): TransferReader {
   return async ({ network, payer, payTo, from, to, timeoutMs }) => {
@@ -1424,7 +1491,9 @@ export function makeBnbTransferReader(client?: BnbTransferClient): TransferReade
         const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
         if (Math.abs(driftSeconds) <= BNB_BLOCK_LOCATE_TOLERANCE_SECONDS) return n;
         if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
-        n -= BigInt(Math.trunc(driftSeconds / BNB_BLOCK_SECONDS));
+        const blocksBack = Number(head.number - n);
+        const observed = blocksBack > 0 ? (Number(head.timestamp) - Number(block.timestamp)) / blocksBack : 0;
+        n -= BigInt(Math.trunc(driftSeconds / (observed > 0 ? observed : BNB_BLOCK_SECONDS)));
       }
       throw new Error("could not locate the BNB block for the window");
     };

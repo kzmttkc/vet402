@@ -9,7 +9,7 @@ import { indexEvm } from "@/lib/settlements/index-evm";
 import { indexSolana } from "@/lib/settlements/index-solana";
 import { indexXrpl } from "@/lib/settlements/index-xrpl";
 import { makeChainTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
-import { readAuthorizationNonces } from "@/lib/observatory/settlement-verify";
+import { readAuthorizationNonces, readAuthorizationState } from "@/lib/observatory/settlement-verify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 // §7.2 決済索引（日次）。3 経路を順に流す。各段は締切と件数上限を持ち、
@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
     const lateSettlements = await recoverLateSettlements({
       readNonces: readAuthorizationNonces,
       readTransfers: makeChainTransferReader(),
+      readAuthorizationState,
       chainReadLimit: 20,
       deadlineAt,
     });
