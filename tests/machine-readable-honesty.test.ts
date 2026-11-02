@@ -255,3 +255,17 @@ test("the published schema advertises the live host and the whole product", () =
     "the flag-gated guarantee endpoint must not be advertised while it is off",
   );
 });
+
+// 2026-11-02（監査 L7）: CDN が配る CSV の 200 に呼び手ごとの残数を載せない。本番で `age: 832` の HIT に
+// `ratelimit-remaining: 5` が付き、他人の残数が配られていた。
+test("the three CSV exports send only RateLimit-Limit on a cached 200", () => {
+  for (const route of [
+    "src/app/api/v1/observatory/export.csv/route.ts",
+    "src/app/api/v1/observatory/l0/export.csv/route.ts",
+    "src/app/api/v1/sellers/export.csv/route.ts",
+  ]) {
+    const src = readFileSync(join(ROOT, route), "utf8");
+    assert.match(src, /const shared = (withNoindex\()?sharedCacheRateLimitHeaders\(limited\)/, route);
+    assert.match(src, /headers: \{\n\s+\.\.\.shared,\n\s+"content-type": "text\/csv/, route);
+  }
+});

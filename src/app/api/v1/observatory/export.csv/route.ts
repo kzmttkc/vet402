@@ -2,7 +2,7 @@ import { l2ReadingColumnsSql, l2ReadingOf } from "@/lib/observatory/l2-check";
 import { NextRequest, NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { getClientIp } from "@/lib/api/client-ip";
-import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
+import { consumeIpRateLimit, ipRateLimitHeaders, sharedCacheRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { heldReasonSql } from "@/lib/observatory/delivery";
 import { confirmedUnitsSql, EXPORT_CSV_COLUMN_NOTES, EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
@@ -71,6 +71,8 @@ export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-export:${ip}`, RL_LIMIT, RL_WINDOW_MS);
   const perCaller = withNoindex(ipRateLimitHeaders(limited));
+  // 2026-11-02（監査 L7）: CDN が配る 200 に呼び手ごとの残数を載せない。
+  const shared = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }
@@ -139,7 +141,7 @@ export async function GET(request: NextRequest) {
     }
     return new NextResponse(lines.join("\n") + "\n", {
       headers: {
-        ...perCaller,
+        ...shared,
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": `attachment; filename="vet402-l1-ledger-${days}d.csv"`,
         "x-vet402-truncated": truncated ? "true" : "false",

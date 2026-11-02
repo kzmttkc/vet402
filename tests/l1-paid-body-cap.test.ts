@@ -207,10 +207,22 @@ test("古い行: 欠けたキーが最上位に見えない → そのまま mis
   assert.deepEqual(r, { l2Schema: "mismatch", missing: ["summary", "key_points", "language", "source"], reason: null });
 });
 
-test("古い行: 欠けたキーの記録が無い長い行・配列の頭はそのまま mismatch（判定は l2_mismatch_unexplained）", () => {
+// 2026-11-02.2: 元の本文の長さの記録が無く、16,000 バイトで切れたのか壊れていたのかを区別できない。証拠が無いので不一致と書かない。
+test("古い行: 欠けたキーの記録が無い長い JSON の頭 → 区別できないので not_checked", () => {
   const head = longJson(40_000).slice(0, 500);
-  assert.equal(legacy({ bodyHead: head, missing: null }).l2Schema, "mismatch");
-  assert.equal(legacy({ bodyHead: head, missing: [] }).l2Schema, "mismatch");
+  const unknown = { l2Schema: "not_checked", missing: null, reason: "legacy_no_evidence" };
+  assert.deepEqual(legacy({ bodyHead: head, missing: null }), unknown);
+  assert.deepEqual(legacy({ bodyHead: head, missing: [] }), unknown);
+  assert.deepEqual(legacy({ bodyHead: `[${head.slice(1)}`, missing: [] }), unknown);
+  assert.deepEqual(legacy({ bodyHead: null, missing: [] }), unknown, "頭も無い行");
+});
+
+test("古い行: 欠けたキーの記録が無くても、JSON の頭ですらない本文は切れても JSON にならない → mismatch のまま", () => {
+  assert.equal(legacy({ bodyHead: "<html>" + "x".repeat(600), missing: [] }).l2Schema, "mismatch");
+});
+
+test("古い行: 欠けたキーの記録があり最上位に見えない長い頭は mismatch のまま（理由を名指しする BLOCK を変えない）", () => {
+  const head = longJson(40_000).slice(0, 500);
   assert.equal(legacy({ bodyHead: `[${head.slice(1)}` }).l2Schema, "mismatch");
 });
 
@@ -220,14 +232,19 @@ test("古い行: bodyHead が本文の全部（500 文字未満）なら今の�
   assert.deepEqual(legacy({ bodyHead: '{"count": 1, "items": [' }), { l2Schema: "mismatch", missing: [], reason: "unparseable" });
 });
 
-test("古い行: 出力の宣言が無く JSON として閉じていない（または閉じたか分からない）→ mismatch・欠けたキーなし（WARN）", () => {
+test("古い行: 今の掲載に出力の宣言が無ければ、本文の形を問わず no_declaration（今の規則と同じ・失敗にしない）", () => {
   const none = schemaWith(null, null);
+  const noDecl = { l2Schema: "no_declaration", missing: null, reason: null };
   const longHead = longJson(40_000).slice(0, 500);
-  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: longHead }), { l2Schema: "mismatch", missing: [], reason: null });
-  assert.deepEqual(legacy({ declaredSchema: none, missing: null, bodyHead: '{"a": [1, 2' }), { l2Schema: "mismatch", missing: [], reason: null });
-  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: null }), { l2Schema: "mismatch", missing: [], reason: null });
-  // 本文が 500 文字未満で全部そろっていて閉じていれば、今の規則と同じ no_declaration
-  assert.equal(legacy({ declaredSchema: none, missing: [], bodyHead: '{"a": 1}' }).l2Schema, "no_declaration");
+  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: longHead }), noDecl);
+  assert.deepEqual(legacy({ declaredSchema: none, missing: null, bodyHead: '{"a": [1, 2' }), noDecl);
+  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: null }), noDecl);
+  assert.deepEqual(legacy({ declaredSchema: none, missing: [], bodyHead: '{"a": 1}' }), noDecl);
+  // Content-Type が JSON でない行は本文に依らない判定なのでそのまま
+  assert.equal(legacy({ declaredSchema: none, missing: [], contentType: "text/html", bodyHead: "<html>" }).l2Schema, "mismatch");
+  assert.deepEqual(legacy({ declaredSchema: null, missing: ["a"], bodyHead: longHead }), noDecl, "宣言そのものが無い");
+  // 印のある行（2026-09-29 以降の形）は読み直さない
+  assert.equal(legacy({ declaredSchema: none, l2Reason: "unparseable", missing: [], bodyHead: longHead }).l2Schema, "mismatch");
 });
 
 test("古い行: Content-Type が JSON でない・JSON の頭でない・印のある行はそのまま", () => {

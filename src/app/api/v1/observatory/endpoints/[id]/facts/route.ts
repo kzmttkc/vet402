@@ -36,7 +36,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       evidence.push(vet402Evidence({ level: "L1", purchase_id: facts.l1.last_purchase_id, url: `https://vet402.com/api/v1/observatory/endpoints/${endpoint.id}/purchases` }));
     }
     // §6.3 / P1-11: L2 の宣言・応答・差分ハッシュ（mismatch の根拠を第三者が再計算できる）。
-    const l2Evidence = l2EvidenceOf(facts, endpoint.id);
+    const l2Evidence = l2EvidenceOf(facts, endpoint.id, undefined, loaded.l2PurchaseId);
     if (l2Evidence) evidence.push(l2Evidence);
     assertEvidenceContract(evidence);
     return NextResponse.json(

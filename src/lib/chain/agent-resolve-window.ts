@@ -31,10 +31,16 @@ export type AgentResolvePlan =
 /**
  * 実走査を許す tail の日数。
  *
- * Hobby の cron は日次・±59分のぶれがあるので、索引は正常でも約25時間ぶん
- * 遅れうる。2日あればそれに加えて 1 回の取りこぼしも吸収できる。これを超えた
- * ものはもう「境界」ではなく、この変更が消しにきた広域走査そのものなので、
- * 走らせずに退行する。
+ * 2日あれば cron の取りこぼしも吸収できる。これを超えたものはもう「境界」では
+ * なく、この変更が消しにきた広域走査そのものなので、走らせずに退行する。
+ *
+ * これは走査を許す上限であって、ライブの 3 秒（TAIL_SCAN_DEADLINE_MS）で読み切れる
+ * 長さではない。2026-11-02 の実測（手元・主 = Base 公開 RPC・予備 = Tenderly の 1,000
+ * ブロック上限）: 5,400 ブロック 1.1 秒・10,800 ブロック 2.1〜2.4 秒・34,000 ブロックは
+ * 3 秒で打ち切り（全部読むと 8 秒）。index-owners が日次だった間は、索引から 7 時間ほど
+ * 経つと wallet→agent の解決が毎回時間切れになり、role=payee が Base の payer に
+ * erc8004_unavailable（BLOCK）を返し続けた。だから index-owners は 3 時間ごとに回す
+ * （vercel.json・tests/agent-resolve.test.ts が間隔を固定する）。
  */
 export const AGENT_RESOLVE_TAIL_MAX_DAYS = 2;
 

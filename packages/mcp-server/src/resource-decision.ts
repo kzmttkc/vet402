@@ -178,7 +178,8 @@ function oneTermsLine(t: unknown): string | null {
     for (const k of keys) {
       const v = safeTermValue(o[k]);
       if (v !== null) {
-        parts.push(`${label} ${v}`);
+        // 2026-11-02（監査 H2）: 判定の verified_terms の amount は台帳の 6 桁の単位。資産の桁とは限らないので名乗る。
+        parts.push(label === "amount" && o.decimals === 6 ? `${label} ${v} (6-decimal ledger units)` : `${label} ${v}`);
         break;
       }
     }

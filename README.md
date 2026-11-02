@@ -8,7 +8,7 @@
 
 ## Chains vet402 buys on
 
-vet402 pays x402 sellers on nine chains with its own funds and publishes every attempt. Counts below were read from https://vet402.com/api/v1/observatory/state at 2026-10-23 09:10 UTC (whole ledger). They grow daily, so read the live page for current numbers.
+vet402 pays x402 sellers on ten chains with its own funds and publishes every attempt. Counts below were read from https://vet402.com/api/v1/observatory/state at 2026-10-23 09:10 UTC (whole ledger). Avalanche C-Chain started on 2026-10-26, after that read, so it has no row here; its count is in `l1.byChain` of the same URL. They grow daily, so read the live page for current numbers.
 
 | Chain | Network id | Asset paid | Paid attempts | Settled | Settled and answered 2xx |
 |---|---|---|---:|---:|---:|
@@ -147,7 +147,7 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 |---|---|---|---|
 | L0 | Liveness — does the endpoint answer correctly? | Probe, no purchase | pass / fail / unverified |
 | L1 | Settle-through — does the payment settle, and does a non-empty 2xx come back? | Real purchase | n of m settled, latency |
-| L2 | Conformance — does the response match the seller's own declaration? | Purchase + machine diff | conform / mismatch / undeclared |
+| L2 | Conformance — does the response match the seller's own declaration? | Purchase + machine diff | conform / mismatch / undeclared / not_checked |
 | L3 | Quality — is the content any good? | Not built | none |
 
 The 0–100 trust score this API returns today (banded `ALLOW` / `WARN` / `BLOCK`) predates these levels. It stays available to API and SDK callers during the transition, and is never reported as an L0–L2 result. Methodology: <https://vet402.com/#methodology>.
@@ -408,8 +408,9 @@ examples/
 [MIT](./LICENSE) © KIZUNA Creation. The published `@vet402/*` packages carry the same license.
 
 The **measurements** are licensed separately: [CC BY 4.0](./LICENSE-DATA) — the observatory
-snapshot (`/api/v1/observatory/state`), the daily series (`/api/v1/observatory/history`) and the
-L1 purchase ledger (`/api/v1/observatory/export.csv`) may be redistributed and built on,
+snapshot (`/api/v1/observatory/state`), the daily series (`/api/v1/observatory/history`), the
+L1 purchase ledger (`/api/v1/observatory/export.csv`), the L0 export
+(`/api/v1/observatory/l0/export.csv`) and the sellers export (`/api/v1/sellers/export.csv`) may be redistributed and built on,
 commercially or not, provided the source is named:
 
 > KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD.

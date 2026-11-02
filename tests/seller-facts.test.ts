@@ -18,7 +18,7 @@ test("L0: published verdict（2 連続 fail ゲート）と方言・観測時刻
   const f = assembleSellerFacts(base);
   assert.equal(f.l0.status, "pass");
   assert.equal(f.l0.dialect, "v2");
-  assert.equal(f.l0.observed_at, "2026-09-02T00:00:00Z");
+  assert.equal(f.l0.observed_at, "2026-09-02T00:00:00.000Z");
   const single = assembleSellerFacts({ ...base, probes: [{ ...probes[0], verdict: "fail", failReason: "no_402" }, probes[1]] });
   assert.equal(single.l0.status, "unverified", "1 回の fail は公開 fail にしない");
 });

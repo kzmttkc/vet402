@@ -29,15 +29,16 @@ export const DECISION_RULES_TEXT =
   `Rules ${DECISION_RULES_VERSION} (rules_version). ${PURCHASE_CLASSIFICATION_TEXT} ` +
   `L1: after the last delivery in the ${L1_WINDOW_DAYS}-day window, an attempt that moved money and did not deliver adds l1_paid_not_delivered; ` +
   `it is a BLOCK only when ${TWO} or more of them are on the seller's side (seen on ${SELLER_CONFIRM_DAYS} different UTC days), and a WARN otherwise, including when /sellers leaves them not sorted. ` +
-  "A failure where no money moved is at most a WARN (l1_never_delivered when nothing was delivered). " +
+  "A failure where no money moved is at most a WARN (l1_never_delivered when nothing was ever delivered). " +
   `When no result came back and it is not yet known whether money moved (an empty 2xx with no settlement linked, a receipt still awaiting on-chain verification, or a signed attempt that failed less than ${LATE_LINK_PENDING_MINUTES} minutes ago), ` +
   "l1_empty_2xx_settlement_unknown makes it a WARN, never an ALLOW, until it settles. " +
   "l1_latest_failed (something delivered, but the latest counted attempt did not) is a WARN. " +
-  `ALLOW needs a delivery within ${L1_FRESH_DAYS} days (l1_basis.fresh_days); otherwise l1_stale and a WARN, also the word when every signed attempt is older than the window (l1_not_attempted means none was ever signed). ` +
+  `ALLOW needs a delivery within ${L1_FRESH_DAYS} days (l1_basis.fresh_days); otherwise l1_stale and a WARN, also the word when the only delivery is older than the window or every signed attempt is (l1_not_attempted means none was ever signed). ` +
   "l1_basis carries the counts, the last attempt, signed attempt and delivery, and the days since each. " +
   "L0: l0_fail (two measured failures in a row) is a BLOCK. l0_unverified (not probed yet, no probe in the last 30 days, a URL with a path parameter vet402 cannot fill, a probe that could not complete, or one failure so far) is a WARN with degraded: true, " +
   "next to l0_unverified_<cause>; unverified is not a failure. " +
-  `L2: l2_mismatch is a BLOCK when the evidence names missing keys (mismatch_kind missing_keys), otherwise l2_mismatch_unexplained and a WARN. A listing that declares an output schema but whose latest delivery vet402 has not checked against it (no delivery, a body over ${KIB} KiB or cut off) is l2_not_checked, a WARN; l2_undeclared means the listing declares no output schema. ` +
+  `L2: l2_mismatch is a BLOCK when the evidence names missing keys (mismatch_kind missing_keys), otherwise l2_mismatch_unexplained and a WARN. L2 reads the latest delivery at any age, so a mismatch holds until a later delivery replaces it. A listing that declares an output schema but whose latest delivery vet402 has not checked against it (no delivery, a body over ${KIB} KiB or cut off) is l2_not_checked, a WARN; l2_undeclared means the listing declares no output schema. ` +
+  "verified_terms.amount is in 6-decimal ledger units: multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402. " +
   "Every code, its effect and whether the seller can fix it: https://vet402.com/docs/api#reason-codes.";
 
 /** 判定の 3 語の説明（/docs/api#verdicts の箇条書き）。 */

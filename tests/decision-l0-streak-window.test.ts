@@ -57,7 +57,7 @@ test("窓の中に fail 1 本＋窓の外に fail 1 本 → fail（BLOCK・l0_fa
   const f = assembleSellerFacts(i);
   assert.equal(f.l0.status, "fail");
   assert.equal(f.l0.fail_reason, "no_402", "理由は窓の中の最新の行");
-  assert.equal(f.l0.observed_at, "2026-10-21 10:30:55.621857+00", "観測時刻も窓の中の最新の行");
+  assert.equal(f.l0.observed_at, "2026-10-21T10:30:55.621Z", "観測時刻も窓の中の最新の行（ISO 8601 UTC）");
   assert.equal(l0UnverifiedCauseOf(i.probes, i.l0VerdictsBeforeWindow), null);
   const d = decidePayer(f, { l0UnverifiedCause: l0UnverifiedCauseOf(i.probes, i.l0VerdictsBeforeWindow) });
   assert.equal(d.recommendation, "BLOCK");

@@ -63,7 +63,7 @@ export const CENSUS_INDEXED_SINCE_NOTE =
   RAW_RETENTION_DAYS +
   " days and older days survive only as daily (payee, payer) counts and amount sums with no per-transaction receipts, " +
   "so any day before all_chains_since is missing every chain whose index starts later, and window_covered_days is how many " +
-  "whole UTC days of the requested window — ending today — the index actually holds, which is why counts are a floor rather " +
+  "whole UTC days of the requested window — ending today — the index holds for each listed chain, which is why counts are a floor rather " +
   "than a total whenever window_fully_covered is false.";
 
 export const CENSUS_DISCLAIMER =
@@ -222,7 +222,9 @@ export async function getCensusSummary(chain: string | null, window: CensusWindo
       all: oldestAll,
       byChain,
       all_chains_since: allChainsSince,
-      ...windowCoverage(oldestAll, todayUtc, days),
+      // 2026-11-02（監査 M11）: chain 未指定は all_chains_since で判定する。oldestAll では、窓の途中から始まるチェーンが
+      // あっても true になり、「false なら件数は下限」の説明と逆になった。chain 指定は byChain が 1 件なので同じ日。
+      ...windowCoverage(allChainsSince, todayUtc, days),
       note: CENSUS_INDEXED_SINCE_NOTE,
     },
   };

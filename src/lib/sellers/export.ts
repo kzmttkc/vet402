@@ -135,7 +135,7 @@ export function countSellerExportOutcomes(rows: readonly SellerExportRow[]): Rec
 export const SELLER_EXPORT_COLUMN_NOTES =
   `${ATTRIBUTION_REVIEW_NOTE} ` +
   "One row per active Base listing (the rows /sellers counts), classified by its latest purchase row with the same function /sellers uses. " +
-  `outcome = ${SELLER_EXPORT_OUTCOMES.filter((o) => o !== "not_tried").map((o) => BUCKET_DOCS[o as keyof typeof BUCKET_DOCS]).join(" | ")} | not_tried (no purchase row); counting rows by outcome gives the /sellers totals; the decision API blocks on L1 only for seller rows. ` +
+  `outcome = ${SELLER_EXPORT_OUTCOMES.filter((o) => o !== "not_tried").map((o) => BUCKET_DOCS[o as keyof typeof BUCKET_DOCS]).join(" | ")} | not_tried (no purchase row on a Base network; a listing bought only on another chain reads not_tried here, read /decision for it); counting rows by outcome gives the /sellers totals; the decision API blocks on L1 only for seller rows. ` +
   "fix_mode = the failure kind key (blank for delivered, pending, not_tried); side_label = the words of the /sellers 'whose side' column; " +
   "confirmed_seller = true when a seller's-side failure was seen on 2 or more UTC days (blank unless outcome=seller); " +
   "held_reason = as in /api/v1/observatory/export.csv; purchase_id = the latest row's id (the purchase_id column of the ledger export and the subject_id in /api/v1/observatory/corrections); " +

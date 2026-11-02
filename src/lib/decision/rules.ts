@@ -77,6 +77,15 @@
 //   2026-11-02.1（Issue #87）: 規則の文（2 回連続の fail）は変えていない。loadSellerFacts の 30 日窓で 2 本目の fail が
 //     切れて WARN に読んでいた行が l0_fail（BLOCK）に届くので、2026-09-17 と同じ理由で版を上げた。窓の中に 0 本で窓の外に
 //     プローブがある出品の原因は l0_unverified_no_recent_probe（not_probed は「測っていない」で事実と違った。推奨は変えない）。
+//   2026-11-02.2（機械可読面の監査 H1・M1・M2・H3）: 規則の文（最後の配達の L2）は変えていないが、答えが変わるので版を上げた。
+//     (1) L2 は窓に関係なく最後の配達 1 行を読む（seller-facts.ts lastDeliveryOutsideWindow）。30 日窓で切っていたので、確かめた
+//         不一致が時間だけで not_checked に変わり BLOCK が WARN に下がっていた。conform と l2_mismatch_unexplained も同じ。
+//     (2) 配達が窓の外にだけあるときは l1_never_delivered と書かない。窓の中の試行が数えられれば l1_stale ＋ l1_latest_failed、
+//         数えられなければ l1_inconclusive ＋ l1_stale。推奨は変えない（どちらも WARN）。
+//         理由の記録が無く欠けたキーも無い古い行（2026-09-29 以前）は、切れたのか壊れていたのか区別できないので不一致と
+//         書かない: 出力の宣言が無ければ undeclared、あれば not_checked（l2-check.ts legacyL2SchemaOf）。
+//     (3) role=payee の retry_burst_rate は窓の全行で数える（buyer-facts.ts。古い方の 2,000 行で切っていた）。
+//     (4) role=payee の <input>_unavailable は BLOCK のまま（fail-closed）。直したのは読めない原因（vercel.json の index-owners）。
 //   BLOCK if l0 = fail ∨ paid_undelivered_seller_side_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if l0 = unverified ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
@@ -91,7 +100,8 @@
 //     l1_inconclusive    n_attempts > 0 ∧ conclusive = 0 ∧ n_delivered = 0
 //                        （金は動いたが、結論の出た応答が 1 件も無い。我々の測定の穴であって
 //                          売り手への反証ではない——中立・WARN）
-//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0（2026-09-29.3 から WARN。BLOCK は売り手の側（確定）の l1_paid_not_delivered ≥ 2 だけ）
+//     l1_never_delivered conclusive ≥ 1 ∧ n_delivered = 0 ∧ 全履歴で配達が無い（2026-09-29.3 から WARN。BLOCK は売り手の側（確定）の
+//                        l1_paid_not_delivered ≥ 2 だけ）。全履歴で配達があれば主語は l1_stale（2026-11-02.2）
 //     l1_delivered       n_delivered ≥ 1
 //   添える語（主語に加えて）: l1_paid_not_delivered（最後の配達より後の支払い済み・未配達 ≥ 1）、
 //     l1_latest_failed（配達はあるが、数えた最新の試行が失敗）、l1_stale（配達はあるが最新の配達が古い）、
@@ -131,7 +141,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-11-02.1";
+export const DECISION_RULES_VERSION = "2026-11-02.2";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
@@ -292,8 +302,13 @@ type L1View = {
   timeline: L1Timeline;
   /** 最新の配達からの日数（配達が無ければ null）。 */
   deliveryAge: number | null;
-  /** 窓の中に配達があるが、最新の配達が L1_FRESH_DAYS より古い（または時刻が読めない）。 */
+  /**
+   * 窓の中に配達があるが最新の配達が L1_FRESH_DAYS より古い（または時刻が読めない）、または
+   * 窓の中に試行があるのに配達は窓の外にしか無い（2026-11-02.2）。
+   */
   staleDelivery: boolean;
+  /** 2026-11-02.2: 窓の中に署名した試行があり、窓の中の配達は 0、全履歴には配達がある。 */
+  deliveredOutsideWindowOnly: boolean;
   /** 窓の中に署名した試行が無いが、窓の外にはある。 */
   staleOutsideWindow: boolean;
 };
@@ -303,11 +318,13 @@ function l1ViewOf(f: SellerFacts, o: PayerOptions): L1View {
   const now = o.now ?? new Date();
   const timeline = o.l1Timeline ?? timelineFromFacts(f, conclusive, o.l1NotCounted);
   const deliveryAge = daysSince(timeline.last_delivered_at, now);
+  const deliveredOutsideWindowOnly = f.l1.n_attempts > 0 && f.l1.n_delivered === 0 && timeline.last_delivered_at !== null;
   return {
     conclusive,
     timeline,
     deliveryAge,
-    staleDelivery: f.l1.n_delivered >= 1 && (deliveryAge === null || deliveryAge > L1_FRESH_DAYS),
+    staleDelivery: (f.l1.n_delivered >= 1 && (deliveryAge === null || deliveryAge > L1_FRESH_DAYS)) || deliveredOutsideWindowOnly,
+    deliveredOutsideWindowOnly,
     staleOutsideWindow: f.l1.n_attempts === 0 && timeline.last_signed_attempt_at !== null,
   };
 }
@@ -346,7 +363,8 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   if (f.l1.n_attempts === 0) r.push(v.staleOutsideWindow ? "l1_stale" : "l1_not_attempted");
   else if (f.l1.n_delivered >= 1) r.push("l1_delivered");
   else if (conclusive === 0) r.push("l1_inconclusive");
-  else r.push("l1_never_delivered");
+  // 2026-11-02.2: 全履歴で配達があれば「一度も届いていない」と書かない。主語は下の l1_stale と l1_latest_failed。
+  else if (!v.deliveredOutsideWindowOnly) r.push("l1_never_delivered");
   if (f.l1.n_delivered === 0 && o.l1NotCounted) {
     for (const k of ["vet402_side", "held", "no_charge", "unproven", "unconfirmed"] as const) {
       if ((o.l1NotCounted.by[k] ?? 0) > 0) r.push(NOT_COUNTED_REASON_CODES[k]);
@@ -357,7 +375,7 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   if (paidUndelivered >= 1) r.push("l1_paid_not_delivered");
   const settlementUnknown = t.n_settlement_unknown_since_delivery ?? o.l1NotCounted?.by.settlement_unknown ?? 0;
   if (settlementUnknown >= 1) r.push(L1_EMPTY_2XX_SETTLEMENT_UNKNOWN);
-  const latestFailed = f.l1.n_delivered >= 1 && t.latest_counted !== null && !t.latest_counted.delivered;
+  const latestFailed = (f.l1.n_delivered >= 1 || v.deliveredOutsideWindowOnly) && t.latest_counted !== null && !t.latest_counted.delivered;
   if (latestFailed) r.push("l1_latest_failed");
   if (v.staleDelivery) r.push("l1_stale");
   r.push(`l2_${f.l2.status}`);

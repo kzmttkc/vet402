@@ -7,19 +7,23 @@
 //   sybil.shared_funder                     funder_wallets で他の payer と funder を共有
 //   sybil.multi_agent_owner                 8004 owner が 3 体以上を保有
 //   erc8004.feedback_with_payment_proof_ratio  同 payer の feedback のうち settlements に tx がある比率
-// 読めなかった入力は sybil.unavailable に名指しで残す（判定は fail-closed）。
+// 読めなかった入力は sybil.unavailable に名指しで残す（判定は fail-closed）。理由はサーバログへ（2026-11-02）。
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { parsePartyId, agentId8004 } from "@/lib/ids/canonical";
 import { RAW_RETENTION_DAYS, SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
+import { logServerErrorChainSafe } from "@/lib/util/log-safe";
 import type { BuyerFacts } from "./types";
 
 export const RETRY_BURST_WINDOW_MS = 60_000;
 export const MULTI_AGENT_OWNER_MIN = 3;
 
-/** 純関数: (resource_id, 時刻) の列から 60 秒以内の再署名率を出す。列 < 2 なら null。 */
+/**
+ * 再署名率の定義（純関数）: (resource_id, 時刻) の列から 60 秒以内の再署名率を出す。列 < 2 なら null。
+ * 本番は同じ定義を SQL で全行に当てる（loadBuyerFacts。tests/buyer-facts-burst-window.pg.test.ts が一致を固定する）。
+ */
 export function retryBurstRate(events: readonly { resourceId: string | null; at: Date }[]): number | null {
   const byResource = new Map<string, number[]>();
   for (const e of events) {
@@ -110,13 +114,26 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
   // 時刻は残らないため、これだけは生行の窓（RAW_RETENTION_DAYS 日）で測る。
   // 30 日ぶんを日次集約から復元することはできない（丸めた値を出すよりも、
   // 短い窓の正しい値を出す）。
-  const events = rowsOf<{ resource_id: string | null; at: string }>(
+  //
+  // 2026-11-02（監査 M1）: 行を読まずに SQL で数える。`ORDER BY at ASC LIMIT 2000` で窓の古い方だけを読んでいて、
+  // 30 日で 2,000 行を超える payer（116 件）は率が変わり、3 件は retry_burst の有無が実際と逆だった（付く 2・外れる 1）。
+  // 最も行の多い payer（21 万行）でこの文は約 1 秒（判定は 5 分キャッシュ）。
+  const burst = rowsOf<{ total: number; bursts: number }>(
     await db.execute(sql`
-      SELECT resource_id, coalesce(block_time, observed_at)::text AS at FROM settlements
-      WHERE payer_id = ${payerId} AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${RAW_RETENTION_DAYS}::int
-      ORDER BY at ASC LIMIT 2000
+      WITH ev AS (
+        SELECT resource_id, coalesce(block_time, observed_at) AS at FROM settlements
+        WHERE payer_id = ${payerId} AND ${SETTLEMENT_DAY} > ${UTC_TODAY} - ${RAW_RETENTION_DAYS}::int
+          AND coalesce(resource_id, '') <> ''
+      ), gaps AS (
+        SELECT at - lag(at) OVER (PARTITION BY resource_id ORDER BY at) AS gap FROM ev
+      )
+      SELECT count(gap)::int AS total,
+             count(*) FILTER (WHERE gap <= ${sql.raw(`interval '${RETRY_BURST_WINDOW_MS / 1000} seconds'`)})::int AS bursts
+      FROM gaps
     `),
-  ).map((r) => ({ resourceId: r.resource_id, at: new Date(r.at) }));
+  )[0];
+  const burstTotal = Number(burst?.total ?? 0);
+  const retryRate = burstTotal === 0 ? null : Number(burst?.bursts ?? 0) / burstTotal;
 
   let sharedFunder = false;
   let clusterId: string | null = null;
@@ -137,7 +154,8 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
         clusterId = f.funder.toLowerCase();
         sharedFunder = Number(f.siblings) > 0;
       }
-    } catch {
+    } catch (error) {
+      logServerErrorChainSafe("decision.buyer_facts.funder_index", error);
       unavailable.push("funder_index");
     }
     try {
@@ -161,7 +179,9 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
         )[0];
         if (fb && Number(fb.total) > 0) proofRatio = Number(fb.proved) / Number(fb.total);
       }
-    } catch {
+    } catch (error) {
+      // 2026-11-02（監査 H3）: 理由を捨てていたので、本番で全部 erc8004_unavailable になっても原因が読めなかった。
+      logServerErrorChainSafe("decision.buyer_facts.erc8004", error);
       unavailable.push("erc8004");
     }
   }
@@ -169,7 +189,7 @@ export async function loadBuyerFacts(payerId: string): Promise<BuyerFacts> {
   return {
     settled_count_30d: Number(agg?.n ?? 0),
     unique_payees_30d: Number(agg?.payees ?? 0),
-    retry_burst_rate: retryBurstRate(events),
+    retry_burst_rate: retryRate,
     sybil: { multi_agent_owner: multiAgentOwner, shared_funder: sharedFunder, cluster_id: clusterId, unavailable },
     erc8004: { agent_id: agentId, feedback_with_payment_proof_ratio: proofRatio },
     first_seen: lifetime?.first_seen ?? agg?.first_seen ?? null,

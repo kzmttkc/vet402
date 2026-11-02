@@ -98,6 +98,30 @@ export function logServerErrorSafe(context: string, error: unknown): void {
   }
 }
 
+/** 原因をたどる段数の上限（循環や異常に深い鎖で文字列を伸ばし続けない）。 */
+const MAX_ERROR_CHAIN_DEPTH = 5;
+
+/**
+ * logServerErrorSafe に error.cause の鎖を足した版（2026-11-02）。包んだ Error の message が固定語
+ * （agent_resolve_unavailable 等）で、本当の理由が cause にあるときに使う。段ごとに伏せてからつなぐ。
+ */
+export function logServerErrorChainSafe(context: string, error: unknown): void {
+  try {
+    const parts: string[] = [safeMessage(error)];
+    let current: unknown = error;
+    for (let depth = 0; depth < MAX_ERROR_CHAIN_DEPTH && current instanceof Error; depth++) {
+      const inner: unknown = current.cause;
+      if (inner === undefined || inner === null) break;
+      const text = safeMessage(inner);
+      if (text !== "" && !parts.includes(text)) parts.push(text);
+      current = inner;
+    }
+    logServerError(safeContext(context), new Error(parts.join(" | cause: ")));
+  } catch {
+    // ログで処理を落とさない。
+  }
+}
+
 /** logAndSwallow の伏字版。`.catch(logAndSwallowSafe("ctx"))`。 */
 export function logAndSwallowSafe(context: string): (error: unknown) => undefined {
   const swallow = logAndSwallow(safeContext(context));

@@ -14,6 +14,8 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Address } from "viem";
 import {
   AGENT_RESOLVE_TAIL_MAX_DAYS,
@@ -152,4 +154,28 @@ test("スナップショット: 古い起点を抱えすぎたら全区間をや
     planTailSnapshotUse({ snapshot, fromBlock: 2000n, toBlock: 5030n, now: 11, maxTailBlocks: 1000n }),
     { kind: "full" },
   );
+});
+
+// ---------- 2026-11-02 監査 H3: tail はライブの予算で読み切れる長さに保つ ----------
+
+test("index-owners は 3 時間ごと（索引の遅れをライブの 3 秒で読み切れる長さに保つ）", () => {
+  const vercel = JSON.parse(readFileSync(join(__dirname, "..", "vercel.json"), "utf8")) as {
+    crons: { path: string; schedule: string }[];
+  };
+  const minutes = vercel.crons
+    .filter((c) => c.path === "/api/cron/index-owners")
+    .map((c) => {
+      const m = /^(\d+) (\d+) \* \* \*$/.exec(c.schedule);
+      assert.ok(m, `日次の形で書く: ${c.schedule}`);
+      return Number(m![2]) * 60 + Number(m![1]);
+    })
+    .sort((a, b) => a - b);
+  assert.ok(minutes.length >= 8);
+  const gaps = minutes.map((t, i) => (i + 1 < minutes.length ? minutes[i + 1]! - t : minutes[0]! + 1440 - t));
+  assert.ok(Math.max(...gaps) <= 180, `最大の間隔 ${Math.max(...gaps)} 分`);
+});
+
+test("読めなかった理由を cause に残す（呼び手がログへ出す）", () => {
+  const src = readFileSync(join(__dirname, "..", "src/lib/chain/agent-resolver.ts"), "utf8");
+  assert.doesNotMatch(src, /throw new Error\("agent_resolve_unavailable"\)/, "cause なしの throw を足さない");
 });

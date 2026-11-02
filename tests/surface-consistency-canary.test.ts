@@ -637,3 +637,119 @@ test("not tried（Base の購入なし）の出品に別のチェーンの行だ
   x.ledgerRows = { ok: true, value: [...x.ledgerRows.value, { ...x.ledgerRows.value[0]!, network: "eip155:8453", tx_hash: "0x" + "c".repeat(64), purchase_id: "p-b" }] };
   assert.equal(compareListing(x, registry()).checks.find((c) => c.rule === "not_tried_vs_rows")?.ok, false);
 });
+
+// ---- 2026-11-02.2: L2 は窓に関係なく最後の配達を読む。根拠の行は 30 日窓にも 90 日の export にも無いことがある ----
+
+/** 判定の L2 の根拠になる配達（evidence の L2 行）を差し替えた出品。 */
+function l2FromOlderDelivery(lastDeliveredAt: string, tx: string) {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true && x.mcp.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.facts = { ...d.facts, l2: { status: "mismatch", missing_keys: ["id"] } };
+  d.l1_basis = { ...d.l1_basis, last_delivered_at: lastDeliveredAt };
+  d.evidence = [{ level: "L2", purchase_id: `eip155:8453:${tx}` }];
+  x.decision = { ok: true, value: d };
+  x.mcp = { ok: true, value: { ...x.mcp.value, measurement: structuredClone(d) } };
+  return x;
+}
+
+test("L2 の根拠の配達が 90 日の export より古いときは比べない（赤にしない）", () => {
+  const scoredAt = Date.parse("2026-10-01T00:00:00Z");
+  const x = l2FromOlderDelivery(new Date(scoredAt - 100 * 86_400_000).toISOString(), `0x${"ab".repeat(32)}`);
+  assert.ok(x.decision.ok === true);
+  x.decision = { ok: true, value: { ...x.decision.value, scoredAt: new Date(scoredAt).toISOString() } };
+  const { checks, skips } = compareListing(x, registry());
+  for (const rule of ["l2_same_row", "evidence_in_ledger"]) {
+    assert.ok(!checks.some((c) => c.rule === rule), `${rule} was compared: ${JSON.stringify(checks.filter((c) => c.rule === rule))}`);
+    assert.ok(skips.some((s) => s.rule === rule && /90-day export/.test(s.reason)), `${rule} not skipped: ${JSON.stringify(skips)}`);
+  }
+});
+
+test("窓の外でも export の中にある配達は、L2 の行として比べる", () => {
+  const tx = `0x${"cd".repeat(32)}`;
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true && x.mcp.ok === true);
+  const scoredAt = Date.parse(x.decision.value.scoredAt!);
+  const at = new Date(scoredAt - 45 * 86_400_000).toISOString().replace(/\.\d+Z$/, "Z");
+  const row = { ...x.ledgerRows.value[0]!, attempted_at: at, tx_hash: tx, status: "settled", http_status_paid: "200", l2_schema: "mismatch", l2_reading: "mismatch" };
+  const d = structuredClone(x.decision.value);
+  d.facts = { ...d.facts, l2: { status: "mismatch", missing_keys: ["id"] } };
+  d.l1_basis = { ...d.l1_basis, last_delivered_at: at };
+  d.evidence = [];
+  const y = { ...x, ledgerRows: { ok: true as const, value: [row] }, decision: { ok: true as const, value: d }, mcp: { ok: true as const, value: { ...x.mcp.value, measurement: structuredClone(d) } } };
+  const c = compareListing(y, registry()).checks.find((k) => k.rule === "l2_same_row");
+  assert.ok(c, "l2_same_row was not compared");
+  assert.equal(c.ok, true, JSON.stringify(c.values));
+  assert.match(String(c.values.find((v) => v.surface === "ledger")?.value), new RegExp(at));
+});
+
+test("付け先の決まらない配達は、比べる行より新しいときだけ l2_same_row を控える", () => {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true);
+  const base = x.ledgerRows.value[0]!;
+  const unplacedAt = (at: string) => [{ ...base, attempted_at: at, network: "eip155:42161", tx_hash: `0x${"ef".repeat(32)}`, status: "settled", http_status_paid: "200" }];
+  const t = Date.parse(base.attempted_at);
+  const older = compareListing({ ...x, ledgerUnplaced: unplacedAt(new Date(t - 86_400_000).toISOString().replace(/\.\d+Z$/, "Z")) }, registry());
+  assert.ok(older.checks.some((c) => c.rule === "l2_same_row"), "古い行があっても比べる");
+  const newer = compareListing({ ...x, ledgerUnplaced: unplacedAt(new Date(t + 60_000).toISOString().replace(/\.\d+Z$/, "Z")) }, registry());
+  assert.ok(!newer.checks.some((c) => c.rule === "l2_same_row"), "新しい行があれば控える");
+  assert.ok(newer.skips.some((s) => s.rule === "l2_same_row" && /cannot place/.test(s.reason)));
+});
+
+// ---- H-A のあとで残った赤（判定 2,658 件と 90 日の export のリプレイで見つけた形） ----
+
+test("L2 の行: 判定 undeclared × 行 not_checked は食い違いではない（買った後に出力の宣言が消えた出品）", () => {
+  const c = l2SameRow("undeclared", "not_checked", "not_checked");
+  assert.equal(c.ok, true, JSON.stringify(c.values));
+});
+
+test("L2 の行: 掲載に宣言が無い出品は、古い行が L2 の読みを持っていても比べない", () => {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true && x.mcp.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.facts = { ...d.facts, l2: { status: "undeclared", declaration_hash: null } };
+  const y = {
+    ...x,
+    decision: { ok: true as const, value: d },
+    mcp: { ok: true as const, value: { ...x.mcp.value, measurement: structuredClone(d) } },
+    ledgerRows: { ok: true as const, value: x.ledgerRows.value.map((r) => ({ ...r, l2_schema: "match", l2_reading: "match" })) },
+  };
+  const { checks, skips } = compareListing(y, registry());
+  assert.ok(!checks.some((c) => c.rule === "l2_same_row"), JSON.stringify(checks.filter((c) => c.rule === "l2_same_row")));
+  assert.ok(skips.some((s) => s.rule === "l2_same_row" && /no declaration now/.test(s.reason)));
+});
+
+test("L0: 判定 fail × export withdrawn は同じ 2 回の失敗で、食い違いではない", () => {
+  const x = listing(4, "block_l0", ["l0_fail"]);
+  assert.ok(x.l0Row.ok === true && x.decision.ok === true);
+  const y = { ...x, record: { ok: "n/a" as const, why: "test" }, l0Row: { ok: true as const, value: { ...x.l0Row.value, published_verdict: "withdrawn" } } };
+  const c = compareListing(y, registry()).checks.find((k) => k.rule === "l0_published_state");
+  assert.ok(c, "l0_published_state was not compared");
+  assert.equal(c.ok, true, JSON.stringify(c.values));
+});
+
+test("L0: 判定 pass × export withdrawn は食い違いのまま", () => {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.l0Row.ok === true);
+  const y = { ...x, record: { ok: "n/a" as const, why: "test" }, l0Row: { ok: true as const, value: { ...x.l0Row.value, published_verdict: "withdrawn" } } };
+  const c = compareListing(y, registry()).checks.find((k) => k.rule === "l0_published_state");
+  assert.ok(c, "l0_published_state was not compared");
+  assert.equal(c.ok, false, JSON.stringify(c.values));
+});
+
+test("L2 の行: 宣言のある出品で判定 undeclared × 行 match は食い違いのまま（赤）", () => {
+  const x = listing(1, "allow", ["delivered"]);
+  assert.ok(x.ledgerRows.ok === true && x.decision.ok === true && x.mcp.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.facts = { ...d.facts, l2: { status: "undeclared", declaration_hash: "abc" } };
+  const y = {
+    ...x,
+    record: { ok: "n/a" as const, why: "test" },
+    decision: { ok: true as const, value: d },
+    mcp: { ok: true as const, value: { ...x.mcp.value, measurement: structuredClone(d) } },
+    ledgerRows: { ok: true as const, value: x.ledgerRows.value.map((r) => ({ ...r, l2_schema: "match", l2_reading: "match" })) },
+  };
+  const c = compareListing(y, registry()).checks.find((k) => k.rule === "l2_same_row");
+  assert.ok(c, "l2_same_row was not compared");
+  assert.equal(c.ok, false, JSON.stringify(c.values));
+});

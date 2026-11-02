@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
+import { consumeIpRateLimit, ipRateLimitHeaders, sharedCacheRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { L0_EXPORT_COLUMN_NOTES, L0_EXPORT_COLUMNS, readL0Export } from "@/lib/observatory/l0-export";
 import { csvLines } from "@/lib/util/csv-write";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -24,6 +24,8 @@ export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`observatory-l0-export:${ip}`, RL_LIMIT, RL_WINDOW_MS);
   const perCaller = withNoindex(ipRateLimitHeaders(limited));
+  // 2026-11-02（監査 L7）: CDN が配る 200 に呼び手ごとの残数を載せない。
+  const shared = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
     const status = limited.unavailable ? 503 : 429;
     return NextResponse.json({ error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" }, { status, headers: perCaller });
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     if (!read) return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
     return new NextResponse(csvLines(L0_EXPORT_COLUMNS, read.rows), {
       headers: {
-        ...perCaller,
+        ...shared,
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": 'attachment; filename="vet402-l0-latest.csv"',
         "x-vet402-license": "CC-BY-4.0",

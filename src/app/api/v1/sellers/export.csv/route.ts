@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
-import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
+import { consumeIpRateLimit, ipRateLimitHeaders, sharedCacheRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
 import { SELLER_EXPORT_COLUMN_NOTES, SELLER_EXPORT_COLUMNS } from "@/lib/sellers/export";
 import { readSellerExport } from "@/lib/sellers/reader";
@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
   const limited = await consumeIpRateLimit(`sellers-export:${ip}`, RL_LIMIT, RL_WINDOW_MS);
   const perCaller = ipRateLimitHeaders(limited);
+  // 2026-11-02（監査 L7）: CDN が配る 200 に呼び手ごとの残数を載せない。
+  const shared = sharedCacheRateLimitHeaders(limited);
   if (!limited.allowed) {
     const status = limited.unavailable ? 503 : 429;
     return NextResponse.json({ error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" }, { status, headers: perCaller });
@@ -44,7 +46,7 @@ export async function GET(request: NextRequest) {
     const { fetchedAt, rows } = await readSellerExport(db);
     return new NextResponse(csvLines(SELLER_EXPORT_COLUMNS, rows), {
       headers: {
-        ...perCaller,
+        ...shared,
         "content-type": "text/csv; charset=utf-8",
         "content-disposition": 'attachment; filename="vet402-sellers-base.csv"',
         "x-robots-tag": "noindex",

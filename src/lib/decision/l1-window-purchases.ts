@@ -7,6 +7,7 @@ import type { getDb } from "@/lib/db/client";
 import { recordRowKey } from "@/lib/sellers/board";
 import type { RecordSides } from "@/lib/sellers/board";
 import { feedL1WindowClassifyColumnsSql } from "@/lib/sellers/reader";
+import { deliveredPredicate } from "@/lib/observatory/delivery";
 import { L1_WINDOW_DAYS } from "./rules";
 import { parseL2Detail, type PurchaseInput, type SellerRowView } from "./seller-facts";
 
@@ -55,9 +56,9 @@ export function purchaseInputFromL1WindowRow(r: Record<string, unknown>, sides: 
   };
 }
 
-export async function fetchL1WindowPurchaseRows(db: Db, endpointId: string): Promise<Record<string, unknown>[]> {
-  const raw = await db.execute(sql`
-    SELECT attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
+/** PurchaseInput を組むのに要る列（窓の読みと最後の配達の読みで同じ。テーブルの別名は p）。 */
+const PURCHASE_INPUT_COLUMNS = sql`
+    attempted_at::text AS attempted_at, status, latency_ms, http_status_paid, payload_non_empty, l2_schema, tx_hash, network,
            to_char(attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at_utc,
            CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN left(raw_response_meta->>'contentType', 60) END AS content_type,
            raw_response_meta->'l2' AS l2_detail,
@@ -69,11 +70,35 @@ export async function fetchL1WindowPurchaseRows(db: Db, endpointId: string): Pro
            amount_units, payer, left(auth_nonce, 80) AS auth_nonce,
            CASE WHEN status = 'settle_failed' AND tx_hash IS NOT NULL THEN
              (settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (p.tx_hash, lower(p.tx_hash))))
-           END AS settlement_confirmed
+           END AS settlement_confirmed`;
+
+function rowsFrom(raw: unknown): Record<string, unknown>[] {
+  return (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
+}
+
+export async function fetchL1WindowPurchaseRows(db: Db, endpointId: string): Promise<Record<string, unknown>[]> {
+  return rowsFrom(
+    await db.execute(sql`
+    SELECT ${PURCHASE_INPUT_COLUMNS}
     FROM x402_l1_purchases p WHERE endpoint_id = ${endpointId}::uuid AND attempted_at > now() - ${WINDOW_INTERVAL}
     ORDER BY attempted_at DESC, id DESC LIMIT ${L1_WINDOW_PURCHASE_LIMIT}
-  `);
-  return (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[];
+  `),
+  );
+}
+
+/**
+ * 2026-11-02.2: 全履歴の最後の配達 1 行（L2 を読む材料・seller-facts l2NeedsDeliveryOutsideWindow のときだけ呼ぶ）。
+ * 述語は verified_terms と同じ deliveredPredicate（isDelivered の SQL）。無ければ null。
+ */
+export async function fetchLastDeliveredPurchaseRow(db: Db, endpointId: string): Promise<Record<string, unknown> | null> {
+  const rows = rowsFrom(
+    await db.execute(sql`
+    SELECT ${PURCHASE_INPUT_COLUMNS}
+    FROM x402_l1_purchases p WHERE endpoint_id = ${endpointId}::uuid AND ${sql.raw(deliveredPredicate())}
+    ORDER BY attempted_at DESC, id DESC LIMIT 1
+  `),
+  );
+  return rows[0] ?? null;
 }
 
 /** フィード用: 複数出品の窓内 200 行（endpoint_id 付き・分類列付き・1 本の JOIN）。 */

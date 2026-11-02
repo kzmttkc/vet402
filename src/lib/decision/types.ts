@@ -136,9 +136,12 @@ export type VerifiedTerms = {
   pay_to: string;
   /** 払った資産（EVM・Solana は契約／mint、XRPL は RLUSD の通貨コード hex）。 */
   asset: string;
-  /** 払った額（基本単位の整数文字列・小数 6 桁の目盛り）。XRPL の 402 は "0.01" のような 10 進で書く——6 桁に直して比べる。 */
+  /**
+   * 払った額（台帳の 6 桁の単位の整数文字列）。資産の基本単位とは限らない: USD1（BNB Chain・18 桁）は 10^12 倍、
+   * Stellar の USDC（7 桁）は 10 倍して 402 の額と比べる。値は変えない（呼び手が decimals: 6 に固定している・2026-11-02 監査 H2）。
+   */
   amount: string;
-  /** amount の小数桁（台帳は全チェーンで 6）。 */
+  /** amount の小数桁（台帳は全チェーンで 6）。資産の桁ではない。 */
   decimals: 6;
   /** CAIP-2（例: eip155:8453）。 */
   network: string;

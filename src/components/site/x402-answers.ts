@@ -83,6 +83,7 @@ export const CHECK_SELLER: AnswerPage = {
     "Check an x402 seller before paying by reading the purchases vet402 has made from that seller and the decision those purchases support.",
     "The decision names the terms of the last purchase whose delivery vet402 confirmed.",
     "If the 402 in hand names a different recipient, asset, network, or scheme, or a higher amount, that offer is different from the one that was delivered.",
+    "The amount is in 6-decimal ledger units: multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing.",
   ],
 };
 

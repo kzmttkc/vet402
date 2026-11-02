@@ -10,7 +10,35 @@
     },
     {
       "path": "/api/cron/index-owners",
-      "schedule": "0 5 * * *"
+      "schedule": "20 2 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 5 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 8 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 11 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 14 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 17 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 20 * * *"
+    },
+    {
+      "path": "/api/cron/index-owners",
+      "schedule": "20 23 * * *"
     },
     {
       "path": "/api/cron/index-feedback",

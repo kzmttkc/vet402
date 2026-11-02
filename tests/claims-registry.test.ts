@@ -584,7 +584,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,
   // 2026-10-21: public/llms.txt を走査に加えた時点の検出数。バッククォートで切れた断片。
-  "public/llms.txt": 23, // 2026-10-21: two L2 mapping sentences merged into one (audit A-06), so two fewer assertions
+  "public/llms.txt": 19, // 2026-11-02: the count follows quote and backtick fragments; edits shifted them.
   // 2026-09-28: /sellers の 5 面（src/app/sellers/**/page.tsx・src/components/site/sellers/SellersViews.tsx・
   // src/lib/sellers/fix-modes.ts）は断定語を使わずに書いたので検出が 0 件。床を 0 で書いても何も守らないので置かない。
   // 事実の主張は docs/claims.yaml に sellers_* として引用で登録してある（引用が面から消えたら「every registered quote」が赤）。

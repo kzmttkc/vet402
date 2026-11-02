@@ -82,7 +82,7 @@ function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-11-02.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.1"));
+test("版: 2026-11-02.2", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.2"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗
@@ -160,7 +160,9 @@ const l2 = (missing: string[], contentType = "application/json; charset=utf-8") 
   row(1, { l2Schema: "mismatch", l2Detail: { missing, declarationHash: "d", responseHash: "r" }, contentType });
 
 test("twit.sh 型: l2 mismatch で missing_keys が空 → WARN・l2_mismatch_unexplained、evidence は mismatch_kind unexplained と content_type", () => {
-  const { d, facts, input } = run([l2([])], SCHEMA_REQ);
+  // 2026-11-02.2: 欠けたキーの無い不一致は、理由を記録した行（2026-09-29 以降の形）だけが mismatch のまま。
+  const unparseable = row(1, { l2Schema: "mismatch", l2Detail: { missing: [], declarationHash: "d", responseHash: "r", reason: "unparseable" }, contentType: "application/json; charset=utf-8" });
+  const { d, facts, input } = run([unparseable], SCHEMA_REQ);
   assert.equal(facts.l2.status, "mismatch");
   assert.deepEqual(facts.l2.missing_keys, []);
   assert.equal(d.recommendation, "WARN");
@@ -234,13 +236,12 @@ test("古い行: 欠けたキーが頭の最上位に見えない・本文の全
   assert.deepEqual(short.facts.l2.missing_keys, ["assets"]);
 });
 
-test("古い行: 出力の宣言が無く、JSON として閉じていない長い本文 → WARN（l2_mismatch_unexplained）。ALLOW にしない", () => {
+test("古い行: 出力の宣言が無く、切れたのか壊れていたのか区別できない長い本文 → undeclared（売り手に不一致を付けない・2026-11-02.2）", () => {
   const SCHEMA_NONE = { properties: { input: { type: "http" }, output: { type: "object" } } };
   const { d, facts } = run([legacyRow([], LONG_HEAD)], SCHEMA_NONE);
-  assert.equal(facts.l2.status, "mismatch");
-  assert.deepEqual(facts.l2.missing_keys, []);
-  assert.equal(d.recommendation, "WARN");
-  assert.ok(d.reason_codes.includes(L2_MISMATCH_UNEXPLAINED));
+  assert.equal(facts.l2.status, "undeclared");
+  assert.equal(facts.l2.missing_keys, null);
+  assert.ok(!d.reason_codes.includes(L2_MISMATCH_UNEXPLAINED));
 });
 
 test("古い行: 本文の全部が手元にあって閉じていない JSON は mismatch・欠けたキーなし → WARN（l2_mismatch_unexplained）", () => {

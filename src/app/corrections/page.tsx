@@ -59,6 +59,36 @@ type Correction = {
 const CORRECTIONS: Correction[] = [
   {
     date: "2026-11-02",
+    subject: "/decision reading L2 from the last 30 days of deliveries",
+    wrong:
+      "The published rule reads L2 from the latest delivery. /decision and the facts API looked at deliveries from the last 30 days and no further, so a checked mismatch read not_checked once its delivery left the window, and its BLOCK became a WARN with no new purchase. " +
+      "Read on 2026-11-02T02:14Z, 2,358 listings had their last delivery outside the window. In 7 of them it named missing keys (5 listed, 2 delisted), and in 578 it conformed. " +
+      "57 of the 2,358 had a signed attempt in the window and did not read l1_stale, and 2 of those read l1_never_delivered next to a last_delivered_at.",
+    action:
+      "Changed on 2026-11-02. L2 now reads the latest delivery at any age. Those 7 listings moved from WARN to BLOCK (l2_mismatch). For a caller who does not set allow_without_l1, the other listings keep their recommendation. A caller who sets it can now get an ALLOW on 441 listings whose latest delivery conformed. An older row with no recorded reason and no named key is not read as a mismatch, because it cannot show whether the body was cut or broken: it reads undeclared when the listing declares no output schema, and not_checked when it does. " +
+      "The same reading applies to the record pages and to l2_reading in export.csv: read on 2026-11-02T03:38Z, 592 rows in the 90-day export moved off mismatch, 432 to no_declaration and 160 to not_checked. l2_schema keeps the value recorded at the time. " +
+      "A listing with an older delivery now reads l1_stale, not l1_never_delivered. The decision rules version is now 2026-11-02.2.",
+  },
+  {
+    date: "2026-11-02",
+    subject: "role=payee answering BLOCK for Base payers because a wallet lookup ran out of time",
+    wrong:
+      "role=payee answered BLOCK with erc8004_unavailable to each of nine Base payers called on 2026-11-01, and the text called it an input that could not be read, to retry later. Retrying would not have helped for hours. " +
+      "The agent index ran once a day and the live read of the blocks since then has 3 seconds: run locally on 2026-11-02 against public RPC, 34,000 blocks ran out of time and 5,400 blocks took 1.1 seconds. " +
+      "retry_burst_rate also stopped at the oldest 2,000 rows of a payer's window: read on 2026-11-02T01:28Z, 116 payers had more rows than that, and retry_burst came out the wrong way round for 3 of them: 2 gain it and 1 loses it.",
+    action:
+      "Changed on 2026-11-02. The agent index now runs at 3-hour intervals, and the reason for a failed read goes to the server log. A failed read still answers BLOCK: fail-closed is the published rule. retry_burst_rate now counts the whole window.",
+  },
+  {
+    date: "2026-11-02",
+    subject: "verified_terms.amount described as the asset's base units",
+    wrong:
+      "The API docs and the MCP text said verified_terms.amount was in base units with 6 decimals. It is in vet402's 6-decimal ledger units. USD1 on BNB Chain has 18 decimals and USDC on Stellar has 7, so a 402 on those chains, compared as written, read far higher than the record.",
+    action:
+      "Text changed on 2026-11-02. The value did not change. Multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402.",
+  },
+  {
+    date: "2026-11-02",
     subject: "/decision answering WARN on a second L0 fail older than 30 days",
     wrong:
       "/decision and the facts API read L0 probes from a 30-day window. A failing listing is probed less often, so the second of two failures in a row could leave that window. " +

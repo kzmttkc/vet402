@@ -143,6 +143,8 @@ export type BuildInput =
       verifiedTerms?: VerifiedTerms | null;
       /** 2026-09-29.3: L2 を決めた応答の Content-Type（seller-facts l2ContentTypeOf）。省略時は evidence に載せない。 */
       l2ContentType?: string | null;
+      /** 2026-11-02.2: L2 を決めた購入の ID（seller-facts l2PurchaseIdOf）。省略時は facts.l1.last_purchase_id。 */
+      l2PurchaseId?: string | null;
       now?: Date;
     }
   | {
@@ -190,7 +192,7 @@ export function buildDecision(input: BuildInput): DecisionResult {
         }),
       );
     }
-    const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id, input.l2ContentType);
+    const l2Evidence = l2EvidenceOf(f, input.subject.observatory_id, input.l2ContentType, input.l2PurchaseId);
     if (l2Evidence) evidence.push(l2Evidence);
     // 配る直前に 1 回だけ検査する（源を名乗らない行・合算した行を外へ出さない）。
     assertEvidenceContract(evidence);
@@ -381,6 +383,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
       verifiedTerms: loaded.verifiedTerms ?? null,
       l2ContentType: loaded.l2ContentType,
+      l2PurchaseId: loaded.l2PurchaseId,
     });
   } else {
     const facts = await loadBuyerFacts(req.payerId);

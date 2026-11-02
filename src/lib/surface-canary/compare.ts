@@ -44,7 +44,7 @@ export type DecisionBody = {
   facts?: {
     l0?: { status?: string; observed_at?: string | null };
     l1?: { n_delivered?: number; n_settled?: number; n_attempts?: number; last_attempt_at?: string | null };
-    l2?: { status?: string; missing_keys?: string[] | null };
+    l2?: { status?: string; missing_keys?: string[] | null; declaration_hash?: string | null };
   };
   l1_basis?: {
     window_days?: number;
@@ -112,7 +112,8 @@ const NOT_COUNTED_SIDE: Record<string, Side[]> = {
 const L2_EQUIV: Record<string, string[]> = {
   mismatch: ["mismatch"],
   conform: ["match"],
-  undeclared: ["no_declaration", ""],
+  // 2026-11-02.2: L2 は最後の配達を窓に関係なく読む。買った後に出力の宣言が消えた出品は、行が not_checked でも判定は undeclared。
+  undeclared: ["no_declaration", "", "not_checked"],
   // 2026-09-29.4: 宣言があって照合できない L2 は not_checked（WARN）。出力の宣言の無い出品（宣言はあっても出力を
   // 宣言していない出品を含む）が undeclared
   // 2026-10-31（Issue #83）: 判定は出力を宣言している出品で、直近の配達が match・mismatch でなければ行の語を問わず
@@ -525,16 +526,18 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     else {
       const vals: SurfaceValue[] = [{ surface: "decision", value: decL0 }];
       const set = new Set([decL0]);
+      // withdrawn は「直近 2 本が fail で、完全な取得の目録に無い」。判定の fail と同じ 2 回の失敗で、export が公開の fail 数から外しただけ。
+      const l0Word = l0?.published_verdict === "withdrawn" && decL0 === "fail" ? "fail" : l0?.published_verdict;
       if (l0) {
         vals.push({ surface: "l0", value: l0.published_verdict });
-        set.add(l0.published_verdict);
+        set.add(l0Word ?? null);
       }
       if (rec?.publishedState) {
         vals.push({ surface: "record", value: rec.publishedState });
         set.add(rec.publishedState);
       }
       const failCode = codes.includes("l0_fail");
-      const failElsewhere = l0?.published_verdict === "fail" || rec?.publishedState === "fail";
+      const failElsewhere = l0Word === "fail" || rec?.publishedState === "fail";
       push("l0_state", "l0_published_state", set.size === 1 && failCode === failElsewhere, vals);
     }
   }
@@ -555,13 +558,21 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
     const evRow = evTx ? ledger.find((r) => r.tx_hash && r.tx_hash.toLowerCase() === (txOf(evTx) ?? "").toLowerCase()) : undefined;
     const target =
       evRow ||
-      // 証拠の行が無ければ、窓（30 日）の中の最新の配達。窓の外の配達は判定の L2 が読まない（「checked なし」で正しい）。
+      // 証拠の行が無ければ、export の中の最新の配達。判定の L2 は窓に関係なく最後の配達を読む（2026-11-02.2）。
       [...ledger]
-        .filter((r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid) && (!Number.isFinite(scoredAt) || inWindow(r.attempted_at)))
+        .filter((r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid))
         .sort((a, b) => b.attempted_at.localeCompare(a.attempted_at))[0];
     const evInUnplaced = !!evTx && unplaced.some((r) => r.tx_hash && r.tx_hash.toLowerCase() === (txOf(evTx) ?? "").toLowerCase());
-    const unplacedDelivered = unplacedInWindow.some((r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid));
+    // 付け先の決まらない配達が、比べる行より新しいときだけ、判定が読んだ行を決められない。
+    const unplacedDelivered = unplaced.some(
+      (r) => moneyMoved(r) && isDeliveryHttp(r.http_status_paid) && (!target || r.attempted_at.localeCompare(target.attempted_at) > 0),
+    );
+    // 2026-11-02.2: L2 が読む配達は 90 日の export より古いことがある。読めない行とは比べない（85 日で余裕を取る）。
+    const beyondExport = !!d.l1_basis?.last_delivered_at && ms(d.l1_basis.last_delivered_at) < scoredAt - 85 * 86_400_000;
     if (!decL2 || !L2_EQUIV[decL2]) skip("l2_state", "l2_same_row", `decision L2 status ${decL2} not in the canary's vocabulary`);
+    else if (beyondExport) skip("l2_state", "l2_same_row", "the delivery L2 reads is older than the 90-day export");
+    else if (decL2 === "undeclared" && d.facts?.l2?.declaration_hash === null)
+      skip("l2_state", "l2_same_row", "the listing has no declaration now; an older row can still carry a reading");
     // 証拠の行がこの出品の行に無く、付け先の決まらない行にある（または窓の中の配達がそこにある）なら、判定が読んだ行を決められない
     else if (!evRow && (evInUnplaced || unplacedDelivered))
       skip("l2_state", "l2_same_row", "the row the decision reads may be a ledger row the export cannot place on this listing");
@@ -569,9 +580,9 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
       if (decL2 === "mismatch" || decL2 === "conform")
         push("l2_state", "l2_same_row", false, [
           { surface: "decision", value: decL2 },
-          { surface: "ledger", value: `no delivered row in the ${windowDays}-day window to carry it` },
+          { surface: "ledger", value: "no delivered row in the export to carry it" },
         ]);
-      else skip("l2_state", "l2_same_row", "no delivered row in the window");
+      else skip("l2_state", "l2_same_row", "no delivered row in the export");
     } else {
       const tL2 = (target as Record<string, string | undefined>).l2_reading || target.l2_schema;
       const recRow = rec?.rows.find((r) => (r.txHash && target.tx_hash && r.txHash.toLowerCase() === target.tx_hash.toLowerCase()) || r.attemptedMinute === minuteOf(target.attempted_at));
@@ -594,7 +605,7 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
         const pool = [...ledger, ...unplaced];
         return tx ? !pool.some((r) => r.tx_hash && r.tx_hash.toLowerCase() === tx.toLowerCase()) : !pool.some((r) => r.purchase_id === e.purchase_id);
       });
-      const old = d.facts?.l1?.last_attempt_at && ms(d.facts.l1.last_attempt_at) < scoredAt - 85 * 86_400_000;
+      const old = beyondExport || (d.facts?.l1?.last_attempt_at && ms(d.facts.l1.last_attempt_at) < scoredAt - 85 * 86_400_000);
       if (old) skip("l2_state", "evidence_in_ledger", "evidence may be older than the 90-day export");
       else
         push("l2_state", "evidence_in_ledger", missing.length === 0, [

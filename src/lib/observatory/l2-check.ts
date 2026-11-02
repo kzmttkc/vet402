@@ -13,8 +13,9 @@
 //      落ちた応答も、1 バイト以上受け取っていれば判定しない（body_timeout / body_read_error）。数えるのは生のバイト。
 //   2. JSON として読めない本文からは欠けたキーを作らない。最後まで読めた本文が JSON として読めない（閉じていない等）
 //      のは売り手の不具合なので mismatch（unparseable・欠けたキーは空＝判定は l2_mismatch_unexplained の WARN）。
-//   3. 印（reason）の無い古い行は legacyL2SchemaOf で読み直す（seller-facts が使う）。not_checked にするのは
-//      切れた証拠（記録した欠けたキーが、保存した本文の頭の最上位に見える）がある行だけ（独立レビュー BLOCK 2026-09-29）。
+//   3. 印（reason）の無い古い行は legacyL2SchemaOf で読み直す（判定・記録頁・export.csv の l2_reading が使う）。今の掲載に
+//      出力の宣言が無ければ no_declaration。not_checked にするのは、切れた証拠（記録した欠けたキーが、保存した本文の頭の
+//      最上位に見える）がある行と、欠けたキーの記録が無く JSON の本文が保存した頭より長い行（切れたのか壊れていたのか区別できない・2026-11-02.2）。
 // ============================================================
 import { createHash } from "node:crypto";
 
@@ -33,7 +34,7 @@ export const L1_BODY_OVER_CAP_REASON = "body_over_cap" as const;
 export const BODY_HEAD_CHARS = 500;
 
 /** L2 を判定しなかった理由（本文を読み切れなかった）。 */
-export type L2NotCheckedReason = typeof L1_BODY_OVER_CAP_REASON | "body_timeout" | "body_read_error" | "legacy_body_cut";
+export type L2NotCheckedReason = typeof L1_BODY_OVER_CAP_REASON | "body_timeout" | "body_read_error" | "legacy_body_cut" | "legacy_no_evidence";
 /**
  * L2 の判定が何で決まったか（raw_response_meta.l2.reason・2026-09-29 から）。これより前の行には無い。
  *   not_json_content_type  必須キーを宣言しているのに Content-Type が JSON でない（mismatch）
@@ -44,6 +45,7 @@ export type L2NotCheckedReason = typeof L1_BODY_OVER_CAP_REASON | "body_timeout"
  *   body_over_cap          本文が上限を超えた（not_checked）
  *   body_timeout / body_read_error  本文を 1 バイト以上受け取った後で時間切れ・切断（not_checked）
  *   legacy_body_cut        古い行の読み直しで、切れた証拠がある（not_checked・legacyL2SchemaOf だけが返す）
+ *   legacy_no_evidence     古い行の読み直しで、切れたのか壊れていたのか区別できない（not_checked・同じ）
  */
 export type L2Reason =
   | "not_json_content_type"
@@ -404,14 +406,16 @@ export function topLevelKeysOfJsonHead(head: string): Set<string> {
  * 古い行は 16,000 バイトで切った本文を判定し、読めない本文でも mismatch・欠けたキー＝宣言した必須キー全部と
  * 記録していた。本文は残っていない（先頭 500 文字の bodyHead だけ）ので、次の順で読み直す:
  *   - mismatch 以外・印のある行・Content-Type が JSON でない行 → そのまま（Content-Type の判定は本文に依らない）
- *   - 出力に必須キーも例のプロパティも無い宣言: 本文が 500 文字未満で全部そろっていて JSON として閉じていれば
- *     no_declaration。それ以外は mismatch・欠けたキーなし（判定は l2_mismatch_unexplained の WARN）。元の本文の長さの
- *     記録が無く、16,000 バイトで切れたのか売り手の本文が壊れていたのかを区別できない。欠けたキーという切れた証拠を
- *     探す材料も無いので、払う側に慎重な方へ倒す（2026-09-29 執行部の判断。新しい行は checkL2Detailed の規則のまま）
+ *   - 今の掲載に出力の宣言が無い（必須キーも例のプロパティも無い）→ no_declaration（今の規則 checkL2Detailed と同じ・
+ *     本文の形を問わない）。2026-11-02.2 まで長い本文は mismatch と読んでいた。窓の外の配達を読むようにしたら 185 件が
+ *     undeclared から l2_mismatch_unexplained に変わり、allow_without_l1 の呼び手で 148 件が ALLOW を失った。元の本文の
+ *     長さの記録が無く、16,000 バイトで切れたのか壊れていたのかを区別できない。証拠が無いので売り手に不一致を付けない。
  *   - bodyHead が本文の全部（500 文字未満）→ 今の規則で判定し直す（閉じていない JSON は mismatch・欠けたキーは空）
- *   - それより長い本文: 記録した欠けたキーのどれかが bodyHead の最上位に見える → 切れた証拠（キーはあるのに
+ *   - それより長い本文で、欠けたキーの記録が無い: JSON の頭で始まるか頭が無ければ、同じ理由で区別できないので
+ *     not_checked（legacy_no_evidence）。JSON の頭ですらない本文は切れても JSON にならないので mismatch のまま。
+ *   - それより長い本文で、記録した欠けたキーのどれかが bodyHead の最上位に見える → 切れた証拠（キーはあるのに
  *     読めなかった）なので not_checked（legacy_body_cut）。それ以外はそのまま mismatch（例: 必須キーが output の
- *     下にある本物の不一致・api.agentsouk.dev）。欠けたキーの記録が無い行もそのまま（判定は l2_mismatch_unexplained）。
+ *     下にある本物の不一致・api.agentsouk.dev）。
  */
 export function legacyL2SchemaOf(input: {
   l2Schema: string | null;
@@ -425,18 +429,16 @@ export function legacyL2SchemaOf(input: {
   if (input.l2Schema !== "mismatch" || input.l2Reason) return keep;
   if (!input.contentType?.includes("json")) return keep;
   const { requiredKeys, exampleProps } = declaredOutputOf(input.declaredSchema);
+  if (requiredKeys.length === 0 && !exampleProps) return { l2Schema: "no_declaration", missing: null, reason: null };
   const head = input.bodyHead ?? "";
-  if (requiredKeys.length === 0 && !exampleProps) {
-    const whole = head !== "" && head.length < BODY_HEAD_CHARS;
-    if (whole && parsedRecord(head).ok) return { l2Schema: "no_declaration", missing: null, reason: null };
-    return { l2Schema: "mismatch", missing: [], reason: null };
-  }
   if (head !== "" && head.length < BODY_HEAD_CHARS) {
     const d = checkL2Detailed(input.declaredSchema, head, input.contentType);
     return { l2Schema: d.status, missing: d.status === "mismatch" ? d.missing : null, reason: d.reason };
   }
   const missing = input.missing ?? [];
-  if (missing.length === 0) return keep;
+  if (missing.length === 0) {
+    return head === "" || looksLikeJson(head) ? { l2Schema: "not_checked", missing: null, reason: "legacy_no_evidence" } : keep;
+  }
   const top = topLevelKeysOfJsonHead(head);
   if (missing.some((k) => top.has(k))) return { l2Schema: "not_checked", missing: null, reason: "legacy_body_cut" };
   return keep;

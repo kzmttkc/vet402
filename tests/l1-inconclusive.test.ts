@@ -51,7 +51,7 @@ const factsOf = (purchases: PurchaseInput[]) =>
   });
 
 test("版: 判定の意味が変わったので DECISION_RULES_VERSION を上げる", () => {
-  assert.equal(DECISION_RULES_VERSION, "2026-11-02.1");
+  assert.equal(DECISION_RULES_VERSION, "2026-11-02.2");
 });
 
 test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集合で数え、n_inconclusive 10 / n_delivered 0", () => {
@@ -61,7 +61,7 @@ test("再現（exa 型・10 行 settled/4xx）: facts は purchases と同じ集
   assert.equal(f.l1.n_inconclusive, 10);
   assert.equal(f.l1.n_probe_error, 10, "互換のため同値で残す");
   assert.equal(f.l1.n_delivered, 0);
-  assert.equal(f.l1.observed_at, "2026-08-19T12:00:00Z", "払った事実があるので観測時刻が立つ");
+  assert.equal(f.l1.observed_at, "2026-08-19T12:00:00.000Z", "払った事実があるので観測時刻が立つ");
   assert.equal(f.l1.last_purchase_id, "eip155:8453:0x0009", "決済のレシートは在る");
   assert.equal(f.l1.p50_ms, null, "4xx の往復は配達の遅延ではないので遅延の分母に入れない");
 });

@@ -68,8 +68,9 @@ if (!TEST_DB) {
       assert.deepEqual(s.indexed_since.byChain, { [BASE]: d12, [SOL]: d40 });
       assert.equal(s.indexed_since.all_chains_since, d12, "全チェーンが揃うのは遅い方の日");
       assert.equal(s.indexed_since.window_requested_days, 30);
-      assert.equal(s.indexed_since.window_covered_days, 30);
-      assert.equal(s.indexed_since.window_fully_covered, true);
+      // 2026-11-02（監査 M11）: 窓の途中から始まるチェーンがあれば、全チェーンの答えは満たしていない（件数は下限）。
+      assert.equal(s.indexed_since.window_covered_days, 13, "遅い方のチェーンの 12 日前から今日まで");
+      assert.equal(s.indexed_since.window_fully_covered, false);
       assert.ok(s.indexed_since.note.length > 0, "note が空");
     });
 

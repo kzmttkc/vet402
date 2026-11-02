@@ -154,8 +154,8 @@ async function planTailFromCheckpoints(): Promise<AgentResolvePlan> {
       getIndexerCheckpoint(OWNER_INDEX_CHECKPOINT),
       getIndexerCheckpoint(AGENT_WALLET_INDEX_CHECKPOINT),
     ]);
-  } catch {
-    throw new Error("agent_resolve_unavailable");
+  } catch (error) {
+    throw new Error("agent_resolve_unavailable", { cause: error });
   }
 
   const checkpoint =
@@ -350,9 +350,9 @@ export async function resolveAgentIdByWallet(wallet: Address): Promise<bigint | 
   let indexed: bigint[];
   try {
     indexed = await findIndexedAgentIdsByWallet(wallet);
-  } catch {
+  } catch (error) {
     // 索引が読めない＝候補が無いのではなく分からない。負にキャッシュしない。
-    throw new Error("agent_resolve_unavailable");
+    throw new Error("agent_resolve_unavailable", { cause: error });
   }
 
   // 索引で当たれば tail 走査は要らない。確定はライブのオンチェーン照合なので、
@@ -362,14 +362,15 @@ export async function resolveAgentIdByWallet(wallet: Address): Promise<bigint | 
   if (resolved === null) {
     const plan = await planTailFromCheckpoints();
     if (plan.kind === "unavailable") {
-      throw new Error("agent_resolve_unavailable");
+      throw new Error("agent_resolve_unavailable", { cause: new Error(plan.reason) });
     }
     if (plan.kind === "tail_scan") {
       let snapshot: TailSnapshot;
       try {
         snapshot = await getTailSnapshot(plan.fromBlock, plan.toBlock);
-      } catch {
-        throw new Error("agent_resolve_unavailable");
+      } catch (error) {
+        // 2026-11-02: 原因を捨てない（deadline_exceeded:getLogsChunked か、読み先の断りか）。呼び手がログへ残す。
+        throw new Error("agent_resolve_unavailable", { cause: error });
       }
       resolved = await resolveFromCandidates(
         wallet,

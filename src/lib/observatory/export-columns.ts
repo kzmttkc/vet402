@@ -82,7 +82,7 @@ export function confirmedUnitsSql(alias: string): string {
  * CSV はコメント行を持てないので、取り違えやすい 2 列の意味をレスポンスヘッダで運ぶ（ASCII のみ）。
  */
 export const EXPORT_CSV_COLUMN_NOTES =
-  "spent_units = USDC base units vet402 signed for on the attempt (what it put at stake), not units shown to have moved; " +
+  "spent_units = 6-decimal ledger units vet402 signed for on the attempt (what it put at stake), not units shown to have moved; " +
   "confirmed_units = units vet402 re-read on-chain as transferred (spent_units on settled rows, 0 on every other row, " +
   "including settle_claimed rows awaiting re-read); " +
   "purchase_id = the purchase's id, the subject_id of its rows in /api/v1/observatory/corrections; " +

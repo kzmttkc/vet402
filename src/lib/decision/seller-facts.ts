@@ -15,7 +15,8 @@
 //                      「数える」＝届いた、または売り手の側（確定）。BLOCK は売り手の側（確定）の「払ったのに届かない」が
 //                      最後の配達より後に 2 回以上のときだけ。facts の形（SDK・openapi と対）は変えない
 //   l1.n_delivered   = delivery.ts isDelivered（settled・2xx（202 を除く）・本文が空でない）
-//   l2.status        = 宣言が無ければ undeclared。あれば直近の配達の l2_schema:
+//   l2.status        = 宣言が無ければ undeclared。あれば最後の配達の l2_schema（窓に関係なく全履歴の最後の 1 行・
+//                      2026-11-02.2。窓の中に配達が無いときだけ lastDeliveryOutsideWindow を読む）:
 //                      match → conform、mismatch → mismatch、それ以外（配達が無い・not_checked 等）は、出力を宣言して
 //                      いれば not_checked、していなければ undeclared（未検査を mismatch とも undeclared とも書かない・
 //                      2026-09-29 監査 7 周目）
@@ -41,7 +42,7 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { toIsoUtc } from "@/lib/util/iso-utc";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { Dialect, Evidence, L2Status, OfferStability, SellerFacts, VerifiedTerms } from "./types";
-import { fetchL1WindowPurchaseRows, purchaseInputFromL1WindowRow } from "./l1-window-purchases";
+import { fetchL1WindowPurchaseRows, fetchLastDeliveredPurchaseRow, purchaseInputFromL1WindowRow } from "./l1-window-purchases";
 import type { L1Timeline } from "./rules";
 
 /** raw_response_meta.l2 → PurchaseInput（responseHash が無い行は null）。 */
@@ -302,6 +303,11 @@ export type SellerFactsInput = {
    */
   lastSignedAttemptAt?: string | null;
   lastDeliveredAt?: string | null;
+  /**
+   * 2026-11-02.2: 窓の中（purchases）に配達が無いときの、全履歴の最後の配達 1 行。L2 を読むためだけの材料で、
+   * loadSellerFacts が必要なときだけ読む（l2NeedsDeliveryOutsideWindow）。L1 の数・並びには混ぜない。
+   */
+  lastDeliveryOutsideWindow?: PurchaseInput | null;
 };
 
 /** 署名した（＝支払い済み・spent が立つ）status。§6.2 の n_attempts。 */
@@ -344,6 +350,22 @@ export function l0VerdictsNeededBeforeWindow(probesNewestFirst: readonly ProbeIn
   const n = probesNewestFirst.length;
   if (n === 0 || n >= MIN_CONSECUTIVE_FAILS_TO_PUBLISH) return 0;
   return probesNewestFirst.every((p) => p.verdict === "fail") ? MIN_CONSECUTIVE_FAILS_TO_PUBLISH - n : 0;
+}
+
+/** 窓の中で最後の配達（新しい順）。facts.l1.n_delivered と同じ述語。 */
+function latestDeliveredInWindow(purchases: readonly PurchaseInput[]): PurchaseInput | null {
+  return purchases.find((p) => isDelivered(p) && !isInconclusive(p)) ?? null;
+}
+
+/**
+ * 2026-11-02.2: 全履歴の最後の配達を読みに行くか。L2 は「最後の配達」を読む規則で、窓に関係しない。
+ * 窓で切ると、確かめた不一致が時間だけで not_checked（BLOCK → WARN）に下がる。読むのは宣言があり、窓の中に
+ * 配達が無く、全履歴には配達があるときだけ（多くの出品はこの往復をしない）。
+ */
+export function l2NeedsDeliveryOutsideWindow(input: Pick<SellerFactsInput, "purchases" | "declaredSchema" | "lastDeliveredAt">): boolean {
+  if (input.declaredSchema === null || input.declaredSchema === undefined) return false;
+  if (!input.lastDeliveredAt) return false;
+  return latestDeliveredInWindow(input.purchases) === null;
 }
 
 /** facts.l0.status。窓の中の新しい順に、窓より前の verdict を続けて公開規則へ渡す。 */
@@ -530,9 +552,10 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
   let l2ObservedAt: string | null = null;
   let l2Detail: PurchaseInput["l2Detail"] = null;
   if (declared) {
-    const lastDelivered = delivered[0] ?? null;
+    // 2026-11-02.2: 窓の中に無ければ全履歴の最後の配達。公開の文は "of the latest delivery" で、窓を言っていない。
+    const lastDelivered = delivered[0] ?? input.lastDeliveryOutsideWindow ?? null;
     if (lastDelivered) {
-      l2ObservedAt = lastDelivered.attemptedAt;
+      l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
       // 2026-09-29: 印の無い古い mismatch を読み直す（読めなかった本文は not_checked → undeclared と同じ扱い）。
       const l2 = legacyL2SchemaOf({
         l2Schema: lastDelivered.l2Schema,
@@ -572,7 +595,8 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
   return {
     l0: {
       status: l0Status,
-      observed_at: latestProbe?.probedAt ?? null,
+      // 2026-11-02（監査 M10）: 公開は format: date-time。Postgres の ::text をそのまま出さない。
+      observed_at: toIsoUtc(latestProbe?.probedAt),
       dialect: latestProbe && latestProbe.dialect && DIALECTS.has(latestProbe.dialect) ? (latestProbe.dialect as Dialect) : null,
       fail_reason: l0Status === "fail" ? (latestProbe?.failReason ?? null) : null,
     },
@@ -588,7 +612,7 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
         lastSettled && lastSettled.txHash && lastSettled.network
           ? toPurchaseId(toCaip2(lastSettled.network) ?? lastSettled.network, lastSettled.txHash)
           : null,
-      observed_at: signed[0]?.attemptedAt ?? null,
+      observed_at: toIsoUtc(signed[0]?.attemptedAt),
       last_attempt_at: input.lastAttemptAt,
     },
     l2: {
@@ -616,7 +640,13 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
  * L2 の evidence（§6.3 / 2026-09-02 監査 P1-11）。conform / mismatch のときだけ。
  * 宣言・応答・差分のハッシュを載せる——第三者が同じ宣言・同じ本文から再計算できる。
  */
-export function l2EvidenceOf(facts: SellerFacts, observatoryId: string, l2ContentType?: string | null): Evidence | null {
+export function l2EvidenceOf(
+  facts: SellerFacts,
+  observatoryId: string,
+  l2ContentType?: string | null,
+  /** 2026-11-02.2: L2 を決めた購入の ID（l2PurchaseIdOf）。省略時は facts.l1.last_purchase_id（窓の中の最新の settled）。 */
+  l2PurchaseId?: string | null,
+): Evidence | null {
   if (facts.l2.status !== "conform" && facts.l2.status !== "mismatch") return null;
   // 2026-09-29.3（監査 6 周目）: mismatch のときは、記録してある不一致の中身を出す。欠けたキーの名前があれば
   // missing_keys、無ければ unexplained（何が違ったかを示せない＝判定は WARN・l2_mismatch_unexplained）。
@@ -629,10 +659,11 @@ export function l2EvidenceOf(facts: SellerFacts, observatoryId: string, l2Conten
           ...(l2ContentType !== undefined ? { content_type: l2ContentType } : {}),
         }
       : {};
+  const purchaseId = l2PurchaseId === undefined ? facts.l1.last_purchase_id : l2PurchaseId;
   return {
     level: "L2",
     source: "vet402",
-    ...(facts.l1.last_purchase_id ? { purchase_id: facts.l1.last_purchase_id } : {}),
+    ...(purchaseId ? { purchase_id: purchaseId } : {}),
     url: `https://vet402.com/observatory/e/${observatoryId}`,
     declaration_hash: facts.l2.declaration_hash,
     response_hash: facts.l2.response_hash,
@@ -643,13 +674,23 @@ export function l2EvidenceOf(facts: SellerFacts, observatoryId: string, l2Conten
 }
 
 /**
- * 2026-09-29.3: facts.l2 を決めた応答（窓の中の最新の配達）の Content-Type。L2 が undeclared なら undefined
- * （evidence に載せない）、記録が無ければ null。assembleSellerFacts と同じ「配達」の述語で選ぶ。
+ * 2026-09-29.3: facts.l2 を決めた応答（最後の配達。窓の中に無ければ全履歴の最後の 1 行）の Content-Type。
+ * L2 が undeclared なら undefined（evidence に載せない）、記録が無ければ null。assembleSellerFacts と同じ述語で選ぶ。
  */
-export function l2ContentTypeOf(purchases: readonly PurchaseInput[], facts: SellerFacts): string | null | undefined {
+export function l2ContentTypeOf(
+  purchases: readonly PurchaseInput[],
+  facts: SellerFacts,
+  lastDeliveryOutsideWindow?: PurchaseInput | null,
+): string | null | undefined {
   if (facts.l2.status !== "conform" && facts.l2.status !== "mismatch") return undefined;
-  const d = purchases.find((p) => isDelivered(p) && !isInconclusive(p));
+  const d = latestDeliveredInWindow(purchases) ?? lastDeliveryOutsideWindow ?? null;
   return d?.contentType ?? null;
+}
+
+/** 2026-11-02.2: facts.l2 を決めた購入の ID（facts.l1.last_purchase_id と同じ形）。tx の無い行・配達が無ければ null。 */
+export function l2PurchaseIdOf(purchases: readonly PurchaseInput[], lastDeliveryOutsideWindow?: PurchaseInput | null): string | null {
+  const d = latestDeliveredInWindow(purchases) ?? lastDeliveryOutsideWindow ?? null;
+  return d?.txHash && d.network ? toPurchaseId(toCaip2(d.network) ?? d.network, d.txHash) : null;
 }
 
 export type SellerFactsLoaded = {
@@ -673,6 +714,8 @@ export type SellerFactsLoaded = {
   verifiedTerms?: VerifiedTerms | null;
   /** 2026-09-29.3: L2 を決めた応答の Content-Type（l2ContentTypeOf）。L2 の evidence の content_type。 */
   l2ContentType?: string | null;
+  /** 2026-11-02.2: L2 を決めた購入の ID（l2PurchaseIdOf）。L2 の evidence の purchase_id。 */
+  l2PurchaseId?: string | null;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -843,6 +886,15 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   );
   const verifiedTerms = verifiedTermsOf(verifiedTermsRows[0] ?? null);
 
+  const lastDeliveredAt = toIsoUtc(lastSignedRows[0]?.last_delivered ?? null);
+  const declaredSchema = ep.declared_schema ?? null;
+  // 2026-11-02.2: L2 は窓に関係なく最後の配達を読む。窓の中に配達が無いときだけ 1 往復足す。
+  let lastDeliveryOutsideWindow: PurchaseInput | null = null;
+  if (l2NeedsDeliveryOutsideWindow({ purchases, declaredSchema, lastDeliveredAt })) {
+    const row = await fetchLastDeliveredPurchaseRow(db, endpointUuid);
+    lastDeliveryOutsideWindow = row ? purchaseInputFromL1WindowRow(row, null) : null;
+  }
+
   const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
   const factsInput = {
     probes,
@@ -850,12 +902,13 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     purchases,
     settlements30d,
     payees: ep.payee_id ? [ep.payee_id] : [],
-    declaredSchema: ep.declared_schema ?? null,
+    declaredSchema,
     method: ep.raw_method,
     declaredInput: ep.declared_input ?? null,
     lastAttemptAt: lastAttempt.at,
     lastSignedAttemptAt: toIsoUtc(lastSignedRows[0]?.last_signed ?? null),
-    lastDeliveredAt: toIsoUtc(lastSignedRows[0]?.last_delivered ?? null),
+    lastDeliveredAt,
+    lastDeliveryOutsideWindow,
   };
   const l1Timeline = l1TimelineOf(factsInput);
   const facts = assembleSellerFacts(factsInput, { l1Timeline });
@@ -866,7 +919,8 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     l0UnverifiedCause: l0UnverifiedCauseOf(probes, l0VerdictsBeforeWindow, l0HasProbeBeforeWindow),
     l1Timeline,
     verifiedTerms,
-    l2ContentType: l2ContentTypeOf(purchases, facts),
+    l2ContentType: l2ContentTypeOf(purchases, facts, lastDeliveryOutsideWindow),
+    l2PurchaseId: l2PurchaseIdOf(purchases, lastDeliveryOutsideWindow),
     endpoint: {
       id: ep.id,
       resourceId: ep.resource_id,

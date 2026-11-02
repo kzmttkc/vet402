@@ -31,6 +31,7 @@ export const TOOL_TEXT = {
       "check_x402_seller shows what happened when vet402 paid an x402 URL: whether the payment settled, whether content came back, and the transaction where vet402 recorded one. " +
       "For WARN or BLOCK, read reason_codes. " +
       "verified_terms holds the payTo, amount and network of the last purchase where content came back, so they can be set against the terms of a 402 response. " +
+      "Its amount is in 6-decimal ledger units: multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402. " +
       "When method is left out, GET is looked up first and then POST. " +
       "A URL that vet402 has no record of comes back with not_in_catalog set to true, up to five other listings on the same host, and the catalogs vet402 reads.",
   },
