@@ -185,8 +185,8 @@ test("the table pins Avalanche as measured on-chain 2026-10-26, after Base, Arc,
   assert.equal(EVM_PAY_CHAINS[4], ARBITRUM_CHAIN);
   assert.equal(EVM_PAY_CHAINS[5], AVALANCHE_CHAIN);
   assert.equal(publicChainLabel(AVALANCHE_CAIP2), "Avalanche C-Chain");
-  assert.equal(otherChainQueryUnsentUntil("eip155:43114"), null);
-  assert.equal(otherChainQueryUnsentUntil("eip155:42161"), null);
+  assert.equal(otherChainQueryUnsentUntil("eip155:43114"), "2026-11-02T04:55:29Z");
+  assert.equal(otherChainQueryUnsentUntil("eip155:42161"), "2026-11-02T04:55:29Z");
 });
 
 test("the pinned Avalanche domain hashes to the DOMAIN_SEPARATOR() the token itself returned on-chain", () => {

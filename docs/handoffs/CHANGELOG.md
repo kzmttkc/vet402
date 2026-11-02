@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-02 Declared query on Arbitrum and Avalanche is on
+
+- **What**: `eip155:42161` and `eip155:43114` are in `OBSERVATORY_L1_DECLARED_QUERY_NETWORKS`. The Production redeploy that reads it was ready by 2026-11-02 04:55:29 UTC, so `OTHER_CHAIN_QUERY_UNSENT_UNTIL` gets a row with that time and `QUERY_UNSENT_CHAIN_NAMES` the two names. The other networks in the allow list were read from the ledger (every row in the last 10 days carries `requestQuery`), so the list kept them.
+- **Why**: A third of Arbitrum tries were refused with 400 or 422, mostly because the query the listing declares was not sent.
+- **Impact**: A refused row before that time with no query recorded is now on vet402's side instead of unsorted. Signed amounts and payees do not change.
+- **Commits**: this entry.
+
+---
+
 ## 2026-11-02 L1: re-buy a listing whose latest delivery missed declared keys and whose last try is over 30 days old
 
 - **What**: `RETEST_L2_STALE_SQL` in `retest-sellers-sql.ts` finds active listings whose latest delivery is a mismatch and whose last attempt of any kind is older than 30 days. `l2StaleListingIds` in `l1-runner.ts` keeps those that still read as a mismatch with named keys, using the same `legacyL2SchemaOf` as the decision. `planCensusAndRetest` puts up to `RETEST_L2_STALE_PER_RUN` (3) of them first, inside `CENSUS_PER_RUN`, with `selection = retest`. The candidate query gets the listing ids only, so a listing that cannot be bought never falls through to another listing of the seller. Methodology gets one paragraph, `docs/claims.yaml` one entry, and the `/sellers` note on rows marked census or retest names this reason too.
