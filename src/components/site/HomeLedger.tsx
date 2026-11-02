@@ -1,9 +1,7 @@
 import Link from "next/link";
-import TrackedLink from "@/components/site/TrackedLink";
 import { ShareRule } from "@/components/site/Figures";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SUPPORTED_CHAINS } from "@/components/site/supported-chains-data";
-import { buttonClass } from "@/components/ui/Button";
 import { publicChainLabel } from "@/lib/observatory/chains";
 import { pinnedAssetOf } from "@/lib/observatory/settlement-assets";
 import type { ObservatoryStats } from "@/lib/observatory/reader";
@@ -29,12 +27,6 @@ export type HomeLedger = {
   attempts: number;
   settled: number;
   delivered: number;
-  activeEndpoints: number;
-  /** Listings seen in the latest full read of the Bazaar (latestSnapshot.fetchedCount). null when unread. */
-  seenInLatestRead?: number | null;
-  passActive: number;
-  /** Active listings whose latest verdict is fail or unverified. */
-  notPassActive: number;
   /** l1.byChain rows with at least one settled purchase, in the reader's order. */
   chains: { chain: string; label: string; asset: string; settled: number; delivered: number; inconclusiveSettled: number }[];
 };
@@ -82,10 +74,6 @@ export function homeLedgerOf(stats: HomeLedgerStats | null | undefined): HomeLed
     attempts: stats.l1.attempts,
     settled: stats.l1.settled,
     delivered: stats.l1.delivered,
-    activeEndpoints: stats.activeEndpoints,
-    seenInLatestRead: stats.latestSnapshot?.fetchedCount ?? null,
-    passActive: stats.publishedPassActive,
-    notPassActive: Math.max(0, stats.activeEndpoints - stats.publishedPassActive),
     chains: byChain
       .filter((r) => r.settled > 0)
       .map((r) => {
@@ -104,75 +92,6 @@ export function homeLedgerOf(stats: HomeLedgerStats | null | undefined): HomeLed
 
 const fmt = (n: number) => n.toLocaleString("en-US");
 
-const NUM = "font-[family-name:var(--font-display)] font-semibold tabular-nums text-brand-deep";
-
-export function LedgerSection({ ledger }: { ledger: HomeLedger }) {
-  return (
-    <section aria-labelledby="ledger">
-      <h2 id="ledger" className="sec-head scroll-mt-24">
-        <span>The public ledger</span>
-      </h2>
-      <p className="doc-note mt-4">
-        Whole ledger, read <span className="text-signal">{ledger.readDate}</span> at {ledger.readTime} UTC
-      </p>
-      <div className="mt-3 grid gap-6 min-[800px]:grid-cols-2 min-[800px]:gap-x-6">
-        <div className="border-t border-brand-deep pt-3">
-          <p className="doc-caption">Paid attempts that settled</p>
-          <p className="mt-2 text-[1.75rem] leading-[1.2]">
-            <span className={NUM}>{fmt(ledger.settled)}</span>
-            <span className="text-[0.9375rem] text-brand"> of {fmt(ledger.attempts)}</span>
-          </p>
-          <p className="mt-1 text-[0.84375rem] text-brand">
-            {fmt(ledger.delivered)} of the settled purchases also returned a deliverable HTTP 2xx answer.
-          </p>
-        </div>
-        <div className="border-t border-brand-deep pt-3">
-          <p className="doc-caption">Latest L0 verdict on active records</p>
-          <p className="mt-2 text-[1.75rem] leading-[1.2]">
-            <span className={NUM}>{fmt(ledger.passActive)}</span>
-            <span className="text-[0.9375rem] text-brand"> pass of {fmt(ledger.activeEndpoints)} active</span>
-          </p>
-          <p className="mt-1 text-[0.84375rem] text-brand">
-            {fmt(ledger.notPassActive)} active records do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed.
-          </p>
-          <p className="mt-1 text-[0.84375rem] text-brand">
-            Active means vet402 has not closed the record, and a Bazaar record is not closed at present.
-            {typeof ledger.seenInLatestRead === "number"
-              ? ` The latest full read of the Bazaar saw ${fmt(ledger.seenInLatestRead)}.`
-              : ""}
-          </p>
-        </div>
-      </div>
-      <p className="doc-note mt-3">
-        Customer count and revenue: not published. Source:{" "}
-        {/* JSON の API であって頁ではない（クライアント遷移・prefetch させない）。demo/page.tsx と同じ理由で無効化する。 */}
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-        <a href="/api/v1/observatory/state" className="doc-link">
-          /api/v1/observatory/state
-        </a>{" "}
-        (CC BY 4.0).
-      </p>
-      <p className="mt-6 flex flex-wrap gap-2 sm:gap-4">
-        <TrackedLink
-          href="/observatory"
-          event="lp_cta_click"
-          props={{ position: "ledger_observatory" }}
-          className={buttonClass({ variant: "secondary", size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
-        >
-          Open the observatory
-        </TrackedLink>
-        <TrackedLink
-          href="/observatory/state"
-          event="lp_cta_click"
-          props={{ position: "ledger_state" }}
-          className={buttonClass({ variant: "secondary", size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
-        >
-          See both counts
-        </TrackedLink>
-      </p>
-    </section>
-  );
-}
 
 /**
  * "Where purchases settled". It replaces the memo's former section 5 "Chains" and keeps its anchor

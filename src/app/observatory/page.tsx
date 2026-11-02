@@ -313,7 +313,7 @@ export default async function ObservatoryPage({
                 delisted; {stats.activeEndpoints.toLocaleString()} active, meaning not closed; {stats.publishedPassActive.toLocaleString()}{" "}
                 of the passes are active
                 {stats.latestSnapshot
-                  ? `; the latest full read of the Bazaar saw ${stats.latestSnapshot.fetchedCount.toLocaleString()}`
+                  ? `; the latest full read of the Bazaar saw ${stats.latestSnapshot.fetchedCount.toLocaleString()} listings`
                   : ""}
                 ). Settled on-chain counts endpoints with at least one purchase
                 vet402 re-read on-chain, active or not: {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} with a transaction the

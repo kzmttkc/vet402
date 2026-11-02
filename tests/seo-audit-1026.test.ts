@@ -127,7 +127,10 @@ test("公開の meta description は 160 字以内で、トップは USDC だけ
     read("src/app/docs/api/page.tsx"),
     /const API_BLURB = `Decision API for x402 agent payments\. \$\{keylessRatesSentence\(\)\}`;/,
   );
+  const siteDescription = read("src/app/layout.tsx").match(/const SITE_DESCRIPTION =\s*"([^"]*)"/);
+  assert.ok(siteDescription, "layout SITE_DESCRIPTION");
   const pages: Array<[string, string]> = [
+    ["layout", siteDescription[1]],
     ["home", quotedDescription("src/app/page.tsx")],
     ["observatory", quotedDescription("src/app/observatory/page.tsx")],
     ["state", quotedDescription("src/app/observatory/state/page.tsx")],

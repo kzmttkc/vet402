@@ -110,9 +110,9 @@ function parsePgArray(v: string[] | string | null): string[] | null {
 }
 
 export const L0_EXPORT_COLUMN_NOTES =
-  "One row per endpoint on record (listed or not), excluding endpoints paying vet402's own addresses, the population /api/v1/observatory/state counts. " +
-  "published_verdict = pass (latest probe passed) | fail (the newest 2 probes both failed, and the route is still listed) | withdrawn (those same two failing probes on a route absent from a complete catalog fetch) | unverified (anything else, including no probe). " +
+  "One row per endpoint on record (active or not), excluding endpoints paying vet402's own addresses, the population /api/v1/observatory/state counts. " +
+  "published_verdict = pass (latest probe passed) | fail (the newest 2 probes both failed, and the route is still active) | withdrawn (those same two failing probes on a route absent from a complete catalog fetch) | unverified (anything else, including no probe). " +
   "counting published_verdict=pass gives publishedPass, adding listed=true gives publishedPassActive, and adding latest_probe_older_than_7d=true gives publishedPassActiveProbeOlderThan7d. counting published_verdict=fail gives publishedFail. counting published_verdict=withdrawn gives withdrawnFail. " +
   "network_class = mainnet (a network id vet402 knows to be a mainnet: the rows of the state byChain table) | testnet | unclassified (an id vet402 cannot name, listed in byChainUnclassified). " +
-  "listed = the catalog still lists it (status active). last_probed_at = the newest L0 probe (UTC). " +
+  "listed = the record is still active (status active). last_probed_at = the newest L0 probe (UTC). " +
   "Full definitions: https://vet402.com/openapi.yaml";

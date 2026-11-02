@@ -361,3 +361,22 @@ test("errorReasons: 種類は上限までで、あふれた分は other にま�
   assert.equal(reasons.r0, 2);
   assert.equal(reasons.other, 3);
 });
+
+test("lastScanAddresses counts the addresses of the most recent scan day, not the whole window", () => {
+  const r = computeBenchmarkReport([
+    ...batch(3, { detectedAt: "2026-10-07T09:31:00Z" }),
+    ...batch(1, { detectedAt: "2026-10-31T05:00:00Z" }),
+  ]);
+  assert.equal(r.lastScanAt, "2026-10-31T05:00:00.000Z");
+  assert.equal(r.lastScanAddresses, 1);
+  assert.equal(computeBenchmarkReport([]).lastScanAddresses, 0);
+});
+
+test("lastBroadScan is the latest day that covered at least half of the addresses", () => {
+  const r = computeBenchmarkReport([
+    ...batch(3, { detectedAt: "2026-10-07T09:31:00Z" }),
+    ...batch(1, { detectedAt: "2026-10-31T05:00:00Z" }),
+  ]);
+  assert.deepEqual(r.lastBroadScan, { date: "2026-10-07", addresses: 3 });
+  assert.equal(computeBenchmarkReport([]).lastBroadScan, null);
+});

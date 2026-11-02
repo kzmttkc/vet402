@@ -1112,7 +1112,7 @@ paths:
       description: |
         The per-endpoint data behind the L0 counts of
         `/api/v1/observatory/state` (since 2026-09-29): one row per endpoint
-        on record, listed or not, excluding endpoints that pay vet402's own
+        on record, active or not, excluding endpoints that pay vet402's own
         addresses — the same population and the same rules as the state
         figures. Counting `published_verdict=pass` gives `publishedPass`;
         adding `listed=true` gives `publishedPassActive`; adding
@@ -1987,9 +1987,11 @@ paths:
       tags: [Decision]
       summary: Pre-payment / pre-service decision with the facts that produced it
       description: |
-        Product spec §8.3 / §9.1. `role=payer` (default) answers "does this
-        URL deliver as declared, right now?" from L0 liveness, L1
-        settle-through and L2 conformance. `role=payee` answers "should this
+        Product spec §8.3 / §9.1. `role=payer` (default) answers "what did
+        vet402 record when it paid this URL in the last 30 days?" from L0
+        liveness, L1 settle-through and L2 conformance. An ALLOW can carry
+        `l2_undeclared`: the listing declared no output to compare with.
+        `role=payee` answers "should this
         seller serve this payer?" and requires `payer`. The response carries
         `facts` and `recommendation` together. The transitional 0–100 `score`
         is left out unless `include_score=1` (since 2026-09-29.3); when
@@ -2708,7 +2710,7 @@ paths:
       summary: State of x402 (aggregate L0/L1 measurements), as data
       description: |
         Key-less machine-readable twin of the `/observatory/state` page: the
-        same aggregate figures — endpoints on record, currently listed,
+        same aggregate figures — endpoints on record, active records,
         delisted, published pass/fail/unverified, per-chain breakdown, and L1
         real-purchase totals — computed by the same readers so the page and
         this API can never disagree. Facts with denominators, no composite
@@ -2730,7 +2732,7 @@ paths:
                     type: integer
                     description: |
                       Endpoints on record whose latest L0 probe passed,
-                      including endpoints no longer listed — it can exceed
+                      including delisted endpoints — it can exceed
                       `activeEndpoints`.
                   publishedPassActive:
                     type: integer
@@ -2769,7 +2771,7 @@ paths:
                     description: |
                       L1 real-purchase totals. `settled` is a transfer vet402 re-read
                       on-chain. `delivered` is a settled attempt whose paid request also
-                      answered HTTP 2xx other than 202 Accepted, with a non-empty body. The settlement asset is USDC on Base, Arc, Celo, Solana, and Stellar, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain. BNB Chain binds the EIP-3009 authorization nonce. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee.
+                      answered HTTP 2xx other than 202 Accepted, with a non-empty body. The settlement asset is USDC on Base, Arc, Celo, Solana, Stellar, Arbitrum One and Avalanche C-Chain, USDC.e on Tempo, RLUSD from its fixed issuer on XRPL, and USD1 on BNB Chain. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee.
 
                       `settled` is published at two evidence strengths, and
                       `settledNonceBound + settledAmountPayeeOnly` always equals
@@ -2806,7 +2808,7 @@ paths:
                         type: integer
                         description: >-
                           Settled rows where the re-read matched the one-time value stored
-                          for that purchase (the EIP-3009 authorization nonce on Base, Arc, Celo and BNB Chain,
+                          for that purchase (the EIP-3009 authorization nonce on Base, Arc, Celo, BNB Chain, Arbitrum One and Avalanche C-Chain,
                           a memo vet402 wrote on Solana, the indexed memo of a TIP-20 TransferWithMemo on
                           Tempo, the hash of the signed blob on XRPL), so the transaction
                           is the one for
@@ -2840,11 +2842,16 @@ paths:
                           different axis from the two evidence strengths — not part of
                           their sum. The ledger export marks these rows
                           `settlement_source=vet402_index`. Since 2026-09-20.
+                      settledCircleGateway:
+                        type: integer
+                        description: >-
+                          Settled rows in a Circle Gateway batch, with no separate transfer
+                          to the payee (`settlement_source=circle_gateway`). Since 2026-11-02.
                       endpointsAttempted: { type: integer }
                       endpointsSettled:
                         type: integer
                         description: |
-                          Endpoints, listed or not, with at least one settled
+                          Endpoints, active or not, with at least one settled
                           row. Equals `endpointsSettledSellerReceipt` +
                           `endpointsSettledIndexOnly`.
                       endpointsSettledSellerReceipt:
@@ -3287,6 +3294,13 @@ paths:
                             when the row has no `txHash` and no Circle Gateway batch
                             transaction. Same rule as the `settlement_source` column of
                             export.csv. Since 2026-09-20.
+                        gatewayBatchTx:
+                          type: string
+                          nullable: true
+                          description: >-
+                            The Circle Gateway batch transaction of a settled row, with no
+                            separate transfer to the payee. Null on every other row. Since
+                            2026-11-02.
                   disclaimer: { type: string }
                   methodology: { type: string }
         "400":
@@ -4777,6 +4791,16 @@ components:
               type: string
               format: date-time
               nullable: true
+            lastScanAddresses:
+              type: integer
+              description: Addresses scanned on the UTC day of lastScanAt. Since 2026-11-02.
+            lastBroadScan:
+              type: object
+              nullable: true
+              description: Latest UTC day whose scans covered at least half of the addresses in the window. Since 2026-11-02.
+              properties:
+                date: { type: string, format: date }
+                addresses: { type: integer }
             minSample: { type: integer }
             methodologyVersion: { type: integer }
         # 製品定義書 §12 / §14（2026-09-02）: 測定機関自身の品質。測れないときは null。

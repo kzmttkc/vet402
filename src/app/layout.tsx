@@ -49,7 +49,7 @@ const fragmentMono = localFont({
 // 頁の H1（src/app/page.tsx）と manifest の name は長い正式名のまま。
 const SITE_TITLE = "vet402 — Independent Verification of x402 Agent Payments";
 const SITE_DESCRIPTION =
-  "vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results.";
+  "vet402 pays x402 APIs itself and publishes which paid requests came back with a non-empty 2xx, so you can check a seller before your agent pays it.";
 
 /* 方向性の契約。ソースで読める位置に置いてある。
    これを崩す変更（SaaS 標準のカード羅列・グラデ・影・kicker への退行）は、

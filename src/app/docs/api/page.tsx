@@ -385,7 +385,7 @@ const endpoints: Endpoint[] = [
   {
     method: "GET",
     path: "/api/v1/observatory/l0/export.csv",
-    note: "The latest public L0 verdict per endpoint, as CSV — no key, 6/min, cached up to 15 minutes. One row per endpoint on record (listed or not, excluding endpoints paying vet402's own addresses): the data behind the L0 counts of /api/v1/observatory/state. Columns: endpoint_id, resource_key, network, chain, network_class (mainnet | testnet | unclassified), listed, published_verdict (pass | fail | unverified | withdrawn), latest_probe_verdict, last_probed_at, latest_probe_older_than_7d. Counting published_verdict=pass gives publishedPass. Counting published_verdict=withdrawn gives withdrawnFail, a delisted fail streak left out of publishedFail. network_class=mainnet rows grouped by chain give byChain. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
+    note: "The latest public L0 verdict per endpoint, as CSV — no key, 6/min, cached up to 15 minutes. One row per endpoint on record (active or not, excluding endpoints paying vet402's own addresses): the data behind the L0 counts of /api/v1/observatory/state. Columns: endpoint_id, resource_key, network, chain, network_class (mainnet | testnet | unclassified), listed, published_verdict (pass | fail | unverified | withdrawn), latest_probe_verdict, last_probed_at, latest_probe_older_than_7d. Counting published_verdict=pass gives publishedPass. Counting published_verdict=withdrawn gives withdrawnFail, a delisted fail streak left out of publishedFail. network_class=mainnet rows grouped by chain give byChain. Definitions in the x-vet402-column-notes header, retrieval time in x-vet402-retrieved-at. Since 2026-09-29.",
     response: `endpoint_id,resource_key,network,chain,network_class,listed,published_verdict,latest_probe_verdict,last_probed_at,latest_probe_older_than_7d
 521e929e-…,api.example.com/v1/x,eip155:8453,Base,mainnet,true,pass,pass,2026-09-29T10:31:02Z,false`,
   },
@@ -911,7 +911,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             n paid attempts, m settled, each settled row carrying its on-chain{" "}
             <code className="text-brand-deep">txHash</code>. A Circle Gateway row on Arc carries{" "}
             <code className="text-brand-deep">gatewayBatchTx</code> instead, because one batch
-            transaction settles many purchases. This is the record vet402 exists to
+            transaction can settle many payments. This is the record vet402 exists to
             keep. Swap the id for any endpoint on{" "}
             <Link href="/observatory" className="doc-link">
               the observatory

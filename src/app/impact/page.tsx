@@ -130,7 +130,7 @@ export default async function ImpactPage() {
           {stats.latestSnapshot ? (
             <>
               ; the latest full read of the Bazaar saw{" "}
-              <strong>{stats.latestSnapshot.fetchedCount.toLocaleString()}</strong>
+              <strong>{stats.latestSnapshot.fetchedCount.toLocaleString()}</strong> listings
             </>
           ) : null}
           .{" "}
@@ -162,7 +162,7 @@ export default async function ImpactPage() {
           in its own settlement receipt, {stats.l1.settledLateLinked.toLocaleString()} a transaction the seller
           did not name, which vet402&apos;s own settlements index found afterwards (<code>settlement_source</code>{" "}
           <code>vet402_index</code> in the export), and {stats.l1.settledCircleGateway.toLocaleString()} a Circle
-          Gateway batch transaction that settles many purchases at once (<code>circle_gateway</code>). By endpoint:{" "}
+          Gateway batch transaction, which can settle many payments at once (<code>circle_gateway</code>). By endpoint:{" "}
           {stats.l1.endpointsSettledSellerReceipt.toLocaleString()} endpoints have at least one seller-named
           receipt and {stats.l1.endpointsSettledIndexOnly.toLocaleString()} have no seller-named receipt: the index
           found their transfers, or Circle&apos;s Gateway API named the batch.

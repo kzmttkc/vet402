@@ -384,8 +384,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               {l1.settled} of {l1.attempts} paid attempts settled on-chain, and{" "}
               {l1.delivered} of those also returned a deliverable <code>2xx</code> response (delivered: other than{" "}
               <code>202 Accepted</code> with a non-empty body). Each settled row
-              carries its on-chain transaction hash, and that transaction is the evidence. A Circle Gateway row on Arc
-              carries the batch transaction instead, because one batch settles many purchases. On this page a{" "}
+              carries its on-chain transaction hash, and that transaction is the evidence. On this page a{" "}
               <em>receipt</em> means the seller&apos;s own settlement receipt (<code>PAYMENT-RESPONSE</code>); a
               settled row can have none (see &ldquo;tx from our index&rdquo;).{" "}A settled
               row reads as <strong>nonce-bound</strong> when the on-chain re-read matched the
@@ -408,7 +407,8 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
             </p>
             {purchases.some((p) => p.settlementSource === "circle_gateway") && (
               <p className="doc-p">
-                A row marked <strong>Circle Gateway batch</strong> has no transfer of its own to the seller.
+                A row marked <strong>Circle Gateway batch</strong> carries the batch transaction instead of a
+                hash of its own, because one batch can settle many payments. It has no transfer of its own to the seller.
                 Circle&apos;s Gateway API names the batch for the purchase&apos;s nonce, and vet402 checks the
                 buyer&apos;s debit in that batch (
                 <Link href="/observatory/methodology#gateway-batch" className="underline">

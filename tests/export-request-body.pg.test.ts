@@ -29,7 +29,7 @@ if (!TEST_DB) {
   test("export.csv: 要求の形と tx の出所", async (t) => {
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
-    const { sql } = await import("drizzle-orm");
+    const { eq, sql } = await import("drizzle-orm");
     const { requestBodyKindOf, requestBodySha256Of, requestBodyKindSql, requestBodySha256Sql } = await import("@/lib/observatory/request-body");
     const { requestQueryKindOf, requestQuerySha256Of, requestQueryKindSql, requestQuerySha256Sql } = await import("@/lib/observatory/request-query");
     const { settlementSourceOf, settlementSourceSql } = await import("@/lib/observatory/settlement-source");
@@ -153,6 +153,29 @@ if (!TEST_DB) {
       assert.equal(stats.l1.settledLateLinked, 2, "settle_claimed の 1 行と、取り消した 2 行は数えない");
       assert.ok(stats.l1.settledLateLinked <= stats.l1.settled);
       assert.equal(stats.l1.settled, seeds.filter((s) => s.status === "settled").length);
+    });
+
+    await t.test("state: l1.settledCircleGateway は settled の Gateway 行だけ、/purchases はバッチ tx を出す", async () => {
+      const before = await getObservatoryStats();
+      assert.equal(before.l1.settledCircleGateway, 0);
+      const batchTx = `0x${"d".repeat(64)}`;
+      const inserted = await db
+        .insert(schema.x402L1Purchases)
+        .values([
+          { endpointId: ep.id, status: "settled", txHash: null, attemptedAt: recent(1), spentUnits: "1000", rawResponseMeta: { circleGateway: { batchTx } } },
+          { endpointId: ep.id, status: "settle_failed", txHash: null, attemptedAt: recent(1), spentUnits: "1000", rawResponseMeta: { circleGateway: { batchTx } } },
+        ])
+        .returning();
+      try {
+        const after = await getObservatoryStats();
+        assert.equal(after.l1.settledCircleGateway, 1, "settle_failed は数えない");
+        const record = await getEndpointPurchases(ep.id);
+        const withBatch = (record?.purchases ?? []).filter((p) => p.gatewayBatchTx === batchTx);
+        assert.equal(withBatch.length, 1);
+        assert.equal(withBatch[0].status, "settled");
+      } finally {
+        for (const row of inserted) await db.delete(schema.x402L1Purchases).where(eq(schema.x402L1Purchases.id, row.id));
+      }
     });
 
     await t.test("エンドポイント頁と purchases の読み手も行ごとに同じ区別を持つ", async () => {

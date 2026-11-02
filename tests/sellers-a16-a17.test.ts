@@ -216,13 +216,13 @@ test("A-17: /sellers の表の上・カードと表の見出し・/sellers/fix-f
     new Map([["a", new Set(["2026-10-06"])]]),
   );
   assert.equal(board.totals.seller, 1);
-  const index = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300 }));
+  const index = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null }));
   const note = ATTRIBUTION_REVIEW_NOTE.replace(/'/g, "&#x27;");
   assert.ok(index.includes(note), "一覧の表の上に注記");
   assert.ok(index.indexOf(note) < index.indexOf("<table"), "表より前");
   assert.match(index, /Seller&#x27;s side<span class="block text-xs font-normal">attribution under review<\/span><\/th>/);
   assert.match(index, /<dt[^>]*>Seller&#x27;s side \(attribution under review\)<\/dt>/);
-  const fix = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
+  const fix = renderToStaticMarkup(createElement(FixFirstView, { board }));
   assert.ok(fix.includes(note), "fix-first の売り手の側の節にも");
   assert.ok(fix.indexOf(note) > fix.indexOf("On the seller&#x27;s side</span>"));
 });

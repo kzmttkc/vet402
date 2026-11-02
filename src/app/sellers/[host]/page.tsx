@@ -111,7 +111,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
   if (data.kind === "other_chains") {
     return (
       <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-        <SellerOtherChainsView other={data.other} revalidateSec={PUBLIC_READ_REVALIDATE} />
+        <SellerOtherChainsView other={data.other} />
         <TrackView event="seller_page_view" props={{ host, kind: "other_chains" }} />
       </main>
     );

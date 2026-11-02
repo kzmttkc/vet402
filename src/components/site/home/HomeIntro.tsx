@@ -41,7 +41,7 @@ export function HomeIntro({
           </h1>
           <p className="mt-6 max-w-[50ch] text-[0.9375rem] leading-[1.65] text-brand sm:text-[1.0625rem]">
             x402 proves that an agent paid. Nothing in x402 proves that the API delivered. vet402 buys from x402 APIs itself and
-            publishes what came back, so you can check a seller before your agent pays it.
+            publishes the result of each purchase, so you can check a seller before your agent pays it.
           </p>
           <p className="mt-4 max-w-[50ch] text-[0.9375rem] leading-[1.65] text-brand sm:text-[1.0625rem]">
             Independent measurements of{" "}

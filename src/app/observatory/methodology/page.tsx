@@ -689,7 +689,7 @@ export default async function ObservatoryMethodologyPage() {
           chain&apos;s pinned asset ({PINNED_ASSETS_WITH_ISSUER_TEXT}). The price
           matches what the catalog declared when the target was chosen. Any deviation (a
           different asset, a different chain, a higher price) is recorded as a refusal, never
-          paid. A hard per-purchase ceiling (${MAX_PER_PURCHASE_USD.toFixed(2)}) and a daily
+          paid. A hard per-purchase ceiling ($0.25 since 2026-10-09, $1.00 before that; 337 signed rows in the ledger are above $0.25) and a daily
           budget (${DAILY_BUDGET_USD}) are checked against a database ledger, not memory, before
           every signature, so a restart or a concurrent run cannot double-spend. A signed spend
           stays on the record whether or not the seller delivers. On {EIP3009_CHAINS_TEXT}
@@ -820,7 +820,7 @@ export default async function ObservatoryMethodologyPage() {
           the transfer it paid for: from the vet402 payer, to the payee the catalog declares (on
           Tempo, the recipient L0 learned from the challenge), for
           the declared amount, in that chain&apos;s pinned settlement asset ({PINNED_ASSETS_WITH_ISSUER_TEXT}).
-          Through Circle Gateway on Arc one batch transaction settles many purchases and there is no
+          Through Circle Gateway on Arc one batch transaction can settle many payments and there is no
           separate transfer to the payee: Circle&apos;s Gateway API names the batch for the
           purchase&apos;s nonce, and vet402 checks the buyer&apos;s debit in{" "}
           <a href="#gateway-batch" className="underline">
@@ -1014,7 +1014,7 @@ export default async function ObservatoryMethodologyPage() {
           Checking a Circle Gateway batch as the buyer
         </h3>
         <p className="doc-p">
-          Circle Gateway settles many x402 payments in one batch transaction, which keeps the
+          Circle Gateway can settle many x402 payments in one batch transaction, which keeps the
           onchain cost of each payment low. The tradeoff is that a buyer does not get a separate
           transaction for each payment. vet402 runs the check below on its own Gateway purchases,
           and a buyer can follow the same steps.

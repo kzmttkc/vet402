@@ -118,7 +118,7 @@ test("resolveSellerPage: Base あり／Base 無し・購入あり／どちらも
 });
 
 test("SellerOtherChainsView: 記録頁へのリンク・チェーン名・最新の日時・平易な結果・通知リンク", () => {
-  const html = renderToStaticMarkup(createElement(SellerOtherChainsView, { other, revalidateSec: 300 }));
+  const html = renderToStaticMarkup(createElement(SellerOtherChainsView, { other }));
   assert.match(html, /Read from the database 2026-09-29 01:00 UTC/);
   assert.match(html, /<h1[^>]*>Purchase records for <span[^>]*>edge\.goldsky\.example<\/span><\/h1>/);
   assert.match(html, /no active Base listing/);
@@ -198,7 +198,7 @@ test("buildSellerOtherChains: stellar:pubnet は公開名 Stellar。台帳 id �
     FETCHED,
   );
   assert.equal(built?.listings[0]?.chain, "Stellar");
-  const html = renderToStaticMarkup(createElement(SellerOtherChainsView, { other: built!, revalidateSec: 300 }));
+  const html = renderToStaticMarkup(createElement(SellerOtherChainsView, { other: built! }));
   assert.match(html, /Purchase records on Stellar are on this page/);
   assert.doesNotMatch(html, /Purchase records on stellar:pubnet/);
   assert.match(html, /<code>stellar:pubnet<\/code>/);

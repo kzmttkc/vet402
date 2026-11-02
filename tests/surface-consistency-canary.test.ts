@@ -276,7 +276,7 @@ function notTriedPageReadAt(x: ListingInput, readAt: string) {
   assert.ok(x.decision.ok === true);
   const li = sellerLi(x.observatoryId, x.decision.value.subject!.id!, { latest: "not tried on Base yet", result: "not tried on Base yet", side: "not tried on Base yet", status: "", iso: "" })
     .replace(/<span>Recorded[\s\S]*?<\/details>/, "");
-  const p = parseSellerHostPage(`<span class="doc-asof">Read from the database <!-- -->${readAt} UTC<!-- --> · reused for up to <!-- -->5<!-- --> min</span><h2>Your listings</h2><ul>${li}</ul>`);
+  const p = parseSellerHostPage(`<span class="doc-asof">Read from the database <!-- -->${readAt} UTC<!-- -->. Refreshed after a view, so the first view after a quiet period can be older.</span><h2>Your listings</h2><ul>${li}</ul>`);
   assert.ok(p);
   const v = p.listings.get(x.observatoryId)!;
   assert.equal(v.ledgerReadAt, readAt);

@@ -9,8 +9,9 @@
 // 禁止語を足すときは、実際に公開面で誤っていた文に限る。正しい用法まで止めない
 // （例: deliveredLine の "no 2xx" は非 2xx の 1 行の表示で正しいので、"got no 2xx" だけを止める）。
 //
+// 見る面は公開の文を持つファイルだけ。src/lib/observatory のサーバーコードの文字列では落とさない
+// （語彙だけは公開の定義なので見る）。機械が読む面（llms.txt・openapi・package.json）も見る。
 // 見ない面: /rwa・/tokyo・/ethonline（凍結）、/corrections（過去の誤りを引用する面）。
-// TEMPORARY_OTHER_SESSION は別の worktree が直している面で、直ったら外す。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,23 +21,30 @@ import { stripComments } from "@/lib/claims/extract";
 import { EVM_PAY_CHAINS } from "@/lib/observatory/x402-payer";
 import { publicChainLabel } from "@/lib/observatory/chains";
 import { SETTLEMENT_ASSETS } from "@/lib/observatory/settlement-assets";
+import { withSettledTier } from "@/lib/observatory/reader";
+import { settlementSourceSql } from "@/lib/observatory/settlement-source";
 
 const ROOT = process.cwd();
 
 /** 公開の文が置かれる場所。 */
-const SCAN_ROOTS = ["src/app", "src/components", "src/lib/observatory", "src/lib/blog.ts", "src/lib/mcp"];
+const SCAN_ROOTS = [
+  "src/app",
+  "src/components",
+  "src/lib/blog.ts",
+  "src/lib/docs",
+  "src/lib/mcp",
+  "src/lib/observatory/vocabulary.ts",
+  "public/llms.txt",
+  "docs/openapi.yaml",
+  "README.md",
+  "package.json",
+];
 
 const FROZEN_OR_QUOTING = [
   "src/app/rwa/",
   "src/app/tokyo/",
   "src/app/ethonline/",
   "src/app/corrections/",
-  "src/lib/observatory/corrections.ts",
-];
-
-const TEMPORARY_OTHER_SESSION = [
-  // public/llms.txt と同じ言い方が残る。2026-11-02 時点で llms は ~/vouch-wt-facts の持ち場。
-  "src/app/llms-full.txt/",
 ];
 
 const FORBIDDEN: { pattern: RegExp; why: string }[] = [
@@ -67,9 +75,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-const surfaces = SCAN_ROOTS.flatMap((d) => walk(d)).filter(
-  (f) => ![...FROZEN_OR_QUOTING, ...TEMPORARY_OTHER_SESSION].some((skip) => f.startsWith(skip)),
-);
+const surfaces = SCAN_ROOTS.flatMap((d) => walk(d)).filter((f) => !FROZEN_OR_QUOTING.some((skip) => f.startsWith(skip)));
 
 test("the scan reads the pages that carried the wrong wording", () => {
   for (const page of [
@@ -82,6 +88,10 @@ test("the scan reads the pages that carried the wrong wording", () => {
     "src/components/site/HomeLedger.tsx",
     "src/lib/observatory/vocabulary.ts",
     "src/lib/blog.ts",
+    "src/app/llms-full.txt/route.ts",
+    "src/app/layout.tsx",
+    "public/llms.txt",
+    "docs/openapi.yaml",
   ]) {
     assert.ok(surfaces.includes(page), `not scanned: ${page}`);
   }
@@ -106,7 +116,8 @@ test("the forbidden list catches the sentences the audit found", () => {
 test("no public surface restates a definition more strongly than it is measured", () => {
   const offenders: string[] = [];
   for (const file of surfaces) {
-    const code = stripComments(readFileSync(join(ROOT, file), "utf8"));
+    const raw = readFileSync(join(ROOT, file), "utf8");
+    const code = /\.tsx?$/.test(file) ? stripComments(raw) : raw;
     for (const { pattern, why } of FORBIDDEN) {
       const hit = pattern.exec(code.replace(/\s+/g, " "));
       if (hit) offenders.push(`${file}: "${hit[0]}" (${why})`);
@@ -124,4 +135,45 @@ test("the asset table names every EVM chain vet402 can sign on", () => {
     assert.equal(row.binding, "eip3009", `${name} signs an EIP-3009 authorization`);
     assert.equal(row.asset, chain.caip2 === "eip155:56" ? "USD1" : "USDC", name);
   }
+});
+
+// ---------- 2026-11-02 に足した 4 つのフィールド ----------
+
+function purchaseRow(status: string, circleGateway: unknown) {
+  return {
+    status,
+    txHash: null,
+    network: "eip155:5042",
+    authNonce: `0x${"a".repeat(64)}`,
+    settlementVerified: status === "settled",
+    lateSettlement: null,
+    circleGateway,
+    l2Schema: null,
+    l2Detail: null,
+    l2BodyHead: null,
+    l2ContentType: null,
+  };
+}
+
+test("gatewayBatchTx: a settled Gateway row carries its batch, and no other row does", () => {
+  const batchTx = `0x${"b".repeat(64)}`;
+  const [settled, failed, plain] = withSettledTier(
+    [purchaseRow("settled", { batchTx }), purchaseRow("settle_failed", { batchTx }), purchaseRow("settled", null)],
+    null,
+  );
+  assert.equal(settled.gatewayBatchTx, batchTx);
+  assert.equal(settled.settlementSource, "circle_gateway");
+  assert.equal(settled.txHash, null, "the shared batch stays out of txHash");
+  assert.equal(failed.gatewayBatchTx, null);
+  assert.equal(plain.gatewayBatchTx, null);
+});
+
+test("l1.settledCircleGateway counts settled rows by the same rule as settlement_source", () => {
+  const reader = readFileSync(join(ROOT, "src/lib/observatory/reader.ts"), "utf8");
+  assert.ok(
+    reader.includes("count(*) FILTER (WHERE status = 'settled' AND (${sql.raw(settlementSourceSql())}) = 'circle_gateway')::int AS settled_circle_gateway"),
+  );
+  assert.ok(reader.includes("settledCircleGateway: Number(l1List[0].settled_circle_gateway ?? 0)"));
+  assert.match(settlementSourceSql(), /circle_gateway/);
+  // 実際の数え方は tests/export-request-body.pg.test.ts が実 DB で確かめる。
 });

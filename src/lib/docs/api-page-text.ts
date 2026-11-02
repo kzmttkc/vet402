@@ -8,5 +8,5 @@
 // ============================================================
 
 export const API_DOCS_ANSWER =
-  "vet402 buys from x402 APIs itself and publishes what came back, so your agent can check a seller before it pays. " +
+  "vet402 buys from x402 APIs itself and publishes the result of each purchase, so your agent can check a seller before it pays. " +
   "With no key, resolve the seller's URL to a resource_id and read its decision: ALLOW, WARN or BLOCK, with the L0 to L2 facts behind it.";

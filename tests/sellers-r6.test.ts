@@ -369,7 +369,7 @@ test("8: /sellers の区分の絞り込み（?side=）。知らない値は全�
   assert.equal(filterSellersBySide(board.sellers, null).length, 2);
   assert.equal(sellersIndexHref("seller", 2), "/sellers?side=seller&page=2");
   assert.equal(sellersIndexHref(null, 1), "/sellers");
-  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300, side: "delivered" }));
+  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, side: "delivered" }));
   assert.match(html, /Showing 1 of 2 sellers/);
   assert.match(html, /href="\/sellers\?side=vet402"/);
   assert.match(html, /aria-current="page"[^>]*>Delivered \(1\)/);

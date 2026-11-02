@@ -15,7 +15,6 @@ import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import {
-  LedgerSection,
   NO_ASSET,
   SettledChainsSection,
   homeLedgerOf,
@@ -94,26 +93,6 @@ test("the chain table sits under the new first screen and above the memo, behind
 });
 
 // ---------- what the sections print ----------
-
-test("The public ledger prints the two counts from the read, and the date is the one cyan text", () => {
-  const ledger = homeLedgerOf(fixture());
-  assert.ok(ledger);
-  const html = renderToStaticMarkup(createElement(LedgerSection, { ledger }));
-  assert.ok(html.includes("The public ledger"));
-  assert.ok(html.includes("Paid attempts that settled"));
-  assert.ok(html.includes(">4,210<") && html.includes(" of 5,321"));
-  assert.ok(html.includes("3,987 of the settled purchases also returned a deliverable HTTP 2xx answer."));
-  assert.ok(html.includes("Latest L0 verdict on active records"));
-  assert.ok(html.includes(">12,345<") && html.includes(" pass of 20,086 active"));
-  assert.ok(html.includes("7,741 active records do not have pass as their latest probe. That includes a published fail, unverified, and endpoints not yet probed."));
-  assert.ok(html.includes("Customer count and revenue: not published."));
-  assert.ok(html.includes('href="/api/v1/observatory/state"') && html.includes("(CC BY 4.0)."));
-  assert.ok(html.includes('href="/observatory"') && html.includes("Open the observatory"));
-  assert.ok(html.includes('href="/observatory/state"') && html.includes("See both counts"));
-  const cyan = [...html.matchAll(/class="text-signal">([^<]*)</g)].map((m) => m[1]);
-  assert.deepEqual(cyan, ["2026-10-21"], "the read date and nothing else is cyan");
-  assert.ok(html.includes("at 09:25 UTC"));
-});
 
 test("Where purchases settled: one row per chain with a settled purchase, names and assets from existing sources", () => {
   const ledger = homeLedgerOf(fixture());
@@ -194,7 +173,7 @@ test("direction C keeps the seller search, the two entries, and the three defini
   const defs = HOME.slice(HOME.indexOf("<dl "), HOME.indexOf("</dl>") + 5);
   for (const piece of [
     '<dt className="font-semibold">What this is</dt>',
-    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. An error, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>",
+    "<dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. A 4xx or 5xx, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>",
     '<dt className="font-semibold">What you give us</dt>',
     "<dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>",
     '<dt className="font-semibold">What vet402 does not do</dt>',

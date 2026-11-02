@@ -118,10 +118,10 @@ export function sellerDescription(host: string, chain: string | null = null): st
   return `${lead}: each purchase result, what to fix, and whose side a failure was on.`;
 }
 
-function FetchedAt({ at, revalidateSec }: { at: string; revalidateSec: number }) {
+function FetchedAt({ at }: { at: string }) {
   return (
     <span className="doc-asof">
-      Read from the database {fmtUtc(at)}. Reused for up to {Math.round(revalidateSec / 60)} min, then refreshed on the next view, so the first view after a quiet period can show an older read.
+      Read from the database {fmtUtc(at)}. Refreshed after a view, so the first view after a quiet period can be older.
     </span>
   );
 }
@@ -394,7 +394,6 @@ export function SellersIndexView({
   page,
   q,
   search,
-  revalidateSec,
   side = null,
   purchasedLookupFailed = false,
 }: {
@@ -402,7 +401,6 @@ export function SellersIndexView({
   page: number;
   q: string;
   search: { exact: SellerSummary | null; matches: SellerSummary[] } | null;
-  revalidateSec: number;
   /** 区分の絞り込み（GET ?side=・2026-09-29 第6巡）。null は全部。 */
   side?: SellerSideFilter | null;
   /** 購入ホストの読み取りに失敗した（空の結果とは別）。 */
@@ -416,7 +414,7 @@ export function SellersIndexView({
   return (
     <article className="sheet sheet-wide">
       <WideColumn />
-      <DocHead title="Sellers on Base: purchase results" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
+      <DocHead title="Sellers on Base: purchase results" fetched={<FetchedAt at={board.fetchedAt} />} />
       <h1 className="doc-title mt-8">{sellersIndexHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">
@@ -1238,7 +1236,7 @@ export function SellerDetailView({
   return (
     <article className="sheet sheet-wide">
       <WideColumn />
-      <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} revalidateSec={revalidateSec} />} />
+      <DocHead title="Seller: purchase results on Base" fetched={<FetchedAt at={detail.fetchedAt} />} />
       {/* 2026-09-29: 表題は最新の購入日つきの事実の言い方（sellerHeading）。ホスト名は長いのでどこででも折り返す。 */}
       <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
@@ -1409,11 +1407,11 @@ function OtherChainResult({ l }: { l: SellerOtherChains["listings"][number] }) {
   );
 }
 
-export function SellerOtherChainsView({ other, revalidateSec }: { other: SellerOtherChains; revalidateSec: number }) {
+export function SellerOtherChainsView({ other }: { other: SellerOtherChains }) {
   return (
     <article className="sheet sheet-wide">
       <WideColumn />
-      <DocHead title="Seller: purchase records" fetched={<FetchedAt at={other.fetchedAt} revalidateSec={revalidateSec} />} />
+      <DocHead title="Seller: purchase records" fetched={<FetchedAt at={other.fetchedAt} />} />
       <h1 className="doc-title mt-8 break-words">
         Purchase records for <span className="[overflow-wrap:anywhere]">{other.host}</span>
       </h1>
@@ -1540,7 +1538,7 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
   );
 }
 
-export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; revalidateSec: number }) {
+export function FixFirstView({ board }: { board: SellerBoard }) {
   const seller = board.groups.filter((g) => g.side === "seller");
   const ours = board.groups.filter((g) => g.side === "vet402");
   const unsorted = board.groups.filter((g) => g.side === "unsorted");
@@ -1550,7 +1548,7 @@ export function FixFirstView({ board, revalidateSec }: { board: SellerBoard; rev
   return (
     <article className="sheet sheet-wide">
       <WideColumn />
-      <DocHead title="What to fix first (Base)" fetched={<FetchedAt at={board.fetchedAt} revalidateSec={revalidateSec} />} />
+      <DocHead title="What to fix first (Base)" fetched={<FetchedAt at={board.fetchedAt} />} />
       <h1 className="doc-title mt-8">{fixFirstHeading(boardAsOfDay(board))}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <p className="doc-p">

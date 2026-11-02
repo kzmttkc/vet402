@@ -159,7 +159,7 @@ test("/docs/api opens with a plain answer: what vet402 is and how to check a sel
   const sentences = API_DOCS_ANSWER.split(/(?<=\.)\s+/).filter(Boolean);
   assert.ok(sentences.length >= 1 && sentences.length <= 2, API_DOCS_ANSWER);
   assert.match(API_DOCS_ANSWER, /With no key, resolve the seller's URL to a resource_id and read its decision: ALLOW, WARN or BLOCK, with the L0 to L2 facts behind it\.$/);
-  assert.match(API_DOCS_ANSWER, /^vet402 buys from x402 APIs itself and publishes what came back/);
+  assert.match(API_DOCS_ANSWER, /^vet402 buys from x402 APIs itself and publishes the result of each purchase/);
   assert.match(API_DOCS_ANSWER, /check a seller before it pays/);
   assert.match(API_DOCS_ANSWER, /resource_id/);
   assert.match(API_DOCS_ANSWER, /ALLOW, WARN or BLOCK/);

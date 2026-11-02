@@ -39,7 +39,7 @@ export default async function FixFirstPage() {
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <TrackView event="fix_first_open" />
       {board ? (
-        <FixFirstView board={board} revalidateSec={PUBLIC_READ_REVALIDATE} />
+        <FixFirstView board={board} />
       ) : (
         <SellersNotice title="What to fix first">Reading the ledger failed. Please reload in a minute.</SellersNotice>
       )}

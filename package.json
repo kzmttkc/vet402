@@ -2,7 +2,7 @@
   "name": "vet402",
   "version": "0.1.0",
   "private": true,
-  "description": "vet402 buys what x402 endpoints actually sell, verifies fulfillment against the seller's own declaration, and publishes the results with evidence.",
+  "description": "vet402 pays x402 APIs itself and publishes which paid requests came back with a non-empty 2xx, so you can check a seller before your agent pays it.",
   "license": "MIT",
   "author": "KIZUNA Creation",
   "homepage": "https://vet402.com",

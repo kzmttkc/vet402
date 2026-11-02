@@ -98,8 +98,8 @@ export default async function OperationsPage() {
         <p className="doc-p">
           Continuity: an operator you can replace is an operator you can trust long-term. The
           measurement code, budget gates and publication rules are in the repository. The extra
-          purchase and probe runs are scheduled from the operator&apos;s own machine (a private
-          repository), and their effect shows in the timestamps of the public ledger.{" "}
+          purchase and probe runs are scheduled from the operator&apos;s own machine, using a private
+          repository, and their effect shows in the timestamps of the public ledger.{" "}
           <Link href="/docs/api" className="underline">
             API reference
           </Link>

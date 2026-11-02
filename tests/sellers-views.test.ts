@@ -101,7 +101,7 @@ test("SellerDetailView: 取得時刻・vet402 の側・買い直し・tx・expor
   const html = renderToStaticMarkup(createElement(SellerDetailView, { detail: d, page: 1, now: Date.parse("2026-09-28T13:00:00Z"), revalidateSec: 300 }));
   assert.equal(leadCountSum(html), d.summary.listings);
   assert.match(html, /Read from the database 2026-09-28 13:04 UTC/);
-  assert.match(html, /Reused for up to 5 min/);
+  assert.match(html, /UTC\. Refreshed after a view, so the first view after a quiet period can be older\./);
   // 2026-09-29: 表題は最新の購入日つきの事実の言い方（現在形の「Is … working?」をやめた）
   assert.match(html, /<h1[^>]*>shop\.example: x402 purchase results on Base, latest attempt 2026-09-14<\/h1>/);
   assert.doesNotMatch(html, /working\?/);
@@ -407,7 +407,7 @@ test("SellersIndexView: 検索欄・一覧・内訳・方法論・取得時刻",
     latest.filter((x) => x.endpointId !== "e2" || x.status === "settled"),
     FETCHED,
   );
-  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300 }));
+  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null }));
   assert.match(html, /<form[^>]*action="\/sellers"[^>]*method="get"/);
   assert.match(html, /name="q"/);
   assert.match(html, /href="\/sellers\/shop\.example"/);
@@ -430,7 +430,6 @@ test("SellersIndexView: 購入ホストの読み取り失敗は一致なしと�
       page: 1,
       q: "api.solenrich.com",
       search: searchSellers(board.sellers, "api.solenrich.com"),
-      revalidateSec: 300,
       purchasedLookupFailed: true,
     }),
   );
@@ -441,7 +440,7 @@ test("SellersIndexView: 購入ホストの読み取り失敗は一致なしと�
 test("SellersIndexView: 検索で見つからないときはそう言う", () => {
   const board = buildSellerBoard([{ host: "shop.example", listings: 1 }], [], FETCHED);
   const html = renderToStaticMarkup(
-    createElement(SellersIndexView, { board, page: 1, q: "nope.dev", search: searchSellers(board.sellers, "nope.dev"), revalidateSec: 300 }),
+    createElement(SellersIndexView, { board, page: 1, q: "nope.dev", search: searchSellers(board.sellers, "nope.dev") }),
   );
   assert.match(html, /No seller on Base matches <code>nope\.dev<\/code>/);
 });
@@ -465,7 +464,7 @@ test("FixFirstView: seller の側が先、vet402 の側は「直すものは無�
     // 2026-09-29 第4巡: seller の側は別の日に 2 回以上で確定（出品 a は 09-19 にも同じ形の失敗がある）。
     new Map([["a", new Set(["2026-09-19"])]]),
   );
-  const html = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
+  const html = renderToStaticMarkup(createElement(FixFirstView, { board }));
   const sellerAt = html.indexOf("Server error on the paid request");
   const oursAt = html.indexOf("vet402&#x27;s wallet was out of USDC");
   const otherAt = html.indexOf("Not grouped yet");
@@ -533,7 +532,7 @@ test("SellerDetailView: 照合待ちの行は失敗と書かず、時刻も書�
   assert.ok(html2.includes("vet402 looked for that transaction on-chain and has not found it yet (tx_not_found)."));
   assert.doesNotMatch(html, /failed on vet402|vet402&#x27;s side\.<\/strong>|Nothing for the seller to fix/);
   const board = buildSellerBoard([{ host: "wait.example", listings: 1 }], [{ ...d.listings[0].latest!.facts, host: "wait.example" }], FETCHED);
-  const ff = renderToStaticMarkup(createElement(FixFirstView, { board, revalidateSec: 300 }));
+  const ff = renderToStaticMarkup(createElement(FixFirstView, { board }));
   assert.match(ff, /\(0 of 1 that vet402 paid for\)/);
   assert.match(ff, /1 more are awaiting on-chain verification and are not counted here/);
 });
@@ -564,7 +563,7 @@ test("売り手頁の <title> は最新の購入日つきの事実の言い方�
 
 test("売り手一覧は 640px 未満でラベル付きのカードになり、表は 640px 以上だけ（2026-09-28）", () => {
   const board = buildSellerBoard([{ host: "shop.example", listings: 3 }], [], FETCHED);
-  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null, revalidateSec: 300 }));
+  const html = renderToStaticMarkup(createElement(SellersIndexView, { board, page: 1, q: "", search: null }));
   assert.match(html, /<ul[^>]*class="[^"]*sm:hidden/);
   assert.match(html, /<dt[^>]*>Seller&#x27;s side \(attribution under review\)<\/dt>/, "2026-10-21 A-17: 一覧のカードも見直し中と言う");
   assert.match(html, /<div class="hidden sm:block">/);

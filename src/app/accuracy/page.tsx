@@ -161,7 +161,8 @@ export default async function AccuracyPage() {
   const generatedAt = generatedAtUtc();
 
   const hasAnyData = report.observedVerdicts > 0;
-  const hasBenchmarkData = benchmark.knownBad.total + benchmark.knownGood.total > 0;
+  const benchmarkAddresses = benchmark.knownBad.total + benchmark.knownGood.total;
+  const hasBenchmarkData = benchmarkAddresses > 0;
   const scale = !hasAnyData && !hasBenchmarkData ? await fetchObservatoryScale() : null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
@@ -667,16 +668,16 @@ export default async function AccuracyPage() {
             <p className="doc-note mt-5 max-w-[70ch]">
               {benchmark.scans.toLocaleString("en-US")} benchmark scans in the last 90 days
               {benchmark.lastScanAt
-                ? `, most recent ${new Date(benchmark.lastScanAt).toISOString().slice(0, 10)} (${benchmark.lastScanAddresses.toLocaleString("en-US")} ${benchmark.lastScanAddresses === 1 ? "address" : "addresses"})`
+                ? `, most recent ${new Date(benchmark.lastScanAt).toISOString().slice(0, 10)} (${benchmark.lastScanAddresses.toLocaleString("en-US")} of ${benchmarkAddresses.toLocaleString("en-US")} addresses)`
                 : ""}
               .{" "}
               {benchmark.lastBroadScan
-                ? `The latest pass that covered at least half of the set ran on ${benchmark.lastBroadScan.date} (${benchmark.lastBroadScan.addresses.toLocaleString("en-US")} addresses). `
+                ? `The latest pass that covered at least half of the set ran on ${benchmark.lastBroadScan.date} (${benchmark.lastBroadScan.addresses.toLocaleString("en-US")} of ${benchmarkAddresses.toLocaleString("en-US")} addresses). `
                 : ""}
               Scans recorded nothing from 2026-10-08 to 2026-10-30, while the index behind the agent resolver had stopped updating.{" "}
               {benchmarkOverdue ? (
                 <>
-                  That is {benchmarkAgeDays} days before this page was generated on {generatedOn} (UTC):
+                  The most recent scan is {benchmarkAgeDays} days before this page was generated on {generatedOn} (UTC):
                   the scheduled weekly pass has not recorded a scan since, so the figures above are older
                   than the schedule suggests.{" "}
                 </>

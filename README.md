@@ -147,7 +147,7 @@ A result never moves up a level: an L0 probe cannot report settlement, and an L3
 | L0 | Liveness — does the endpoint answer correctly? | Probe, no purchase | pass / fail / unverified |
 | L1 | Settle-through — does the payment settle, and does a non-empty 2xx come back? | Real purchase | n of m settled, latency |
 | L2 | Conformance — does the response match the seller's own declaration? | Purchase + machine diff | conform / mismatch / undeclared |
-| L3 | Quality — is the content any good? | Published rubric | opinion — never mixed with L0–L2 |
+| L3 | Quality — is the content any good? | Not built | none |
 
 The 0–100 trust score this API returns today (banded `ALLOW` / `WARN` / `BLOCK`) predates these levels. It stays available to API and SDK callers during the transition, and is never reported as an L0–L2 result. Methodology: <https://vet402.com/#methodology>.
 

@@ -249,7 +249,7 @@ export default async function Home() {
         {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
         <dl className="mx-auto mt-8 grid max-w-[62ch] gap-1 text-[0.84375rem] text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-4">
           <dt className="font-semibold">What this is</dt>
-          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. An error, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>
+          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. A 4xx or 5xx, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>
           <dt className="font-semibold">What you give us</dt>
           <dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>
           <dt className="font-semibold">What vet402 does not do</dt>
@@ -727,9 +727,9 @@ export default async function Home() {
                 {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} (UTC) catalog snapshot` : ""}. Bars are
                 proportional to the first row. The first row is every endpoint on record and includes delisted ones (
                 {stats.delistedEndpoints.toLocaleString()}). Active means vet402 has not closed the
-                record, and a Bazaar record is not closed at present
+                record. A record from the CDP x402 Bazaar stays active after it leaves the catalog
                 {stats.latestSnapshot
-                  ? `; the latest full read of the Bazaar saw ${stats.latestSnapshot.fetchedCount.toLocaleString()}`
+                  ? `; the latest full read of that catalog saw ${stats.latestSnapshot.fetchedCount.toLocaleString()} listings`
                   : ""}
                 . The L0 row counts active
                 records whose latest probe returned a valid 402 (<code>publishedPassActive</code>);{" "}

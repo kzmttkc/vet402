@@ -344,7 +344,7 @@ export default async function ObservatoryStatePage() {
                 <td className="num">—</td>
               </tr>
               <tr>
-                <td className="text-brand">Active: not closed on the record (a Bazaar record is not closed at present)</td>
+                <td className="text-brand">Active records (not closed; a Bazaar record stays active after it leaves the catalog)</td>
                 <td className="num">{stats.activeEndpoints.toLocaleString()}</td>
                 <td className="num">{pct(stats.activeEndpoints, denom)}</td>
               </tr>

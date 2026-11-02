@@ -391,7 +391,7 @@ export type EndpointDetail = {
  * 受領証の行に強度ラベルを載せる。列（auth_nonce / settlement_verified）は
  * 公開面へは出さない——出すのは「その tx がこの購入のものと言えるか」という結論だけ。
  */
-function withSettledTier<
+export function withSettledTier<
   T extends {
     status: string;
     txHash: string | null;

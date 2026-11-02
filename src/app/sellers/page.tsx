@@ -3,7 +3,6 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { boardAsOfDay, parseSellerSideFilter, searchSellers, sellerSearchRedirect, type SellerBoard } from "@/lib/sellers/board";
 import { getPurchasedHostsCached, getSellerBoardCached } from "@/lib/sellers/cached";
 import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/sellers/SellersViews";
@@ -82,7 +81,6 @@ export default async function SellersPage({ searchParams }: { searchParams: Prom
         page={page}
         q={q}
         search={search}
-        revalidateSec={PUBLIC_READ_REVALIDATE}
         side={side}
         purchasedLookupFailed={purchasedLookupFailed}
       />
