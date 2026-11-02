@@ -8,7 +8,7 @@ Every code link on this page points at one frozen commit, `95abea47ad6ca52ecb2bc
 git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
 ```
 
-**Status on 2026-11-02: since 2026-10-01 the page and the verify command end at step 1 with `ens_evidence_unavailable` for any valid name, because the two ENSv2 Sepolia contracts the SDK reads (UniversalResolver and UniversalHelper) now report different root registries. No seven-step result is produced.** The recorded demo and the transactions below are from before that date. The rest of this page, written during the event, describes it as it worked then.
+**Status on 2026-11-02: since 2026-10-01 the page and the verify command end at step 1 with `ens_evidence_unavailable` for any valid name, because ENS redeployed on Sepolia and the two contracts the SDK reads (UniversalResolver and UniversalHelper) now report different root registries. The demo's attestations, valid for seven days, also expired on 2026-10-03. No seven-step result is produced.** The recorded demo and the transactions below are from before that date. The rest of this page, written during the event, describes it as it worked then.
 
 It reads only, needs no keys, and prints the seven steps. The folder's [README](https://github.com/kzmttkc/vet402/blob/95abea47ad6ca52ecb2bc8abd06d24a634c90b6b/examples/tokyo-2026-demo/README.md) lists every command.
 

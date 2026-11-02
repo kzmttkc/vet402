@@ -41,7 +41,7 @@ git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/ve
 ```
 
 - Page from the event, where a judge could change one character of a seller's offer on-chain and watch the agent refuse: <https://vet402.com/tokyo?name=seller-a.eth>
-- Status on 2026-11-02: since 2026-10-01 the page and the verify command end at step 1 with `ens_evidence_unavailable` for any valid name, because the two ENSv2 Sepolia contracts the SDK reads (UniversalResolver and UniversalHelper) now report different root registries. No seven-step result is produced. The recorded demo and the transactions in [for-reviewers](./docs/tokyo-2026/for-reviewers.md) are from before that date.
+- Status on 2026-11-02: since 2026-10-01 the page and the verify command end at step 1 with `ens_evidence_unavailable` for any valid name, because ENS redeployed on Sepolia and the two contracts the SDK reads (UniversalResolver and UniversalHelper) now report different root registries. The demo's attestations, valid for seven days, also expired on 2026-10-03. No seven-step result is produced. The recorded demo and the transactions in [for-reviewers](./docs/tokyo-2026/for-reviewers.md) are from before that date.
 - Demo, commands and the Intercepta screening notes: [`examples/tokyo-2026-demo/README.md`](./examples/tokyo-2026-demo/README.md)
 - Every requirement, transaction and one-line check: [`docs/tokyo-2026/for-reviewers.md`](./docs/tokyo-2026/for-reviewers.md)
 - What existed before the event: vet402 and `@vet402/sdk`, up to the tag `pre-tokyo-2026`. Everything in `git log pre-tokyo-2026..tokyo-2026-submission` was made during it. Who did what, human and AI: [`AI_USAGE.md`](./AI_USAGE.md#ethglobal-tokyo-2026) and [`docs/tokyo-2026/human-log.md`](./docs/tokyo-2026/human-log.md)
