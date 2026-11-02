@@ -164,6 +164,7 @@ test("gatewayBatchTx: a settled Gateway row carries its batch, and no other row 
   assert.equal(settled.gatewayBatchTx, batchTx);
   assert.equal(settled.settlementSource, "circle_gateway");
   assert.equal(settled.txHash, null, "the shared batch stays out of txHash");
+  assert.equal("circleGateway" in settled, false);
   assert.equal(failed.gatewayBatchTx, null);
   assert.equal(plain.gatewayBatchTx, null);
 });

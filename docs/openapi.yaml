@@ -1125,9 +1125,9 @@ paths:
 
         Columns: `endpoint_id`, `resource_key`, `network` (as the catalog
         wrote it), `chain` (vet402's label), `network_class` (`mainnet` |
-        `testnet` | `unclassified`), `listed` (`true` while the catalog lists
-        it), `published_verdict` (`pass` = the latest probe passed; `fail` =
-        the newest 2 probes both failed and the route is still listed;
+        `testnet` | `unclassified`), `listed` (`true` while the record is
+        active), `published_verdict` (`pass` = the latest probe passed; `fail` =
+        the newest 2 probes both failed and the route is still active;
         `withdrawn` = those same two failing probes on a route absent from
         a complete catalog fetch, left out of the public L0 fail count;
         `unverified` = anything else, including no probe; the allowed values
@@ -2737,7 +2737,7 @@ paths:
                   publishedPassActive:
                     type: integer
                     description: |
-                      The part of `publishedPass` still listed in the catalog.
+                      The part of `publishedPass` on active records.
                       Since 2026-09-29.
                   publishedPassActiveProbeOlderThan7d:
                     type: integer
@@ -2866,7 +2866,9 @@ paths:
                         description: |
                           Endpoints whose settled rows all carry a transaction
                           found by vet402's own settlements index
-                          (`settlement_source=vet402_index`): no seller
+                          (`settlement_source=vet402_index`), or named in a
+                          Circle Gateway batch
+                          (`settlement_source=circle_gateway`): no seller
                           receipt. Since 2026-09-29.
                       endpointsDelivered: { type: integer }
                       awaitingReread:

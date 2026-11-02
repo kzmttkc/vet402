@@ -129,7 +129,7 @@ export default async function ImpactPage() {
           <strong>{stats.activeEndpoints.toLocaleString()}</strong> active, meaning vet402 has not closed the record
           {stats.latestSnapshot ? (
             <>
-              ; the latest full read of the Bazaar saw{" "}
+              ; the latest full read of the CDP x402 Bazaar saw{" "}
               <strong>{stats.latestSnapshot.fetchedCount.toLocaleString()}</strong> listings
             </>
           ) : null}

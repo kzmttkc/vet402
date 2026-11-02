@@ -136,7 +136,7 @@ export function catalogWithdrawalCorrectionAction(): string {
     "Probe rows and purchase rows stay as recorded.",
     "A pass on a delisted route stays a pass.",
     `On the L0 CSV retrieved at ${r.retrievedAt}, published_verdict fail was ${n(r.publishedVerdictFail)} of ${n(r.rows)} rows.`,
-    `Of that fail count, ${n(r.listedFail)} rows were still listed and ${n(r.notListedFail)} were not listed.`,
+    `Of that fail count, ${n(r.listedFail)} rows were still active and ${n(r.notListedFail)} were not.`,
     "/decision stays BLOCK on two consecutive L0 fails, including a route withdrawn from the catalog.",
   ].join(" ");
 }
