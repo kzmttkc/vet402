@@ -278,7 +278,8 @@ test("confirm / unsubscribe routes have no GET: a link scanner cannot change any
     assert.ok(src.includes("noindex: true"), `${rel} is noindex`);
   }
   const client = read("src/components/site/SubscriptionAction.tsx");
-  assert.ok(client.includes("window.location.hash"), "token is read from the fragment");
+  assert.ok(client.includes("readLinkHash(window)"), "token is read from the fragment, moved out of the URL first");
+  assert.ok(read("src/lib/observatory/token-page.ts").includes("location.hash"), "token is read from the fragment");
   assert.ok(/onClick=\{submit\}/.test(client), "the POST happens only on the button");
 });
 

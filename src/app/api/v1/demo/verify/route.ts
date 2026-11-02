@@ -3,6 +3,7 @@ import { getClientIp } from "@/lib/api/client-ip";
 // 2026-09-29 会計監査 7 周目（低）: acquireLease は取得の例外で「取れた」を返す。取れたと確かめられたときだけ走る。
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { consumeIpRateLimit, ipRateLimitHeaders, refundIpRateLimit } from "@/lib/api/ip-rate-limit";
+import { runDemoPurchaseWithBudget } from "@/lib/demo/l1-budget";
 import { runDemoL0 } from "@/lib/demo/verify";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { publicL1Summary, runL1Batch } from "@/lib/observatory/l1-runner";
@@ -159,6 +160,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
     }
     if (!lease.acquired) {
+      // 購入は始めていないので、日次のデモ予算と呼び手の 1 日 1 回を返す（2026-11-02 監査 L9。unverified の枝と同じ）。
+      await refundIpRateLimit(demoBudgetKey).catch(() => {});
+      await refundIpRateLimit(`demo-l1:${ip}`).catch(() => {});
       return NextResponse.json(
         { error: "l1_busy", detail: "a purchase batch is already running; try again shortly" },
         { status: 409, headers: perCaller },
@@ -166,10 +170,12 @@ export async function POST(request: NextRequest) {
     }
     try {
       // 予算・重複・自己除外・L0-pass 要件はランナー内の既存ゲートがそのまま利く。
-      const summary = await runL1Batch({ onlyEndpointId: endpointId, limit: 1 });
-      // 成立＝資金が動いた（署名して支払った）。spent_units が立たなければ計上しない。
-      if (BigInt(summary.spentUnitsTotal || "0") === 0n) await refundIpRateLimit(demoBudgetKey);
-      const purchases = await getEndpointPurchases(endpointId);
+      // 日次デモ予算の精算は 1 回だけ（資金が動かなかったときに返す。src/lib/demo/l1-budget.ts）。
+      const { summary, purchases } = await runDemoPurchaseWithBudget({
+        run: () => runL1Batch({ onlyEndpointId: endpointId, limit: 1 }),
+        readPurchases: () => getEndpointPurchases(endpointId),
+        refundBudget: () => refundIpRateLimit(demoBudgetKey),
+      });
       return NextResponse.json(
         // summary は白名簿を通す（2026-09-19 横断監査 W3）。ここは鍵不要の公開口なので、
         // 停止スイッチの理由文言（運用者のメモ・DB ドライバの error.message）は返さない
@@ -179,7 +185,6 @@ export async function POST(request: NextRequest) {
       );
     } catch (error) {
       logServerErrorSafe("demo_verify_l1", error);
-      await refundIpRateLimit(demoBudgetKey);
       return NextResponse.json({ error: "demo_unavailable" }, { status: 503, headers: perCaller });
     } finally {
       await lease.release();

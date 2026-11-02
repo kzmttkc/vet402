@@ -147,7 +147,10 @@ export function verifyUnsubscribeToken(subscriptionId: string, token: string): b
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-/** 本文の人向けリンク。トークンは # の後ろ——サーバのログにも解析のビーコンにも乗らない。 */
+/**
+ * 本文の人向けリンク。トークンは # の後ろ——サーバのログには乗らない。解析の script は location.href を
+ * 送るので、着地の頁で読み込まれる前に # を URL から消す（token-page.ts）。
+ */
 export function confirmPageUrl(token: string): string {
   return `${SITE_URL}/observatory/confirm#t=${token}`;
 }

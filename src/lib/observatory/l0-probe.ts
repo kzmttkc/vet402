@@ -25,6 +25,7 @@
 
 import { readBodyCapped } from "@/lib/net/read-capped";
 import { UnsafeTargetError, createSafeFetchImpl } from "@/lib/net/safe-fetch";
+import { redactCredentials } from "./redact";
 import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-payer";
 import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
@@ -361,7 +362,9 @@ export async function probeEndpoint(
     status: response.status,
     contentType: response.headers.get("content-type"),
     server: response.headers.get("server"),
-    bodyHead: bodyText.slice(0, 500),
+    // 売り手の本文の先頭。資格情報の形の接続文字列が入ることがあるので、先に伏せてから切る（境目で切れた seed を残さない）。
+    // 判定は本文全部で行う。
+    bodyHead: redactCredentials(bodyText).slice(0, 500),
     // 2026-09-29: 読んだ本文の大きさ（上限で切ったかどうか）。accepts_invalid の説明に使う。
     bodyBytes: Math.min(Buffer.byteLength(bodyText, "utf8"), L0_BODY_CAP_BYTES),
     ...(bodyTruncated ? { bodyTruncated: true } : {}),

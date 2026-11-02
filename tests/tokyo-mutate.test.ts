@@ -25,6 +25,7 @@ import type { VerifyView } from "@/app/api/tokyo/_lib/check";
 import { amountOf } from "@/app/api/tokyo/_lib/revert";
 import { verifyName } from "@/app/api/tokyo/_lib/verify";
 import { handleMutate, handleReset, handleState } from "@/app/api/tokyo/_lib/button";
+import { __resetTokyoRateLimitForTests } from "@/app/api/tokyo/_lib/rate-limit";
 import { decideHalt, type HaltProbe } from "@/app/api/tokyo/_lib/halt";
 import { ensureReverted } from "@/app/api/tokyo/_lib/revert";
 import { envButtonDisabled } from "@/app/api/tokyo/_lib/env";
@@ -529,7 +530,7 @@ test("W05: 戻している間に誰かが変えたら、戻し結果で上書き
   assert.equal(f.row.lastTx, "0xnext");
 });
 
-test("W05: state 経由は mutated_at から 90 秒未満なら戻さない・91 秒なら戻す", async () => {
+test("W05: state は書かない。mutated_at から 90 秒を過ぎると revertDue を返し、画面の POST /reset が戻す", async () => {
   const f = makeFake();
   await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
   assert.equal(f.writes.length, 1);
@@ -538,12 +539,49 @@ test("W05: state 経由は mutated_at から 90 秒未満なら戻さない・91
   assert.equal(f.writes.length, 1);
   assert.equal(j.amount, AMOUNT.on);
   assert.equal(j.changedByButton, true);
+  assert.equal(j.revertDue, false);
   f.clock.now += 2_000; // 91 秒
   j = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(f.writes.length, 1, "GET では署名しない");
+  assert.equal(j.amount, AMOUNT.on);
+  assert.equal(j.revertDue, true);
+  const r = await handleReset(post("reset", '{"to":"10000"}'), f.deps);
+  assert.equal(r.status, 200);
   assert.equal(f.writes.length, 2);
   assert.equal(f.writes[1].args[2], VALUES.off);
+  j = await (await handleState(get("state"), f.deps)).json();
   assert.equal(j.amount, AMOUNT.off);
-  assert.equal(j.revert.status, "reverted");
+  assert.equal(j.revertDue, false);
+});
+
+test("GET /state は行を作らず、戻す権利もリースも取らず、署名しない（監査 L2）", async () => {
+  const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+  f.row.mutatedAt = new Date(f.clock.now - STATE_REVERT_AFTER_MS - 1_000);
+  const leases = countLeases(f);
+  const touched: string[] = [];
+  for (const m of ["ensureRow", "claimRevert", "finishRevert", "releaseClaim", "markClean", "recordMutation", "appendLog", "consumeDaily", "consumeInterval"] as const) {
+    const inner = f.deps.store[m] as (...a: unknown[]) => Promise<unknown>;
+    (f.deps.store as unknown as Record<string, unknown>)[m] = (...a: unknown[]) => {
+      touched.push(m);
+      return inner(...a);
+    };
+  }
+  const r = await handleState(get("state"), f.deps);
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.equal(j.revertDue, true);
+  assert.deepEqual(touched, []);
+  assert.equal(leases.n, 0);
+  assert.equal(f.writes.length, 0);
+});
+
+test("画面: state が revertDue なら描く前に POST /reset を1回だけ呼び、読み直す", () => {
+  const src = readFileSync(resolve("src/app/tokyo/judge-panel.tsx"), "utf8");
+  const effect = src.slice(src.indexOf("useEffect(() => {"), src.indexOf("const press = async"));
+  assert.match(effect, /revertDue/);
+  assert.equal(effect.match(/\/api\/tokyo\/reset\?check=0/g)?.length, 1);
+  assert.ok(effect.indexOf("revertDue") < effect.indexOf("setState("), "描く前に戻す");
+  assert.doesNotMatch(effect, /while|setInterval/, "失敗しても繰り返さない");
 });
 
 test("W05: reset は時間の条件なしで戻す", async () => {
@@ -555,6 +593,30 @@ test("W05: reset は時間の条件なしで戻す", async () => {
   assert.equal((await r.json()).status, "reverted");
   assert.equal(f.writes.length, 2);
   assert.equal(f.chain.value, VALUES.off);
+});
+
+test("reset: check=false は戻すが7段を読み直さない（画面の自動の戻しを待たせない）。既定は読み直す", async () => {
+  const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+  const r = await handleReset(post("reset", '{"to":"10000"}'), f.deps, { check: false });
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.equal(j.status, "reverted");
+  assert.equal(j.check, null);
+  assert.equal(f.checks.n, 0);
+  assert.equal(f.writes.length, 1);
+  const g = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
+  const d = await (await handleReset(post("reset", '{"to":"10000"}'), g.deps)).json();
+  assert.ok(g.checks.n > 0, "既定は読み直す");
+  assert.ok(d.check, "既定は check を返す");
+});
+
+test("reset のルートは ?check=0 のときだけ読み直しをやめる。枠の関門は deps を作る前", () => {
+  const src = readFileSync(join(TOKYO_API, "reset/route.ts"), "utf8");
+  assert.match(src, /searchParams\.get\("check"\) !== "0"/);
+  for (const name of ["reset", "state"]) {
+    const route = readFileSync(join(TOKYO_API, `${name}/route.ts`), "utf8");
+    assert.ok(route.indexOf("await tokyoRateLimit(") < route.indexOf("realButtonDeps()"), name);
+  }
 });
 
 test("W05: 90000 という数値リテラルは constants.ts 以外に無い", () => {
@@ -677,11 +739,12 @@ test("ページと verify に鍵も署名器も無い（§3.7.1 の grep と同�
   const files = [...tsFiles(TOKYO_PAGE), ...tsFiles(join(TOKYO_API, "verify"))];
   const hits = files.filter((f) => /signTypedData|PRIVATE_KEY/.test(readFileSync(f, "utf8")));
   assert.deepEqual(hits.map((f) => relative(ROOT, f)), []);
-  // import グラフでも、署名器を作る deps.ts・鍵を読む env.ts へ辿り着かない。読む env は RPC の1本だけ
+  // import グラフでも、署名器を作る deps.ts・鍵を読む env.ts へ辿り着かない。読む env は RPC の1本と、
+  // verify の回数の枠（ip_rate_limits）の DB の1本だけ（2026-11-02 監査 M2）
   const g = envGraph(files);
   assert.deepEqual(g.unresolved, []);
   assert.ok(!g.files.some((f) => /_lib\/(deps|env|button|revert|store)\.ts$/.test(f)), g.files.join(", "));
-  assert.deepEqual([...g.env].sort(), ["TOKYO_SEPOLIA_RPC_URL"]);
+  assert.deepEqual([...g.env].sort(), ["DATABASE_URL", "TOKYO_SEPOLIA_RPC_URL"]);
 });
 
 test("/tokyo と /api/tokyo から Intercepta を呼ばない・表示しない（§3.10-4）", () => {
@@ -737,6 +800,7 @@ test("schema.ts の tokyo_mutations・tokyo_mutation_log が本番へ流す DDL 
 const RPC_HOSTS = [new URL(DEFAULT_RPC).host, new URL(SECONDARY_RPC).host];
 
 async function withFakeRpc<T>(run: (count: () => number) => Promise<T>): Promise<T> {
+  __resetTokyoRateLimitForTests(); // verify を何度も呼ぶ。枠の数はここで見ない（tests/tokyo-rate-limit.test.ts）
   const original = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -811,6 +875,7 @@ test("verify: 同じ名前で /api/tokyo/verify を 20 回続けて叩いても 
     }
     assert.equal(count(), once, `20 回で RPC ${count()} 回（1回分は ${once}）`);
 
+    __resetTokyoRateLimitForTests();
     const par = "cache-par.eth";
     forgetVerified(par);
     const before = count();
@@ -914,20 +979,21 @@ test("押した後: tx を送った後に DB の記録が例外でも、seller-d
   });
 });
 
-test("W05: state の戻しは使い回した関門ではなく、その場で読んだ関門で署名へ進む（残高が床を割ったら戻さない）", async () => {
+test("W05: 戻しは使い回した関門ではなく、reset がその場で読んだ関門で署名へ進む（残高が床を割ったら戻さない）", async () => {
   const f = makeFake();
   const cache = new TtlCache<unknown>(STATE_CACHE_MS, 32, () => f.clock.now);
   f.deps.memo = <T,>(key: string, load: () => Promise<T>) => cache.get(key, load) as Promise<T>;
   await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
-  f.clock.now += STATE_REVERT_AFTER_MS - 1_000; // 89 秒: 戻さない。関門（残高あり）を使い回しに入れる
+  f.clock.now += STATE_REVERT_AFTER_MS - 1_000; // 89 秒: 関門（残高あり）を使い回しに入れる
   await handleState(get("state"), f.deps);
   f.deps.getBalance = async () => 0n;
   f.clock.now += 2_000; // 91 秒・使い回しはまだ有効
-  const j = await (await handleState(get("state"), f.deps)).json();
+  const stale = await (await handleState(get("state"), f.deps)).json();
+  assert.equal(stale.revertDue, true, "state は使い回しで答える");
+  const r = await handleReset(post("reset", '{"to":"10000"}'), f.deps);
+  assert.equal(r.status, 503);
+  assert.equal((await r.json()).error, "balance_below_floor");
   assert.equal(f.writes.length, 1, "署名 0 回");
-  assert.equal(j.revert, null);
-  assert.equal(j.canPress, false);
-  assert.ok(j.blockers.some((b: { error: string }) => b.error === "balance_below_floor"));
 });
 
 function countLeases(f: Fake): { n: number } {
@@ -940,7 +1006,7 @@ function countLeases(f: Fake): { n: number } {
   return leases;
 }
 
-test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何度叩いてもリースを取らず tx も出さない。戻す前は1本だけ戻す", async () => {
+test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何度叩いてもリースを取らず tx も出さない。戻す前は reset が1本だけ戻す", async () => {
   const f = makeFake();
   const leases = countLeases(f);
   await handleMutate(post("mutate", '{"to":"10001"}'), f.deps);
@@ -948,8 +1014,9 @@ test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何
   assert.equal(f.writes.length, 1);
   f.clock.now += STATE_REVERT_AFTER_MS + 1_000; // 91 秒・未戻し
   const j = await (await handleState(get("state"), f.deps)).json();
-  assert.equal(j.revert.status, "reverted");
-  assert.equal(j.amount, AMOUNT.off);
+  assert.equal(j.revertDue, true);
+  assert.equal(leases.n, 1);
+  assert.equal((await (await handleReset(post("reset", '{"to":"10000"}'), f.deps)).json()).status, "reverted");
   assert.equal(f.writes.length, 2);
   assert.equal(leases.n, 2);
   assert.equal(f.row.currentValue, AMOUNT.off, "DB は戻し済み");
@@ -957,7 +1024,7 @@ test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何
   for (let i = 0; i < 10; i++) {
     f.clock.now += 30_000;
     const s = await (await handleState(get("state"), f.deps)).json();
-    assert.equal(s.revert, null);
+    assert.equal(s.revertDue, false);
     assert.equal(s.amount, AMOUNT.off);
     assert.equal(s.canPress, true);
   }
@@ -983,27 +1050,31 @@ test("W05: 戻し済み（DB もチェーンも 10000）なら GET /state を何
   assert.equal(state.status, 200);
 });
 
-test("W05: DB だけ 10001 のまま（受領待ちの timeout）でチェーンが戻っていれば、1回だけリースを取って DB を戻し済みにし、以後は取らない", async () => {
+test("W05: DB だけ 10001 のまま（受領待ちの timeout）でチェーンが戻っていれば、reset が1回だけリースを取って DB を戻し済みにし、以後は revertDue が消える", async () => {
   const f = makeFake({ chainValue: VALUES.off, dbValue: AMOUNT.on });
   f.row.mutatedAt = new Date(f.clock.now - STATE_REVERT_AFTER_MS - 1_000);
   const leases = countLeases(f);
   const j = await (await handleState(get("state"), f.deps)).json();
-  assert.deepEqual(j.revert, { status: "clean", synced: true });
+  assert.equal(j.revertDue, true);
+  assert.equal(leases.n, 0);
+  assert.deepEqual((await (await handleReset(post("reset", '{"to":"10000"}'), f.deps)).json()).revert, { status: "clean", synced: true });
   assert.equal(f.row.currentValue, AMOUNT.off);
   assert.equal(leases.n, 1);
-  for (let i = 0; i < 5; i++) await handleState(get("state"), f.deps);
+  for (let i = 0; i < 5; i++) assert.equal((await (await handleState(get("state"), f.deps)).json()).revertDue, false);
   assert.equal(leases.n, 1);
   assert.equal(f.writes.length, 0);
 });
 
-test("W05: DB は戻し済みでもチェーンが 10001（送った後に DB へ記録できなかった）なら、90 秒後に1本だけ戻す", async () => {
+test("W05: DB は戻し済みでもチェーンが 10001（送った後に DB へ記録できなかった）なら、state は revertDue を返し reset が1本だけ戻す", async () => {
   const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.off });
   const leases = countLeases(f);
   const j = await (await handleState(get("state"), f.deps)).json();
-  assert.equal(j.revert.status, "reverted");
+  assert.equal(j.revertDue, true);
+  assert.equal(f.writes.length, 0);
+  assert.equal((await (await handleReset(post("reset", '{"to":"10000"}'), f.deps)).json()).status, "reverted");
   assert.equal(f.writes.length, 1);
   assert.equal(f.writes[0].args[2], VALUES.off);
-  await handleState(get("state"), f.deps);
+  assert.equal((await (await handleState(get("state"), f.deps)).json()).revertDue, false);
   assert.equal(leases.n, 1);
   assert.equal(f.writes.length, 1);
 });
@@ -1131,7 +1202,7 @@ test("押した後: reset の戻しが例外でも、seller-d.eth の使い回�
   });
 });
 
-test("押した後: state の戻しが例外でも、seller-d.eth の使い回しを捨てる（state は 200 のまま）", async () => {
+test("押した後: reset の戻しが例外でも、seller-d.eth の使い回しを捨てる", async () => {
   await withFakeRpc(async (count) => {
     const f = makeFake({ chainValue: VALUES.on, dbValue: AMOUNT.on });
     f.row.mutatedAt = new Date(f.clock.now - STATE_REVERT_AFTER_MS - 1_000);
@@ -1139,8 +1210,8 @@ test("押した後: state の戻しが例外でも、seller-d.eth の使い回�
     f.deps.store.finishRevert = async () => {
       throw new Error("db down");
     };
-    const r = await handleState(get("state"), f.deps);
-    assert.equal(r.status, 200);
+    const r = await handleReset(post("reset", '{"to":"10000"}'), f.deps);
+    assert.equal(r.status, 503);
     assert.equal(f.writes.length, 1, "戻す tx は送られた");
     await verifyName(SELLER_D);
     assert.ok(count() > 0, "使い回しは捨てられ、次の検証は読み直す");

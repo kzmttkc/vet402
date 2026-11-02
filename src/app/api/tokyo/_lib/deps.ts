@@ -25,7 +25,7 @@ const stateCache = new TtlCache<unknown>(STATE_CACHE_MS, 32);
 export function realButtonDeps(): ButtonDeps {
   const rpc = readRpcUrl();
   const transport = http(rpc, { timeout: 15_000, retryCount: 1 });
-  const pub = createPublicClient({ chain: sepolia, transport });
+  const pub = createPublicClient({ chain: sepolia, transport, ccipRead: false });
 
   const receiptBlocks = new Map<string, bigint>();
 

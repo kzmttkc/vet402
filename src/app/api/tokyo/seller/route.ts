@@ -10,9 +10,11 @@
 //
 // 売り手は受け取るだけ。鍵を持たず、署名しない。決済は x402.org の公開 facilitator
 // （PLAN_v3 §1.4 / B0-1・B0-2 で `{x402Version:2, scheme:"exact", network:"eip155:84532"}`
-// を実測）が行う。env を1本も読まず、既存の lib を1本も import しない（W01）。
+// を実測）が行う。このファイルは env を読まず、既存の lib を直接 import しない（W01）。
+// 支払いつきの要求だけ IP ごとの枠で数える（_lib/rate-limit.ts。DATABASE_URL は db/client が読む。facilitator へ出る前に止める）。
 // ============================================================
 import { NextRequest, NextResponse } from "next/server";
+import { TOKYO_LIMITS, tokyoRateLimit } from "../_lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -137,12 +139,15 @@ async function callFacilitator(
   }
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<Response> {
   const header = request.headers.get("payment-signature");
   if (!header) return respond402("PAYMENT-SIGNATURE header is required");
 
   const read = readPayment(header);
   if (!read.ok) return respond402(read.reason);
+
+  const limited = await tokyoRateLimit(request, TOKYO_LIMITS.seller);
+  if (limited) return limited;
 
   const verified = await callFacilitator("verify", read.payload, VERIFY_TIMEOUT_MS);
   if (!verified) return respond502("facilitator_unavailable");

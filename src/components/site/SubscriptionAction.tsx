@@ -2,15 +2,17 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { buttonClass } from "@/components/ui/Button";
+import { clearLinkHash, readLinkHash } from "@/lib/observatory/token-page";
 
 /**
  * SubscriptionAction — 確認メール・通知メールのリンク先の「押すまで何も起きない」ボタン
  * （2026-09-28 監査: ダブルオプトインと配信停止）。
  *
- * トークンは URL の # の後ろ（#t=… / #id=…&t=…）で受け取る。# 以降はサーバへも
- * 解析のビーコンへも送られない。頁を開いただけでは何もしない——メールのリンク
- * スキャナが開いても確定・停止しない。POST はボタンを押した時の 1 回だけ。
- * 成功したら # を消し、トークンを履歴に残さない。
+ * トークンは URL の # の後ろ（#t=… / #id=…&t=…）で受け取る。# 以降はサーバへは届かないが、
+ * 解析の script は location.href を送るので、頁の先頭の TokenStashScript が先に # を URL から
+ * 消して手元へ移す（token-page.ts）。ここはそれを読む。頁を開いただけでは何もしない——メールの
+ * リンクスキャナが開いても確定・停止しない。POST はボタンを押した時の 1 回だけ。
+ * 成功したら手元のトークンも消す。
  */
 export default function SubscriptionAction({ mode }: { mode: "confirm" | "unsubscribe" }) {
   // # はサーバ描画に届かないので、サーバ側のスナップショットは null（＝まだ読んでいない）。
@@ -32,6 +34,7 @@ export default function SubscriptionAction({ mode }: { mode: "confirm" | "unsubs
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (res.ok) {
         setState("done");
+        clearLinkHash(window);
         window.history.replaceState(null, "", window.location.pathname);
         return;
       }
@@ -97,7 +100,7 @@ function subscribeHash(onChange: () => void): () => void {
 }
 
 function readHash(): string {
-  return window.location.hash;
+  return readLinkHash(window);
 }
 
 function parseParams(hash: string | null, mode: "confirm" | "unsubscribe"): { id: string; token: string } | null {

@@ -1,24 +1,32 @@
 import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { publicRateLimit } from "@/lib/api/public-route";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
+import { UUID_RE } from "@/lib/validation/uuid";
 
 /**
  * Farcaster Frame 用の 1200×630 PNG（Phase 2.4）。エンドポイントの
  * レシート実績（試行/決済・settle率）を紙面様式のトーンで描く。
  * 語彙は他の公開面と同じ: 数と分母のみ・評価語なし。
  * SVGバッジでなくPNGなのは、Farcasterクライアントのimage要件のため。
+ * 描画は重いので、形の悪い ID・枠超え・未知の ID は描く前に返す（2026-11-02 監査 M2）。
  */
 // Node runtime のまま: getEndpointPurchases は self-host では TCP の
 // postgres ドライバを使うため edge では動かない（ローカル実測 500）。
 // ImageResponse は Node runtime でも動作する。
-export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  const data = await getEndpointPurchases(id);
+  if (!UUID_RE.test(id)) return NextResponse.json({ error: "endpoint_not_found" }, { status: 404 });
+  const gate = await publicRateLimit(request, "frame-image");
+  if (!gate.ok) return gate.response;
 
-  const title = data ? data.resourceKey : "unknown endpoint";
-  const attempts = data?.attemptCount ?? 0;
-  const settled = data?.settledCount ?? 0;
-  const rate = data?.settleRatePct;
+  const data = await getEndpointPurchases(id);
+  if (!data) return NextResponse.json({ error: "endpoint_not_found" }, { status: 404, headers: gate.headers });
+
+  const title = data.resourceKey;
+  const attempts = data.attemptCount;
+  const settled = data.settledCount;
+  const rate = data.settleRatePct;
 
   return new ImageResponse(
     (
@@ -54,6 +62,6 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
         <div style={{ fontSize: 24, color: "#4a5568" }}>vet402.com/observatory — facts with denominators, not opinions</div>
       </div>
     ),
-    { width: 1200, height: 630 },
+    { width: 1200, height: 630, headers: gate.cacheHeaders },
   );
 }

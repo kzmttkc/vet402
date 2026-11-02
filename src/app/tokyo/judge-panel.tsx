@@ -1,5 +1,5 @@
 "use client";
-// 審査員ボタンの欄。現在値は /api/tokyo/state から（そこで 90 秒を過ぎた変更は先に戻る）。
+// 審査員ボタンの欄。現在値は /api/tokyo/state から。90 秒を過ぎた変更は、描く前にここから POST /reset で戻す（GET は書かない）。
 // 押した後の7段は、mutate / reset の応答の check をそのまま出す（受領のブロック以上で、使い回しを通さず読んだもの）。
 // /api/tokyo/verify は引き直さない（別のプロセスが押す前の結果を使い回していることがある）。
 // 押せないときは理由の1行を出し、ボタンを黙って消さない。
@@ -17,6 +17,7 @@ type StateData = {
   mutatedAt: string | null;
   lastTx: string | null;
   revertAfterSeconds: number;
+  revertDue: boolean;
   log: LogRow[];
   canPress: boolean;
   blockers: Blocker[];
@@ -63,11 +64,21 @@ export function JudgePanel() {
 
   useEffect(() => {
     let alive = true;
-    void fetchState().then((next) => {
+    void (async () => {
+      let next = await fetchState();
+      if (next?.revertDue) {
+        // 1回だけ。失敗しても読み直した値をそのまま描く（押せない理由は state が返す）。
+        await fetch("/api/tokyo/reset?check=0", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ to: "10000" }),
+        }).catch(() => null);
+        next = await fetchState();
+      }
       if (!alive) return;
       if (next) setState(next);
       else setStateError(STATE_ERROR);
-    });
+    })();
     return () => {
       alive = false;
     };

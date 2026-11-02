@@ -13,6 +13,7 @@
 //
 // 使い分け:
 //   redactUrls    文字列から URL を伏せるだけ（長さは切らない）
+//   redactCredentials URL と Stellar の seed を伏せる（長さは切らない。売り手の本文の記録用）
 //   redactForLog  台帳・summary 用。伏せて 300 字に切る（列の長さを決めているのはこちら）
 //   redactedError logServerError へ渡す包み。伏せるが切らない（ログの診断を消さない）
 //
@@ -21,7 +22,10 @@
 // client を引くので、書き手がそれを import したくない）。
 // ============================================================
 
-const URL_RE = /(https?|wss?|postgres(?:ql)?):\/\/\S+/g;
+// スキームは決め打ちにしない（2026-11-02 監査 L7: 売り手の本文には DB やキューの接続文字列も出る）。
+// `"` と山括弧で止める。圧縮 JSON の続きの本文まで飲み込まない。`'` はパスワードの中にも出るので止めない。
+// スキームの長さに上限を置く。無いと売り手の本文（`a.a.a.…`）で処理時間が長さの 2 乗で増える。
+const URL_RE = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"<>]+/gi;
 
 /**
  * Stellar の seed（`S` + 55 文字）。stellar402-payer を import しない
@@ -48,6 +52,11 @@ export function stripQueryParams(text: string): string {
 /** 文字列中の接続 URL を `<url>` に伏せる。長さは変えない。 */
 export function redactUrls(text: string): string {
   return text.replace(URL_RE, "<url>");
+}
+
+/** 売り手の応答の本文など、誤りではない文字列を記録する前に伏せる。切らない。 */
+export function redactCredentials(text: string): string {
+  return redactStellarSecrets(redactUrls(text));
 }
 
 /** 台帳・summary へ書く誤り文字列。伏せてから 300 字に切る。 */

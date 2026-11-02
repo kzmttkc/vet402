@@ -10,3 +10,21 @@ export function callerKey(request: Request): string {
   const raw = request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() || "unknown";
   return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
+
+/** IPv6 は /64 に丸める（1 回線に /64 が配られ、下位は利用者が回せる）。IPv4 射影は IPv4。 */
+function networkOf(raw: string): string {
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(raw);
+  if (mapped) return mapped[1];
+  if (!raw.includes(":")) return raw;
+  const [head = "", tail = ""] = raw.toLowerCase().split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = raw.includes("::") ? [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t] : h;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":")}::/64`;
+}
+
+/** 回数の枠（rate-limit.ts）の鍵。callerKey と同じく IP そのものは保存しない。 */
+export function callerNetworkKey(request: Request): string {
+  const raw = request.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  return createHash("sha256").update(networkOf(raw)).digest("hex").slice(0, 16);
+}

@@ -134,7 +134,10 @@ function hasRpcResult(contentType: string, text: string): boolean {
   return false;
 }
 
-/** 数える（§2.4）: HTTP 200・result のある応答だけ。initialize は clientInfo、tools/call は UA から client を決める。 */
+/**
+ * 数える（§2.4）: HTTP 200・result のある応答だけ。initialize は clientInfo、tools/call は UA から client を決める。
+ * 自己申告の値なので、利用者数や採用の証拠として外に出さない。
+ */
 function countUsage(request: Request, rpc: Rpc, contentType: string, text: string): void {
   if (!hasRpcResult(contentType, text)) return;
   if (rpc.method === "initialize") {

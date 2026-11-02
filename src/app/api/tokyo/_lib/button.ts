@@ -6,7 +6,7 @@
 //   W02 chainId は定数。サーバの RPC の getChainId() が違えば 503
 //   W03 1日 60 回（ip_rate_limits の1文 upsert）・同じ IP から1日 10 回（IP_DAILY_CAP）・runtime_flags.tokyo_button_halt・env "1" の保険
 //   W04 balance − 0.005 ETH ≥ PRESS_GAS × gasPrice × 3。満たさなければ 503、署名しない
-//   W05 mutate の先頭・state（90 秒以上・DB かチェーンがまだ戻っていないときだけ）・reset で ensureReverted
+//   W05 mutate の先頭・reset で ensureReverted。state は読むだけで、90 秒を過ぎて戻っていなければ revertDue を返す（画面が POST /reset を呼ぶ）
 //   W06 書き込みの4点（宛先・node・キー・値）は constants.ts の定数だけ
 // 関門で止めた応答は「押せない理由の1行」（message）を持つ。画面はそれをそのまま出す。
 // ============================================================
@@ -329,15 +329,15 @@ export async function handleMutate(request: Request, deps: ButtonDeps): Promise<
 
 /**
  * POST /api/tokyo/reset — 10000 に戻す（時間の条件なし）。本文は {"to":"10000"} だけ。
- * IP の1日の上限にも 20 秒の間隔にも数えない。
+ * IP の1日の上限にも 20 秒の間隔にも数えない。?check=0 は押した後の7段を読み直さない（画面の自動の戻しは描画を待たせない）。
  *   - 資金: 戻す tx はチェーンが 10001 のときだけ出る。10001 にできるのは上限つきの mutate だけなので、
  *     reset を何回叩いても戻す tx は「変えた回数」を越えない（戻す権利は claimRevert の1文で1つ）。
  *   - 他人の REFUSE を消す連打: 押した人の画面は mutate の応答の check（受領のブロック以上で読んだ7段）を出す。
  *     戻す tx はリースが空いてからしか出ず、その応答を読む前に次のブロックへ載る場合を除けば、後から戻されても
- *     押した人の REFUSE は消えない。消えるのは他の来訪者が見る「今の値」で、それは 90 秒後に state が戻すのと同じ。
+ *     押した人の REFUSE は消えない。消えるのは他の来訪者が見る「今の値」で、それは 90 秒後に画面が reset で戻すのと同じ。
  *     20 秒の間隔は、押されるたびに1回戻すだけの妨害を止められず、同じ回線の審査員の「戻す」だけを止める。
  */
-export async function handleReset(request: Request, deps: ButtonDeps): Promise<Response> {
+export async function handleReset(request: Request, deps: ButtonDeps, opts: { check: boolean } = { check: true }): Promise<Response> {
   const startedAt = deps.now();
   if (deps.envDisabled()) return fail(503, "button_disabled");
   const side = await parseToBody(request, ["off"]);
@@ -364,7 +364,7 @@ export async function handleReset(request: Request, deps: ButtonDeps): Promise<R
     status,
     revert,
     ...(!ok && status in MESSAGES ? { message: MESSAGES[status as ErrorCode] } : {}),
-    check: ok ? await checkAfterWrite(deps, revertTx(revert), startedAt) : null,
+    check: ok && opts.check ? await checkAfterWrite(deps, revertTx(revert), startedAt) : null,
   });
 }
 
@@ -382,44 +382,21 @@ export async function handleState(request: Request, deps: ButtonDeps): Promise<R
 
   let row: MutationRow | null = null;
   try {
-    await deps.store.ensureRow();
     row = await deps.store.readRow();
   } catch (e) {
     logSafe("tokyo.state.row", e);
     blockers.push(blocker("state_unavailable"));
   }
 
-  let offer = await readOfferForState(deps, row);
+  const offer = await readOfferForState(deps, row);
 
-  // W05: 変えてから STATE_REVERT_AFTER_MS 以上たっていれば、描画の前に戻す。
-  // ただし DB が戻し済み（current_value = 10000）で、チェーンも VALUES.off（か読めない）なら、リースを取らない。
-  // mutated_at は「最後に変えた時刻」のまま残るので、ここで見ないと 90 秒後から毎回リースを取り、
-  // その間に押した審査員が 409 busy になる。チェーンが読めないときの revertLocked も clean を返すだけなので同じ答え。
-  // DB だけが 10001 のまま（受領待ちの timeout 等）なら ensureReverted が markClean で DB を戻し済みにする。
-  let revert: RevertResult | null = null;
-  if (gateOk && row) {
-    const age = row.mutatedAt ? deps.now() - row.mutatedAt.getTime() : Number.POSITIVE_INFINITY;
-    const settled = row.currentValue === AMOUNT.off && (offer === null || offer.value === VALUES.off);
-    if (age >= STATE_REVERT_AFTER_MS && !settled) {
-      // 署名へ進む前の関門は、使い回した結果でなく、その場でチェーンを読み直す。
-      const fresh = await txGates(deps);
-      if (!fresh.ok) {
-        blockers.push(fresh.body);
-      } else {
-        try {
-          revert = await ensureReverted(deps);
-          forgetAfterWrite(revert);
-          if (revert.status !== "clean" || revert.synced) {
-            row = await deps.store.readRow();
-            offer = await readOfferForState(deps, row);
-          }
-        } catch (e) {
-          forgetVerified(SELLER_D);
-          logSafe("tokyo.state.revert", e);
-        }
-      }
-    }
-  }
+  // W05: GET は書かないし署名しない（2026-11-02 監査 L2）。変えてから STATE_REVERT_AFTER_MS 以上たって戻っていなければ、
+  // revertDue で画面に知らせ、画面が POST /reset を1回呼ぶ。署名の前の関門は reset がその場で読み直す。
+  // DB が戻し済み（current_value = 10000）で、チェーンも VALUES.off（か読めない）なら戻すものは無い。
+  // mutated_at は「最後に変えた時刻」のまま残るので、ここで見ないと 90 秒後から毎回 revertDue になる。
+  const settled = row?.currentValue === AMOUNT.off && (offer === null || offer.value === VALUES.off);
+  const age = row?.mutatedAt ? deps.now() - row.mutatedAt.getTime() : Number.POSITIVE_INFINITY;
+  const revertDue = gateOk && row !== null && !settled && age >= STATE_REVERT_AFTER_MS;
 
   let pressesToday: number | null = null;
   try {
@@ -458,7 +435,7 @@ export async function handleState(request: Request, deps: ButtonDeps): Promise<R
     mutatedAt: row?.mutatedAt?.toISOString() ?? null,
     lastTx: row?.lastTx ?? null,
     revertAfterSeconds: STATE_REVERT_AFTER_MS / 1000,
-    revert,
+    revertDue,
     log,
     canPress: blockers.length === 0,
     blockers,

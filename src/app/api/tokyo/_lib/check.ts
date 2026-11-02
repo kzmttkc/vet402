@@ -46,14 +46,18 @@ export type VerifyView = {
 
 export type VerifyError = { name: string; error: "invalid_name" | "verify_failed"; message: string };
 
-function clients(): EnsReadClients {
-  const { primary, secondary } = readVerifyRpcUrls();
-  const mk = (url: string) => createPublicClient({ chain: sepolia, transport: http(url, { timeout: 15_000, retryCount: 1 }) });
-  return { primary: mk(primary), secondary: mk(secondary) } as unknown as EnsReadClients;
+/**
+ * 検証の2本。ccipRead: false（2026-11-02 監査 M1）: 名前は呼び手が選ぶので、リゾルバが OffchainLookup で
+ * 返す転送先へサーバから要求を出さない。seller-a.eth の7段は転送を1回も使わないので、切っても読める
+ * （tests/tokyo-ccip-read.test.ts が実物の応答の再生で固定）。
+ */
+export function verifyClients(urls: { primary: string; secondary: string } = readVerifyRpcUrls()): EnsReadClients {
+  const mk = (url: string) => createPublicClient({ chain: sepolia, transport: http(url, { timeout: 15_000, retryCount: 1 }), ccipRead: false });
+  return { primary: mk(urls.primary), secondary: mk(urls.secondary) } as unknown as EnsReadClients;
 }
 
 /** 7段を今の Sepolia で1回走らせる。RPC が落ちたときも SDK は投げず ens_evidence_unavailable を返す。 */
-export async function readCheck(name: string): Promise<VerifyView | VerifyError> {
+export async function readCheck(name: string, clients: EnsReadClients = verifyClients()): Promise<VerifyView | VerifyError> {
   const t0 = Date.now();
   try {
     const r = await checkEnsOffer({
@@ -61,7 +65,7 @@ export async function readCheck(name: string): Promise<VerifyView | VerifyError>
       resource: SELLER_RESOURCE,
       method: SELLER_METHOD,
       profile: BASE_SEPOLIA_PROFILE,
-      clients: clients(),
+      clients,
       policy: {
         trustedAttesters: TRUSTED_ATTESTERS.map((a) => ({ name: a.name, address: a.address, recordKeys: [...a.recordKeys] })),
         minValid: MIN_VALID,

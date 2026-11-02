@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { pageMetadata } from "@/lib/seo";
 import SubscriptionAction from "@/components/site/SubscriptionAction";
+import { TokenStashScript } from "@/components/site/TokenStashScript";
 
 /**
  * /observatory/unsubscribe — メール内リンクの着地頁（2026-09-28 監査）。
  * GET では何も書かない（DB に触れない）。変わるのはボタンの POST だけ。
  * トークンは # の後ろにあり、この頁のサーバ描画には届かない。
+ * Plausible の script は location.href を送るので、読み込まれる前に # を URL から消す（token-page.ts）。
  */
 
 export const metadata: Metadata = pageMetadata({
@@ -18,28 +20,31 @@ export const metadata: Metadata = pageMetadata({
 
 export default function Page() {
   return (
-    <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <article className="sheet">
-        <div className="doc-head">
-          <div className="doc-head-col">
-            <span>Endpoint record emails</span>
-            <span>Unsubscribe</span>
+    <>
+      <TokenStashScript />
+      <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
+        <article className="sheet">
+          <div className="doc-head">
+            <div className="doc-head-col">
+              <span>Endpoint record emails</span>
+              <span>Unsubscribe</span>
+            </div>
+            <div className="doc-head-col">
+              <span>vet402</span>
+              <span>
+                <Link href="/observatory" className="underline">
+                  Back to the register
+                </Link>
+              </span>
+            </div>
           </div>
-          <div className="doc-head-col">
-            <span>vet402</span>
-            <span>
-              <Link href="/observatory" className="underline">
-                Back to the register
-              </Link>
-            </span>
+          <h1 className="doc-title mt-8">Stop these emails</h1>
+          <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
+          <div className="mt-8">
+            <SubscriptionAction mode="unsubscribe" />
           </div>
-        </div>
-        <h1 className="doc-title mt-8">Stop these emails</h1>
-        <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <div className="mt-8">
-          <SubscriptionAction mode="unsubscribe" />
-        </div>
-      </article>
-    </main>
+        </article>
+      </main>
+    </>
   );
 }

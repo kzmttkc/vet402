@@ -72,7 +72,7 @@ export const PRESS_GAS = 160_592n;
 export const GAS_SAFETY = 3n;
 
 // ---- W05: 次に来た人が来たときに戻す ----
-/** state から戻すのは、変えてからこの時間が過ぎた後だけ。 */
+/** state が revertDue を立てるのは、変えてからこの時間が過ぎた後だけ。 */
 export const STATE_REVERT_AFTER_MS = 90_000;
 /** 戻す権利（reverting_until）の長さ。 */
 export const REVERT_CLAIM_SECONDS = 60;

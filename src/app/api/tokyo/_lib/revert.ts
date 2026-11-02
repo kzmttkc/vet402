@@ -2,8 +2,8 @@
 // ensureReverted（W05）: 「次に来た人が来たときに戻す」。
 //
 // serverless では時間で戻せない（after() の setTimeout は本番で発火しなかった実測・
-// Vercel cron に分単位が無い）。だから守る不変条件を来訪で守る。呼ぶのは3か所:
-// mutate の先頭・state（変えてから 90 秒以上）・reset。
+// Vercel cron に分単位が無い）。だから守る不変条件を来訪で守る。呼ぶのは2か所:
+// mutate の先頭・reset（ボタンと、state の revertDue を見た画面）。GET /state からは呼ばない。
 //
 //   1. DB の行とチェーンの今の値を読む。どちらも 10000 なら clean（tx を打たない）
 //   2. チェーンが 10000 で DB だけ 10001 → DB を合わせるだけ（tx を打たない）
@@ -87,7 +87,7 @@ export async function revertLocked(deps: ButtonDeps): Promise<RevertResult> {
   return written ? { status: "reverted", tx } : { status: "superseded", tx };
 }
 
-/** リースを取ってから戻す（state・reset から）。 */
+/** リースを取ってから戻す（reset から）。 */
 export async function ensureReverted(deps: ButtonDeps): Promise<RevertResult> {
   const leased = await deps.withLease(() => revertLocked(deps));
   return leased.acquired ? leased.value : { status: "busy" };

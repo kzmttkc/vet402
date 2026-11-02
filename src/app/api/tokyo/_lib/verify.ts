@@ -60,7 +60,7 @@ export function readKeyScope(): Promise<KeyScope> {
 }
 
 async function readKeyScopeLive(): Promise<KeyScope> {
-  const c = createPublicClient({ chain: sepolia, transport: http(readVerifyRpcUrls().primary, { timeout: 15_000, retryCount: 1 }) });
+  const c = createPublicClient({ chain: sepolia, transport: http(readVerifyRpcUrls().primary, { timeout: 15_000, retryCount: 1 }), ccipRead: false });
   let roleBitmap: string | null = null;
   try {
     const r = await c.readContract({ address: P_D, abi: EAC_ABI, functionName: "roles", args: [BigInt(keccak256(toBytes(KEY))), W_OP] });
