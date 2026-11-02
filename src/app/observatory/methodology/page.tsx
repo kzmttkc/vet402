@@ -57,6 +57,7 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { MEASUREMENT_PAYERS } from "@/lib/settlements/measurement-payers";
 import { SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
 import { BASE_DECLARED_QUERY_SINCE_LABEL, queryUnsentUntilSentence, utcSecondsLabel } from "@/lib/observatory/request-query";
+import { RETEST_L2_STALE_AFTER_DAYS } from "@/lib/observatory/retest-sellers-sql";
 import { DECLARED_BODY_SENT_SINCE } from "@/lib/observatory/request-body";
 import { PAYER_FUNDS_GATE_SINCE } from "@/lib/observatory/payer-balance-history";
 import { BASE_PAYER_PERIODS, shortPayer } from "@/lib/sellers/payers";
@@ -835,6 +836,15 @@ export default async function ObservatoryMethodologyPage() {
           ceiling. The census and the retest share the {CENSUS_PER_RUN}-seller limit of a run.
           The aim is that no seller is judged, when this ledger is announced, on a failure it did
           not cause. The earlier row stays published; the new one is added after it.
+        </p>
+        <p className="doc-p">
+          <strong>A fresh look at a missing-key mismatch.</strong> Since 2026-11-02, a listing that names
+          Base first, whose latest delivery missed keys its own schema requires, and which vet402 last tried more than{" "}
+          {RETEST_L2_STALE_AFTER_DAYS} days ago, is bought again, ahead of the census and inside the same limits. This
+          re-buy comes back at most once per {RETEST_L2_STALE_AFTER_DAYS} days while the listing stays like this; the
+          ordinary sweep can buy it sooner. The row is marked <code>retest</code>.
+          vet402 buys that listing itself and not another listing of the same seller. A seller who fixed the response
+          should not wait on the sweep to have it read again. The earlier row stays published.
         </p>
         <p className="doc-p">
           <strong>settled</strong> — <em>vet402 re-read the transaction on-chain</em> and found

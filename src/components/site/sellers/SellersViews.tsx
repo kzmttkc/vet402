@@ -1282,8 +1282,8 @@ export function SellerDetailView({
       )}
       {(detail.selectedBy.census > 0 || detail.selectedBy.retest > 0) && (
         <p className="doc-p">
-          Rows marked <code>census</code> or <code>retest</code> were bought to give this seller a row of its own, or
-          to buy again after a failure on vet402&apos;s side.
+          Rows marked <code>census</code> or <code>retest</code> were bought to give this seller a row of its own, to buy
+          again after a failure on vet402&apos;s side, or to read again a listing whose latest delivery missed declared keys.
         </p>
       )}
 

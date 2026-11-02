@@ -93,7 +93,7 @@ import { XRPL_MAINNET_CAIP2 } from "./chains";
 import { RLUSD_CURRENCY_HEX, RLUSD_ISSUER } from "./xrpl-constants";
 import { withDailyFallback } from "@/lib/settlements/rollup";
 import { l1TierWhere } from "./coverage";
-import { censusHostSql, RETEST_LISTINGS_SQL, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
+import { censusHostSql, RETEST_L2_STALE_SQL, RETEST_LISTINGS_SQL, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
 import { NO_DOMAIN_TRACK_RECORD_JSON, registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
@@ -137,7 +137,7 @@ import {
   type MppxCharge,
 } from "./mpp-payer";
 // L2（宣言との一致）の判定と、支払い付き応答の本文の読み取り上限（2026-09-29・l2-check.ts）。
-import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, liveOutputExampleHash, liveOutputExampleOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
+import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, legacyL2SchemaOf, liveOutputExampleHash, liveOutputExampleOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
 import {
   buildSellerRetestCandidate,
   claimSellerRequestAuthSlot,
@@ -2718,10 +2718,17 @@ export async function runL1Batch(
   const fairBudgetUnits = DAILY_BUDGET_UNITS - spentToday;
   const fairOn = censusOn && fairBudgetUnits > 0n;
   const retestParams = fairOn ? await readRetestSellers(db) : null;
+  const l2StaleParams = fairOn ? await readRetestL2StaleListings(db) : null;
   const plan = await planCensusAndRetest({
     censusOn: fairOn,
     maxPriceUnits: fairBudgetUnits,
     retestOn: fairOn && retestParams !== null && retestParams.hostCount > 0,
+    l2StaleOn: fairOn && l2StaleParams !== null && l2StaleParams.hostCount > 0,
+    fetchL2Stale: async (limit) =>
+      await withDailyFallback(
+        async () => await db.execute(censusTargetsSql(true, limit, "retest", l2StaleParams ?? undefined)),
+        async () => await db.execute(censusTargetsSql(false, limit, "retest", l2StaleParams ?? undefined)),
+      ),
     perRun: CENSUS_PER_RUN,
     censusMin: censusOn ? censusMinPerRun() : 0,
     excludeIds: laneIds,
@@ -3412,11 +3419,16 @@ export async function censusCandidates(input: {
  *    perRun − その件数まで、census の残りの枠があればその後にもう一度 census を取る。並びは
  *    census（最低枠）→ retest → census（残り）。同じ売り手（ホスト）・同じ出品を 2 度入れない。
  *
+ * L2 の不一致の買い直し（2026-11-02・l2StaleOn）は、census の最低枠より前に RETEST_L2_STALE_PER_RUN 件まで。行の selection は
+ * retest で、同じ perRun の中で数える。件数が少なく買えば集合から外れるので、最低枠の前に置いても census は残る。
+ *
  * どの候補も同じ経路（上限・別枠・残高・原子的予約）で買う。ここは並びと件数を決めるだけ。
  */
 export async function planCensusAndRetest(input: {
   censusOn: boolean;
   retestOn: boolean;
+  l2StaleOn?: boolean;
+  fetchL2Stale?: (limit: number) => Promise<unknown>;
   perRun: number;
   censusMin: number;
   excludeIds: ReadonlySet<string>;
@@ -3425,8 +3437,7 @@ export async function planCensusAndRetest(input: {
   /** これより高い候補は入れない（バッチ開始時点の日次の残り・2026-09-29 W2）。省略なら MAX_PER_PURCHASE_UNITS だけ。 */
   maxPriceUnits?: bigint;
 }): Promise<{ head: Candidate[]; censusCount: number; retestCount: number }> {
-  const perRun = Math.max(0, input.perRun);
-  const censusMin = input.censusOn ? Math.min(Math.max(0, input.censusMin), perRun) : 0;
+  const perRunTotal = Math.max(0, input.perRun);
   const ids = new Set(input.excludeIds);
   const hosts = new Set<string>();
   const take = (list: Candidate[]) => {
@@ -3436,6 +3447,19 @@ export async function planCensusAndRetest(input: {
     }
     return list;
   };
+  const l2Stale = take(
+    await censusCandidates({
+      enabled: input.l2StaleOn === true && input.fetchL2Stale !== undefined,
+      perRun: Math.min(RETEST_L2_STALE_PER_RUN, perRunTotal),
+      excludeIds: new Set(ids),
+      excludeHosts: new Set(hosts),
+      selection: "retest",
+      maxPriceUnits: input.maxPriceUnits,
+      fetchCensus: input.fetchL2Stale ?? (async () => []),
+    }),
+  );
+  const perRun = perRunTotal - l2Stale.length;
+  const censusMin = input.censusOn ? Math.min(Math.max(0, input.censusMin), perRun) : 0;
   const reserved = take(
     await censusCandidates({
       enabled: input.censusOn && censusMin > 0,
@@ -3467,7 +3491,7 @@ export async function planCensusAndRetest(input: {
       fetchCensus: input.fetchCensus,
     }),
   );
-  return { head: [...reserved, ...retest, ...rest], censusCount: reserved.length + rest.length, retestCount: retest.length };
+  return { head: [...l2Stale, ...reserved, ...retest, ...rest], censusCount: reserved.length + rest.length, retestCount: l2Stale.length + retest.length };
 }
 
 /** censusCandidates の選び方（純関数・DB 無しで固定するため公開）。 */
@@ -3558,6 +3582,48 @@ export async function readRetestSellers(db: NonNullable<ReturnType<typeof getDb>
     };
   } catch (error) {
     if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.retest_sellers", redactedError(error));
+    return null;
+  }
+}
+
+/** L2 の不一致の買い直し（2026-11-02）の 1 バッチの上限。CENSUS_PER_RUN の内側。 */
+export const RETEST_L2_STALE_PER_RUN = 3;
+
+/**
+ * RETEST_L2_STALE_SQL の行のうち、判定が欠けたキーのある不一致と読む出品の id（純関数）。古い行は判定と同じ
+ * legacyL2SchemaOf で読み直す。応答の hash が無い行は判定では詳細なし（unexplained・WARN）なので選ばない。
+ */
+export function l2StaleListingIds(rows: readonly Record<string, unknown>[]): string[] {
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const d = r.l2_detail;
+    if (typeof d !== "object" || d === null || typeof (d as { responseHash?: unknown }).responseHash !== "string") continue;
+    const detail = d as { missing?: unknown; reason?: unknown };
+    const missing = Array.isArray(detail.missing) ? detail.missing.filter((k): k is string => typeof k === "string") : [];
+    const l2 = legacyL2SchemaOf({
+      l2Schema: typeof r.l2_schema === "string" ? r.l2_schema : null,
+      l2Reason: typeof detail.reason === "string" ? detail.reason : null,
+      missing,
+      bodyHead: typeof r.body_head === "string" ? r.body_head : null,
+      contentType: typeof r.content_type === "string" ? r.content_type : null,
+      declaredSchema: r.declared_schema,
+    });
+    if (l2.l2Schema === "mismatch" && (l2.missing ?? missing).length > 0) ids.add(String(r.endpoint_id));
+  }
+  return [...ids];
+}
+
+/**
+ * L2 の不一致の買い直しの候補の問い合わせへ渡すパラメータ。売り手単位の選び方を空にして、選んだ出品そのものだけを
+ * 買う（失敗した出品が WHERE で落ちても、同じ売り手の別の出品へ落ちない。2026-10-03 の独立レビューの BLOCK と同じ）。
+ * 読めなければ null（金の関門ではないのでバッチは止めない）。
+ */
+export async function readRetestL2StaleListings(db: NonNullable<ReturnType<typeof getDb>>): Promise<RetestParams | null> {
+  try {
+    const ids = l2StaleListingIds(rowsOf(await db.execute(RETEST_L2_STALE_SQL)));
+    return { hostsJson: "[]", preferredIdsJson: JSON.stringify(ids), hostCount: ids.length, sellerHostsJson: "[]" };
+  } catch (error) {
+    if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.retest_l2_stale", redactedError(error));
     return null;
   }
 }

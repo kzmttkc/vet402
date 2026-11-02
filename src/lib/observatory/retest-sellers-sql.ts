@@ -7,7 +7,7 @@
 // 依存を足さない（tests/sellers-no-payment-imports.test.ts が /sellers からの import の到達を検査する）。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
-import { heldReasonSql } from "./delivery";
+import { deliveredPredicate, heldReasonSql } from "./delivery";
 import { bodyNotSentOnOurSideSql } from "./request-body";
 import { queryNotSentOnBaseBeforeCutoffSql } from "./request-query";
 
@@ -90,3 +90,34 @@ export const RETEST_LISTINGS_SQL = sql`
     ORDER BY tp.endpoint_id, tp.attempted_at DESC, tp.id DESC
   ) lr
   WHERE lr.held = 'payer_unfunded' OR ${RETEST_BODY_COND} OR ${RETEST_QUERY_COND}`;
+
+/** 最後の試行がこの日数より古い出品だけを、L2 の不一致の買い直しで前に出す（2026-11-02）。 */
+export const RETEST_L2_STALE_AFTER_DAYS = 30;
+
+/**
+ * L2 の不一致の買い直し（2026-11-02）の材料。最後の配達（delivery.ts の配達・判定を保留にした行を除く）が mismatch で、
+ * 掲載中で出力の宣言の本体があり、最後の試行（status を問わない）が RETEST_L2_STALE_AFTER_DAYS 日より古い出品。
+ * 欠けたキーの有無は、古い行の読み直しが要るので JS（l1-runner の l2StaleListingIds）が決める。
+ *
+ * なぜ在るか: 判定は欠けたキーのある不一致を BLOCK にする。成熟した出品のスイープ窓は 30 日で、未購入の出品より後ろに並ぶ
+ * ので買い直しが回らず、売り手が直しても BLOCK から抜けられなかった。
+ * 買い直せば新しい行が付くので、次のバッチでは自動でこの集合から外れる。
+ */
+export const RETEST_L2_STALE_SQL = sql`
+  SELECT ld.endpoint_id::text AS endpoint_id, ld.l2_schema, ld.l2_detail, ld.body_head, ld.content_type, e.declared_schema
+  FROM (
+    SELECT DISTINCT ON (tp.endpoint_id)
+           tp.endpoint_id, tp.l2_schema,
+           tp.raw_response_meta->'l2' AS l2_detail,
+           CASE WHEN jsonb_typeof(tp.raw_response_meta) = 'object' THEN left(tp.raw_response_meta->>'bodyHead', 500) END AS body_head,
+           CASE WHEN jsonb_typeof(tp.raw_response_meta) = 'object' THEN left(tp.raw_response_meta->>'contentType', 60) END AS content_type
+    FROM x402_l1_purchases tp
+    WHERE ${sql.raw(deliveredPredicate("tp"))} AND (${sql.raw(heldReasonSql("tp"))}) IS NULL
+    ORDER BY tp.endpoint_id, tp.attempted_at DESC, tp.id DESC
+  ) ld
+  JOIN x402_endpoints e ON e.id = ld.endpoint_id AND e.status = 'active' AND e.declared_schema IS NOT NULL
+  WHERE ld.l2_schema = 'mismatch'
+    AND NOT EXISTS (
+      SELECT 1 FROM x402_l1_purchases r
+      WHERE r.endpoint_id = ld.endpoint_id AND r.attempted_at > now() - make_interval(days => ${RETEST_L2_STALE_AFTER_DAYS})
+    )`;

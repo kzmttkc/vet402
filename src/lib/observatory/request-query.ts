@@ -78,8 +78,10 @@ export const DECLARED_QUERY_RECORD_SINCE = "2026-09-20T00:00:00Z";
  * この時刻より前の行だけを「vet402 がクエリを送っていない」とする。上限の時刻以降で記録が無い行は input_unrecorded。
  * 時刻の文字列はここだけ。SQL はこの表から作る。Base は BASE_DECLARED_QUERY_SINCE。表に無い network は対象外。
  */
-// eip155:43114 (Avalanche C-Chain, 2026-10-26) has no row here. A row is added only after a declared
-// query is actually sent on that network. Until then otherChainQueryUnsentUntil returns null.
+// eip155:42161 (Arbitrum One, 2026-10-22) and eip155:43114 (Avalanche C-Chain, 2026-10-26) have no row here.
+// The until time is when the Production redeploy that reads the changed allow list became ready, so it can only
+// be measured after that redeploy. Add the row then, with that time. Until then otherChainQueryUnsentUntil
+// returns null and a refused row with no record of the query stays unsorted, on nobody's side.
 export const OTHER_CHAIN_QUERY_UNSENT_UNTIL = [
   { until: "2026-09-21T06:00:30Z", networks: ["xrpl:0"] },
   { until: "2026-10-01T12:00:20Z", networks: ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] },

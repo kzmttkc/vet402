@@ -1068,6 +1068,13 @@ claims:
     check: null
     why_unverifiable: "公開 GET は候補の選び方を返さない。本文は request-body.ts の bodyNotSentOnOurSideSql。クエリの買い直しは request-query.ts の queryNotSentOnBaseBeforeCutoffSql（BASE_DECLARED_QUERY_SINCE より前の Base だけ）。/sellers の query_not_sent は queryNotSentOnOurSide 全体を読む。tests/request-not-sent.pg.test.ts と tests/l1-retest.pg.test.ts と tests/query-not-sent-chains.test.ts が固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
     verified_at: 2026-09-28
+  - id: method_retest_stale_missing_key_mismatch
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A fresh look at a missing-key mismatch."
+    means: "2026-11-02 から、主ネットワークが Base の掲載中の出品で、最後の配達が欠けたキーのある不一致で、最後の試行が 30 日より古いものを、1 バッチ 3 件まで census の前に買い直す。この選び方での買い直しは 30 日に 1 回まで（新しい行で集合から外れる）。行の selection は retest。売り手の別の出品は買わない。上限と予約は他の購入と同じ。"
+    check: null
+    why_unverifiable: "公開 GET は候補の選び方を返さない。選び方は src/lib/observatory/retest-sellers-sql.ts の RETEST_L2_STALE_SQL と l1-runner の l2StaleListingIds・planCensusAndRetest で、tests/l1-retest-l2-stale.test.ts と tests/l1-retest-l2-stale.pg.test.ts が固定する。旗 OBSERVATORY_L1_CENSUS が on のときだけ働く"
+    verified_at: 2026-11-02
   - id: audit_e_fairness_is_pipeline_not_cadence
     surface: src/app/observatory/methodology/page.tsx
     quote: "What is <em>not</em> uniform is purchase frequency"
