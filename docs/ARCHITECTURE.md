@@ -133,7 +133,7 @@ flowchart LR
   inside the shared $25. Only USDC is pinned: the other assets Celo's
   facilitator lists (USDT and others) are never signed for. The on-chain
   re-read and the settlement index need `CELO_RPC_URL`. A Celo purchase whose
-  paid request got no answer but was settled afterwards is recovered by a
+  paid request got no answer but whose transfer settled on-chain is recovered by a
   direct chain read (`recover-late.ts`, 2026-10-11): the settlement index only
   follows payees of Celo-first listings, and the lane buys from Base-first
   listings, so the index never holds those transfers. The read needs

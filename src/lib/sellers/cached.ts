@@ -13,6 +13,7 @@
 // 2026-10-21: 出品に otherChain（Base 以外の最新購入）を足したので detail は v4。
 // 2026-10-21: otherChain に payloadNonEmpty を足したので detail は v5（空の本文を届いたに数えない）。
 // 2026-10-21: 他チェーンは Base の件数に混ぜず、txHash を欄のリンクに使うので detail は v6。
+// 2026-11-03: 一覧の totals に sellerRequestListings を足したので board は v4。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
@@ -28,7 +29,7 @@ export const getSellerBoardCached: () => Promise<SellerBoard> = unstable_cache(
     if (!db) throw new SellersUnavailable("database not configured");
     return readSellerBoard(db);
   },
-  ["sellers:board:v3"],
+  ["sellers:board:v4"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 

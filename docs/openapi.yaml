@@ -1168,7 +1168,8 @@ paths:
       summary: The /sellers classification, one row per active Base listing (CSV)
       description: |
         The data behind the counts on `/sellers` (since 2026-09-29): one row
-        per active Base listing, classified by its latest purchase row with
+        per active Base listing (records opened for a seller's re-test request
+        included), classified by its latest purchase row with
         the same function the page uses. Counting rows by `outcome` gives the
         page's totals. The page is not indexed while its attribution is under
         review, and this file is served with `X-Robots-Tag: noindex` for the
@@ -3404,6 +3405,25 @@ paths:
                     type: number
                     nullable: true
                     description: settled/attempts to one decimal; null when there are no attempts (0/0 is not a rate).
+                  vet402SideCount:
+                    type: integer
+                    nullable: true
+                    description: Paid attempts that failed on vet402's side, classified as on /sellers and the endpoint badge (since 2026-11-03); null when the classification could not be read.
+                  attemptCountExcludingVet402Side:
+                    type: integer
+                    nullable: true
+                    description: attemptCount minus vet402SideCount; null when the classification could not be read.
+                  settledCountExcludingVet402Side:
+                    type: integer
+                    nullable: true
+                    description: settledCount minus the settled rows among vet402SideCount; null when the classification could not be read.
+                  settleRatePctExcludingVet402Side:
+                    type: number
+                    nullable: true
+                    description: settledCountExcludingVet402Side over attemptCountExcludingVet402Side to one decimal, the rate the endpoint badge shows; null when the denominator is 0 or the classification could not be read.
+                  vet402SideNote:
+                    type: string
+                    description: What separates settleRatePct from settleRatePctExcludingVet402Side.
                   purchases:
                     type: array
                     description: Newest first, up to 100 rows, every outcome included.

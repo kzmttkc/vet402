@@ -76,9 +76,9 @@ export default async function DecisionsPage() {
             {/* 2026-09-04 外部監査 E・P0-4: この 3 つの数は "last 30 days" と名乗りながら
                 LIMIT 200 で切ったあとの行を数えていた。合計は窓全体を SQL で数える。 */}
             <span>
-              Refused: <span className="text-signal">{feed.totals.refused}</span> · Paid &amp;
-              settled: <span className="text-signal">{feed.totals.paidSettled}</span> · Paid, no
-              settlement: <span className="text-signal">{feed.totals.paidNoSettlement}</span>
+              Refused: <span className="text-signal">{feed.totals.refused.toLocaleString()}</span> · Paid &amp;
+              settled: <span className="text-signal">{feed.totals.paidSettled.toLocaleString()}</span> · Paid, no
+              settlement: <span className="text-signal">{feed.totals.paidNoSettlement.toLocaleString()}</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -110,10 +110,10 @@ export default async function DecisionsPage() {
             amount is what was put at stake, not money lost. Nothing here is simulated.
             {backtest && (
               <>
-                {" "}Across the whole ledger, {backtest.avoided.count} of{" "}
+                {" "}Across the whole ledger, {backtest.avoided.count.toLocaleString()} of{" "}
                 {backtest.attemptsTotal.toLocaleString()} signed attempts with a final outcome carried a
                 prior published failure signal and did not settle ({formatUsdcUnits(backtest.avoided.spentUnits)}{" "}
-                signed and put at stake, with no confirmed transfer) — while {backtest.forgone.count}{" "}
+                signed and put at stake, with no confirmed transfer) — while {backtest.forgone.count.toLocaleString()}{" "}
                 signalled attempts settled anyway ({formatUsdcUnits(backtest.forgone.spentUnits)}). An
                 agent honoring the signals skips both: the attempts that went nowhere and the ones
                 that would have worked.

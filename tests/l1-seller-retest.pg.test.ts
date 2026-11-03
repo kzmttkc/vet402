@@ -639,6 +639,29 @@ if (!TEST_DB) {
     assert.equal(stats.totalEndpoints, 1);
   });
 
+  test("「active」は state・/accuracy・/sellers の見出しで依頼の記録を除く。依頼の記録の行は /sellers に残る", async () => {
+    const { getObservatoryStats, getCoverageShare } = await import("@/lib/observatory/reader");
+    const { getCoverageWeekly } = await import("@/lib/observatory/coverage-report");
+    const { readSellerBoard, readSellerExport } = await import("@/lib/sellers/reader");
+    await truncateAll();
+    await sr.ensureSellerRetestEndpoint(db, catalog[0]!, PAYER);
+    await insertOrdinaryListing("listed.example/a", "0x2");
+    const stats = await getObservatoryStats();
+    const share = await getCoverageShare();
+    const weekly = await getCoverageWeekly();
+    const board = await readSellerBoard(db, false);
+    const { rows } = await readSellerExport(db);
+    assert.equal(stats.activeEndpoints, 1);
+    assert.equal(share.activeEndpoints, 1);
+    assert.equal(weekly.listed, 1);
+    assert.equal(board.totals.listings - board.totals.sellerRequestListings, 1);
+    // 依頼の記録は件数の見出しで分けるだけで、売り手の行としては残る
+    assert.equal(board.totals.sellerRequestListings, 1);
+    assert.equal(board.totals.listings, 2);
+    assert.ok(board.sellers.some((h) => h.host === "mock-seller-retest.example"));
+    assert.equal(rows.length, 2);
+  });
+
   test("observatory overview list and count exclude seller_retest_request listings", async () => {
     const { getObservatoryOverview } = await import("@/lib/observatory/reader");
     await truncateAll();

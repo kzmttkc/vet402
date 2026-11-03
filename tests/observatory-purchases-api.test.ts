@@ -179,6 +179,10 @@ if (!TEST_DB) {
       assert.equal(body.attemptCount, 3);
       assert.equal(body.settledCount, 2);
       assert.equal(body.settleRatePct, 66.7);
+      // 既存の列は残したまま、バッジと同じ分母の値を足す（行の分類が読めない時は null）
+      assert.ok(body.vet402SideCount === null || typeof body.vet402SideCount === "number");
+      assert.equal(typeof body.vet402SideNote, "string");
+      if (body.vet402SideCount !== null) assert.equal(body.attemptCountExcludingVet402Side, body.attemptCount - body.vet402SideCount);
       assert.equal(body.purchases.length, 3);
       // No evaluative vocabulary anywhere in the payload (facts only).
       const raw = JSON.stringify(body).toLowerCase();

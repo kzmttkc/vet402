@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-03 Public figures say what the row records, active counts leave out re-test records, and the surface canary re-reads before it goes red
+
+- **What**: Seller rows and fix-mode text state whether a transfer is on the row and leave out its order against the wait. `/impact` puts the L0 share next to its denominator (28,716 of 126,116 active records as of the 2026-11-03 read). `coverageWeekly.listed` on `/api/v1/accuracy` uses the same exclusions as `activeEndpoints` on state, plus its 30-day window, the C1 freshness denominator leaves out seller-requested re-test records, and the `/sellers` heading gives active Base records and seller-requested re-test records as two figures. `/api/v1/observatory/endpoints/{id}/purchases` adds `vet402SideCount` and the settle rate without those attempts, the rate the endpoint badge shows. The methodology's count of rows above $0.25 carries its read date, `/decisions` and `/impact` use thousands separators throughout, and the Freshness section says what the CDN does to `Cache-Control`. `scripts/surface-consistency-canary.ts` retries 504 and connection failures like 429 and 503, re-reads each discrepancy after 6 minutes, counts as red what remains or was not compared on every surface it named, stops at a 50-minute deadline with a red report, and CI keeps the report for 30 days and alerts on a cancelled run.
+- **Why**: On 2026-11-03, 129 of the unanswered rows with a transaction had a block time: 83 landed during the wait and 46 after it, measured from attempted_at plus the recorded wait, and the row does not store when the wait ended. The canary's red runs from 10-04 to 11-02 were mostly its own row placement, wording differences and cache age, so a red run needs to mean a difference that lasts.
+- **Impact**: `coverageWeekly.listed` and `/sellers` move by the 9 seller-requested records on the 2026-11-03 read. Their purchases stay on `/sellers/{host}`, `/api/v1/sellers/export.csv` and `/decision`, and the export still has one row per record. The `/sellers` board cache key moves to v4. A canary run with discrepancies takes the wait and the re-read longer, so the job timeout is 60 minutes. No payer flag, budget or contract changes.
+
 ## 2026-11-02 Keep the funding header Goldsky sends on paid calls
 
 - **What**: `sellerResponseHeadersOf` also stores `x-goldsky-x402-funding` (`settled`, `credit`, `pending` or `unpaid`) next to `x-goldsky-x402-balance`.

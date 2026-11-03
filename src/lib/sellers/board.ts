@@ -104,7 +104,11 @@ export interface SellerBoard {
   /** DB を読んだ時刻（ISO）。頁はこの時刻を出す。 */
   fetchedAt: string;
   sellers: SellerSummary[];
-  totals: OutcomeCounts & { sellers: number; listings: number; sellersTried: number };
+  /**
+   * listings は頁の行と export の行の数（売り手の依頼で開いた記録を含む）。sellerRequestListings はそのうち依頼で開いた記録の数で、
+   * 見出しは listings から引いた値を active と言う。/api/v1/observatory/state の active（Base）は同じくこの記録を除き、運営者の出品も除く。
+   */
+  totals: OutcomeCounts & { sellers: number; listings: number; sellerRequestListings: number; sellersTried: number };
   groups: FixGroup[];
 }
 
@@ -150,7 +154,7 @@ export function compareSellers(a: SellerSummary, b: SellerSummary): number {
  * latest にあって hostListings に無いホストは数えない（カタログから外れた・Base でなくなった出品）。
  */
 export function buildSellerBoard(
-  hostListings: readonly { host: string; listings: number }[],
+  hostListings: readonly { host: string; listings: number; sellerRequestListings?: number }[],
   latest: readonly LatestRow[],
   fetchedAt: string,
   retest: RetestQueue | null = null,
@@ -181,7 +185,13 @@ export function buildSellerBoard(
     }
   }
   const sellers = [...byHost.values()];
-  const totals = { ...zero(), sellers: sellers.length, listings: 0, sellersTried: 0 };
+  const totals = {
+    ...zero(),
+    sellers: sellers.length,
+    listings: 0,
+    sellerRequestListings: hostListings.reduce((sum, h) => sum + (h.sellerRequestListings ?? 0), 0),
+    sellersTried: 0,
+  };
   for (const s of sellers) {
     const tried = s.delivered + s.pending + s.seller + s.vet402 + s.unsorted + s.notPaid;
     s.notTried = Math.max(0, s.listings - tried);

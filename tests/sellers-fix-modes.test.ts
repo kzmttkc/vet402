@@ -25,6 +25,8 @@ import {
   type SellerRowFacts,
 } from "@/lib/sellers/fix-modes";
 import { BASE_USDC } from "@/lib/observatory/x402-payer";
+import { SELLER_RETEST_REQUEST_SOURCE } from "@/lib/observatory/seller-retest-requests";
+import { SELLER_REQUEST_LISTING_SOURCE } from "@/lib/sellers/reader";
 import { SIGNED_STATUSES } from "@/lib/decision/seller-facts";
 import { payerFundsAtSigning, PAYER_FUNDS_GATE_SINCE } from "@/lib/observatory/payer-balance-history";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -635,6 +637,7 @@ test("文面の時刻は共有の境目の定数と同じ（秒まで・2026-10-
 test("定数の一致: 署名した status の集合は判定 API と同じ・Base の USDC は署名器と同じ", () => {
   assert.deepEqual([...SIGNED_ROW_STATUSES].sort(), [...SIGNED_STATUSES].sort());
   assert.equal(BASE_USDC_ADDRESS, BASE_USDC);
+  assert.equal(SELLER_REQUEST_LISTING_SOURCE, SELLER_RETEST_REQUEST_SOURCE);
   assert.equal(PAYER_FUNDS_GATE_SINCE, DECLARED_BODY_SENT_SINCE, "the balance gate shipped in the same Production deploy");
 });
 
@@ -681,13 +684,48 @@ test("(d) 入力: 本文とクエリの記録・ヘッダ・パスの全部が�
   assert.equal(rowNote(noteRow, "input_not_sent"), "Not shown for this row: vet402 did not send the declared headers.");
 });
 
+// 答えの無い行の tx は、待ちの間に着金した行も待ちの後に着金した行もある（2026-11-03 実測: block time の取れた 129 行で
+// 待ちの間 83・待ちの後 46。measured from attempted_at plus the recorded wait）。attempted_at は署名の前の予約の時刻で、待ちの終わりの時刻は行に無いので、公開文は順序を言わない。
+test("(e) 答えの無い行の tx: 公開文は着金と待ちの順序を言わず、行にある事実だけを言う", () => {
+  const confirmed = proven({ status: "settled", httpStatusPaid: null, txHash: TX, listingMaxTimeoutSeconds: 10 });
+  const unconfirmed = proven({ status: "settle_failed", httpStatusPaid: null, txHash: TX, listingMaxTimeoutSeconds: 10, settlementConfirmed: false });
+  assert.equal(classifyRow(unconfirmed).mode?.key, "stopped_waiting");
+  assert.equal(
+    rowNote(unconfirmed, "stopped_waiting"),
+    "Not shown for this row: vet402 stopped waiting after 20 seconds with no HTTP answer, and the row names a transaction vet402 has not confirmed on-chain.",
+  );
+  const order = /afterwards|\bafter (it|the|vet402)\b.*(stopped|wait)|landed/i;
+  for (const r of [confirmed, unconfirmed]) assert.doesNotMatch(rowNote(r, "stopped_waiting") ?? "", order);
+  const stopped = FIX_MODES.find((m) => m.key === "stopped_waiting")!;
+  assert.doesNotMatch(stopped.what, /had stopped waiting|landed on-chain after/);
+  assert.match(stopped.what, /the row names a transaction for the purchase\. This page does not place that transaction before or after the end of the wait/);
+  assert.doesNotMatch(stopped.what, /whether it landed/);
+  // 題も順序を言わない（宣言の方が短い行にも付く題なので「the seller's time limit より前」とは言えない）
+  assert.equal(stopped.title, "vet402 stopped waiting with no answer on the row");
+});
+
+test("no_response_paid: 着金なしの条件は「答えが無い」枝だけに掛かり、行に tx が無いという事実で言う", () => {
+  const mode = FIX_MODES.find((m) => m.key === "no_response_paid")!;
+  assert.doesNotMatch(mode.what, /no transfer landed/);
+  assert.match(mode.what, /no longer than that wait and the row names no transfer\.$/);
+  // 408 の枝には着金の条件が無い: settle_failed・408・tx ありの行もこの種類に入る
+  const with408 = proven({ status: "settle_failed", httpStatusPaid: 408, txHash: TX });
+  assert.equal(classifyRow(with408).mode?.key, "no_response_paid");
+  // 答えが無い枝は tx が空のときだけ
+  assert.equal(classifyRow(proven({ status: "settle_failed", httpStatusPaid: null, txHash: null })).mode?.key, "no_response_paid");
+  assert.equal(classifyRow(proven({ status: "settled", httpStatusPaid: null, txHash: TX })).mode?.key, "stopped_waiting");
+});
+
 test("(e) 待ち時間: 答えが無い行は、出品の maxTimeoutSeconds が待ち時間以下で着金も無い時だけ", () => {
   const r = proven({ status: "settle_failed", httpStatusPaid: null, listingMaxTimeoutSeconds: 300 });
   assert.equal(evidenceOf(r).wait, "cut_short");
   assert.equal(rowNote(r, "stopped_waiting"), "Not shown for this row: vet402 stopped waiting after 20 seconds (the listing's maxTimeoutSeconds is 300).");
   const landed = proven({ status: "settled", httpStatusPaid: null, txHash: TX, listingMaxTimeoutSeconds: 10 });
   assert.equal(classifyRow(landed).mode?.key, "stopped_waiting");
-  assert.match(rowNote(landed, "stopped_waiting") ?? "", /the payment landed on-chain afterwards/);
+  assert.equal(
+    rowNote(landed, "stopped_waiting"),
+    "Not shown for this row: vet402 stopped waiting after 20 seconds with no HTTP answer, and a transfer for this purchase is confirmed on-chain.",
+  );
   // 最初に満たせなかった条件で種類が決まり、注記は満たせなかった条件を全部並べる
   const many = { ...proven({ status: "settle_failed", httpStatusPaid: null, attemptedAt: "2026-09-10T00:00:00Z", listingMaxTimeoutSeconds: 300 }), meta: null };
   assert.equal(classifyRow(many).mode?.key, "input_unrecorded");

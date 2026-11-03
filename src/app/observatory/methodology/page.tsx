@@ -456,8 +456,8 @@ export default async function ObservatoryMethodologyPage() {
           receipt that does not match the chain, a signed payment refused with <code>402</code>) or had
           its full declared time: when the paid request got no answer within{" "}
           {(L1_REQUEST_TIMEOUT_MS / 1000).toString()} seconds, the seller&apos;s side needs the
-          listing&apos;s <code>maxTimeoutSeconds</code> to be no longer than that and no payment to
-          have landed afterwards. A paid request on Celo waits{" "}
+          listing&apos;s <code>maxTimeoutSeconds</code> to be no longer than that and the row to name
+          no transfer. A paid request on Celo waits{" "}
           {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since {L1_CELO_PAID_TIMEOUT_SINCE}, because some Celo facilitators answer only after the on-chain receipt. A signed payment refused with <code>402</code> on a paid request that
           carried the declared body or query (which the unpaid request did not) is not sorted either,
           because the terms for that request may differ from the ones vet402 paid. The seller page shows,
@@ -698,7 +698,7 @@ export default async function ObservatoryMethodologyPage() {
           chain&apos;s pinned asset ({PINNED_ASSETS_WITH_ISSUER_TEXT}). The price
           matches what the catalog declared when the target was chosen. Any deviation (a
           different asset, a different chain, a higher price) is recorded as a refusal, never
-          paid. A hard per-purchase ceiling ($0.25 since 2026-10-09, $1.00 before that; 337 signed rows in the ledger are above $0.25) and a daily
+          paid. A hard per-purchase ceiling ($0.25 since 2026-10-09, $1.00 before that; 337 signed rows in the ledger were above $0.25 when read on 2026-11-03) and a daily
           budget (${DAILY_BUDGET_USD}) are checked against a database ledger, not memory, before
           every signature, so a restart or a concurrent run cannot double-spend. A signed spend
           stays on the record whether or not the seller delivers. On {EIP3009_CHAINS_TEXT}

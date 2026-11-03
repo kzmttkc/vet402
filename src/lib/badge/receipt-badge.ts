@@ -18,6 +18,7 @@
 // 偽装した取得が HTTP 200、保存した SVG に3つとも出現 0 件）。第二行はその対策で、
 // 見た目の飾りではない。
 // ============================================================
+import { pct1 } from "@/lib/util/pct";
 
 export type ReceiptBadgeInput = {
   attemptCount: number;
@@ -81,14 +82,30 @@ function provenanceLine(subject?: string | null, measuredOn?: string | null): st
   return "";
 }
 
+/**
+ * バッジの「N/M settled」と同じ分母: vet402 の側の失敗を attempts と settled から外した数と率（小数 1 桁・分母 0 は null）。
+ * /api/v1/observatory/endpoints/{id}/purchases が同じ値を機械で返す。
+ */
+export function settleExcludingVet402Side(
+  attemptCount: number,
+  settledCount: number,
+  vet402Side: { count: number; settled?: number },
+): { attempts: number; settled: number; ratePct: number | null } {
+  const rawAttempts = Math.max(0, Math.trunc(attemptCount));
+  const ours = Math.max(0, Math.min(rawAttempts, Math.trunc(vet402Side.count)));
+  const oursSettled = Math.max(0, Math.min(ours, Math.trunc(vet402Side.settled ?? 0)));
+  const attempts = rawAttempts - ours;
+  const settled = Math.max(0, Math.min(attempts, Math.trunc(settledCount) - oursSettled));
+  return { attempts, settled, ratePct: pct1(settled, attempts) };
+}
+
 export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
   const rawAttempts = Math.max(0, Math.trunc(input.attemptCount));
   const ours = Math.max(0, Math.min(rawAttempts, Math.trunc(input.vet402Side?.count ?? 0)));
   const oursSettled = Math.max(0, Math.min(ours, Math.trunc(input.vet402Side?.settled ?? 0)));
   const oursHeld = Math.max(0, Math.min(ours, Math.trunc(input.vet402Side?.held ?? 0)));
   const oursHeldSettled = Math.max(0, Math.min(oursHeld, oursSettled, Math.trunc(input.vet402Side?.heldSettled ?? 0)));
-  const attempts = rawAttempts - ours;
-  const settled = Math.max(0, Math.min(attempts, Math.trunc(input.settledCount) - oursSettled));
+  const { attempts, settled } = settleExcludingVet402Side(rawAttempts, input.settledCount, { count: ours, settled: oursSettled });
   const sublabel = provenanceLine(input.subject, input.measuredOn);
   const oursLabel = ours > 0 ? ` · vet402 side ${ours}` : "";
   const oursAria =

@@ -13,6 +13,7 @@ import { getDb } from "@/lib/db/client";
 import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { heldReasonSql } from "@/lib/observatory/delivery";
+import { notSellerRetestRequestSourceSql } from "@/lib/observatory/seller-retest-requests";
 
 /** c2_l1_within_48h_pct の分母の窓（UTC の丸ごと日数）。coverage.ts と同じ 30 日。 */
 const C2_WINDOW_DAYS = 30;
@@ -205,11 +206,12 @@ export async function fetchSloSnapshot(): Promise<SloSnapshot> {
         (SELECT count(*)::int FROM x402_l1_purchases
           WHERE attempted_at > now() - interval '7 days' AND status IN (${sql.raw(SIGNED_STATUSES_SQL)})
             AND (${sql.raw(heldReasonSql())}) IS NOT NULL) AS l1_held_7d,
-        -- C1 の L0 鮮度: 30 日以内に listed/決済のある active のうち 36h 以内に測った割合
+        -- C1 の L0 鮮度: 30 日以内に listed/決済のある active のうち 36h 以内に測った割合。売り手の依頼で開いた記録は L0 の候補に入らないので分母から外す
         (SELECT CASE WHEN count(*) = 0 THEN NULL ELSE
            round(100.0 * count(*) FILTER (WHERE EXISTS (
              SELECT 1 FROM x402_l0_probes p WHERE p.endpoint_id = e.id AND p.probed_at > now() - interval '36 hours')) / count(*), 1) END
-         FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days') AS c1_fresh,
+         FROM x402_endpoints e WHERE e.status = 'active' AND e.last_seen_at > now() - interval '30 days'
+           AND ${notSellerRetestRequestSourceSql()}) AS c1_fresh,
         -- C2 の L1 鮮度: 決済帰属のある endpoint のうち 48h 以内に L1 を試みた割合
         (SELECT CASE WHEN count(*) = 0 THEN NULL ELSE
            round(100.0 * count(*) FILTER (WHERE EXISTS (

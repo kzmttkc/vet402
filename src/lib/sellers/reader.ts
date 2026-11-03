@@ -185,6 +185,13 @@ function withExampleInput(inner: ReturnType<typeof sql>) {
   return sql`SELECT x.*, (SELECT ${EXAMPLE_INPUT} FROM x402_endpoints e WHERE e.id = x.endpoint_id::uuid) AS example_input FROM (${inner}) x`;
 }
 
+/**
+ * 売り手の依頼で開いた記録の source。値は seller-retest-requests.ts の SELLER_RETEST_REQUEST_SOURCE と同じ
+ * （tests/sellers-fix-modes.test.ts が一致を固定する。あのモジュールは払う側を import するので、公開頁のここからは読まない）。
+ * この記録の購入は /sellers・export・判定に普通どおり出すので BASE_LISTING からは外さず、件数の見出しだけ分けて言う。
+ */
+export const SELLER_REQUEST_LISTING_SOURCE = "seller_retest_request";
+
 /** Base の出品（active・代表 network が Base）。 */
 const BASE_LISTING = sql`e.status = 'active' AND e.network IN (${BASE_A}, ${BASE_B})`;
 /** その出品の Base の行と、network の無い行（支払い前に止まった行）。他のチェーンで買った行は入れない。 */
@@ -289,7 +296,8 @@ export async function readRetestQueue(db: Db, enabled: boolean = isCensusEnabled
 export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusEnabled()): Promise<SellerBoard> {
   const fetchedAt = new Date().toISOString();
   const hostsRaw = await db.execute(sql`
-    SELECT ${HOST_SQL} AS host, count(*)::int AS listings
+    SELECT ${HOST_SQL} AS host, count(*)::int AS listings,
+           count(*) FILTER (WHERE e.source = ${SELLER_REQUEST_LISTING_SOURCE})::int AS seller_request_listings
     FROM x402_endpoints e
     WHERE ${BASE_LISTING}
     GROUP BY 1`);
@@ -300,7 +308,11 @@ export async function readSellerBoard(db: Db, retestEnabled: boolean = isCensusE
     WHERE ${BASE_LISTING} AND ${BASE_ROW}
     ORDER BY pu.endpoint_id, pu.attempted_at DESC, pu.id DESC`),
   );
-  const hosts = rowsOf(hostsRaw).map((r) => ({ host: String(r.host), listings: Number(r.listings) }));
+  const hosts = rowsOf(hostsRaw).map((r) => ({
+    host: String(r.host),
+    listings: Number(r.listings),
+    sellerRequestListings: Number(r.seller_request_listings),
+  }));
   const latest: LatestRow[] = rowsOf(latestRaw).map((r) => ({ ...toRowFacts(r), host: String(r.host) }));
   const days = await readSellerFailureDays(db, latest.filter((r) => sellerCandidateDay(r) !== null).map((r) => r.endpointId));
   return buildSellerBoard(hosts, latest, fetchedAt, await readRetestQueue(db, retestEnabled), days);

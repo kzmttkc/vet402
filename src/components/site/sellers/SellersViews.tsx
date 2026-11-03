@@ -465,7 +465,8 @@ export function SellersIndexView({
         <span>Sellers on Base</span>
       </h2>
       <p className="doc-p">
-        {n(t.sellers)} sellers with {n(t.listings)} active Base records (a record vet402 has not closed can stay active after it leaves the catalog); vet402 has tried to buy from {n(t.sellersTried)} of
+        {n(t.sellers)} sellers with {n(t.listings - t.sellerRequestListings)} active Base records (a record vet402 has not closed can stay active after it leaves the catalog)
+        {t.sellerRequestListings > 0 ? ` and ${n(t.sellerRequestListings)} opened for a seller's re-test request` : ""}; vet402 has tried to buy from {n(t.sellersTried)} of
         the sellers. By the latest attempt at each listing: <CountsLine c={t} notTriedWord="with no Base purchase" />.{" "}
         <Link href="/sellers/fix-first" className="underline">
           What to fix first

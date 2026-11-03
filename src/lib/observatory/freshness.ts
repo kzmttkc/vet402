@@ -121,7 +121,7 @@ export function humanDuration(sec: number): string {
 
 /** Freshness 節で表の前に置く 1 文（llms.txt にも同じ文がある・テストが突き合わせる）。 */
 export const FRESHNESS_LEAD =
-  "Caches: the longest a copy you receive can lag the database, per surface. A shared-cache copy is served fresh for `s-maxage` and, with `stale-while-revalidate`, for that much longer while a fresh one is computed, so the most it can lag is the sum of the two. The `Age` response header says how long the copy you received sat in the cache. A page and the JSON can therefore show different numbers for a while after a run \u2014 compare their retrieval times rather than assume either is newer.";
+  "Caches: the longest a copy you receive can lag the database, per surface. A shared-cache copy is served fresh for `s-maxage` and, with `stale-while-revalidate`, for that much longer while a fresh one is computed, so the most it can lag is the sum of the two. The `Age` response header says how long the copy you received sat in the cache. The `Cache-Control` values below are what each route sets: the CDN removes `s-maxage` and `stale-while-revalidate` from the copy you receive and keeps `max-age`, so the header you see can read just `public`. A page and the JSON can therefore show different numbers for a while after a run \u2014 compare their retrieval times rather than assume either is newer.";
 
 /** llms.txt / llms-full.txt の Freshness 節に載せる行（Markdown の箇条書き 1 行ずつ）。 */
 export function freshnessLines(): string[] {

@@ -570,3 +570,20 @@ test("売り手一覧は 640px 未満でラベル付きのカードになり、�
   const search = html.match(/<input\b[^>]*name="q"[^>]*>/)?.[0] ?? "";
   assert.match(search, /text-\[1\.0625rem\]/, "iOS の自動拡大を避ける。階段に 16px は無いので 17px");
 });
+
+test("一覧の見出し: active の数は依頼の記録を除いて言い、依頼の記録の数を並べる（2026-11-03）", () => {
+  const withRequest = buildSellerBoard(
+    [
+      { host: "a.example", listings: 3 },
+      { host: "b.example", listings: 2, sellerRequestListings: 1 },
+    ],
+    [],
+    FETCHED,
+  );
+  assert.equal(withRequest.totals.listings, 5);
+  assert.equal(withRequest.totals.sellerRequestListings, 1);
+  const html = renderToStaticMarkup(createElement(SellersIndexView, { board: withRequest, page: 1, q: "", search: null }));
+  assert.match(html, /2 sellers with 4 active Base records \(a record vet402 has not closed can stay active after it leaves the catalog\) and 1 opened for a seller&#x27;s re-test request;/);
+  const none = renderToStaticMarkup(createElement(SellersIndexView, { board: buildSellerBoard([{ host: "a.example", listings: 3 }], [], FETCHED), page: 1, q: "", search: null }));
+  assert.match(none, /1 sellers with 3 active Base records \(a record vet402 has not closed can stay active after it leaves the catalog\);/);
+});

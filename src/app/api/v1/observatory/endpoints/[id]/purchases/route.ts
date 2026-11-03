@@ -5,7 +5,10 @@ import {
   ipRateLimitHeaders,
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
+import { settleExcludingVet402Side } from "@/lib/badge/receipt-badge";
+import { getDb } from "@/lib/db/client";
 import { getEndpointPurchases } from "@/lib/observatory/reader";
+import { readRecordSides } from "@/lib/sellers/reader";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { UUID_RE } from "@/lib/validation/uuid";
 
@@ -59,11 +62,22 @@ export async function GET(
       );
     }
 
+    // バッジと同じ分類と分母（列は消さず足す）。分類が読めなければ null（0 と言わない）。
+    const db = getDb();
+    const sides = db ? await readRecordSides(db, id).catch(() => null) : null;
+    const excluding = sides ? settleExcludingVet402Side(result.attemptCount, result.settledCount, { count: sides.vet402Side, settled: sides.vet402SideSettled }) : null;
+
     return NextResponse.json(
       {
         ...result,
+        vet402SideCount: sides ? sides.vet402Side : null,
+        settledCountExcludingVet402Side: excluding ? excluding.settled : null,
+        attemptCountExcludingVet402Side: excluding ? excluding.attempts : null,
+        settleRatePctExcludingVet402Side: excluding ? excluding.ratePct : null,
         disclaimer:
           "Facts only: attempts, settlements and their on-chain receipts. settledCount is the transfer vet402 re-read on-chain; gatewayBatchTx is the Circle Gateway batch transaction of a settled row, with no separate transfer to the payee; deliveredCount is the subset whose paid request also answered HTTP 2xx other than 202 Accepted, with a non-empty body; inconclusiveCount is the paid attempts held rather than counted against the seller, split in inconclusiveByReason: settled4xx (settled, and the paid request answered 4xx), unsettled4xx (a 4xx other than 402 with no settlement receipt — a seller that validates the request before settling it lands here) and payerUnfunded (a 402 or 5xx while vet402's own Base payer wallet was out of USDC, 2026-09-13T00:00Z–2026-09-15T23:49Z). vet402 buys with no API key of the seller's and sends a POST body only when the seller declares one, so it cannot rule out that a 4xx was its own request to get wrong. inconclusiveSettledCount is the settled part; deliveryRatePct is deliveredCount over settledCount minus inconclusiveSettledCount — the settled attempts vet402 can actually judge. This is a record of what happened when vet402 paid this endpoint, not an endorsement or a prediction.",
+        vet402SideNote:
+          "settleRatePct is settledCount over attemptCount. settleRatePctExcludingVet402Side leaves out vet402SideCount, the paid attempts that failed on vet402's side, and is the rate the endpoint badge shows. The vet402 side fields are null when the classification could not be read.",
         methodology: "https://vet402.com/observatory/methodology",
       },
       {

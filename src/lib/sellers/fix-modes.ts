@@ -45,7 +45,8 @@
 //   (e) 支払い付きの要求に明示の応答（HTTP の答え・レシート）があった。答えが無かった行は、出品の
 //       maxTimeoutSeconds が、その行の raw_response_meta.paidTimeoutMs（支払い付き要求で実際に張った待ち）以下で、しかも着金が無い時だけ。
 //       記録が無い行（2026-10-19 より前の行すべて）は 20 秒とみなす。network では決めない。
-//       それ以外（宣言の方が長い・宣言が読めない・打ち切りの後に着金した）は not sorted（stopped_waiting）。
+//       それ以外（宣言の方が長い・宣言が読めない・行に tx がある）は not sorted（stopped_waiting）。行の tx は待ちの間の着金も待ちの後の着金もある。
+//       待ちの終わりの時刻は行に無い（attempted_at は署名前の予約の時刻）ので、公開文は順序を言わない。
 // 2026-09-29 監査 7 周目: 判定 API・/sellers・export.csv は同じ classifySellerRow の結果を読む。判定が BLOCK に数えるのは
 // seller の側（確定）の「払ったのに届かない」だけで、not sorted の行はお金が動いていれば WARN に留める。
 // effort は直す手間: 1 = 出品・設定の変更、2 = サーバーの変更、3 = facilitator 次第。
@@ -181,7 +182,7 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   {
     key: "no_response_paid",
     title: "No answer to the paid request",
-    what: `vet402 signed the payment and the paid request got 408, or no HTTP answer within the wait recorded on the row (${L1_REQUEST_TIMEOUT_MS / 1000} seconds when the row does not record one) while the listing's maxTimeoutSeconds is no longer than that wait, and no transfer landed.`,
+    what: `vet402 signed the payment and the paid request got 408, or no HTTP answer within the wait recorded on the row (${L1_REQUEST_TIMEOUT_MS / 1000} seconds when the row does not record one) while the listing's maxTimeoutSeconds is no longer than that wait and the row names no transfer.`,
     fix: "Make the paid route answer within a few seconds; look for slow upstream calls or cold starts.",
     side: "seller",
     effort: 2,
@@ -391,8 +392,8 @@ const BASE_FIX_MODES: readonly FixMode[] = [
   },
   {
     key: "stopped_waiting",
-    title: "vet402 stopped waiting before the seller's time limit",
-    what: `vet402 waited the time recorded on the row for the paid answer (${L1_REQUEST_TIMEOUT_MS / 1000} seconds when the row does not record one). The listing allows longer than that wait (its maxTimeoutSeconds), or does not say how long, or the payment landed on-chain after vet402 had stopped waiting. This page does not count the row as the seller's fault.`,
+    title: "vet402 stopped waiting with no answer on the row",
+    what: `vet402 waited the time recorded on the row for the paid answer (${L1_REQUEST_TIMEOUT_MS / 1000} seconds when the row does not record one). The listing allows longer than that wait (its maxTimeoutSeconds), or does not say how long, or the row names a transaction for the purchase. This page does not place that transaction before or after the end of the wait, and does not count the row as the seller's fault.`,
     fix: NOT_COUNTED,
     side: "unsorted",
     effort: 2,
@@ -907,12 +908,14 @@ function unprovenNote(r: SellerRowFacts): string | null {
   if (ev.inputs === "not_sent") parts.push(`vet402 did not send the declared ${ev.inputGaps.join(", ")}`);
   if (ev.inputs === "unrecorded") parts.push("vet402 has no record of the input it sent");
   if (ev.wait === "cut_short") {
-    const landed = r.txHash !== null && r.txHash !== "";
+    const named = r.txHash !== null && r.txHash !== "";
     const mts = typeof r.listingMaxTimeoutSeconds === "number" ? `the listing's maxTimeoutSeconds is ${r.listingMaxTimeoutSeconds}` : "the listing states no maxTimeoutSeconds vet402 could match";
     parts.push(
-      landed
-        ? `vet402 stopped waiting after ${paidWaitSeconds(r)} seconds and the payment landed on-chain afterwards`
-        : `vet402 stopped waiting after ${paidWaitSeconds(r)} seconds (${mts})`,
+      !named
+        ? `vet402 stopped waiting after ${paidWaitSeconds(r)} seconds (${mts})`
+        : moneyOf(r) === "moved"
+          ? `vet402 stopped waiting after ${paidWaitSeconds(r)} seconds with no HTTP answer, and a transfer for this purchase is confirmed on-chain`
+          : `vet402 stopped waiting after ${paidWaitSeconds(r)} seconds with no HTTP answer, and the row names a transaction vet402 has not confirmed on-chain`,
     );
   }
   return parts.length ? `Not shown for this row: ${parts.join("; ")}.` : null;

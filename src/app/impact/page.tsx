@@ -138,7 +138,8 @@ export default async function ImpactPage() {
             "Coverage is starting up."
           ) : (
             <>
-              <strong>{coverage.measuredLast7d.toLocaleString()}</strong> of them (
+              <strong>{coverage.measuredLast7d.toLocaleString()}</strong> of the{" "}
+              <strong>{coverage.activeEndpoints.toLocaleString()}</strong> active records (
               <strong>{coverage.pct}%</strong>) carry an independent L0 measurement from the last 7
               days. That is the machine definition of &quot;under regular verification&quot;. This
               page drew that share at {drawnAt}. The response at /api/v1/observatory/state carries
@@ -252,17 +253,17 @@ export default async function ImpactPage() {
               <span>What an agent skips by reading the signals</span>
             </h2>
             <p className="doc-p">
-              In the last 30 days vet402 <strong>refused {decisions.totals.refused}</strong> of{" "}
+              In the last 30 days vet402 <strong>refused {decisions.totals.refused.toLocaleString()}</strong> of{" "}
               {decisions.totalDecisions.toLocaleString()} decisions before signing (overcharging or
               unpayable walls) and published every one of them.
               {backtest && (
                 <>
-                  {" "}Across the whole ledger, {backtest.avoided.count} of{" "}
+                  {" "}Across the whole ledger, {backtest.avoided.count.toLocaleString()} of{" "}
                   {backtest.attemptsTotal.toLocaleString()} signed attempts with a final status carried a
                   prior public failure signal and <strong>did not settle</strong> (
                   {formatUsdcUnits(backtest.avoided.spentUnits)} signed and put at stake with no confirmed
                   transfer on-chain — exposure an agent honoring the signals would not have taken, not money
-                  lost), while {backtest.forgone.count} signalled attempts settled anyway and would have been
+                  lost), while {backtest.forgone.count.toLocaleString()} signalled attempts settled anyway and would have been
                   skipped too (definition:
                   signed attempts preceded by a public failure signal, a subset of the attempts in §2 that leaves
                   out rows still awaiting on-chain verification (<code>settle_claimed</code>) and rows from the window when
