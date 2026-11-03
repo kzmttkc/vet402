@@ -162,6 +162,12 @@ test("Tempo memo reader: returns the memos of the payer's TransferWithMemo legs 
   ];
   const read = makeTempoMemoReader(client({ receipt: receipt(logs) }));
   assert.deepEqual(await read({ network: TEMPO, txHash: TX, payer: PAYER }), [MEMO], "only USDC.e TransferWithMemo legs sent by the payer");
+  // With the payee given, only the legs to that payee count: a memo to another payee in the same tx is not this purchase's value.
+  const twoPayees = [...logs, { address: TEMPO_USDC_E, topics: [TOPIC, pad(PAYER), pad(OTHER), `0x${"bb".repeat(32)}`], data: "0x" }];
+  const readTwo = makeTempoMemoReader(client({ receipt: receipt(twoPayees) }));
+  assert.deepEqual(await readTwo({ network: TEMPO, txHash: TX, payer: PAYER, payTo: PAY_TO }), [MEMO]);
+  assert.deepEqual(await readTwo({ network: TEMPO, txHash: TX, payer: PAYER, payTo: OTHER }), [`0x${"bb".repeat(32)}`]);
+  assert.deepEqual(await readTwo({ network: TEMPO, txHash: TX, payer: PAYER }), [MEMO, `0x${"bb".repeat(32)}`], "without a payee, all of the payer's legs");
   assert.deepEqual(await makeTempoMemoReader(client({ receipt: receipt([]) }))({ network: TEMPO, txHash: TX, payer: PAYER }), []);
   assert.equal(await read({ network: "eip155:8453", txHash: TX, payer: PAYER }), null);
   assert.equal(await read({ network: TEMPO, txHash: "not-a-hash", payer: PAYER }), null);

@@ -187,8 +187,12 @@ const RECOVERABLE_ROW = sql`((pu.status IN (${sql.join(LATE_RECOVERABLE_STATUSES
 /** 1 回の実行で曖昧さの解消のために読むレシートの上限（RPC の呼び出し回数の上限）。 */
 export const AMBIGUOUS_RECEIPTS_PER_RUN = 60;
 
-/** tx の中で payer が消費した EIP-3009 nonce（小文字）。読めなければ null（＝貼らない）。 */
-export type NonceReader = (input: { network: string; txHash: string; payer: string }) => Promise<string[] | null>;
+/**
+ * tx の中で payer が消費した一回性の値（小文字）。EVM は EIP-3009 の nonce、Tempo は TransferWithMemo の memo、Solana は spl-memo。
+ * 読めなければ null（＝貼らない）。payTo は nonce で決めるレーン（linksByNonce）が渡す（Tempo の memo の読み手は、payer → payTo の
+ * ログの memo だけを返す）。索引の段（linkAmbiguousByNonce）は渡さない。
+ */
+export type NonceReader = (input: { network: string; txHash: string; payer: string; payTo?: string }) => Promise<string[] | null>;
 
 /** 認可がチェーンで使われたか。true＝使われた、false＝使われていない、null＝読めない（settlement-verify の readAuthorizationState）。 */
 export type AuthorizationStateReader = (input: { network: string; payer: string; nonce: string }) => Promise<boolean | null>;
@@ -216,6 +220,11 @@ export const CHAIN_READ_MIN_REMAINING_MS = 3_000;
 export const CHAIN_READ_MAX_TRIES = 3;
 /** 窓が閉じてから読む（試行の LATE_SETTLEMENT_WINDOW_MINUTES 分後 + 余裕）。 */
 export const CHAIN_READ_AFTER_MINUTES = LATE_SETTLEMENT_WINDOW_MINUTES + 5;
+/**
+ * 0 件の読みを重ねて決めるレーン（zeroReadsToDecide ≥ 2）で、前回の 0 件（lateChainRead.zeroReadAt）からこれだけ
+ * たった行だけをまた読む（2026-11-03）。同じ日の 2 回の 0 件を「別の回」と数えない。
+ */
+export const ZERO_READ_SPACING_HOURS = 12;
 /**
  * Celo のレーンの持ち時間（2026-10-11）。Base の段（CHAIN_READ_BUDGET_MS）とは別に持つ——Base が持ち時間を使い切っても
  * Celo の行が読まれ、Celo の RPC が遅くても Base の段の時間を削らない。cron（index-settlements・300 秒）の中の最後の段。
@@ -1016,6 +1025,11 @@ async function linkFromChain(
       -- CHAIN_READ_MAX_TRIES 回まで読み直す（2026-09-29 独立レビュー WARNING 2）。まだ読んでいない行が先。
       AND NOT (coalesce(pu.raw_response_meta->'lateChainRead'->>'decided', 'false') = 'true')
       AND coalesce((pu.raw_response_meta->'lateChainRead'->>'tries')::int, 0) < ${CHAIN_READ_MAX_TRIES}::int
+      -- 2026-11-03: 認可は使われたのに貼れなかった行（spentReads）は CHAIN_READ_MAX_TRIES 回で読むのをやめる（鳴らして残す）。
+      AND coalesce((pu.raw_response_meta->'lateChainRead'->>'spentReads')::int, 0) < ${CHAIN_READ_MAX_TRIES}::int
+      -- 2026-11-03: 0 件の読みを重ねて決めるレーンは、前回の 0 件から ZERO_READ_SPACING_HOURS たった行だけ。
+      AND (pu.raw_response_meta->'lateChainRead'->>'zeroReadAt' IS NULL
+           OR (pu.raw_response_meta->'lateChainRead'->>'zeroReadAt')::timestamptz < now() - make_interval(hours => ${ZERO_READ_SPACING_HOURS}::int))
     -- 2026-09-29: 払った後に結果の書き込みが落ちた行（threw_after_reservation・outcomeWriteFailed・孤児掃除の orphaned_in_flight）を 2xx と同じ先頭の群に
     -- 置く。資格情報を送ったのに結果を失った行で、http_status_paid が NULL のまま残る——以前の DESC NULLS LAST は NULL を
     -- 「2xx でない」群のさらに後ろ（数千行の古い残りの後ろ）へ回し、索引に着金が無ければ一度も読まれなかった。
@@ -1100,14 +1114,28 @@ async function linkFromChain(
         [spent, false],
       ] as const) {
         if (ids.length === 0) continue;
-        await db.execute(sql`
+        // 使われた認可の行は spentReads を +1（2026-11-03）。CHAIN_READ_MAX_TRIES 回読んでも貼れなければ、この回で最後:
+        // 次からは選ばれない（batch の SELECT）。黙って止めず、行ごとに 1 行鳴らす（認可は使われた＝金は動いた・貼り先が無い）。
+        const marked = await db.execute(sql`
           UPDATE x402_l1_purchases
           SET raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object('lateChainRead', jsonb_build_object(
                 'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                 'decided', ${decided}::boolean,
                 'by', 'authorization_state',
-                'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0)))
-          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
+                'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0),
+                'spentReads', coalesce((raw_response_meta->'lateChainRead'->>'spentReads')::int, 0) + (CASE WHEN ${decided}::boolean THEN 0 ELSE 1 END)))
+          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)
+          RETURNING id::text AS id, (raw_response_meta->'lateChainRead'->>'spentReads')::int AS spent_reads`);
+        if (!decided) {
+          for (const r of rowsOfRaw<{ id: string; spent_reads: number | string | null }>(marked)) {
+            if (Number(r.spent_reads ?? 0) >= CHAIN_READ_MAX_TRIES) {
+              logServerErrorSafe(
+                `settlements.recover_late.spent_unlinked ${lane.key}`,
+                new Error(`purchase ${r.id}: the authorization was used on-chain but no transfer could be linked after ${r.spent_reads} reads; the row stays as it is and is not read again`),
+              );
+            }
+          }
+        }
       }
       read += unspent.length;
       if (undecided.length === 0) continue;
@@ -1185,7 +1213,7 @@ async function linkFromChain(
       const byNonce = await linksByNonce(
         pairs,
         new Map(near.map((r) => [r.purchase_id, r.auth_nonce])),
-        { network: g.network, payer: g.payer },
+        { network: g.network, payer: g.payer, payTo: g.pay_to },
         readNonces!,
         () => budgetMs - (Date.now() - startedAt),
         shape.re,
@@ -1248,6 +1276,9 @@ async function linkFromChain(
               'decided', (${noTransfer}::boolean
                           AND coalesce((raw_response_meta->'lateChainRead'->>'zeroReads')::int, 0) + 1 >= ${zeroReadsToDecide}::int),
               'zeroReads', coalesce((raw_response_meta->'lateChainRead'->>'zeroReads')::int, 0) + (CASE WHEN ${noTransfer}::boolean THEN 1 ELSE 0 END),
+              -- 前回の 0 件の時刻（次に読めるのは ZERO_READ_SPACING_HOURS 後）。着金ありの読みでは前の値を持ち越す。
+              'zeroReadAt', CASE WHEN ${noTransfer}::boolean THEN to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                                 ELSE raw_response_meta->'lateChainRead'->>'zeroReadAt' END,
               'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0) + 1))
         WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
     }
@@ -1283,7 +1314,7 @@ function isTimeout(error: unknown): boolean {
 async function linksByNonce(
   pairs: readonly LinkCandidate[],
   nonceOf: ReadonlyMap<string, string | null>,
-  group: { network: string; payer: string },
+  group: { network: string; payer: string; payTo?: string },
   readNonces: NonceReader,
   remainingMs: () => number,
   nonceShape: RegExp = EVM_AUTH_NONCE_RE,
@@ -1294,7 +1325,10 @@ async function linksByNonce(
     if (consumed.has(tx)) continue;
     const remaining = remainingMs();
     if (remaining < CHAIN_READ_MIN_REMAINING_MS) return { unreadable: "out of time before the receipts were read" };
-    const nonces = await withTimeout(readNonces({ network: group.network, txHash: p.txHash, payer: group.payer }), remaining).catch(() => null);
+    const nonces = await withTimeout(
+      readNonces({ network: group.network, txHash: p.txHash, payer: group.payer, ...(group.payTo ? { payTo: group.payTo } : {}) }),
+      remaining,
+    ).catch(() => null);
     if (nonces === null) return { unreadable: "a candidate transaction's receipt could not be read" };
     consumed.set(tx, new Set(nonces.map((n) => n.toLowerCase())));
   }
@@ -1856,9 +1890,11 @@ function boundedAvalancheClient(timeoutMs: number | undefined): AvalancheTransfe
  * AuthorizationUsed の nonce（呼び手が settlement-verify.ts の readAuthorizationNonces を渡す）、Tempo はレシートの
  * TransferWithMemo の memo、Solana は取引の spl-memo。渡されなかった種類の network は null（＝読めない・貼らない）。
  */
-export function makeChainNonceReader(readers: { evm?: NonceReader; tempo?: NonceReader; solana?: NonceReader } = {}): NonceReader {
+export function makeChainNonceReader(
+  readers: { evm?: NonceReader; tempo?: NonceReader; solana?: NonceReader; /** Transfer の読み手と共有する Solana の入れ物（cron が 1 回に 1 つ作る）。 */ solanaCache?: SolanaLateReadCache } = {},
+): NonceReader {
   const tempoReader = readers.tempo ?? makeTempoMemoReader();
-  const solanaReader = readers.solana ?? makeSolanaMemoReader();
+  const solanaReader = readers.solana ?? makeSolanaMemoReader(undefined, readers.solanaCache);
   return (q) =>
     q.network === TEMPO_MAINNET_CAIP2
       ? tempoReader(q)
@@ -1884,6 +1920,8 @@ export function makeChainTransferReader(
     tempo?: TransferReader;
     arc?: TransferReader;
     solana?: TransferReader;
+    /** memo の読み手と共有する Solana の入れ物（cron が 1 回に 1 つ作る）。 */
+    solanaCache?: SolanaLateReadCache;
   } = {},
 ): TransferReader {
   const baseReader = readers.base ?? makeBaseTransferReader();
@@ -1894,7 +1932,7 @@ export function makeChainTransferReader(
     [AVALANCHE_CAIP2]: readers.avalanche ?? makeAvalancheTransferReader(),
     [TEMPO_MAINNET_CAIP2]: readers.tempo ?? makeTempoTransferReader(),
     [ARC_CAIP2]: readers.arc ?? makeArcTransferReader(),
-    [SOLANA_MAINNET_CAIP2]: readers.solana ?? makeSolanaTransferReader(),
+    [SOLANA_MAINNET_CAIP2]: readers.solana ?? makeSolanaTransferReader(undefined, readers.solanaCache),
   };
   return (q) => (byNetwork[q.network] ?? baseReader)(q);
 }
@@ -1997,7 +2035,7 @@ type TempoReceiptClient = Pick<ReturnType<typeof getLogScanClient>, "getChainId"
  * 読めない（TEMPO_RPC_URL なし・chainId 違い・レシート無し・revert・RPC の失敗）なら null。
  */
 export function makeTempoMemoReader(client?: TempoReceiptClient): NonceReader {
-  return async ({ network, txHash, payer }) => {
+  return async ({ network, txHash, payer, payTo }) => {
     if (network !== TEMPO_MAINNET_CAIP2) return null;
     if (!EVM_TX_HASH_RE.test(txHash)) return null;
     const c = client ?? (boundedTempoClient(10_000) as unknown as TempoReceiptClient | null);
@@ -2008,15 +2046,19 @@ export function makeTempoMemoReader(client?: TempoReceiptClient): NonceReader {
       if (!receipt || receipt.status !== "success") return null;
       const usdcLower = TEMPO_USDC_E.toLowerCase();
       const payerLower = payer.toLowerCase();
+      const payToLower = typeof payTo === "string" && payTo.length > 0 ? payTo.toLowerCase() : null;
       const memoTopic = TEMPO_TRANSFER_WITH_MEMO_TOPIC0;
       const out: string[] = [];
       for (const log of receipt.logs) {
         if (log.address?.toLowerCase() !== usdcLower) continue;
         if (log.topics[0]?.toLowerCase() !== memoTopic) continue;
         const from = log.topics[1];
+        const to = log.topics[2];
         const memo = log.topics[3];
-        if (!from || typeof memo !== "string" || memo.length !== 66) continue;
+        if (!from || !to || typeof memo !== "string" || memo.length !== 66) continue;
         if (`0x${from.slice(-40)}`.toLowerCase() !== payerLower) continue;
+        // 宛先が渡されたら、その宛先へのレグの memo だけ（同じ tx の別の宛先への memo を、この購入の値と取り違えない）。
+        if (payToLower !== null && `0x${to.slice(-40)}`.toLowerCase() !== payToLower) continue;
         out.push(memo.toLowerCase());
       }
       return out;
@@ -2177,10 +2219,47 @@ const CAIP2_SOLANA_REFERENCE_LENGTH = 32;
  *     減っているものだけを着金にする。value は宛先の受領額。失敗した取引（meta.err）は数えない。
  *   - from / to は呼び手が渡した表記のまま返す（base58 は大文字小文字で別の鍵）。
  */
-export function makeSolanaTransferReader(rpc?: SolanaLateReadRpc | null): TransferReader {
+/**
+ * 1 回の実行の中で Solana の読みを使い回す入れ物（2026-11-03・確かめ役の指摘）。署名一覧は口座ごとに新しい順に貯め、
+ * 必要な分だけ古い方へ継ぎ足す。取引は signature で引く。cron の 1 回で 1 つ作り、Transfer の読み手と memo の読み手に同じものを渡す
+ * （行ごとに署名一覧と getParsedTransaction を繰り返さない）。実行をまたいで持たない。
+ */
+export type SolanaLateReadCache = {
+  rpc?: SolanaLateReadRpc | null;
+  signatures: Map<string, { list: { signature: string; blockTime: number; err: unknown | null }[]; before?: string; exhausted: boolean }>;
+  transactions: Map<string, Awaited<ReturnType<SolanaLateReadRpc["getParsedTransaction"]>>>;
+};
+export function createSolanaLateReadCache(): SolanaLateReadCache {
+  return { signatures: new Map(), transactions: new Map() };
+}
+
+async function solanaRpcOf(rpc: SolanaLateReadRpc | null | undefined, cache: SolanaLateReadCache): Promise<SolanaLateReadRpc | null> {
+  if (rpc !== undefined) return rpc;
+  if (cache.rpc === undefined) cache.rpc = await createSolanaLateReadRpc();
+  return cache.rpc;
+}
+
+async function solanaTransactionOf(c: SolanaLateReadRpc, cache: SolanaLateReadCache, signature: string) {
+  if (cache.transactions.has(signature)) return cache.transactions.get(signature)!;
+  const tx = await c.getParsedTransaction(signature);
+  cache.transactions.set(signature, tx);
+  return tx;
+}
+
+/**
+ * Solana の USDC の着金（購入元 → 宛先）を時刻の窓で読む読み手（2026-11-03・linkFromChain の Solana のレーン）。
+ *   - Solana 以外の network は null。SOLANA_RPC_URL が無ければ null（公開 RPC へ黙って倒れない）。
+ *   - クラスタを毎回読む（genesis hash が network の参照と合わなければ null）。先端の時刻が窓の終わりに届いていなければ null。
+ *   - 購入元の USDC の ATA の署名一覧を新しい順に遡り、窓の中の署名だけ取引を読む。窓より古い署名に届く前に頁の上限に
+ *     当たったら例外（読み切れていない窓を「着金なし」と言わない）。貯めた一覧と取引は同じ実行の次の行で使い回す（cache）。
+ *   - 取引ごとに、宛先（owner）の USDC の受領額を残高差分で取り（usdcOwnerDelta・照合器と同じ読み方）、購入元の USDC が
+ *     減っているものだけを着金にする。value は宛先の受領額。失敗した取引（meta.err）は数えない。
+ *   - from / to は呼び手が渡した表記のまま返す（base58 は大文字小文字で別の鍵）。
+ */
+export function makeSolanaTransferReader(rpc?: SolanaLateReadRpc | null, cache: SolanaLateReadCache = createSolanaLateReadCache()): TransferReader {
   return async ({ network, payer, payTo, from, to, timeoutMs }) => {
     if (network !== SOLANA_MAINNET_CAIP2) return null;
-    const c = rpc === undefined ? await createSolanaLateReadRpc() : rpc;
+    const c = await solanaRpcOf(rpc, cache);
     if (!c) return null;
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const expired = () => {
@@ -2195,38 +2274,29 @@ export function makeSolanaTransferReader(rpc?: SolanaLateReadRpc | null): Transf
     if (!account) return null;
     const fromSeconds = Math.floor(from.getTime() / 1000);
     const toSeconds = Math.ceil(to.getTime() / 1000);
-    const inWindow: string[] = [];
-    let before: string | undefined;
-    let reachedPast = false;
-    for (let page = 0; page < SOLANA_LATE_READ_MAX_PAGES; page++) {
+    const entry = cache.signatures.get(account) ?? { list: [], exhausted: false };
+    cache.signatures.set(account, entry);
+    // 貯めた一覧が窓の始まりより古い署名まで届いていなければ、古い方へ継ぎ足す（この呼び出しで読む頁は上限まで）。
+    let pages = 0;
+    const reachesPast = () => entry.exhausted || (entry.list.length > 0 && entry.list[entry.list.length - 1].blockTime < fromSeconds);
+    while (!reachesPast()) {
+      if (pages >= SOLANA_LATE_READ_MAX_PAGES) throw new Error("the Solana signature list did not reach the start of the window within the page limit");
       expired();
-      const sigs = await c.getSignaturesForAddress(account, { limit: SOLANA_LATE_READ_SIGNATURES_PER_PAGE, ...(before ? { before } : {}) });
-      if (sigs.length === 0) {
-        reachedPast = true;
-        break;
-      }
-      for (const s of sigs) {
-        const bt = typeof s.blockTime === "number" ? s.blockTime : null;
-        if (bt === null) throw new Error("a Solana signature came back without a block time");
-        if (s.err !== null && s.err !== undefined) continue;
-        if (bt >= fromSeconds && bt <= toSeconds) inWindow.push(s.signature);
-      }
-      const last = sigs[sigs.length - 1];
-      if (typeof last.blockTime === "number" && last.blockTime < fromSeconds) {
-        reachedPast = true;
-        break;
-      }
-      if (sigs.length < SOLANA_LATE_READ_SIGNATURES_PER_PAGE) {
-        reachedPast = true;
-        break;
-      }
-      before = last.signature;
+      pages++;
+      const sigs = await c.getSignaturesForAddress(account, { limit: SOLANA_LATE_READ_SIGNATURES_PER_PAGE, ...(entry.before ? { before: entry.before } : {}) });
+      const page = sigs.map((s) => {
+        if (typeof s.blockTime !== "number") throw new Error("a Solana signature came back without a block time");
+        return { signature: s.signature, blockTime: s.blockTime, err: s.err ?? null };
+      });
+      entry.list.push(...page);
+      if (page.length === 0 || page.length < SOLANA_LATE_READ_SIGNATURES_PER_PAGE) entry.exhausted = true;
+      else entry.before = page[page.length - 1].signature;
     }
-    if (!reachedPast) throw new Error("the Solana signature list did not reach the start of the window within the page limit");
+    const inWindow = entry.list.filter((s) => s.err === null && s.blockTime >= fromSeconds && s.blockTime <= toSeconds).map((s) => s.signature);
     const out: ChainTransfer[] = [];
     for (const signature of inWindow) {
       expired();
-      const tx = await c.getParsedTransaction(signature);
+      const tx = await solanaTransactionOf(c, cache, signature);
       if (!tx || !tx.meta) throw new Error(`the Solana transaction ${signature.slice(0, 16)}… could not be read`);
       if (tx.meta.err !== null && tx.meta.err !== undefined) continue;
       const pre = tx.meta.preTokenBalances ?? [];
@@ -2246,16 +2316,17 @@ export function makeSolanaTransferReader(rpc?: SolanaLateReadRpc | null): Transf
 /**
  * Solana の取引の spl-memo の文字列（小文字・前後の空白を除く）の一覧（2026-11-03・NonceReader）。
  * 読めない（SOLANA_RPC_URL なし・クラスタ違い・取引無し・失敗した取引・memo が読めない応答）なら null。
+ * 取引は Transfer の読み手と同じ cache から引く（同じ実行で 2 度読まない）。
  */
-export function makeSolanaMemoReader(rpc?: SolanaLateReadRpc | null): NonceReader {
+export function makeSolanaMemoReader(rpc?: SolanaLateReadRpc | null, cache: SolanaLateReadCache = createSolanaLateReadCache()): NonceReader {
   return async ({ network, txHash }) => {
     if (network !== SOLANA_MAINNET_CAIP2) return null;
-    const c = rpc === undefined ? await createSolanaLateReadRpc() : rpc;
+    const c = await solanaRpcOf(rpc, cache);
     if (!c) return null;
     try {
       const genesis = await c.getGenesisHash();
       if (typeof genesis !== "string" || genesis.slice(0, CAIP2_SOLANA_REFERENCE_LENGTH) !== network.slice("solana:".length)) return null;
-      const tx = await c.getParsedTransaction(txHash.trim());
+      const tx = await solanaTransactionOf(c, cache, txHash.trim());
       if (!tx || !tx.meta || (tx.meta.err !== null && tx.meta.err !== undefined)) return null;
       if (tx.memos === null || tx.memos === undefined) return null;
       return tx.memos.map((m) => m.trim().toLowerCase());

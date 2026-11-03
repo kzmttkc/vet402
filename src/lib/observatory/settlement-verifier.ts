@@ -26,6 +26,7 @@ import { evmChainFor } from "./x402-payer";
 import { isDeliveryVerified } from "./l1-runner";
 import { ingestL1 } from "@/lib/settlements/ingest-l1";
 import { LATE_PRIOR_STATUSES } from "@/lib/settlements/recover-late";
+import { STELLAR_AMOUNT_PAYEE_NETWORK } from "./settled-tier";
 import { updateWithCorrection } from "./corrections";
 import { GATEWAY_RECONCILE_ROW_LIMIT, gatewayReadBudgetMs, reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
@@ -133,6 +134,13 @@ export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"
  * 回数は raw_response_meta.failedReceiptCheck.mismatches。一時的な理由は数えない。
  */
 export const FAILED_RECEIPT_MAX_CHECKS = 3;
+/**
+ * 同じ行を何回まで読むか（確定的・一時的を問わない全部の読み・raw_response_meta.failedReceiptCheck.checks）。
+ * tx_not_found や rpc_unavailable で毎日選ばれ続ける行が、古い順の枠を取り続けないため。
+ */
+export const FAILED_RECEIPT_MAX_READS = 14;
+/** 1 回の照合で読む settle_failed + 受領証の tx の行の上限。settle_claimed / settled の行の後ろに回す。 */
+export const FAILED_RECEIPT_ROWS_PER_RUN = 20;
 
 /**
  * その行の tx は遅延回収（recover-late.ts）が貼ったものか。純関数。
@@ -320,7 +328,8 @@ export async function runSettlementVerification(options?: {
   // 対象: 決済を主張していて、まだ照合が確定していない行。
   // 既存の 'settled'（2026-08-23 より前に、照合前の意味で書かれたもの）も
   // settlement_verified IS NULL なので同じ経路で見に行く。
-  const raw = await db.execute(sql`
+  // 2026-11-03: settle_failed + 受領証の tx の行（下の 2 つ目の SELECT）も同じ列で読む。
+  const purchaseColumns = sql`
     SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.pay_to, pu.payer,
            pu.amount_units, pu.http_status_paid, pu.payload_non_empty, pu.l2_schema,
            pu.status, pu.endpoint_id::text AS endpoint_id, pu.auth_nonce, e.resource_url,
@@ -342,23 +351,37 @@ export async function runSettlementVerification(options?: {
     FROM x402_l1_purchases pu
     LEFT JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE pu.settlement_verified IS NULL
-      AND pu.tx_hash IS NOT NULL
+      AND pu.tx_hash IS NOT NULL`;
+  const raw = await db.execute(sql`
+    ${purchaseColumns}
       AND (pu.status IN ('settle_claimed', 'settled')
            -- 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行は、期限の日数の後に確定する（チェーンは読まない）。
            OR (pu.status = 'settle_claimed_unverifiable'
                AND pu.network IN (${sql.join(EXPIRY_NETWORKS.map((n) => sql`${n}`), sql`, `)})
-               AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day'))
-           -- 2026-11-03（数字の監査・結論 #1 型 (b)）: settle_failed のまま受領証の tx を持つ行（売り手が 402 / 405 で
-           -- tx を名指した・getretold と svm402）。読んで行の期待値と一致したときだけ settled に直す。一致しなければ
-           -- status は変えず（refute もしない）、FAILED_RECEIPT_MAX_CHECKS 回の確定的な不一致で読むのをやめる。
-           OR (pu.status = 'settle_failed'
-               AND btrim(pu.tx_hash) <> ''
-               AND coalesce(pu.raw_response_meta->>'circleGatewayRail', '') <> 'true'
-               AND coalesce((pu.raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) < ${FAILED_RECEIPT_MAX_CHECKS}::int))
+               AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day')))
     ORDER BY pu.attempted_at ASC
     LIMIT ${limit}
   `);
-  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+  // 2026-11-03（数字の監査・結論 #1 型 (b)）: settle_failed のまま受領証の tx を持つ行（売り手が 402 / 405 で tx を名指した・
+  // getretold と svm402）。読んで行の期待値と一致したときだけ settled に直す。一致しなければ status は変えず（refute もしない）。
+  // 一回性の値を持つ行だけ（auth_nonce が空の旧い行と、額・宛先だけで照合する Stellar の行は、tx が実在しても
+  // この購入のものと言えないので読まない）。別の小さな枠（FAILED_RECEIPT_ROWS_PER_RUN）で settle_claimed / settled の後ろに回し、
+  // 読んだ回数（failedReceiptCheck.checks・理由を問わない）が FAILED_RECEIPT_MAX_READS、確定的な不一致が
+  // FAILED_RECEIPT_MAX_CHECKS に達した行は選ばない。
+  const failedRaw = await db.execute(sql`
+    ${purchaseColumns}
+      AND pu.status = 'settle_failed'
+      AND btrim(pu.tx_hash) <> ''
+      AND btrim(coalesce(pu.auth_nonce, '')) <> ''
+      AND lower(btrim(pu.network)) IS DISTINCT FROM ${STELLAR_AMOUNT_PAYEE_NETWORK}::text
+      AND coalesce(pu.raw_response_meta->>'circleGatewayRail', '') <> 'true'
+      AND coalesce((pu.raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) < ${FAILED_RECEIPT_MAX_CHECKS}::int
+      AND coalesce((pu.raw_response_meta->'failedReceiptCheck'->>'checks')::int, 0) < ${FAILED_RECEIPT_MAX_READS}::int
+    ORDER BY pu.attempted_at ASC
+    LIMIT ${FAILED_RECEIPT_ROWS_PER_RUN}
+  `);
+  const rowsOfRaw = (r: unknown) => (Array.isArray(r) ? r : ((r as { rows?: unknown[] }).rows ?? []));
+  const rows = [...rowsOfRaw(raw), ...rowsOfRaw(failedRaw)] as {
     id: string;
     tx_hash: string;
     network: string;
@@ -732,55 +755,63 @@ export async function runSettlementVerification(options?: {
    *   - 同じ tx を別の行が主張していたら読まない（どちらのものか言えない）。
    */
   async function verifyFailedReceiptRow(row: PurchaseRow): Promise<void> {
-    if (Number(row.tx_claim_count ?? 1) > 1) {
+    /**
+     * 読んだ印（status・tx・照合の列は変えない。公開の訂正ログにも載せない——公開の状態は変わっていない）。
+     * checks は理由を問わず毎回 +1（FAILED_RECEIPT_MAX_READS で読むのをやめる）、mismatches は確定的な不一致だけ +1。
+     */
+    const note = async (reason: string, definitive: boolean) => {
       summary.failedReceiptLeft++;
       summary.deferred++;
+      await db!.execute(sql`
+        UPDATE x402_l1_purchases
+        SET raw_response_meta = coalesce(CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END, '{}'::jsonb)
+            || jsonb_build_object('failedReceiptCheck', jsonb_build_object(
+                 'checks', coalesce((raw_response_meta->'failedReceiptCheck'->>'checks')::int, 0) + 1,
+                 'mismatches', coalesce((raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) + (CASE WHEN ${definitive}::boolean THEN 1 ELSE 0 END),
+                 'lastReason', ${reason.slice(0, 200)}::text,
+                 'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')))
+        WHERE id = ${row.id}::uuid AND status = 'settle_failed'`);
+    };
+    if (!row.pay_to || !row.payer || !row.amount_units || !row.auth_nonce) {
+      await note("expected_values_missing", true);
+      return;
+    }
+    if (Number(row.tx_claim_count ?? 1) > 1) {
+      await note(`tx_hash_reused: ${row.tx_claim_count} purchases claim this transaction`, false);
       return;
     }
     if (wrongChain.has(row.network)) {
-      summary.failedReceiptLeft++;
-      summary.deferred++;
+      await note("wrong_chain", false);
       return;
     }
     const result = await verify({
       txHash: row.tx_hash,
       network: row.network,
-      expectedPayTo: row.pay_to!,
-      expectedPayer: row.payer!,
-      expectedAmountUnits: row.amount_units!,
+      expectedPayTo: row.pay_to,
+      expectedPayer: row.payer,
+      expectedAmountUnits: row.amount_units,
       expectedAuthNonce: row.auth_nonce,
     });
     if (result.ok) {
       await settleRow(row, result);
       return;
     }
-    summary.failedReceiptLeft++;
-    summary.deferred++;
+    const reason = `${result.reason}${result.detail ? `: ${result.detail}` : ""}`;
     // 受領証の tx がハッシュの形でない（malformed_tx）のは、ここでは計器の故障ではなく売り手の原文の形——確定的な不一致として数え、
     // 上限で読むのをやめる。wrong_chain は RPC の設定の事故なので、通常の行と同じく鳴らしてそのチェーンの残りを飛ばす。
     if (TRANSIENT_REASONS.has(result.reason) && result.reason !== "malformed_tx") {
       if (result.reason === "wrong_chain") {
-        logServerErrorSafe(
-          "settlement-verifier.instrument_failure",
-          `${result.reason} on purchase ${row.id} (${row.network})${result.detail ? `: ${result.detail}` : ""}`,
-        );
+        logServerErrorSafe("settlement-verifier.instrument_failure", `${reason} on purchase ${row.id} (${row.network})`);
         summary.instrumentFailure = result.reason;
         if (!wrongChain.has(row.network)) {
           wrongChain.add(row.network);
           summary.wrongChainNetworks.push(row.network);
         }
       }
+      await note(reason, false);
       return;
     }
-    // 確定的な不一致: 印だけ（status・tx・照合の列は変えない。公開の訂正ログにも載せない——公開の状態は変わっていない）。
-    await db!.execute(sql`
-      UPDATE x402_l1_purchases
-      SET raw_response_meta = coalesce(CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END, '{}'::jsonb)
-          || jsonb_build_object('failedReceiptCheck', jsonb_build_object(
-               'mismatches', coalesce((raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) + 1,
-               'lastReason', ${`${result.reason}${result.detail ? `: ${result.detail}` : ""}`.slice(0, 200)}::text,
-               'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')))
-      WHERE id = ${row.id}::uuid AND status = 'settle_failed'`);
+    await note(reason, true);
   }
 
   /**
@@ -806,17 +837,18 @@ export async function runSettlementVerification(options?: {
       return;
     }
 
+    // 2026-11-03: settle_failed のまま受領証の tx を持つ行は、上へしか動かさない（settled か、そのまま）。
+    // 期待値の欠けも含めて、読んだ印は verifyFailedReceiptRow が付ける（settlement_verify_reason は書かない）。
+    if (row.status === "settle_failed") {
+      await verifyFailedReceiptRow(row);
+      return;
+    }
+
     if (!row.pay_to || !row.payer || !row.amount_units) {
       // 期待値が台帳に無い＝我々が何を期待したか言えない。照合できないので
       // 触らず、理由だけ残す（推測で期待値を作らない）。
       await setVerifyReason(row, "expected_values_missing");
       summary.deferred++;
-      return;
-    }
-
-    // 2026-11-03: settle_failed のまま受領証の tx を持つ行は、上へしか動かさない（settled か、そのまま）。
-    if (row.status === "settle_failed") {
-      await verifyFailedReceiptRow(row);
       return;
     }
 

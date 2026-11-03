@@ -180,7 +180,7 @@ if (!TEST_DB) {
       assert.equal(tr.calls[0].payTo, PAY_TO);
       assert.ok(tr.calls[0].from.getTime() <= AT.getTime() - 2 * 60_000 && tr.calls[0].to.getTime() >= AT.getTime() + 30 * 60_000);
       assert.equal(typeof tr.calls[0].timeoutMs, "number");
-      assert.deepEqual(nr.calls, [{ network: CELO, txHash: tx("23"), payer: PAYER }]);
+      assert.deepEqual(nr.calls, [{ network: CELO, txHash: tx("23"), payer: PAYER, payTo: PAY_TO }]);
 
       // 貼った行は照合前（settled とは名乗らない）。印は Base の直読みと同じ形で、決め手は nonce。
       const linked = await get(id);
@@ -284,14 +284,29 @@ if (!TEST_DB) {
         assert.equal(meta.lateSettlement, undefined, name);
         assert.deepEqual({ decided: meta.lateChainRead.decided, tries: meta.lateChainRead.tries, by: meta.lateChainRead.by }, { decided: false, tries: 0, by: "authorization_state" }, name);
       }
-      // 使われた認可の行は毎回読み直す（上限で止めない）。その間も貼らない。
+      // 使われた認可の行は CHAIN_READ_MAX_TRIES 回まで読み直し（spentReads）、それでも貼れなければ鳴らして読むのをやめる。その間も貼らない。
       await reset();
       const id = await seedRow();
       const tr = transfersOf([transfer()]);
       const nr = noncesOf({ [tx("23")]: [OTHER_NONCE] });
-      for (let i = 0; i < 5; i++) await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: async () => true });
-      assert.equal(tr.calls.length, 5);
-      assert.equal((await get(id)).txHash, null);
+      const logged: string[] = [];
+      const origError = console.error;
+      console.error = (...args: unknown[]) => void logged.push(args.map(String).join(" "));
+      try {
+        for (let i = 0; i < 5; i++) await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: async () => true });
+      } finally {
+        console.error = origError;
+      }
+      assert.equal(tr.calls.length, late.CHAIN_READ_MAX_TRIES);
+      const stuck = await get(id);
+      assert.equal(stuck.txHash, null);
+      assert.equal(stuck.status, "settle_failed");
+      assert.equal((stuck.rawResponseMeta as { lateChainRead: { spentReads: number; decided: boolean } }).lateChainRead.spentReads, late.CHAIN_READ_MAX_TRIES);
+      assert.equal((stuck.rawResponseMeta as { lateChainRead: { decided: boolean } }).lateChainRead.decided, false);
+      const alarms = logged.filter((l) => l.includes("spent_unlinked"));
+      assert.equal(alarms.length, 1, logged.join("\n"));
+      assert.match(alarms[0], /celo/);
+      assert.match(alarms[0], new RegExp(`purchase ${id}: the authorization was used on-chain but no transfer could be linked after ${late.CHAIN_READ_MAX_TRIES} reads`));
       // 認可の読み手が無い回は、着金があっても貼れなければ印も付けない（決めない）。
       await reset();
       const quiet = await seedRow();
@@ -477,7 +492,7 @@ if (!TEST_DB) {
       assert.equal(s.recoveredFromChainCelo, 1);
       assert.equal(s.chainRowsRead, 2);
       // Base の貼り方は従来どおり: 候補が 1 本なら貼る（nonce はこの段では読まない・照合器が見る）。
-      assert.deepEqual(nr.calls, [{ network: CELO, txHash: tx("23"), payer: PAYER }]);
+      assert.deepEqual(nr.calls, [{ network: CELO, txHash: tx("23"), payer: PAYER, payTo: PAY_TO }]);
       const b = await get(baseNew);
       assert.equal(b.status, "settle_claimed");
       assert.equal(b.txHash, tx("b9"));

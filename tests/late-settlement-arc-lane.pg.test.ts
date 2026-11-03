@@ -152,7 +152,7 @@ if (!TEST_DB) {
       const hit = await seedRow(nonce("b1"));
       const miss = await seedRow(nonce("b2"));
       const transfer = { txHash: tx("c1"), from: PAYER, to: PAY_TO, value: AMOUNT, blockTime: new Date(AT.getTime() + 12_000).toISOString() };
-      const nonceCalls: { network: string; txHash: string; payer: string }[] = [];
+      const nonceCalls: { network: string; txHash: string; payer: string; payTo?: string }[] = [];
       const s = await run({
         readTransfers: async (q) => (q.network === ARC ? [transfer] : null),
         readNonces: async (q) => (nonceCalls.push(q), [nonce("b1")]),
@@ -160,7 +160,7 @@ if (!TEST_DB) {
       });
       assert.equal(s.recoveredFromChainArc, 1);
       assert.deepEqual(s.links, [{ purchaseId: hit, txHash: tx("c1") }]);
-      assert.deepEqual(nonceCalls, [{ network: ARC, txHash: tx("c1"), payer: PAYER }]);
+      assert.deepEqual(nonceCalls, [{ network: ARC, txHash: tx("c1"), payer: PAYER, payTo: PAY_TO }]);
       const linked = await read(hit);
       assert.equal(linked.status, "settle_claimed");
       assert.equal(linked.txHash?.toLowerCase(), tx("c1"));

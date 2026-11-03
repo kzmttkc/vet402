@@ -177,7 +177,7 @@ if (!TEST_DB) {
       assert.equal(tr.calls[0].payTo, PAY_TO);
       assert.ok(tr.calls[0].from.getTime() <= AT.getTime() - 2 * 60_000 && tr.calls[0].to.getTime() >= AT.getTime() + 30 * 60_000);
       assert.equal(typeof tr.calls[0].timeoutMs, "number");
-      assert.deepEqual(nr.calls, [{ network: ARB, txHash: tx("23"), payer: PAYER }]);
+      assert.deepEqual(nr.calls, [{ network: ARB, txHash: tx("23"), payer: PAYER, payTo: PAY_TO }]);
 
       // 貼った行は照合前（settled とは名乗らない）。印は Base の直読みと同じ形で、決め手は nonce。
       const linked = await get(id);
@@ -467,7 +467,7 @@ if (!TEST_DB) {
       assert.equal(s.recoveredFromChainAvalanche, 1);
       assert.equal(s.chainRowsRead, 2);
       // Base の貼り方は従来どおり: 候補が 1 本なら貼る（nonce はこの段では読まない・照合器が見る）。
-      assert.deepEqual(nr.calls, [{ network: ARB, txHash: tx("23"), payer: PAYER }]);
+      assert.deepEqual(nr.calls, [{ network: ARB, txHash: tx("23"), payer: PAYER, payTo: PAY_TO }]);
       const b = await get(baseNew);
       assert.equal(b.status, "settle_claimed");
       assert.equal(b.txHash, tx("b9"));

@@ -39,7 +39,7 @@ if (!TEST_DB) {
 
   type Late = typeof import("@/lib/settlements/recover-late");
   type Readers = Pick<Parameters<Late["recoverLateSettlements"]>[0] & object, "readTransfers" | "readNonces" | "readAuthorizationState">;
-  type Mark = { decided?: boolean; tries?: number; zeroReads?: number; exactTransfers?: number; by?: string };
+  type Mark = { decided?: boolean; tries?: number; zeroReads?: number; zeroReadAt?: string; exactTransfers?: number; by?: string };
 
   test("recover-late: Tempo のレーンは memo で貼り、0 件は 2 回で決める", async (t) => {
     const late: Late = await import("@/lib/settlements/recover-late");
@@ -107,7 +107,7 @@ if (!TEST_DB) {
       await reset();
       const id = await seedRow();
       const calls: Parameters<NonNullable<Readers["readTransfers"]>>[0][] = [];
-      const nonceCalls: { network: string; txHash: string; payer: string }[] = [];
+      const nonceCalls: { network: string; txHash: string; payer: string; payTo?: string }[] = [];
       const s = await run({
         readTransfers: async (q) => (calls.push(q), q.network === TEMPO ? [transfer()] : null),
         readNonces: async (q) => (nonceCalls.push(q), q.txHash === tx("c1") ? [memo("a1")] : []),
@@ -120,7 +120,7 @@ if (!TEST_DB) {
       assert.equal(calls[0].payer, PAYER);
       assert.equal(calls[0].payTo, PAY_TO);
       assert.ok(calls[0].from.getTime() <= AT.getTime() - 2 * 60_000 && calls[0].to.getTime() >= AT.getTime() + 30 * 60_000);
-      assert.deepEqual(nonceCalls, [{ network: TEMPO, txHash: tx("c1"), payer: PAYER }]);
+      assert.deepEqual(nonceCalls, [{ network: TEMPO, txHash: tx("c1"), payer: PAYER, payTo: PAY_TO }]);
       const linked = await read(id);
       assert.equal(linked.status, "settle_claimed");
       assert.equal(linked.txHash, tx("c1"));
@@ -163,7 +163,7 @@ if (!TEST_DB) {
       assert.equal((await read(id)).txHash, null);
     });
 
-    await t.test("3: 0 件の読みは 1 回では決めない。別の回の 2 回目が 0 件で決まる", async () => {
+    await t.test("3: 0 件の読みは 1 回では決めない。12 時間以上あいた別の回の 2 回目が 0 件で決まる", async () => {
       await reset();
       const id = await seedRow({ http: 502 });
       let reads = 0;
@@ -172,10 +172,19 @@ if (!TEST_DB) {
       assert.equal(first.chainRowsReadTempo, 1);
       let m = (await read(id)).rawResponseMeta?.lateChainRead;
       assert.deepEqual({ decided: m?.decided, tries: m?.tries, zeroReads: m?.zeroReads }, { decided: false, tries: 1, zeroReads: 1 });
+      assert.ok(typeof m?.zeroReadAt === "string" && Number.isFinite(Date.parse(m.zeroReadAt)));
+      // 同じ日のうちは読み直さない（同じ日の 2 回の 0 件を「別の回」と数えない）。
+      await run({ readTransfers: reader, readNonces: memosOf({}) });
+      assert.equal(reads, 1);
+      /** 前回の 0 件を ZERO_READ_SPACING_HOURS + 1 時間前に動かす（別の日の回を作る）。 */
+      const ageZeroRead = (rowId: string) =>
+        db.execute(sql`UPDATE x402_l1_purchases SET raw_response_meta = jsonb_set(raw_response_meta, '{lateChainRead,zeroReadAt}',
+          to_jsonb(to_char((now() - make_interval(hours => ${late.ZERO_READ_SPACING_HOURS + 1}::int)) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))) WHERE id = ${rowId}::uuid`);
       // 2 回目に着金が見つかれば（1 回目の 0 件が RPC の取りこぼしだった）貼る。
       await reset();
       const flaky = await seedRow();
       await run({ readTransfers: reader, readNonces: memosOf({}) });
+      await ageZeroRead(flaky);
       const s2 = await run({ readTransfers: async () => [transfer()], readNonces: memosOf({ [tx("c1")]: [memo("a1")] }) });
       assert.deepEqual(s2.links, [{ purchaseId: flaky, txHash: tx("c1") }]);
       // 2 回とも 0 件なら決まり、3 回目は読まない。
@@ -183,9 +192,11 @@ if (!TEST_DB) {
       const none = await seedRow({ http: 502 });
       reads = 0;
       await run({ readTransfers: reader, readNonces: memosOf({}) });
+      await ageZeroRead(none);
       await run({ readTransfers: reader, readNonces: memosOf({}) });
       m = (await read(none)).rawResponseMeta?.lateChainRead;
       assert.deepEqual({ decided: m?.decided, tries: m?.tries, zeroReads: m?.zeroReads }, { decided: true, tries: 2, zeroReads: 2 });
+      await ageZeroRead(none);
       await run({ readTransfers: reader, readNonces: memosOf({}) });
       assert.equal(reads, 2);
       assert.equal((await read(none)).status, "settle_failed");

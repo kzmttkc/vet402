@@ -10,7 +10,14 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeSolanaMemoReader, makeSolanaTransferReader, SOLANA_LATE_READ_MAX_PAGES, SOLANA_LATE_READ_SIGNATURES_PER_PAGE, type SolanaLateReadRpc } from "@/lib/settlements/recover-late";
+import {
+  createSolanaLateReadCache,
+  makeSolanaMemoReader,
+  makeSolanaTransferReader,
+  SOLANA_LATE_READ_MAX_PAGES,
+  SOLANA_LATE_READ_SIGNATURES_PER_PAGE,
+  type SolanaLateReadRpc,
+} from "@/lib/settlements/recover-late";
 import { solanaUsdcTokenAccount } from "@/lib/settlements/index-solana";
 import { SOLANA_USDC_MINT } from "@/lib/observatory/sol402-payer";
 
@@ -135,4 +142,36 @@ test("Solana memo reader: returns the memos lowercased; null for another network
   assert.equal(await makeSolanaMemoReader(fakeRpc({ txs: {} }).rpc)({ network: SOLANA, txHash: SIG_IN, payer: PAYER }), null);
   assert.equal(await makeSolanaMemoReader(fakeRpc({ txs: { [SIG_IN]: { ...paid, meta: { ...paid.meta!, err: {} } } } }).rpc)({ network: SOLANA, txHash: SIG_IN, payer: PAYER }), null);
   assert.equal(await makeSolanaMemoReader(fakeRpc({ txs: { [SIG_IN]: { ...paid, memos: null } } }).rpc)({ network: SOLANA, txHash: SIG_IN, payer: PAYER }), null);
+});
+
+test("Solana reader: within one run the signature pages and the transactions are read once and shared with the memo reader", async () => {
+  const secs = Math.floor(AT / 1000);
+  const older = secs - 2 * 86_400;
+  const full = Array.from({ length: SOLANA_LATE_READ_SIGNATURES_PER_PAGE }, (_, i) => ({ signature: `${SIG_NEW}${i}`, blockTime: secs + 7_200 - i * 10 }));
+  const f = fakeRpc({
+    pages: [full, [{ signature: SIG_IN, blockTime: secs + 2 }, { signature: SIG_OLD, blockTime: older + 2 }, { signature: `${SIG_OLD}z`, blockTime: older - 7_200 }]],
+    txs: { [SIG_IN]: paid, [SIG_OLD]: { ...paid, blockTime: older + 2 } },
+  });
+  const cache = createSolanaLateReadCache();
+  const read = makeSolanaTransferReader(f.rpc, cache);
+  // Row 1: a window two hours wide at the top of the history — one page is enough.
+  assert.equal((await read({ ...query, from: new Date((secs + 3_600) * 1000), to: new Date((secs + 7_200) * 1000) }))?.length, 0);
+  assert.equal(f.calls.length, 1);
+  // Row 2: the window of the purchase — the first page is reused, one more page is fetched.
+  assert.equal((await read(query))?.length, 1);
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.txReads, [SIG_IN]);
+  // Row 3: a window two days older — no further page (the list already reaches past it), one more transaction.
+  const out = await read({ ...query, from: new Date((older - 120) * 1000), to: new Date((older + 1_800) * 1000) });
+  assert.equal(out?.length, 1);
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.txReads, [SIG_IN, SIG_OLD]);
+  // The same window again and the memo reader on the same cache: nothing is fetched twice.
+  assert.equal((await read(query))?.length, 1);
+  assert.deepEqual(await makeSolanaMemoReader(f.rpc, cache)({ network: SOLANA, txHash: SIG_IN, payer: PAYER }), ["vet402", MEMO]);
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.txReads, [SIG_IN, SIG_OLD]);
+  // A fresh cache (another run) reads again.
+  await makeSolanaTransferReader(f.rpc)(query);
+  assert.equal(f.calls.length, 4);
 });

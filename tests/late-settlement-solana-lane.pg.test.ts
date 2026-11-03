@@ -128,6 +128,11 @@ if (!TEST_DB) {
       await run({ readTransfers: none, readNonces: async () => [] });
       const m = (await read(id)).rawResponseMeta?.lateChainRead;
       assert.deepEqual({ decided: m?.decided, zeroReads: m?.zeroReads, tries: m?.tries }, { decided: false, zeroReads: 1, tries: 1 });
+      // 同じ日のうちは読み直さない。前回の 0 件を 13 時間前に動かすと、次の回が 2 回目になって決まる。
+      await run({ readTransfers: none, readNonces: async () => [] });
+      assert.equal(reads, 1);
+      await db.execute(sql`UPDATE x402_l1_purchases SET raw_response_meta = jsonb_set(raw_response_meta, '{lateChainRead,zeroReadAt}',
+        to_jsonb(to_char((now() - make_interval(hours => ${late.ZERO_READ_SPACING_HOURS + 1}::int)) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'))) WHERE id = ${id}::uuid`);
       await run({ readTransfers: none, readNonces: async () => [] });
       assert.equal((await read(id)).rawResponseMeta?.lateChainRead?.decided, true);
       await run({ readTransfers: none, readNonces: async () => [] });

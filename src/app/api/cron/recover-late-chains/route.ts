@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
-import { makeChainNonceReader, makeChainTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
+import { createSolanaLateReadCache, makeChainNonceReader, makeChainTransferReader, recoverLateSettlements } from "@/lib/settlements/recover-late";
 import { readAuthorizationNonces, readAuthorizationState } from "@/lib/observatory/settlement-verify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -33,9 +33,11 @@ export async function GET(request: NextRequest) {
   }
   const deadlineAt = Date.now() + (maxDuration - 15) * 1000;
   try {
+    // Solana の署名一覧と取引は、この 1 回の実行の中で両方の読み手が使い回す。
+    const solanaCache = createSolanaLateReadCache();
     const lateSettlements = await recoverLateSettlements({
-      readNonces: makeChainNonceReader({ evm: readAuthorizationNonces }),
-      readTransfers: makeChainTransferReader(),
+      readNonces: makeChainNonceReader({ evm: readAuthorizationNonces, solanaCache }),
+      readTransfers: makeChainTransferReader({ solanaCache }),
       readAuthorizationState,
       chainReadLimit: 20,
       deadlineAt,

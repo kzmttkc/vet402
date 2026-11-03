@@ -10,9 +10,12 @@
 //     （before: settle_failed + tx、after: settled + tx + failedReceiptVerified）。raw_response_meta.failedReceiptVerified が付く。
 //  2. 一致しなければ status・tx・settlement_verified は変えない。refute しない（売り手は失敗と答えていて決済を主張していない）。
 //     訂正ログも書かない。印（failedReceiptCheck.mismatches）だけ増え、FAILED_RECEIPT_MAX_CHECKS 回で読むのをやめる。
-//  3. 一時的な理由（rpc_unavailable …）は数えない。
+//  3. 一時的な理由（rpc_unavailable …）は mismatches に数えない。読んだ回数（checks）は理由を問わず数え、FAILED_RECEIPT_MAX_READS で
+//     読むのをやめる（毎日選ばれて古い順の枠を取り続けない）。settle_failed の行は別の小さな枠（FAILED_RECEIPT_ROWS_PER_RUN）で
+//     settle_claimed / settled の後ろ。
 //  4. 同じ tx を別の行が主張していれば読まない。
 //  5. 従来の settle_claimed の行の経路は変わらない。
+//  6. auth_nonce の無い行と Stellar（額・宛先だけで照合する）の行は読まない——tx が実在してもこの購入のものと言えない。
 // Run: TEST_DATABASE_URL=postgres://localhost/<自分用のテスト DB> \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/settlement-verifier-failed-receipt.pg.test.ts
 // ============================================================
@@ -39,14 +42,14 @@ if (!TEST_DB) {
   const BLOCK_TIME = new Date("2026-10-24T12:01:55Z");
 
   test("settle_failed + 受領証の tx は、一致したときだけ settled", async (t) => {
-    const { runSettlementVerification, FAILED_RECEIPT_MAX_CHECKS } = await import("@/lib/observatory/settlement-verifier");
+    const { runSettlementVerification, FAILED_RECEIPT_MAX_CHECKS, FAILED_RECEIPT_MAX_READS, FAILED_RECEIPT_ROWS_PER_RUN } = await import("@/lib/observatory/settlement-verifier");
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
     const { sql, eq } = await import("drizzle-orm");
     const db = getDb()!;
 
     const reset = () => db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, observed_purchases, settlements, correction_log`);
-    const seedRow = async (over: { status?: string; tx?: string | null; http?: number; meta?: unknown; verified?: boolean } = {}) => {
+    const seedRow = async (over: { status?: string; tx?: string | null; http?: number; meta?: unknown; verified?: boolean; network?: string; nonce?: string | null; attemptedAt?: Date } = {}) => {
       const endpointId = randomUUID();
       await db.insert(schema.x402Endpoints).values({
         id: endpointId,
@@ -54,7 +57,7 @@ if (!TEST_DB) {
         resourceUrl: `https://api.getretold.example/${endpointId}`,
         method: "POST",
         payTo: PAY_TO,
-        network: BASE,
+        network: over.network ?? BASE,
         status: "active",
         lastSeenAt: new Date(),
       });
@@ -63,14 +66,14 @@ if (!TEST_DB) {
         id,
         endpointId,
         resourceKey: `api.getretold.example/${endpointId}`,
-        network: BASE,
+        network: over.network ?? BASE,
         status: over.status ?? "settle_failed",
-        attemptedAt: AT,
+        attemptedAt: over.attemptedAt ?? AT,
         payer: PAYER,
         payTo: PAY_TO,
         amountUnits: AMOUNT,
         spentUnits: AMOUNT,
-        authNonce: NONCE,
+        authNonce: over.nonce === undefined ? NONCE : over.nonce,
         txHash: over.tx === undefined ? TX : over.tx,
         httpStatusPaid: over.http ?? 402,
         payloadNonEmpty: false,
@@ -152,8 +155,9 @@ if (!TEST_DB) {
         assert.equal(row.txHash, TX);
         assert.equal(row.settlementVerified, null);
         assert.equal(row.settlementVerifyReason, before.settlementVerifyReason);
-        const meta = row.rawResponseMeta as { failedReceiptCheck?: { mismatches?: number; lastReason?: string } };
+        const meta = row.rawResponseMeta as { failedReceiptCheck?: { mismatches?: number; checks?: number; lastReason?: string } };
         assert.equal(meta.failedReceiptCheck?.mismatches, i);
+        assert.equal(meta.failedReceiptCheck?.checks, i);
         assert.equal(meta.failedReceiptCheck?.lastReason, "nonce_not_used");
         assert.equal((await corrections(id)).length, 0);
       }
@@ -169,26 +173,71 @@ if (!TEST_DB) {
       assert.equal(((await read(odd)).rawResponseMeta as { failedReceiptCheck?: { mismatches?: number } }).failedReceiptCheck?.mismatches, 1);
     });
 
-    await t.test("3: 一時的な理由は数えない（次の回にまた読む）", async () => {
+    await t.test("3: 一時的な理由は mismatches に数えない。読んだ回数は数え、上限で読むのをやめる", async () => {
       await reset();
       const id = await seedRow();
       const before = await read(id);
-      for (const reason of ["rpc_unavailable", "insufficient_confirmations", "chain_not_yet_verifiable"] as const) {
+      let reads = 0;
+      for (const reason of ["rpc_unavailable", "insufficient_confirmations", "chain_not_yet_verifiable", "tx_not_found"] as const) {
         const s = await runWith(async () => ({ ok: false, reason })).summary;
+        reads++;
         assert.equal(s.scanned, 1, reason);
         assert.equal(s.failedReceiptLeft, 1, reason);
-        assert.deepEqual(await read(id), before, reason);
+        const row = await read(id);
+        assert.equal(row.status, "settle_failed", reason);
+        assert.equal(row.txHash, TX, reason);
+        assert.equal(row.settlementVerified, null, reason);
+        assert.equal(row.settlementVerifyReason, before.settlementVerifyReason, reason);
+        const meta = row.rawResponseMeta as { failedReceiptCheck?: { mismatches?: number; checks?: number; lastReason?: string } };
+        assert.deepEqual({ checks: meta.failedReceiptCheck?.checks, mismatches: meta.failedReceiptCheck?.mismatches, lastReason: meta.failedReceiptCheck?.lastReason }, { checks: reads, mismatches: 0, lastReason: reason });
+        assert.equal((await corrections(id)).length, 0, reason);
       }
+      while (reads < FAILED_RECEIPT_MAX_READS) {
+        await runWith(async () => ({ ok: false, reason: "rpc_unavailable" })).summary;
+        reads++;
+      }
+      const over = await runWith(ok).summary;
+      assert.equal(over.scanned, 0, "読んだ回数が上限に達した行は選ばない");
+      assert.equal((await read(id)).status, "settle_failed");
     });
 
-    await t.test("4: 同じ tx を別の行が主張していれば読まない", async () => {
+    await t.test("4: 同じ tx を別の行が主張していれば読まない（読んだ回数は数える）", async () => {
       await reset();
       const id = await seedRow();
       await seedRow({ status: "settled", verified: true, meta: { phase: "paid", status: 200 } });
       const { summary, inputs } = runWith(ok);
       await summary;
       assert.equal(inputs.filter((i) => (i as { txHash: string }).txHash === TX).length, 0);
-      assert.equal((await read(id)).status, "settle_failed");
+      const row = await read(id);
+      assert.equal(row.status, "settle_failed");
+      const meta = row.rawResponseMeta as { failedReceiptCheck?: { mismatches?: number; checks?: number } };
+      assert.deepEqual({ checks: meta.failedReceiptCheck?.checks, mismatches: meta.failedReceiptCheck?.mismatches }, { checks: 1, mismatches: 0 });
+    });
+
+    await t.test("6: auth_nonce の無い行と Stellar の行は読まない。settle_failed の枠は小さく、settle_claimed の後ろ", async () => {
+      await reset();
+      const noNonce = await seedRow({ nonce: null, tx: `0x${"11".repeat(32)}` });
+      const blank = await seedRow({ nonce: "   ", tx: `0x${"12".repeat(32)}` });
+      const stellar = await seedRow({ network: "stellar:pubnet", tx: "a".repeat(64) });
+      const { summary, inputs } = runWith(ok);
+      const s = await summary;
+      assert.equal(s.scanned, 0);
+      assert.deepEqual(inputs, []);
+      for (const id of [noNonce, blank, stellar]) {
+        const row = await read(id);
+        assert.equal(row.status, "settle_failed");
+        assert.equal((row.rawResponseMeta as { failedReceiptCheck?: unknown }).failedReceiptCheck, undefined, "読んだ印も付かない");
+      }
+      // 枠: settle_failed の行が FAILED_RECEIPT_ROWS_PER_RUN + 1 行あっても、1 回に読むのは上限まで。settle_claimed の行が先。
+      await reset();
+      const claimed = await seedRow({ status: "settle_claimed", http: 200, meta: { phase: "paid", status: 200 }, attemptedAt: new Date(AT.getTime() + 86_400_000) });
+      for (let i = 0; i < FAILED_RECEIPT_ROWS_PER_RUN + 1; i++) await seedRow({ tx: `0x${(i + 32).toString(16).padStart(2, "0").repeat(32)}`, attemptedAt: new Date(AT.getTime() + i * 1000) });
+      const second = runWith(ok);
+      const s2 = await second.summary;
+      assert.equal(s2.scanned, FAILED_RECEIPT_ROWS_PER_RUN + 1);
+      assert.equal((second.inputs[0] as { txHash: string }).txHash, TX, "settle_claimed の行（新しくても）が先");
+      assert.equal((await read(claimed)).status, "settled");
+      assert.equal(s2.failedReceiptSettled, FAILED_RECEIPT_ROWS_PER_RUN);
     });
 
     await t.test("5: 従来の settle_claimed の行の経路は変わらない（不一致は refuted・訂正の形も従来どおり）", async () => {
