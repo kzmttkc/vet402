@@ -14,6 +14,9 @@
 //  4. RPC が読めない（Transfer・レシートのどちらでも）・読み手が無いなら、行を 1 文字も変えない。
 //  5. 署名していない行（auth_nonce なし・形の不正）は選ばない。Arc の行も選ばない（このレーンは Celo だけ）。
 //  6. Base のレーンは変えない: Base の行の上限に Celo の行は数えず、Base の貼り方（nonce を読まない）も従来どおり。
+//  7. 2026-11-03（数字の監査）: Celo も BNB と同じく認可の状態で決める。ログの 0 件では決めない（forno はレシートを null で
+//     返すことがある）。使われていない認可の行だけ decided: true、使われた行は decided: false の印で読み直す、
+//     認可の読み手が無い回は決めない（貼るのは従来どおり nonce で）。
 // Run: TEST_DATABASE_URL=postgres://localhost/<自分用のテスト DB> \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/late-settlement-celo.pg.test.ts
 // ============================================================
@@ -267,7 +270,8 @@ if (!TEST_DB) {
         const before = await get(id);
         const tr = transfersOf([transfer()]);
         const nr = noncesOf({ [tx("23")]: [...consumed] });
-        const s = await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader });
+        // 2026-11-03: 認可は使われている（別の tx で）。決めない・貼らない。
+        const s = await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: async () => true });
         assert.equal(s.recovered, 0, name);
         assert.equal(nr.calls.length, 1, name);
         const row = await get(id);
@@ -275,19 +279,25 @@ if (!TEST_DB) {
         assert.equal(row.txHash, null, name);
         assert.equal(row.settlementVerified, before.settlementVerified, name);
         assert.equal((await corrections(id)).length, 0, name);
-        // 窓に額ちょうどの着金はあったが貼れなかった行: 決まっていない（上限まで読み直す）。lateSettlement は付かない。
-        const meta = row.rawResponseMeta as { lateSettlement?: unknown; lateChainRead: { decided: boolean; tries: number; exactTransfers: number } };
+        // 窓に額ちょうどの着金はあったが貼れなかった行: 決まっていない（使われた認可の印・tries は増えない）。lateSettlement は付かない。
+        const meta = row.rawResponseMeta as { lateSettlement?: unknown; lateChainRead: { decided: boolean; tries: number; by?: string } };
         assert.equal(meta.lateSettlement, undefined, name);
-        assert.deepEqual({ decided: meta.lateChainRead.decided, tries: meta.lateChainRead.tries, exact: meta.lateChainRead.exactTransfers }, { decided: false, tries: 1, exact: 1 }, name);
+        assert.deepEqual({ decided: meta.lateChainRead.decided, tries: meta.lateChainRead.tries, by: meta.lateChainRead.by }, { decided: false, tries: 0, by: "authorization_state" }, name);
       }
-      // 読み直しは上限まで。その間も貼らない。
+      // 使われた認可の行は毎回読み直す（上限で止めない）。その間も貼らない。
       await reset();
       const id = await seedRow();
       const tr = transfersOf([transfer()]);
       const nr = noncesOf({ [tx("23")]: [OTHER_NONCE] });
-      for (let i = 0; i < 5; i++) await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader });
-      assert.equal(tr.calls.length, late.CHAIN_READ_MAX_TRIES);
+      for (let i = 0; i < 5; i++) await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: async () => true });
+      assert.equal(tr.calls.length, 5);
       assert.equal((await get(id)).txHash, null);
+      // 認可の読み手が無い回は、着金があっても貼れなければ印も付けない（決めない）。
+      await reset();
+      const quiet = await seedRow();
+      const quietBefore = await get(quiet);
+      await late.recoverLateSettlements({ readTransfers: transfersOf([transfer()]).reader, readNonces: noncesOf({ [tx("23")]: [OTHER_NONCE] }).reader });
+      await assertUntouched(quiet, quietBefore, "認可の読み手が無い回の、貼れなかった行");
     });
 
     await t.test("3: 額・宛先・払い元・窓のどれかが違う着金は貼らない（レシートを読みにも行かない）", async () => {
@@ -397,12 +407,15 @@ if (!TEST_DB) {
         assert.equal(nr.calls.length, 0, name);
         await assertUntouched(id, before, name);
       }
-      assert.deepEqual(late.CHAIN_READ_LANES.map((l) => [l.key, [...l.networks], l.nonceBound]), [
-        ["base", ["eip155:8453", "base"], false],
-        ["celo", ["eip155:42220"], true],
-        ["bnb", ["eip155:56"], true],
-        ["arbitrum", ["eip155:42161"], true],
-        ["avalanche", ["eip155:43114"], true],
+      assert.deepEqual(late.CHAIN_READ_LANES.map((l) => [l.key, [...l.networks], l.nonceBound, l.decidesByAuthorizationState ?? false]), [
+        ["base", ["eip155:8453", "base"], false, false],
+        ["celo", ["eip155:42220"], true, true],
+        ["bnb", ["eip155:56"], true, true],
+        ["arbitrum", ["eip155:42161"], true, false],
+        ["avalanche", ["eip155:43114"], true, false],
+        ["tempo", ["eip155:4217"], true, false],
+        ["arc", ["eip155:5042"], true, true],
+        ["solana", ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"], true, false],
       ]);
     });
 
@@ -482,20 +495,34 @@ if (!TEST_DB) {
       await assertUntouched(celo2, before, "nonce の読み手が無い回の Celo の行");
     });
 
-    await t.test("8: 着金が窓に無い行は「決まった」と印して二度と読まない（売り手が決済していない購入）", async () => {
+    await t.test("8: 認可が使われていない行は「決まった」と印して二度と読まない（売り手が決済していない購入）。ログの 0 件では決めない", async () => {
       await reset();
       const id = await seedRow({ http: 402, meta: { phase: "paid", status: 402 } });
       const tr = transfersOf([]);
       const nr = noncesOf({});
-      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader });
-      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader });
-      assert.equal(tr.calls.length, 1);
+      const seen: string[] = [];
+      const unused = async (q: { nonce: string }) => (seen.push(q.nonce), false);
+      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: unused });
+      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: unused });
+      assert.equal(tr.calls.length, 0, "使われていない認可の行のためにログを読まない");
       assert.equal(nr.calls.length, 0);
+      assert.deepEqual(seen, [NONCE], "決まった行は次の回に読まない");
       const row = await get(id);
       assert.equal(row.status, "settle_failed");
       assert.equal(row.txHash, null);
-      assert.equal((row.rawResponseMeta as { lateChainRead: { decided: boolean } }).lateChainRead.decided, true);
+      assert.deepEqual(
+        { decided: (row.rawResponseMeta as { lateChainRead: { decided: boolean; by?: string } }).lateChainRead.decided, by: (row.rawResponseMeta as { lateChainRead: { by?: string } }).lateChainRead.by },
+        { decided: true, by: "authorization_state" },
+      );
       assert.equal((await corrections(id)).length, 0);
+      // ログが 0 件でも、認可の読み手が無い・読めない回は決めない（次の回にまた読む）。
+      await reset();
+      const open = await seedRow({ http: 402, meta: { phase: "paid", status: 402 } });
+      const openBefore = await get(open);
+      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader });
+      await late.recoverLateSettlements({ readTransfers: tr.reader, readNonces: nr.reader, readAuthorizationState: async () => null });
+      assert.equal(tr.calls.length, 2);
+      await assertUntouched(open, openBefore, "認可を確かめられない回");
     });
 
     await t.test("9（点検・中 1）: 応答なしの行は、それより新しい 402 の行より先に読む。402 の行は最後", async () => {
@@ -517,17 +544,19 @@ if (!TEST_DB) {
         return q.payTo === payNoAnswer ? [transfer()] : [];
       };
       const nr = noncesOf({ [tx("23")]: [NONCE] });
-      const s = await late.recoverLateSettlements({ readTransfers: reader, readNonces: nr.reader, chainReadLimit: 1 });
+      // 認可は全部使われている（使われていない行はログを読まずに決まるので、並びの検査から外れる）。
+      const used = async () => true;
+      const s = await late.recoverLateSettlements({ readTransfers: reader, readNonces: nr.reader, readAuthorizationState: used, chainReadLimit: 1 });
       assert.deepEqual(order, [payNoAnswer], "1 行しか読めない回は、応答なしの行（いちばん古い）を読む");
       assert.deepEqual(s.links, [{ purchaseId: noAnswer, txHash: tx("23") }]);
-      for (let i = 0; i < 4; i++) await late.recoverLateSettlements({ readTransfers: reader, readNonces: nr.reader, chainReadLimit: 1 });
-      assert.deepEqual(order, [payNoAnswer, pay2xx, pay500, pay402a, pay402b], "次に 2xx、ほかの応答、最後に 402（新しい順）");
+      for (let i = 0; i < 4; i++) await late.recoverLateSettlements({ readTransfers: reader, readNonces: nr.reader, readAuthorizationState: used, chainReadLimit: 1 });
+      assert.deepEqual(order, [payNoAnswer, pay2xx, pay500, pay402a, pay402b], "次に 2xx、ほかの応答、最後に 402（新しい順）。読んだ行は未読の行の後ろへ");
       // 上限に余裕がある回でも順は同じ（持ち時間が先に尽きたときに残るのが 402 の行になる）。
       await reset();
       await seedRow({ payTo: pay402a, http: 402, attemptedAt: new Date("2026-10-11T08:30:34Z"), nonce: nonce("41"), meta: { phase: "paid", status: 402 } });
       await seedRow({ payTo: payNoAnswer, attemptedAt: AT });
       const order2: string[] = [];
-      await late.recoverLateSettlements({ readTransfers: async (q) => (order2.push(q.payTo), []), readNonces: nr.reader });
+      await late.recoverLateSettlements({ readTransfers: async (q) => (order2.push(q.payTo), []), readNonces: nr.reader, readAuthorizationState: used });
       assert.deepEqual(order2, [payNoAnswer, pay402a]);
     });
 
@@ -636,6 +665,9 @@ if (!TEST_DB) {
         ["bnb", true, true],
         ["arbitrum", true, true],
         ["avalanche", true, true],
+        ["tempo", true, true],
+        ["arc", true, true],
+        ["solana", true, true],
       ]);
       assert.equal(late.CHAIN_READ_BUDGET_MS, 45_000, "Base の持ち時間は変えていない");
       assert.equal(late.CELO_CHAIN_READ_BUDGET_MS, 30_000);

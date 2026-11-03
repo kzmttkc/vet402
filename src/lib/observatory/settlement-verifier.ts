@@ -129,6 +129,12 @@ export const TRANSIENT_REASONS = new Set([
 export const INSTRUMENT_FAILURE_REASONS = new Set(["wrong_chain", "malformed_tx"]);
 
 /**
+ * settle_failed のまま受領証の tx を持つ行を、確定的な不一致で何回まで読み直すか（2026-11-03）。
+ * 回数は raw_response_meta.failedReceiptCheck.mismatches。一時的な理由は数えない。
+ */
+export const FAILED_RECEIPT_MAX_CHECKS = 3;
+
+/**
  * その行の tx は遅延回収（recover-late.ts）が貼ったものか。純関数。
  * 印は raw_response_meta.lateSettlement。2026-09-19 以降の回収は貼った tx を lateSettlement.txHash に残すので、
  * あればいまの tx_hash と一致することも要求する（旧い行には無い——印だけで判定する）。
@@ -188,6 +194,13 @@ export type VerifySettlementsSummary = {
   rowErrors: number;
   deferred: number;
   evidenceWritten: number;
+  /**
+   * settle_failed のまま受領証の tx を持っていた行のうち、その tx が行の期待値（払い元・宛先・額・一回性の値）と
+   * チェーンで一致して settled に直した件数（2026-11-03・数字の監査 結論 #1 型 (b)）。verified にも数える。
+   */
+  failedReceiptSettled: number;
+  /** 同じ行のうち、読んで一致しなかった・読めなかった件数。行の status は変えない（印だけ）。 */
+  failedReceiptLeft: number;
   deadlineHit: boolean;
   /**
    * 我々の計器が壊れていた理由（2026-09-04 監査 P1-3）。null が正常。
@@ -264,6 +277,8 @@ export async function runSettlementVerification(options?: {
     rowErrors: 0,
     deferred: 0,
     evidenceWritten: 0,
+    failedReceiptSettled: 0,
+    failedReceiptLeft: 0,
     deadlineHit: false,
     instrumentFailure: null,
     wrongChainNetworks: [],
@@ -332,7 +347,14 @@ export async function runSettlementVerification(options?: {
            -- 2026-09-29 第5巡: 受領証の tx がハッシュの形ですらない行は、期限の日数の後に確定する（チェーンは読まない）。
            OR (pu.status = 'settle_claimed_unverifiable'
                AND pu.network IN (${sql.join(EXPIRY_NETWORKS.map((n) => sql`${n}`), sql`, `)})
-               AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day')))
+               AND pu.attempted_at < now() - (${SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS} * interval '1 day'))
+           -- 2026-11-03（数字の監査・結論 #1 型 (b)）: settle_failed のまま受領証の tx を持つ行（売り手が 402 / 405 で
+           -- tx を名指した・getretold と svm402）。読んで行の期待値と一致したときだけ settled に直す。一致しなければ
+           -- status は変えず（refute もしない）、FAILED_RECEIPT_MAX_CHECKS 回の確定的な不一致で読むのをやめる。
+           OR (pu.status = 'settle_failed'
+               AND btrim(pu.tx_hash) <> ''
+               AND coalesce(pu.raw_response_meta->>'circleGatewayRail', '') <> 'true'
+               AND coalesce((pu.raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) < ${FAILED_RECEIPT_MAX_CHECKS}::int))
     ORDER BY pu.attempted_at ASC
     LIMIT ${limit}
   `);
@@ -592,6 +614,176 @@ export async function runSettlementVerification(options?: {
   }
 
   /**
+   * 照合が一致した行を settled にする（1 箇所に集約・2026-11-03 に verifyOneRow から切り出した）。台帳の UPDATE と
+   * 訂正ログは同じ文。そのあと決済索引・Registry の hook・スコア証拠。settle_failed から直した行（受領証の tx）は
+   * 訂正の before / after に tx と経路の印（failedReceiptVerified）を足す（公開の /corrections で見分けられる）。
+   */
+  async function settleRow(row: PurchaseRow, result: Extract<Awaited<ReturnType<typeof verifyL1Settlement>>, { ok: true }>): Promise<void> {
+    // 台帳のブロック時刻。無い（null・Invalid Date）ときはキーを足さない。
+    // raw_response_meta は SQL の中で結合し、既存のキーは消さない。
+    const blockIso =
+      result.blockTimestamp && Number.isFinite(result.blockTimestamp.getTime())
+        ? result.blockTimestamp.toISOString()
+        : null;
+    const fromFailedReceipt = row.status === "settle_failed";
+    // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す——2026-09-29 から同じ文で。
+    const changed = await updateWithCorrection(db!, {
+      update: sql`
+        UPDATE x402_l1_purchases
+        SET status = 'settled',
+            settlement_verified = true,
+            settlement_verified_at = now(),
+            settlement_verify_reason = NULL,
+            settlement_block_number = ${String(result.blockNumber)}::bigint,
+            raw_response_meta = CASE
+              WHEN ${blockIso}::text IS NULL AND NOT ${fromFailedReceipt}::boolean THEN raw_response_meta
+              ELSE coalesce(
+                     CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END,
+                     '{}'::jsonb
+                   )
+                   || CASE WHEN ${blockIso}::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('settlementBlockTime', ${blockIso}::text) END
+                   || CASE WHEN ${fromFailedReceipt}::boolean
+                           THEN jsonb_build_object('failedReceiptVerified', jsonb_build_object(
+                                  'priorStatus', 'settle_failed',
+                                  'note', 'the seller named this transaction on a failed response; vet402 read it on-chain and it carries this purchase''s payer, payee, amount and one-time value',
+                                  'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')))
+                           ELSE '{}'::jsonb END
+            END
+        WHERE id = ${row.id}::uuid AND status = ${row.status}::text
+        RETURNING id::text AS correction_subject_id`,
+      subjectType: "purchase",
+      level: "l1",
+      before: { json: fromFailedReceipt ? { status: row.status, txHash: row.tx_hash } : { status: row.status } },
+      after: {
+        json: fromFailedReceipt
+          ? { status: "settled", blockNumber: String(result.blockNumber), txHash: row.tx_hash, failedReceiptVerified: true }
+          : { status: "settled", blockNumber: String(result.blockNumber) },
+      },
+      reason: "settlement_backfill",
+    });
+    // 読んだ時から status が動いていれば（別の経路が先に書いた）0 行。settled と数えず、hook も証拠も書かない。
+    if (changed.length === 0) {
+      summary.deferred++;
+      return;
+    }
+    summary.verified++;
+    if (fromFailedReceipt) summary.failedReceiptSettled++;
+    invalidateDecisionCache(row.endpoint_id); // settled は判定材料（このインスタンスのみ・cache.ts 参照）
+
+    // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
+    // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
+    // 索引の失敗は照合の成否を変えない——次回の日次 ingestL1 が拾う。
+    try {
+      await ingestL1({ onlyPurchaseRowId: row.id });
+    } catch (error) {
+      logServerErrorSafe("settlement-verifier.ingest-l1", error);
+    }
+
+    // ERC-8004 Validation Registry（フラグOFF既定・graceful）。書けるのはここで
+    // 確定した settled だけ。L2 は conform / mismatch が確定しているときだけ
+    // （未検査・宣言なしは書かない）。
+    await fireHook(
+      hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: true, txHash: row.tx_hash, network: row.network }),
+    );
+    if (row.l2_schema === "match" || row.l2_schema === "mismatch") {
+      await fireHook(
+        hooks.l2({
+          endpointId: row.endpoint_id,
+          payTo: row.pay_to,
+          l2: row.l2_schema === "match" ? "conform" : "mismatch",
+          txHash: row.tx_hash,
+          network: row.network,
+        }),
+      );
+    }
+
+    // スコア証拠はここでだけ書く。delivery_verified の規則はランナーと共有。
+    try {
+      const created = await recordObservedPurchase({
+        wallet: row.payer!,
+        counterparty: row.pay_to!,
+        amount: row.amount_units!,
+        txHash: row.tx_hash,
+        resource: row.resource_url,
+        blockTimestamp: result.blockTimestamp,
+        deliveryVerified: isDeliveryVerified({
+          httpStatusPaid: row.http_status_paid,
+          payloadNonEmpty: row.payload_non_empty === true,
+          l2Schema: row.l2_schema ?? "no_declaration",
+        }),
+        observedBy: `observatory-l1-verified:${row.id}`,
+      });
+      if (created.created) summary.evidenceWritten++;
+    } catch (error) {
+      // 証拠が書けなくても照合の結果は正典（x402_l1_purchases）に残る。
+      // 黙って消さない。
+      logServerErrorSafe("observatory.settlement_verify.evidence", error);
+    }
+  }
+
+  /**
+   * settle_failed のまま受領証の tx を持つ行（2026-11-03・数字の監査 結論 #1 型 (b)）。
+   * 売り手が 402 / 405 の応答で tx を名指し、PAYMENT-RESPONSE の success が無いので settle_failed に書かれたが、
+   * チェーンではその tx が実在し、この購入の払い元・宛先・額・一回性の値を運んでいた（getretold・svm402）。
+   *   - 期待値は行のもの（署名した値）で読む。一致したら settled（settleRow・訂正ログは settlement_backfill）。
+   *   - 一致しない・読めないときは status を変えない（refute もしない——売り手は失敗と答えていて、決済の主張をしていない）。
+   *     確定的な不一致の回数だけ raw_response_meta.failedReceiptCheck に残し、FAILED_RECEIPT_MAX_CHECKS 回で読むのをやめる。
+   *     一時的な理由（rpc_unavailable・確定数不足 …）は数えない（次の回にまた読む）。
+   *   - 同じ tx を別の行が主張していたら読まない（どちらのものか言えない）。
+   */
+  async function verifyFailedReceiptRow(row: PurchaseRow): Promise<void> {
+    if (Number(row.tx_claim_count ?? 1) > 1) {
+      summary.failedReceiptLeft++;
+      summary.deferred++;
+      return;
+    }
+    if (wrongChain.has(row.network)) {
+      summary.failedReceiptLeft++;
+      summary.deferred++;
+      return;
+    }
+    const result = await verify({
+      txHash: row.tx_hash,
+      network: row.network,
+      expectedPayTo: row.pay_to!,
+      expectedPayer: row.payer!,
+      expectedAmountUnits: row.amount_units!,
+      expectedAuthNonce: row.auth_nonce,
+    });
+    if (result.ok) {
+      await settleRow(row, result);
+      return;
+    }
+    summary.failedReceiptLeft++;
+    summary.deferred++;
+    // 受領証の tx がハッシュの形でない（malformed_tx）のは、ここでは計器の故障ではなく売り手の原文の形——確定的な不一致として数え、
+    // 上限で読むのをやめる。wrong_chain は RPC の設定の事故なので、通常の行と同じく鳴らしてそのチェーンの残りを飛ばす。
+    if (TRANSIENT_REASONS.has(result.reason) && result.reason !== "malformed_tx") {
+      if (result.reason === "wrong_chain") {
+        logServerErrorSafe(
+          "settlement-verifier.instrument_failure",
+          `${result.reason} on purchase ${row.id} (${row.network})${result.detail ? `: ${result.detail}` : ""}`,
+        );
+        summary.instrumentFailure = result.reason;
+        if (!wrongChain.has(row.network)) {
+          wrongChain.add(row.network);
+          summary.wrongChainNetworks.push(row.network);
+        }
+      }
+      return;
+    }
+    // 確定的な不一致: 印だけ（status・tx・照合の列は変えない。公開の訂正ログにも載せない——公開の状態は変わっていない）。
+    await db!.execute(sql`
+      UPDATE x402_l1_purchases
+      SET raw_response_meta = coalesce(CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END, '{}'::jsonb)
+          || jsonb_build_object('failedReceiptCheck', jsonb_build_object(
+               'mismatches', coalesce((raw_response_meta->'failedReceiptCheck'->>'mismatches')::int, 0) + 1,
+               'lastReason', ${`${result.reason}${result.detail ? `: ${result.detail}` : ""}`.slice(0, 200)}::text,
+               'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')))
+      WHERE id = ${row.id}::uuid AND status = 'settle_failed'`);
+  }
+
+  /**
    * 1 行ぶんの照合（2026-09-19 レビュー 2 巡目で関数へ切り出した）。呼び手が例外を受け止めて
    * 次の行へ進むので、1 件の DB エラー・RPC クライアントの故障が残りの行を道連れにしない。
    */
@@ -622,6 +814,12 @@ export async function runSettlementVerification(options?: {
       return;
     }
 
+    // 2026-11-03: settle_failed のまま受領証の tx を持つ行は、上へしか動かさない（settled か、そのまま）。
+    if (row.status === "settle_failed") {
+      await verifyFailedReceiptRow(row);
+      return;
+    }
+
     // 2026-09-04 監査 P1-1: 1 本の決済 tx は 1 つの購入にしか属せない。
     // 2 行以上が同じ tx を主張していたら、どちらが本物か我々には言えないので
     // **どちらも** settled にしない。チェーンを読む前に落とす（読んでも
@@ -649,88 +847,7 @@ export async function runSettlementVerification(options?: {
     });
 
     if (result.ok) {
-      // 台帳のブロック時刻。無い（null・Invalid Date）ときはキーを足さない。
-      // raw_response_meta は SQL の中で結合し、既存のキーは消さない。
-      const blockIso =
-        result.blockTimestamp && Number.isFinite(result.blockTimestamp.getTime())
-          ? result.blockTimestamp.toISOString()
-          : null;
-      // §10 / §6.2: バックフィルで確定した状態変化は訂正ログに残す——2026-09-29 から同じ文で。
-      await updateWithCorrection(db!, {
-        update: sql`
-          UPDATE x402_l1_purchases
-          SET status = 'settled',
-              settlement_verified = true,
-              settlement_verified_at = now(),
-              settlement_verify_reason = NULL,
-              settlement_block_number = ${String(result.blockNumber)}::bigint,
-              raw_response_meta = CASE
-                WHEN ${blockIso}::text IS NULL THEN raw_response_meta
-                ELSE coalesce(
-                       CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN raw_response_meta ELSE '{}'::jsonb END,
-                       '{}'::jsonb
-                     ) || jsonb_build_object('settlementBlockTime', ${blockIso}::text)
-              END
-          WHERE id = ${row.id}::uuid
-          RETURNING id::text AS correction_subject_id`,
-        subjectType: "purchase",
-        level: "l1",
-        before: { json: { status: row.status } },
-        after: { json: { status: "settled", blockNumber: String(result.blockNumber) } },
-        reason: "settlement_backfill",
-      });
-      summary.verified++;
-      invalidateDecisionCache(row.endpoint_id); // settled は判定材料（このインスタンスのみ・cache.ts 参照）
-
-      // §7.3（2026-09-02）: 確定した購入は決済索引へ即時に載せ、受取先→Endpoint の
-      // 逆引きが cron を待たずに更新される（実装完了の定義「1 分以内」）。
-      // 索引の失敗は照合の成否を変えない——次回の日次 ingestL1 が拾う。
-      try {
-        await ingestL1({ onlyPurchaseRowId: row.id });
-      } catch (error) {
-        logServerErrorSafe("settlement-verifier.ingest-l1", error);
-      }
-
-      // ERC-8004 Validation Registry（フラグOFF既定・graceful）。書けるのはここで
-      // 確定した settled だけ。L2 は conform / mismatch が確定しているときだけ
-      // （未検査・宣言なしは書かない）。
-      await fireHook(
-        hooks.l1({ endpointId: row.endpoint_id, payTo: row.pay_to, settled: true, txHash: row.tx_hash, network: row.network }),
-      );
-      if (row.l2_schema === "match" || row.l2_schema === "mismatch") {
-        await fireHook(
-          hooks.l2({
-            endpointId: row.endpoint_id,
-            payTo: row.pay_to,
-            l2: row.l2_schema === "match" ? "conform" : "mismatch",
-            txHash: row.tx_hash,
-            network: row.network,
-          }),
-        );
-      }
-
-      // スコア証拠はここでだけ書く。delivery_verified の規則はランナーと共有。
-      try {
-        const created = await recordObservedPurchase({
-          wallet: row.payer,
-          counterparty: row.pay_to,
-          amount: row.amount_units,
-          txHash: row.tx_hash,
-          resource: row.resource_url,
-          blockTimestamp: result.blockTimestamp,
-          deliveryVerified: isDeliveryVerified({
-            httpStatusPaid: row.http_status_paid,
-            payloadNonEmpty: row.payload_non_empty === true,
-            l2Schema: row.l2_schema ?? "no_declaration",
-          }),
-          observedBy: `observatory-l1-verified:${row.id}`,
-        });
-        if (created.created) summary.evidenceWritten++;
-      } catch (error) {
-        // 証拠が書けなくても照合の結果は正典（x402_l1_purchases）に残る。
-        // 黙って消さない。
-        logServerErrorSafe("observatory.settlement_verify.evidence", error);
-      }
+      await settleRow(row, result);
       return;
     }
 

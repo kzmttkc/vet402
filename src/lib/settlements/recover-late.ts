@@ -103,17 +103,40 @@
 // 行ごとの窓・応答なしを先に読む順は変えない。トークンはネイティブ USDC。RPC は AVALANCHE_RPC_URL 必須
 // （公開 RPC へ黙って倒れない）。ブロック間隔は 2026-10-26 実測 969.578 ms。窓の見積もりは 0.97 秒で、ブロックの実時刻で直す。
 // 1 行の窓（≈ 1,980 ブロック）は 100 ブロックずつ読む（公開 RPC の eth_getLogs 上限。101 は断る）。
+//
+// 2026-11-03（数字の監査・結論 #1）: 台帳が settle_failed・confirmed_units 0 と書いた行のうち 15 行（$0.404）は、チェーン上で
+// この購入の一回性の値つきで金が動いていた。Tempo 10（TransferWithMemo の memo = auth_nonce）・Arc 2（EIP-3009 の nonce）・
+// Solana 1（spl-memo）は、有料の要求が transport で切れた（AbortError・http NULL）か 5xx で終わった行で、直読みのレーンが
+// その 3 チェーンに無かった（Base の 2026-09 以外は一度も回っていなかった）。直し方:
+//   - Tempo・Arc・Solana のレーンを足す。選び方・行ごとの窓・応答なしを先に読む順は Celo と同じ。貼るのは、その行の
+//     一回性の値がその tx で消費されている（レシート・取引の中にある）ときだけ。
+//   - Arc は EIP-3009 なので BNB と同じく **認可の状態で決める**（使われていない行だけ decided・使われた行は決めない）。
+//     Celo も同じ形に変える（公開 RPC の forno はレシートを null で返すことがあり、ログの 0 件で決めると実在の着金を見落とす）。
+//   - Tempo（TIP-20 の memo）と Solana（spl-memo）には「認可が使われたか」を問う関数が無い。ログ・署名一覧の 0 件を
+//     1 回で「着金なし」と決めず、**別の回の 2 回の読みが両方 0 件のときだけ** decided にする（zeroReadsToDecide）。
+//     読み手は chainId・先端・ブロックの実時刻を毎回確かめ、読めたと言えないときは null か例外（印を付けない）。
+//   - 一回性の値の読み手（NonceReader）はチェーンで分ける: EVM は AuthorizationUsed の nonce、Tempo は TransferWithMemo の
+//     memo（topics[3]）、Solana は spl-memo の文字列。どれも「我々が署名のときに作って行に残した値」と突き合わせる。
+//   - 走らせる場所は cron /api/cron/recover-late-chains（index-settlements とは別の 300 秒）。index-settlements の中では
+//     既存のレーンだけを走らせる（lanes オプション）。
+//   Tempo の公開 RPC（rpc.tempo.xyz）の実測 2026-11-03T15:18Z: 0.561 秒/ブロック（直近 100,000 ブロック）・eth_getLogs は
+//   10,000 ブロックに答えた。Arc（rpc.mainnet.arc.io）: 0.507 秒/ブロック・10,000 ブロックに答えた。どちらも 5,000 ずつ読む。
 // ============================================================
-import { createPublicClient, http, parseAbiItem, type Address } from "viem";
-import { arbitrum, avalanche, base, bsc, celo } from "viem/chains";
+import { createPublicClient, http, keccak256, parseAbiItem, toBytes, type Address } from "viem";
+import { arbitrum, arc, avalanche, base, bsc, celo, tempo as tempoChain } from "viem/chains";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
+import { ARC_CAIP2, ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
 import { AVALANCHE_CAIP2, AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanche";
 import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
+import { TEMPO_CHAIN_ID, TEMPO_MAINNET_CAIP2, TEMPO_USDC_E, tempoRpcUrl } from "@/lib/observatory/mpp-payer";
+import { SOLANA_MAINNET_CAIP2, SOLANA_USDC_MINT } from "@/lib/observatory/sol402-payer";
+import { usdcOwnerDelta, type SolanaTokenBalance } from "@/lib/observatory/settlement-verify-solana";
 import { evmIndexLedgerAmount } from "@/lib/settlements/index-evm";
+import { solanaUsdcTokenAccount } from "@/lib/settlements/index-solana";
 import { updateWithCorrection } from "@/lib/observatory/corrections";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -219,6 +242,16 @@ export const ARBITRUM_CHAIN_READ_BUDGET_MS = 30_000;
  * （名目の合計は 300 秒を超える。Arbitrum のあとに走り、残りが無ければこの回は読まない）。
  */
 export const AVALANCHE_CHAIN_READ_BUDGET_MS = 30_000;
+/**
+ * Tempo・Arc・Solana のレーンの持ち時間（2026-11-03）。Celo と同じ 30 秒を別枠で持つ。cron の締切（deadlineAt）で頭打ちに
+ * する。本番では index-settlements ではなく /api/cron/recover-late-chains（別の 300 秒）が走らせる。
+ */
+export const TEMPO_CHAIN_READ_BUDGET_MS = 30_000;
+export const ARC_CHAIN_READ_BUDGET_MS = 30_000;
+export const SOLANA_CHAIN_READ_BUDGET_MS = 30_000;
+
+/** 直読みのレーンの名前（lanes オプションと CHAIN_READ_LANES の key）。 */
+export type ChainReadLaneKey = "base" | "celo" | "bnb" | "arbitrum" | "avalanche" | "tempo" | "arc" | "solana";
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -256,6 +289,24 @@ export type LateSettlementSummary = {
   chainRowsReadAvalanche?: number;
   /** Avalanche のレーンで、この回は読めなかった行の数（行は変えていない）。 */
   chainRowsUnreadAvalanche?: number;
+  /** recoveredFromChain のうち Tempo のレーンで貼った数（2026-11-03・memo で持ち主を決めた行だけ）。 */
+  recoveredFromChainTempo?: number;
+  /** chainRowsRead のうち Tempo のレーンで読んだ行の数。 */
+  chainRowsReadTempo?: number;
+  /** Tempo のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadTempo?: number;
+  /** recoveredFromChain のうち Arc のレーンで貼った数（2026-11-03・nonce で持ち主を決めた行だけ）。 */
+  recoveredFromChainArc?: number;
+  /** chainRowsRead のうち Arc のレーンで読んだ行の数。 */
+  chainRowsReadArc?: number;
+  /** Arc のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadArc?: number;
+  /** recoveredFromChain のうち Solana のレーンで貼った数（2026-11-03・memo で持ち主を決めた行だけ）。 */
+  recoveredFromChainSolana?: number;
+  /** chainRowsRead のうち Solana のレーンで読んだ行の数。 */
+  chainRowsReadSolana?: number;
+  /** Solana のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadSolana?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -280,6 +331,18 @@ export async function recoverLateSettlements(
     arbitrumChainReadBudgetMs?: number;
     /** Avalanche のレーンの持ち時間（ms）。 */
     avalancheChainReadBudgetMs?: number;
+    /** Tempo のレーンの持ち時間（ms）。 */
+    tempoChainReadBudgetMs?: number;
+    /** Arc のレーンの持ち時間（ms）。 */
+    arcChainReadBudgetMs?: number;
+    /** Solana のレーンの持ち時間（ms）。 */
+    solanaChainReadBudgetMs?: number;
+    /**
+     * この回に走らせる直読みのレーン（2026-11-03）。省略は全部。index-settlements は従来の 5 本、
+     * recover-late-chains は Tempo・Arc・Solana を渡す（同じレーンを 2 つの cron で二重に読まない）。
+     * 索引の段（SQL だけ）と売り手の名指した tx の昇格は、lanes によらず毎回走る。
+     */
+    lanes?: readonly ChainReadLaneKey[];
     /**
      * 呼び手の締切（epoch ms）。Celo のレーンの持ち時間を「締切までの残り」で頭打ちにする（cron が 300 秒を越えない）。
      * Base のレーンには掛けない（従来どおり）。
@@ -382,86 +445,48 @@ export async function recoverLateSettlements(
   const errors = { count: 0 };
   const bySet = await linkInterchangeableSets(db, errors);
   rows.push(...bySet);
-  const chain = options.readTransfers
-    ? await linkFromChain(
-        db,
-        BASE_CHAIN_READ_LANE,
-        options.readTransfers,
-        options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-        options.chainReadBudgetMs ?? CHAIN_READ_BUDGET_MS,
-        errors,
-      )
-    : { linked: [], read: 0, unread: 0 };
-  // 2026-10-11: Celo のレーン。nonce で決めるので、Transfer の読み手と nonce の読み手の両方が渡されたときだけ走る
-  // （片方でも無ければ Celo の行は選びもしない＝印も付けない）。行の上限は Base と同じ数を**別枠で**持つ。
-  const celoChain =
-    options.readTransfers && options.readNonces
-      ? await linkFromChain(
-          db,
-          CELO_CHAIN_READ_LANE,
-          options.readTransfers,
-          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-          Math.min(
-            options.celoChainReadBudgetMs ?? CELO_CHAIN_READ_BUDGET_MS,
-            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
-          ),
-          errors,
-          options.readNonces,
-        )
-      : { linked: [], read: 0, unread: 0 };
-  // 2026-10-19: BNB のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
-  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo の段が先に使う）。
-  const bnbChain =
-    options.readTransfers && options.readNonces
-      ? await linkFromChain(
-          db,
-          BNB_CHAIN_READ_LANE,
-          options.readTransfers,
-          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-          Math.min(
-            options.bnbChainReadBudgetMs ?? BNB_CHAIN_READ_BUDGET_MS,
-            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
-          ),
-          errors,
-          options.readNonces,
-          options.readAuthorizationState,
-        )
-      : { linked: [], read: 0, unread: 0 };
-  // 2026-10-22: Arbitrum のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
-  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo / BNB の段が先に使う）。
-  const arbitrumChain =
-    options.readTransfers && options.readNonces
-      ? await linkFromChain(
-          db,
-          ARBITRUM_CHAIN_READ_LANE,
-          options.readTransfers,
-          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-          Math.min(
-            options.arbitrumChainReadBudgetMs ?? ARBITRUM_CHAIN_READ_BUDGET_MS,
-            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
-          ),
-          errors,
-          options.readNonces,
-        )
-      : { linked: [], read: 0, unread: 0 };
-  // 2026-10-26: Avalanche のレーン。Celo と同じく、Transfer の読み手と nonce の読み手の両方が要る。
-  // 行の上限は別枠。持ち時間は締切までの残りで頭打ち（Celo / BNB / Arbitrum の段が先に使う）。
-  const avalancheChain =
-    options.readTransfers && options.readNonces
-      ? await linkFromChain(
-          db,
-          AVALANCHE_CHAIN_READ_LANE,
-          options.readTransfers,
-          options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
-          Math.min(
-            options.avalancheChainReadBudgetMs ?? AVALANCHE_CHAIN_READ_BUDGET_MS,
-            typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity,
-          ),
-          errors,
-          options.readNonces,
-        )
-      : { linked: [], read: 0, unread: 0 };
-  const fromChain = [...chain.linked, ...celoChain.linked, ...bnbChain.linked, ...arbitrumChain.linked, ...avalancheChain.linked];
+  // チェーンの直読みのレーン（CHAIN_READ_LANES の順）。
+  //   Base（2026-09-29）: Transfer の読み手だけで走る。持ち時間は chainReadBudgetMs（締切は掛けない・従来どおり）。
+  //   それ以外（Celo 2026-10-11・BNB 10-19・Arbitrum 10-22・Avalanche 10-26・Tempo / Arc / Solana 11-03）: nonce で決めるので、
+  //   Transfer の読み手と nonce の読み手の両方が渡されたときだけ走る（片方でも無ければその行は選びもしない＝印も付けない）。
+  //   行の上限は Base と同じ数を**レーンごとに別枠で**持ち、持ち時間はレーンごとの既定（30 秒）を締切までの残りで頭打ちにする
+  //   （前のレーンが先に使う。残りが無ければこの回は読まない）。
+  //   lanes を渡した呼び手は、その表に無いレーンを走らせない（2026-11-03・2 つの cron で同じレーンを二重に読まない）。
+  const laneBudgets: Record<ChainReadLaneKey, number> = {
+    base: options.chainReadBudgetMs ?? CHAIN_READ_BUDGET_MS,
+    celo: options.celoChainReadBudgetMs ?? CELO_CHAIN_READ_BUDGET_MS,
+    bnb: options.bnbChainReadBudgetMs ?? BNB_CHAIN_READ_BUDGET_MS,
+    arbitrum: options.arbitrumChainReadBudgetMs ?? ARBITRUM_CHAIN_READ_BUDGET_MS,
+    avalanche: options.avalancheChainReadBudgetMs ?? AVALANCHE_CHAIN_READ_BUDGET_MS,
+    tempo: options.tempoChainReadBudgetMs ?? TEMPO_CHAIN_READ_BUDGET_MS,
+    arc: options.arcChainReadBudgetMs ?? ARC_CHAIN_READ_BUDGET_MS,
+    solana: options.solanaChainReadBudgetMs ?? SOLANA_CHAIN_READ_BUDGET_MS,
+  };
+  const wanted = options.lanes ? new Set<ChainReadLaneKey>(options.lanes) : null;
+  const none = { linked: [] as LinkedRow[], read: 0, unread: 0 };
+  const byLane = {} as Record<ChainReadLaneKey, { linked: LinkedRow[]; read: number; unread: number }>;
+  for (const lane of CHAIN_READ_LANES) {
+    const runs = (wanted === null || wanted.has(lane.key)) && options.readTransfers && (!lane.nonceBound || options.readNonces);
+    if (!runs) {
+      byLane[lane.key] = none;
+      continue;
+    }
+    const budgetMs =
+      lane.key === "base"
+        ? laneBudgets.base
+        : Math.min(laneBudgets[lane.key], typeof options.deadlineAt === "number" ? options.deadlineAt - Date.now() : Infinity);
+    byLane[lane.key] = await linkFromChain(
+      db,
+      lane,
+      options.readTransfers!,
+      options.chainReadLimit ?? CHAIN_READ_ROWS_PER_RUN,
+      budgetMs,
+      errors,
+      lane.nonceBound ? options.readNonces : undefined,
+      lane.decidesByAuthorizationState ? options.readAuthorizationState : undefined,
+    );
+  }
+  const fromChain = CHAIN_READ_LANES.flatMap((l) => byLane[l.key].linked);
   rows.push(...fromChain);
   const promoted = await promoteNamedTx(db);
 
@@ -471,19 +496,28 @@ export async function recoverLateSettlements(
     recoveredBySet: bySet.length,
     recoveredFromChain: fromChain.length,
     promotedNamedTx: promoted.length,
-    chainRowsRead: chain.read + celoChain.read + bnbChain.read + arbitrumChain.read + avalancheChain.read,
-    recoveredFromChainCelo: celoChain.linked.length,
-    chainRowsReadCelo: celoChain.read,
-    chainRowsUnreadCelo: celoChain.unread,
-    recoveredFromChainBnb: bnbChain.linked.length,
-    chainRowsReadBnb: bnbChain.read,
-    chainRowsUnreadBnb: bnbChain.unread,
-    recoveredFromChainArbitrum: arbitrumChain.linked.length,
-    chainRowsReadArbitrum: arbitrumChain.read,
-    chainRowsUnreadArbitrum: arbitrumChain.unread,
-    recoveredFromChainAvalanche: avalancheChain.linked.length,
-    chainRowsReadAvalanche: avalancheChain.read,
-    chainRowsUnreadAvalanche: avalancheChain.unread,
+    chainRowsRead: CHAIN_READ_LANES.reduce((n, l) => n + byLane[l.key].read, 0),
+    recoveredFromChainCelo: byLane.celo.linked.length,
+    chainRowsReadCelo: byLane.celo.read,
+    chainRowsUnreadCelo: byLane.celo.unread,
+    recoveredFromChainBnb: byLane.bnb.linked.length,
+    chainRowsReadBnb: byLane.bnb.read,
+    chainRowsUnreadBnb: byLane.bnb.unread,
+    recoveredFromChainArbitrum: byLane.arbitrum.linked.length,
+    chainRowsReadArbitrum: byLane.arbitrum.read,
+    chainRowsUnreadArbitrum: byLane.arbitrum.unread,
+    recoveredFromChainAvalanche: byLane.avalanche.linked.length,
+    chainRowsReadAvalanche: byLane.avalanche.read,
+    chainRowsUnreadAvalanche: byLane.avalanche.unread,
+    recoveredFromChainTempo: byLane.tempo.linked.length,
+    chainRowsReadTempo: byLane.tempo.read,
+    chainRowsUnreadTempo: byLane.tempo.unread,
+    recoveredFromChainArc: byLane.arc.linked.length,
+    chainRowsReadArc: byLane.arc.read,
+    chainRowsUnreadArc: byLane.arc.unread,
+    recoveredFromChainSolana: byLane.solana.linked.length,
+    chainRowsReadSolana: byLane.solana.read,
+    chainRowsUnreadSolana: byLane.solana.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -866,20 +900,34 @@ const EVM_AUTH_NONCE_RE = /^0x[0-9a-f]{64}$/;
  * linkAmbiguousByNonce）が Celo の受取先を持たないので、この段が nonce で決める。
  */
 type ChainReadLane = {
-  key: "base" | "celo" | "bnb" | "arbitrum" | "avalanche";
+  key: ChainReadLaneKey;
   networks: readonly string[];
   nonceBound: boolean;
   noAnswerFirst: boolean;
   rowWindows: boolean;
   /**
-   * 行を、ログの結果ではなく認可の状態で決める（2026-11-02・BNB）。ログを読む前に状態を読む。
+   * 行を、ログの結果ではなく認可の状態で決める（2026-11-02・BNB。2026-11-03 から Celo・Arc も）。ログを読む前に状態を読む。
    * 使われていない → decided: true でログを読まない。使われた → decided: false の印（tries は増やさない）で未読の後ろへ回し、
    * ログを読んで貼る。読めない → 行を変えず、ログだけ読む。ログの 0 件や失敗は根拠にしない。
    */
   decidesByAuthorizationState?: boolean;
+  /**
+   * 一回性の値（auth_nonce）の形（2026-11-03）。省略は EIP-3009 の nonce（0x + 64 桁の 16 進・Tempo の memo も同じ形）。
+   * Solana の memo は 0x 無しの 32 桁（sol402-payer.ts の randomBytes(16).hex）。SQL（~）と JS（RegExp）の両方で使うので、
+   * 両方で同じ意味になる書き方にする。
+   */
+  nonceShape?: string;
+  /**
+   * 認可の状態を問えないチェーン（Tempo・Solana）で、「着金なし」と決めるのに要る 0 件の読みの回数（2026-11-03）。
+   * 省略は 1（1 回の読みで決める・Base / Arbitrum / Avalanche の従来どおり）。2 なら、別の回の 2 回の読みが両方 0 件で
+   * 初めて decided: true（1 回目は decided: false・tries 1・zeroReads 1 で、次の回にまた読む）。
+   */
+  zeroReadsToDecide?: number;
 };
 const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
-const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
+// 2026-11-03: Celo も認可の状態で決める（BNB と同じ）。数字の監査で、公開 RPC の forno が settled の tx 12/30 のレシートを null で
+// 返した。ログの 0 件で決めると実在の着金を見落とすので、EIP-3009 の authorizationState を根拠にする（CELO_RPC_URL 必須）。
+const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true, decidesByAuthorizationState: true };
 // 2026-11-02 実測: 本番の BNB_RPC_URL（PublicNode）は USD1 の eth_getLogs に、同じ範囲で 406 件と 0 件を返し分ける
 // （約 7 日以内の 2,000 ブロック・24 回中 21 回が 0 件）。それより古い範囲は断る。ログの 0 件で決めると、実在の着金を
 // 永久に見落とすので、このレーンは認可の状態で決める。認可は最長 120 秒で、行はこの段に来た時点で 35 分以上前なので、
@@ -887,8 +935,40 @@ const CELO_CHAIN_READ_LANE: ChainReadLane = { key: "celo", networks: [CELO_CAIP2
 const BNB_CHAIN_READ_LANE: ChainReadLane = { key: "bnb", networks: [BNB_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true, decidesByAuthorizationState: true };
 const ARBITRUM_CHAIN_READ_LANE: ChainReadLane = { key: "arbitrum", networks: [ARBITRUM_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
 const AVALANCHE_CHAIN_READ_LANE: ChainReadLane = { key: "avalanche", networks: [AVALANCHE_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true };
-/** 直読みのレーンの表（テストと点検が読む）。Arc は載せていない（ファイル冒頭の 2026-10-11 の節）。 */
-export const CHAIN_READ_LANES: readonly ChainReadLane[] = [BASE_CHAIN_READ_LANE, CELO_CHAIN_READ_LANE, BNB_CHAIN_READ_LANE, ARBITRUM_CHAIN_READ_LANE, AVALANCHE_CHAIN_READ_LANE];
+// 2026-11-03（数字の監査・結論 #1）: Tempo の購入は TIP-20 の transferWithMemo で、memo（bytes32）を auth_nonce に残している。
+// 貼るのは、候補の tx のレシートの TransferWithMemo（払い元 → 宛先）の memo が行の auth_nonce と一致するときだけ。
+// 「memo が使われたか」を問う関数は無いので、0 件の読みは 2 回で決める。
+const TEMPO_CHAIN_READ_LANE: ChainReadLane = { key: "tempo", networks: [TEMPO_MAINNET_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true, zeroReadsToDecide: 2 };
+// 2026-11-03: Arc は EIP-3009（USDC 0x3600…0000）。Celo・BNB と同じく認可の状態で決める（ARC_RPC_URL 必須）。
+const ARC_CHAIN_READ_LANE: ChainReadLane = { key: "arc", networks: [ARC_CAIP2], nonceBound: true, noAnswerFirst: true, rowWindows: true, decidesByAuthorizationState: true };
+// 2026-11-03: Solana の購入は spl-memo に我々の memo（randomBytes(16).hex・32 桁）を載せ、auth_nonce に残している。
+// 貼るのは、候補の取引の memo 命令に行の auth_nonce があるときだけ。認可の状態は無いので、0 件の読みは 2 回で決める。
+const SOLANA_CHAIN_READ_LANE: ChainReadLane = {
+  key: "solana",
+  networks: [SOLANA_MAINNET_CAIP2],
+  nonceBound: true,
+  noAnswerFirst: true,
+  rowWindows: true,
+  nonceShape: "^[0-9a-f]{32}$",
+  zeroReadsToDecide: 2,
+};
+/** 直読みのレーンの表（テストと点検が読む）。走る順もこの順。 */
+export const CHAIN_READ_LANES: readonly ChainReadLane[] = [
+  BASE_CHAIN_READ_LANE,
+  CELO_CHAIN_READ_LANE,
+  BNB_CHAIN_READ_LANE,
+  ARBITRUM_CHAIN_READ_LANE,
+  AVALANCHE_CHAIN_READ_LANE,
+  TEMPO_CHAIN_READ_LANE,
+  ARC_CHAIN_READ_LANE,
+  SOLANA_CHAIN_READ_LANE,
+];
+
+/** レーンの一回性の値の形（SQL の ~ と JS の RegExp で同じ意味）。 */
+function nonceShapeOf(lane: ChainReadLane): { sql: string; re: RegExp } {
+  const source = lane.nonceShape ?? EVM_AUTH_NONCE_RE.source;
+  return { sql: source, re: new RegExp(source) };
+}
 
 /**
  * 索引に候補の無い行について、チェーンの Transfer（from = 行の payer・to = 行の pay_to）を直接読んで貼る。
@@ -910,6 +990,8 @@ async function linkFromChain(
   // nonce で決めるレーンは、nonce の読み手が無ければ何もしない（行を選ばない＝印も付けない）。
   if (lane.nonceBound && !readNonces) return { linked: [], read: 0, unread: 0 };
   const startedAt = Date.now();
+  const shape = nonceShapeOf(lane);
+  const zeroReadsToDecide = Math.max(1, Math.trunc(lane.zeroReadsToDecide ?? 1));
   // 2026-10-11 点検（中 1）: Celo のレーンの並び。応答なしの行（支払いは送った・答えを受け取っていない＝売り手が後で
   // 決済していれば台帳だけが食い違う行）が、新しい 402 の行の後ろに並んで持ち時間の外へ押し出されていた。
   const laneOrder = lane.noAnswerFirst
@@ -917,14 +999,17 @@ async function linkFromChain(
     : sql``;
   const batchRaw = await db.execute(sql`
     SELECT pu.id::text AS purchase_id, pu.network, lower(pu.payer) AS payer, lower(pu.pay_to) AS pay_to, pu.amount_units,
+           -- 2026-11-03: 読み手には行の表記のまま渡す（Solana の base58 は大文字小文字で別の鍵。小文字化した値から口座は導けない）。
+           -- 組の鍵・突き合わせは従来どおり小文字で行う。
+           btrim(pu.payer) AS payer_exact, btrim(pu.pay_to) AS pay_to_exact,
            lower(btrim(pu.auth_nonce)) AS auth_nonce,
            to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS attempted_at
     FROM x402_l1_purchases pu
     WHERE ${RECOVERABLE_ROW}
       AND (pu.tx_hash IS NULL OR pu.status = 'settle_claimed_unverifiable')
       AND pu.network IN (${sql.join(lane.networks.map((n) => sql`${n}`), sql`, `)})
-      -- nonce で決めるレーン（Celo）: 何に署名したかが行に残っている購入だけ（形の正しい EIP-3009 の nonce）。
-      AND (${lane.nonceBound}::boolean IS NOT TRUE OR lower(btrim(coalesce(pu.auth_nonce, ''))) ~ '^0x[0-9a-f]{64}$')
+      -- nonce で決めるレーン（Celo …）: 何に署名したかが行に残っている購入だけ（そのレーンの一回性の値の形・nonceShapeOf）。
+      AND (${lane.nonceBound}::boolean IS NOT TRUE OR lower(btrim(coalesce(pu.auth_nonce, ''))) ~ ${shape.sql}::text)
       AND pu.payer IS NOT NULL AND pu.pay_to IS NOT NULL AND pu.amount_units ~ '^[0-9]{1,30}$' AND pu.attempted_at IS NOT NULL
       AND pu.attempted_at < now() - make_interval(mins => ${CHAIN_READ_AFTER_MINUTES}::int)
       -- 読んで決まった行（着金が窓に無かった）は二度と読まない。決まらなかった行（着金はあったが貼れなかった）は
@@ -942,7 +1027,17 @@ async function linkFromChain(
                OR coalesce(pu.raw_response_meta ? 'outcomeWriteFailed', false)) DESC,
              pu.attempted_at DESC
     LIMIT ${Math.max(0, Math.trunc(limit))}`);
-  type B = { purchase_id: string; network: string; payer: string; pay_to: string; amount_units: string; auth_nonce: string | null; attempted_at: string };
+  type B = {
+    purchase_id: string;
+    network: string;
+    payer: string;
+    pay_to: string;
+    payer_exact: string;
+    pay_to_exact: string;
+    amount_units: string;
+    auth_nonce: string | null;
+    attempted_at: string;
+  };
   const batch = rowsOfRaw<B>(batchRaw);
   const winMs = LATE_SETTLEMENT_WINDOW_MINUTES * 60_000;
   const backMs = LATE_SETTLEMENT_BACKDATE_MINUTES * 60_000;
@@ -1046,7 +1141,7 @@ async function linkFromChain(
     const to = new Date(Math.max(...times, ...nearTimes) + winMs);
     let readFailure: unknown = null;
     const transfers = await withTimeout(
-      readTransfers({ network: g.network, payer: g.payer, payTo: g.pay_to, from, to, timeoutMs: remaining }),
+      readTransfers({ network: g.network, payer: g.payer_exact, payTo: g.pay_to_exact, from, to, timeoutMs: remaining }),
       remaining,
     ).catch((error: unknown) => {
       readFailure = error ?? new Error("the transfer read failed");
@@ -1093,6 +1188,7 @@ async function linkFromChain(
         { network: g.network, payer: g.payer },
         readNonces!,
         () => budgetMs - (Date.now() - startedAt),
+        shape.re,
       );
       if ("unreadable" in byNonce) {
         noteUnread(byNonce.unreadable, list.length);
@@ -1139,15 +1235,19 @@ async function linkFromChain(
       }
       continue;
     }
-    for (const decided of [true, false]) {
-      const ids = unlinked.filter((b) => !inWindow(b) === decided).map((b) => b.purchase_id);
+    // 2026-11-03: 認可の状態を問えないレーン（Tempo・Solana）は、0 件の読みを zeroReadsToDecide 回（別の回）重ねて初めて
+    // 「決まった」にする。1 回目は decided: false・zeroReads 1 で次の回にまた読む（tries の上限の内側）。
+    for (const noTransfer of [true, false]) {
+      const ids = unlinked.filter((b) => !inWindow(b) === noTransfer).map((b) => b.purchase_id);
       if (ids.length === 0) continue;
       await db.execute(sql`
         UPDATE x402_l1_purchases
         SET raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object('lateChainRead', jsonb_build_object(
               'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
               'exactTransfers', ${exact.length}::int,
-              'decided', ${decided}::boolean,
+              'decided', (${noTransfer}::boolean
+                          AND coalesce((raw_response_meta->'lateChainRead'->>'zeroReads')::int, 0) + 1 >= ${zeroReadsToDecide}::int),
+              'zeroReads', coalesce((raw_response_meta->'lateChainRead'->>'zeroReads')::int, 0) + (CASE WHEN ${noTransfer}::boolean THEN 1 ELSE 0 END),
               'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0) + 1))
         WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
     }
@@ -1186,6 +1286,7 @@ async function linksByNonce(
   group: { network: string; payer: string },
   readNonces: NonceReader,
   remainingMs: () => number,
+  nonceShape: RegExp = EVM_AUTH_NONCE_RE,
 ): Promise<{ links: { purchaseId: string; txHash: string }[] } | { unreadable: string }> {
   const consumed = new Map<string, Set<string>>();
   for (const p of pairs) {
@@ -1201,7 +1302,7 @@ async function linksByNonce(
   const txsOfRow = new Map<string, Map<string, string>>();
   for (const p of pairs) {
     const nonce = nonceOf.get(p.purchaseId);
-    if (typeof nonce !== "string" || !EVM_AUTH_NONCE_RE.test(nonce)) continue;
+    if (typeof nonce !== "string" || !nonceShape.test(nonce)) continue;
     const tx = p.txHash.toLowerCase();
     if (!consumed.get(tx)?.has(nonce)) continue;
     ownersOfTx.set(tx, (ownersOfTx.get(tx) ?? new Set<string>()).add(p.purchaseId));
@@ -1751,26 +1852,461 @@ function boundedAvalancheClient(timeoutMs: number | undefined): AvalancheTransfe
 }
 
 /**
- * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19、Arbitrum は 2026-10-22、Avalanche は 2026-10-26）:
- * Celo の行は Celo、BNB の行は BNB、Arbitrum の行は Arbitrum、Avalanche の行は Avalanche、それ以外は Base
+ * 一回性の値の読み手を network で分ける（2026-11-03）。EVM（Base / Arc / Celo / BNB / Arbitrum / Avalanche）はレシートの
+ * AuthorizationUsed の nonce（呼び手が settlement-verify.ts の readAuthorizationNonces を渡す）、Tempo はレシートの
+ * TransferWithMemo の memo、Solana は取引の spl-memo。渡されなかった種類の network は null（＝読めない・貼らない）。
+ */
+export function makeChainNonceReader(readers: { evm?: NonceReader; tempo?: NonceReader; solana?: NonceReader } = {}): NonceReader {
+  const tempoReader = readers.tempo ?? makeTempoMemoReader();
+  const solanaReader = readers.solana ?? makeSolanaMemoReader();
+  return (q) =>
+    q.network === TEMPO_MAINNET_CAIP2
+      ? tempoReader(q)
+      : q.network === SOLANA_MAINNET_CAIP2
+        ? solanaReader(q)
+        : readers.evm
+          ? readers.evm(q)
+          : Promise.resolve(null);
+}
+
+/**
+ * cron が linkFromChain に渡す読み手（2026-10-11、BNB は 2026-10-19、Arbitrum は 2026-10-22、Avalanche は 2026-10-26、
+ * Tempo / Arc / Solana は 2026-11-03）: network ごとの読み手へ振り分け、それ以外は Base
  * （Base の読み手は Base 以外の network に null を返す＝従来どおり読まない）。
  */
 export function makeChainTransferReader(
-  readers: { base?: TransferReader; celo?: TransferReader; bnb?: TransferReader; arbitrum?: TransferReader; avalanche?: TransferReader } = {},
+  readers: {
+    base?: TransferReader;
+    celo?: TransferReader;
+    bnb?: TransferReader;
+    arbitrum?: TransferReader;
+    avalanche?: TransferReader;
+    tempo?: TransferReader;
+    arc?: TransferReader;
+    solana?: TransferReader;
+  } = {},
 ): TransferReader {
   const baseReader = readers.base ?? makeBaseTransferReader();
-  const celoReader = readers.celo ?? makeCeloTransferReader();
-  const bnbReader = readers.bnb ?? makeBnbTransferReader();
-  const arbitrumReader = readers.arbitrum ?? makeArbitrumTransferReader();
-  const avalancheReader = readers.avalanche ?? makeAvalancheTransferReader();
-  return (q) =>
-    q.network === CELO_CAIP2
-      ? celoReader(q)
-      : q.network === BNB_CAIP2
-        ? bnbReader(q)
-        : q.network === ARBITRUM_CAIP2
-          ? arbitrumReader(q)
-          : q.network === AVALANCHE_CAIP2
-            ? avalancheReader(q)
-            : baseReader(q);
+  const byNetwork: Record<string, TransferReader> = {
+    [CELO_CAIP2]: readers.celo ?? makeCeloTransferReader(),
+    [BNB_CAIP2]: readers.bnb ?? makeBnbTransferReader(),
+    [ARBITRUM_CAIP2]: readers.arbitrum ?? makeArbitrumTransferReader(),
+    [AVALANCHE_CAIP2]: readers.avalanche ?? makeAvalancheTransferReader(),
+    [TEMPO_MAINNET_CAIP2]: readers.tempo ?? makeTempoTransferReader(),
+    [ARC_CAIP2]: readers.arc ?? makeArcTransferReader(),
+    [SOLANA_MAINNET_CAIP2]: readers.solana ?? makeSolanaTransferReader(),
+  };
+  return (q) => (byNetwork[q.network] ?? baseReader)(q);
+}
+
+// ------------------------------------------------------------
+// 2026-11-03: Tempo・Arc・Solana の読み手（数字の監査・結論 #1）。
+// ------------------------------------------------------------
+
+/** TIP-20 TransferWithMemo（settlement-verify-tempo.ts と同じ宣言。memo は indexed・topics[3]）。 */
+const TEMPO_TRANSFER_WITH_MEMO_LOG = parseAbiItem("event TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo)");
+/**
+ * Tempo のブロック間隔（秒）。2026-11-03T15:18Z 実測（https://rpc.tempo.xyz）: ヘッド 47,252,884 と 100,000 ブロック前の時刻差から
+ * 0.561 秒。0.56 で見積もり、読んだブロックと先端の実の間隔で直す（BNB の読み手と同じ）。
+ */
+const TEMPO_BLOCK_SECONDS = 0.56;
+/** 2026-11-03 実測: rpc.tempo.xyz は USDC.e のログを 10,000 ブロックで答えた（5,000 は 3.4 秒）。1 行の窓（≈ 3,430 ブロック）は 1 回で読む。 */
+export const TEMPO_TRANSFER_READ_CHUNK_BLOCKS = 5_000n;
+const TEMPO_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+// 余裕は許容 30 秒より広く取る。0.56 秒間隔で 120 ブロックは 67 秒。
+const TEMPO_TRANSFER_READ_MARGIN_BLOCKS = 120n;
+
+type TempoTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
+/**
+ * Tempo の USDC.e（0x20C0…8b50）の TransferWithMemo（from → to）を時刻の窓で読む読み手（2026-11-03・linkFromChain の Tempo のレーン）。
+ * 規則は makeCeloTransferReader と同じ: Tempo 以外の network は null、TEMPO_RPC_URL が無ければ null（公開 RPC へ黙って倒れない）、
+ * chainId が 4217 でない・先端が窓に届いていない・ブロックを特定できないときは null か例外。空配列は「窓を読み切って無かった」。
+ * 読むのは TransferWithMemo だけ: 我々の購入は MPP の transferWithMemo で、memo（auth_nonce）の無い Transfer は持ち主を決められない。
+ */
+export function makeTempoTransferReader(client?: TempoTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== TEMPO_MAINNET_CAIP2) return null;
+    const c = client ?? boundedTempoClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== TEMPO_CHAIN_ID) return null;
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    const [fromAt, toAt] = await Promise.all([
+      locateEvmBlock(c, head, from, TEMPO_BLOCK_SECONDS, TEMPO_BLOCK_LOCATE_TOLERANCE_SECONDS, expired, "Tempo"),
+      locateEvmBlock(c, head, to, TEMPO_BLOCK_SECONDS, TEMPO_BLOCK_LOCATE_TOLERANCE_SECONDS, expired, "Tempo"),
+    ]);
+    const first = fromAt - TEMPO_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + TEMPO_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty Tempo block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += TEMPO_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + TEMPO_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + TEMPO_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: TEMPO_USDC_E as Address,
+        event: TEMPO_TRANSFER_WITH_MEMO_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        const args = l.args as { from?: unknown; to?: unknown; amount?: unknown; memo?: unknown };
+        if (l.blockNumber === null || !l.transactionHash || typeof args.amount !== "bigint") {
+          throw new Error("a Tempo transfer log came back without a block, a hash or a value");
+        }
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(args.from),
+          to: String(args.to),
+          value: args.amount.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** TEMPO_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。無ければ null（公開 RPC を使わない）。 */
+function boundedTempoClient(timeoutMs: number | undefined): TempoTransferClient | null {
+  const url = tempoRpcUrl();
+  if (!url) return null;
+  return createPublicClient({
+    chain: tempoChain as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as TempoTransferClient;
+}
+
+/** レシートを読む面（Tempo の memo の読み手）。 */
+type TempoReceiptClient = Pick<ReturnType<typeof getLogScanClient>, "getChainId" | "getTransactionReceipt">;
+
+/**
+ * Tempo の tx の中で、payer が送った TransferWithMemo の memo（小文字 0x + 64 桁）の一覧（2026-11-03・NonceReader）。
+ * settlement-verify-tempo.ts と同じ読み方: USDC.e のログで topic0 が TransferWithMemo、topics[1] が payer、memo は topics[3]。
+ * 読めない（TEMPO_RPC_URL なし・chainId 違い・レシート無し・revert・RPC の失敗）なら null。
+ */
+export function makeTempoMemoReader(client?: TempoReceiptClient): NonceReader {
+  return async ({ network, txHash, payer }) => {
+    if (network !== TEMPO_MAINNET_CAIP2) return null;
+    if (!EVM_TX_HASH_RE.test(txHash)) return null;
+    const c = client ?? (boundedTempoClient(10_000) as unknown as TempoReceiptClient | null);
+    if (!c) return null;
+    try {
+      if ((await c.getChainId()) !== TEMPO_CHAIN_ID) return null;
+      const receipt = await c.getTransactionReceipt({ hash: txHash as `0x${string}` });
+      if (!receipt || receipt.status !== "success") return null;
+      const usdcLower = TEMPO_USDC_E.toLowerCase();
+      const payerLower = payer.toLowerCase();
+      const memoTopic = TEMPO_TRANSFER_WITH_MEMO_TOPIC0;
+      const out: string[] = [];
+      for (const log of receipt.logs) {
+        if (log.address?.toLowerCase() !== usdcLower) continue;
+        if (log.topics[0]?.toLowerCase() !== memoTopic) continue;
+        const from = log.topics[1];
+        const memo = log.topics[3];
+        if (!from || typeof memo !== "string" || memo.length !== 66) continue;
+        if (`0x${from.slice(-40)}`.toLowerCase() !== payerLower) continue;
+        out.push(memo.toLowerCase());
+      }
+      return out;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** TransferWithMemo(address,address,uint256,bytes32) の topic0（indexed の有無で変わらない。settlement-verify-tempo.ts と同じ値）。 */
+const TEMPO_TRANSFER_WITH_MEMO_TOPIC0 = keccak256(toBytes("TransferWithMemo(address,address,uint256,bytes32)")).toLowerCase();
+
+/** EVM の tx hash の形。 */
+const EVM_TX_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
+
+/**
+ * Arc のブロック間隔（秒）。2026-11-03T15:18Z 実測（https://rpc.mainnet.arc.io）: ヘッド 29,347,957 と 100,000 ブロック前の時刻差から
+ * 0.507 秒。0.51 で見積もり、読んだブロックと先端の実の間隔で直す。
+ */
+const ARC_BLOCK_SECONDS = 0.51;
+/** 2026-11-03 実測: rpc.mainnet.arc.io は USDC のログを 10,000 ブロックで答えた（1.8 秒）。1 行の窓（≈ 3,770 ブロック）は 1 回で読む。 */
+export const ARC_TRANSFER_READ_CHUNK_BLOCKS = 5_000n;
+const ARC_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
+// 余裕は許容 30 秒より広く取る。0.51 秒間隔で 120 ブロックは 61 秒。
+const ARC_TRANSFER_READ_MARGIN_BLOCKS = 120n;
+
+type ArcTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
+
+/**
+ * Arc の USDC（0x3600…0000）の Transfer（from → to）を時刻の窓で読む読み手（2026-11-03・linkFromChain の Arc のレーン）。
+ * 規則は makeCeloTransferReader と同じ。ARC_RPC_URL が無ければ null——chain/arc.ts の arcRpcUrl は公開 RPC へ倒れるが、
+ * このレーンの決め手（nonce・認可の状態の読み手）は ARC_RPC_URL 必須なので、ここも同じ関門にする。
+ */
+export function makeArcTransferReader(client?: ArcTransferClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== ARC_CAIP2) return null;
+    const c = client ?? boundedArcClient(timeoutMs);
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
+    if (chainId !== ARC_CHAIN_ID) return null;
+    const headMs = Number(head.timestamp) * 1000;
+    if (headMs < to.getTime()) return null;
+    const [fromAt, toAt] = await Promise.all([
+      locateEvmBlock(c, head, from, ARC_BLOCK_SECONDS, ARC_BLOCK_LOCATE_TOLERANCE_SECONDS, expired, "Arc"),
+      locateEvmBlock(c, head, to, ARC_BLOCK_SECONDS, ARC_BLOCK_LOCATE_TOLERANCE_SECONDS, expired, "Arc"),
+    ]);
+    const first = fromAt - ARC_TRANSFER_READ_MARGIN_BLOCKS;
+    const last = toAt + ARC_TRANSFER_READ_MARGIN_BLOCKS;
+    const fromBlock = first < 0n ? 0n : first;
+    const toBlock = last > head.number ? head.number : last;
+    if (fromBlock > toBlock) throw new Error("empty Arc block range for the window");
+    const times = new Map<bigint, number>();
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += ARC_TRANSFER_READ_CHUNK_BLOCKS) {
+      expired();
+      const hi = lo + ARC_TRANSFER_READ_CHUNK_BLOCKS - 1n < toBlock ? lo + ARC_TRANSFER_READ_CHUNK_BLOCKS - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: ARC_USDC_ADDRESS,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock: lo,
+        toBlock: hi,
+      });
+      for (const l of logs) {
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") {
+          throw new Error("an Arc transfer log came back without a block, a hash or a value");
+        }
+        expired();
+        if (!times.has(l.blockNumber)) times.set(l.blockNumber, Number((await c.getBlock({ blockNumber: l.blockNumber })).timestamp) * 1000);
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: l.args.value.toString(),
+          blockTime: new Date(times.get(l.blockNumber)!).toISOString(),
+        });
+      }
+    }
+    return out;
+  };
+}
+
+/** ARC_RPC_URL を、呼び手の時間で切り・再試行しないクライアント。ARC_RPC_URL が無ければ null（公開 RPC を使わない）。 */
+function boundedArcClient(timeoutMs: number | undefined): ArcTransferClient | null {
+  const url = process.env.ARC_RPC_URL?.trim();
+  if (!url) return null;
+  return createPublicClient({
+    chain: arc as unknown as typeof base,
+    transport: http(url, { timeout: Math.max(1_000, Math.trunc(timeoutMs ?? 20_000)), retryCount: 0 }),
+  }) as unknown as ArcTransferClient;
+}
+
+/**
+ * 時刻 → ブロック番号（Tempo・Arc の読み手が共有・2026-11-03）。秒/ブロックで見積もり、そのブロックの実際の時刻で確かめて直す
+ * （最大 3 回）。直すときの間隔は、読んだブロックと先端の実の間隔（BNB の読み手と同じ）。先端・起点に張り付いたまま合わないなら例外。
+ */
+async function locateEvmBlock(
+  c: Pick<ReturnType<typeof getLogScanClient>, "getBlock">,
+  head: { number: bigint; timestamp: bigint },
+  t: Date,
+  secondsPerBlock: number,
+  toleranceSeconds: number,
+  expired: () => void,
+  chainName: string,
+): Promise<bigint> {
+  const headMs = Number(head.timestamp) * 1000;
+  let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (secondsPerBlock * 1000))));
+  for (let i = 0; i < 3; i++) {
+    expired();
+    if (n < 0n) n = 0n;
+    if (n > head.number) n = head.number;
+    const block = await c.getBlock({ blockNumber: n });
+    const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
+    if (Math.abs(driftSeconds) <= toleranceSeconds) return n;
+    if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
+    const blocksBack = Number(head.number - n);
+    const observed = blocksBack > 0 ? (Number(head.timestamp) - Number(block.timestamp)) / blocksBack : 0;
+    n -= BigInt(Math.trunc(driftSeconds / (observed > 0 ? observed : secondsPerBlock)));
+  }
+  throw new Error(`could not locate the ${chainName} block for the window`);
+}
+
+/**
+ * Solana の直読みが使う RPC の面（2026-11-03・テストでは偽物を注入する）。本番は @solana/web3.js の Connection（SOLANA_RPC_URL）。
+ * 署名一覧は購入元の USDC の ATA に問う（index-solana.ts と同じ理由: x402 の SVM の決済が口座一覧に載せるのは ATA）。
+ */
+export type SolanaLateReadRpc = {
+  getGenesisHash(): Promise<string>;
+  /** 先端のスロットとその時刻（秒）。先端が窓の終わりに届いていなければ読まない。 */
+  getHeadTime(): Promise<number | null>;
+  getSignaturesForAddress(address: string, opts: { limit: number; before?: string }): Promise<{ signature: string; blockTime?: number | null; err: unknown | null }[]>;
+  getParsedTransaction(signature: string): Promise<{
+    blockTime?: number | null;
+    meta: { err: unknown | null; preTokenBalances?: readonly SolanaTokenBalance[] | null; postTokenBalances?: readonly SolanaTokenBalance[] | null } | null;
+    /** spl-memo 命令の文字列。読めなければ null。 */
+    memos: readonly string[] | null;
+  } | null>;
+};
+
+/** 1 回の署名の頁（getSignaturesForAddress の上限）。 */
+export const SOLANA_LATE_READ_SIGNATURES_PER_PAGE = 1_000;
+/** 1 つの組で遡る頁の上限。購入元の ATA の履歴は我々の Solana の購入だけなので、30 日ぶんでも数頁。 */
+export const SOLANA_LATE_READ_MAX_PAGES = 10;
+/** CAIP-2 の solana 名前空間は genesis hash の先頭 32 文字を参照に使う（settlement-verify-solana.ts と同じ）。 */
+const CAIP2_SOLANA_REFERENCE_LENGTH = 32;
+
+/**
+ * Solana の USDC の着金（購入元 → 宛先）を時刻の窓で読む読み手（2026-11-03・linkFromChain の Solana のレーン）。
+ *   - Solana 以外の network は null。SOLANA_RPC_URL が無ければ null（公開 RPC へ黙って倒れない）。
+ *   - クラスタを毎回読む（genesis hash が network の参照と合わなければ null）。先端の時刻が窓の終わりに届いていなければ null。
+ *   - 購入元の USDC の ATA の署名一覧を新しい順に遡り、窓の中の署名だけ取引を読む。窓より古い署名に届く前に頁の上限に
+ *     当たったら例外（読み切れていない窓を「着金なし」と言わない）。
+ *   - 取引ごとに、宛先（owner）の USDC の受領額を残高差分で取り（usdcOwnerDelta・照合器と同じ読み方）、購入元の USDC が
+ *     減っているものだけを着金にする。value は宛先の受領額。失敗した取引（meta.err）は数えない。
+ *   - from / to は呼び手が渡した表記のまま返す（base58 は大文字小文字で別の鍵）。
+ */
+export function makeSolanaTransferReader(rpc?: SolanaLateReadRpc | null): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== SOLANA_MAINNET_CAIP2) return null;
+    const c = rpc === undefined ? await createSolanaLateReadRpc() : rpc;
+    if (!c) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
+    };
+    const reference = network.slice("solana:".length);
+    const genesis = await c.getGenesisHash();
+    if (typeof genesis !== "string" || genesis.slice(0, CAIP2_SOLANA_REFERENCE_LENGTH) !== reference) return null;
+    const headSeconds = await c.getHeadTime();
+    if (headSeconds === null || !Number.isFinite(headSeconds) || headSeconds * 1000 < to.getTime()) return null;
+    const account = solanaUsdcTokenAccount(payer);
+    if (!account) return null;
+    const fromSeconds = Math.floor(from.getTime() / 1000);
+    const toSeconds = Math.ceil(to.getTime() / 1000);
+    const inWindow: string[] = [];
+    let before: string | undefined;
+    let reachedPast = false;
+    for (let page = 0; page < SOLANA_LATE_READ_MAX_PAGES; page++) {
+      expired();
+      const sigs = await c.getSignaturesForAddress(account, { limit: SOLANA_LATE_READ_SIGNATURES_PER_PAGE, ...(before ? { before } : {}) });
+      if (sigs.length === 0) {
+        reachedPast = true;
+        break;
+      }
+      for (const s of sigs) {
+        const bt = typeof s.blockTime === "number" ? s.blockTime : null;
+        if (bt === null) throw new Error("a Solana signature came back without a block time");
+        if (s.err !== null && s.err !== undefined) continue;
+        if (bt >= fromSeconds && bt <= toSeconds) inWindow.push(s.signature);
+      }
+      const last = sigs[sigs.length - 1];
+      if (typeof last.blockTime === "number" && last.blockTime < fromSeconds) {
+        reachedPast = true;
+        break;
+      }
+      if (sigs.length < SOLANA_LATE_READ_SIGNATURES_PER_PAGE) {
+        reachedPast = true;
+        break;
+      }
+      before = last.signature;
+    }
+    if (!reachedPast) throw new Error("the Solana signature list did not reach the start of the window within the page limit");
+    const out: ChainTransfer[] = [];
+    for (const signature of inWindow) {
+      expired();
+      const tx = await c.getParsedTransaction(signature);
+      if (!tx || !tx.meta) throw new Error(`the Solana transaction ${signature.slice(0, 16)}… could not be read`);
+      if (tx.meta.err !== null && tx.meta.err !== undefined) continue;
+      const pre = tx.meta.preTokenBalances ?? [];
+      const post = tx.meta.postTokenBalances ?? [];
+      const payee = usdcOwnerDelta(pre, post, payTo, SOLANA_USDC_MINT);
+      const source = usdcOwnerDelta(pre, post, payer, SOLANA_USDC_MINT);
+      if (!payee.attributable || !source.attributable) throw new Error(`the Solana transaction ${signature.slice(0, 16)}… has token balances without owners`);
+      if (payee.received <= 0n || source.sent <= 0n) continue;
+      const bt = typeof tx.blockTime === "number" ? tx.blockTime : null;
+      if (bt === null) throw new Error(`the Solana transaction ${signature.slice(0, 16)}… has no block time`);
+      out.push({ txHash: signature, from: payer, to: payTo, value: payee.received.toString(), blockTime: new Date(bt * 1000).toISOString() });
+    }
+    return out;
+  };
+}
+
+/**
+ * Solana の取引の spl-memo の文字列（小文字・前後の空白を除く）の一覧（2026-11-03・NonceReader）。
+ * 読めない（SOLANA_RPC_URL なし・クラスタ違い・取引無し・失敗した取引・memo が読めない応答）なら null。
+ */
+export function makeSolanaMemoReader(rpc?: SolanaLateReadRpc | null): NonceReader {
+  return async ({ network, txHash }) => {
+    if (network !== SOLANA_MAINNET_CAIP2) return null;
+    const c = rpc === undefined ? await createSolanaLateReadRpc() : rpc;
+    if (!c) return null;
+    try {
+      const genesis = await c.getGenesisHash();
+      if (typeof genesis !== "string" || genesis.slice(0, CAIP2_SOLANA_REFERENCE_LENGTH) !== network.slice("solana:".length)) return null;
+      const tx = await c.getParsedTransaction(txHash.trim());
+      if (!tx || !tx.meta || (tx.meta.err !== null && tx.meta.err !== undefined)) return null;
+      if (tx.memos === null || tx.memos === undefined) return null;
+      return tx.memos.map((m) => m.trim().toLowerCase());
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** 本番の RPC の面（@solana/web3.js）。SOLANA_RPC_URL 未設定なら null。 */
+async function createSolanaLateReadRpc(): Promise<SolanaLateReadRpc | null> {
+  const url = process.env.SOLANA_RPC_URL?.trim();
+  if (!url) return null;
+  const { Connection, PublicKey } = await import("@solana/web3.js");
+  const conn = new Connection(url, "confirmed");
+  const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+  return {
+    getGenesisHash: () => conn.getGenesisHash(),
+    getHeadTime: async () => {
+      const slot = await conn.getSlot("confirmed");
+      const t = await conn.getBlockTime(slot);
+      return typeof t === "number" ? t : null;
+    },
+    getSignaturesForAddress: async (address, opts) => {
+      const list = await conn.getSignaturesForAddress(new PublicKey(address), opts, "confirmed");
+      return list.map((s) => ({ signature: s.signature, blockTime: s.blockTime ?? null, err: s.err }));
+    },
+    getParsedTransaction: async (signature) => {
+      const tx = await conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+      if (!tx) return null;
+      const memos: string[] = [];
+      const walk = (instructions: readonly unknown[]) => {
+        for (const raw of instructions) {
+          const ix = raw as { program?: string; programId?: { toBase58(): string }; parsed?: unknown };
+          const programId = ix.programId?.toBase58?.() ?? "";
+          if ((ix.program === "spl-memo" || programId === MEMO_PROGRAM_ID) && typeof ix.parsed === "string") memos.push(ix.parsed);
+        }
+      };
+      walk(tx.transaction.message.instructions);
+      for (const inner of tx.meta?.innerInstructions ?? []) walk(inner.instructions);
+      return {
+        blockTime: tx.blockTime,
+        meta: tx.meta
+          ? {
+              err: tx.meta.err,
+              preTokenBalances: tx.meta.preTokenBalances as readonly SolanaTokenBalance[] | null | undefined,
+              postTokenBalances: tx.meta.postTokenBalances as readonly SolanaTokenBalance[] | null | undefined,
+            }
+          : null,
+        memos,
+      };
+    },
+  };
 }

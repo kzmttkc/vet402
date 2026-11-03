@@ -49,12 +49,15 @@ export async function GET(request: NextRequest) {
     // 2026-10-26: Avalanche C-Chain（eip155:43114）のネイティブ USDC も同じ。AVALANCHE_RPC_URL が無ければ読まない。
     // 各段の持ち時間の合計: EVM の索引 120 + Solana 60 + XRPL 20 + Base の直読み 45 + Celo の直読み 30 + BNB の直読み 30 + Arbitrum の直読み 30 + Avalanche の直読み 30 = 365 秒。
     // 持ち時間の無い段が長引いた回は、Celo と BNB と Arbitrum と Avalanche の段が deadlineAt の手前で止まる（読まなかった行は次回）。
+    // 2026-11-03: Tempo・Arc・Solana のレーンはここでは走らせない（lanes）。/api/cron/recover-late-chains が別の 300 秒で走らせる
+    // （ここに足すと、索引の段の後ろで残り時間が無く、一度も読まれない日ができる）。
     const lateSettlements = await recoverLateSettlements({
       readNonces: readAuthorizationNonces,
       readTransfers: makeChainTransferReader(),
       readAuthorizationState,
       chainReadLimit: 20,
       deadlineAt,
+      lanes: ["base", "celo", "bnb", "arbitrum", "avalanche"],
     });
     return NextResponse.json({ ok: true, testWallets: classifier.testWallets.size, l1, payments, evm, solana, xrpl, lateSettlements });
   } catch (error) {

@@ -137,6 +137,10 @@
       "path": "/api/cron/index-settlements"
     },
     {
+      "path": "/api/cron/recover-late-chains",
+      "schedule": "30 13 * * *"
+    },
+    {
       "path": "/api/cron/settlements-rollup",
       "schedule": "30 16 * * *"
     },
