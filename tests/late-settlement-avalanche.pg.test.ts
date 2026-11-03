@@ -12,7 +12,8 @@
 //  2. 額・宛先・払い元・時刻が合っても、その行の nonce が tx で消費されていなければ貼らない。
 //  3. 額・宛先・払い元・窓のどれかが違えば貼らない（nonce を読みにも行かない）。
 //  4. RPC が読めない（Transfer・レシートのどちらでも）・読み手が無いなら、行を 1 文字も変えない。
-//  5. 署名していない行（auth_nonce なし・形の不正）は選ばない。Arc の行も選ばない（このレーンは Avalanche だけ）。
+//  5. 署名していない行（auth_nonce なし・形の不正）は選ばない。レーンの無い network（Polygon）の行も選ばない（このレーンは Avalanche だけ。
+//     Arc は 2026-11-03 から自分のレーンを持つ）。
 //  6. Base のレーンは変えない: Base の行の上限に Avalanche の行は数えず、Base の貼り方（nonce を読まない）も従来どおり。
 // Run: TEST_DATABASE_URL=postgres://localhost/<自分用のテスト DB> \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/late-settlement-avalanche.pg.test.ts
@@ -38,7 +39,8 @@ if (!TEST_DB) {
   const OTHER_PAYER = "0x902dcf34e53695bdea2ffb354b1a2e58bd598256";
   const ARB = "eip155:43114";
   const BASE = "eip155:8453";
-  const ARC = "eip155:5042";
+  /** 直読みのレーンを持たない network（Polygon）。Arc（eip155:5042）は 2026-11-03 から自分のレーンを持つので、ここでは使わない。 */
+  const NO_LANE = "eip155:137";
   const ARB_USDC = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E";
   const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
   const AMOUNT = "6000";
@@ -375,12 +377,12 @@ if (!TEST_DB) {
       assert.deepEqual(s2.links, [{ purchaseId: id, txHash: tx("23") }]);
     });
 
-    await t.test("5: 署名していない行・Arc の行・窓が閉じていない行は選ばない", async () => {
+    await t.test("5: 署名していない行・レーンの無い network の行・窓が閉じていない行は選ばない", async () => {
       const cases: [string, Parameters<typeof seedRow>[0]][] = [
         ["auth_nonce が無い（資格情報が外へ出ていない）", { nonce: null }],
         ["auth_nonce が EIP-3009 の nonce の形でない", { nonce: "0x1234" }],
         ["auth_nonce が空白", { nonce: "   " }],
-        ["Arc の行（このレーンは Avalanche だけ）", { network: ARC }],
+        ["レーンの無い network の行（このレーンは Avalanche だけ）", { network: NO_LANE }],
         ["窓が閉じていない（直近 5 分）", { attemptedAt: new Date(Date.now() - 5 * 60_000) }],
         ["既に tx を持つ settle_claimed", { status: "settle_claimed", tx: tx("77") }],
         ["署名していない status（price_mismatch）", { status: "price_mismatch" }],

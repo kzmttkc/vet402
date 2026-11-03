@@ -60,7 +60,9 @@ function fakeRpc(o: {
     getHeadTime: async () => (o.head === undefined ? Math.floor(TO.getTime() / 1000) + 600 : o.head),
     getSignaturesForAddress: async (address, opts) => {
       calls.push({ address, before: opts.before });
-      const page = pages[calls.length - 1] ?? [];
+      // The page after the one whose last signature is `before` (a fresh cursor starts at the first page).
+      const index = opts.before === undefined ? 0 : pages.findIndex((p) => p[p.length - 1]?.signature === opts.before) + 1;
+      const page = pages[index] ?? [];
       return page.map((p) => ({ signature: p.signature, blockTime: p.blockTime, err: p.err ?? null }));
     },
     getParsedTransaction: async (signature) => {
@@ -147,8 +149,10 @@ test("Solana memo reader: returns the memos lowercased; null for another network
 test("Solana reader: within one run the signature pages and the transactions are read once and shared with the memo reader", async () => {
   const secs = Math.floor(AT / 1000);
   const older = secs - 2 * 86_400;
-  const full = Array.from({ length: SOLANA_LATE_READ_SIGNATURES_PER_PAGE }, (_, i) => ({ signature: `${SIG_NEW}${i}`, blockTime: secs + 7_200 - i * 10 }));
+  // Page 1: 1,000 failed signatures from two hours after the purchase down to 37 minutes after it (failed ones are never read as transactions).
+  const full = Array.from({ length: SOLANA_LATE_READ_SIGNATURES_PER_PAGE }, (_, i) => ({ signature: `${SIG_NEW}${i}`, blockTime: secs + 7_200 - i * 5, err: {} }));
   const f = fakeRpc({
+    head: secs + 10_000,
     pages: [full, [{ signature: SIG_IN, blockTime: secs + 2 }, { signature: SIG_OLD, blockTime: older + 2 }, { signature: `${SIG_OLD}z`, blockTime: older - 7_200 }]],
     txs: { [SIG_IN]: paid, [SIG_OLD]: { ...paid, blockTime: older + 2 } },
   });

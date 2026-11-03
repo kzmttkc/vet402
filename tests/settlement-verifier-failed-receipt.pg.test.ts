@@ -203,6 +203,8 @@ if (!TEST_DB) {
 
     await t.test("4: 同じ tx を別の行が主張していれば読まない（読んだ回数は数える）", async () => {
       await reset();
+      // 一意 index（2026-09-04 以降）はこの形を作らせない。それ以前の行を再現するため index を外して入れ、終わったら戻す。
+      await db.execute(sql`DROP INDEX IF EXISTS x402_l1_purchases_tx_unique`);
       const id = await seedRow();
       await seedRow({ status: "settled", verified: true, meta: { phase: "paid", status: 200 } });
       const { summary, inputs } = runWith(ok);
@@ -212,6 +214,8 @@ if (!TEST_DB) {
       assert.equal(row.status, "settle_failed");
       const meta = row.rawResponseMeta as { failedReceiptCheck?: { mismatches?: number; checks?: number } };
       assert.deepEqual({ checks: meta.failedReceiptCheck?.checks, mismatches: meta.failedReceiptCheck?.mismatches }, { checks: 1, mismatches: 0 });
+      await reset();
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS x402_l1_purchases_tx_unique ON x402_l1_purchases (network, lower(tx_hash)) WHERE tx_hash IS NOT NULL`);
     });
 
     await t.test("6: auth_nonce の無い行と Stellar の行は読まない。settle_failed の枠は小さく、settle_claimed の後ろ", async () => {
