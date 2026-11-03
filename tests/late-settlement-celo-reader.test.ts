@@ -203,12 +203,15 @@ test("chain transfer reader: Celo rows go to the Celo reader, everything else to
   const seen: string[] = [];
   const base: TransferReader = async (q) => (seen.push(`base:${q.network}`), q.network === "eip155:8453" || q.network === "base" ? [] : null);
   const celo: TransferReader = async (q) => (seen.push(`celo:${q.network}`), []);
-  const reader = makeChainTransferReader({ base, celo });
+  const arc: TransferReader = async (q) => (seen.push(`arc:${q.network}`), null);
+  const reader = makeChainTransferReader({ base, celo, arc });
   assert.deepEqual(await reader({ ...query, network: CELO }), []);
   assert.deepEqual(await reader({ ...query, network: "eip155:8453" }), []);
   assert.deepEqual(await reader({ ...query, network: "base" }), []);
-  assert.equal(await reader({ ...query, network: "eip155:5042" }), null, "Arc is read by nobody");
-  assert.deepEqual(seen, ["celo:eip155:42220", "base:eip155:8453", "base:base", "base:eip155:5042"]);
+  // 2026-11-03: Arc has a lane of its own; a network without a lane (Polygon) still goes to the Base reader, which answers null.
+  assert.equal(await reader({ ...query, network: "eip155:137" }), null, "a network without a lane goes to the Base reader, which answers null");
+  assert.equal(await reader({ ...query, network: "eip155:5042" }), null, "Arc goes to the Arc reader (null without ARC_RPC_URL), never to Base");
+  assert.deepEqual(seen, ["celo:eip155:42220", "base:eip155:8453", "base:base", "base:eip155:137", "arc:eip155:5042"]);
   // The real Base reader answers null for a Celo row and for an Arc row (unchanged).
   const { makeBaseTransferReader } = await import("@/lib/settlements/recover-late");
   const neverCalled = { getBlock: async () => assert.fail("Base RPC must not be read"), getLogs: async () => assert.fail("Base RPC must not be read") } as never;

@@ -177,10 +177,13 @@ test("chain transfer reader: Avalanche rows go to the Avalanche reader, Celo to 
   const base: TransferReader = async (q) => (seen.push(`base:${q.network}`), q.network === "eip155:8453" || q.network === "base" ? [] : null);
   const celo: TransferReader = async (q) => (seen.push(`celo:${q.network}`), []);
   const avalanche: TransferReader = async (q) => (seen.push(`avalanche:${q.network}`), []);
-  const reader = makeChainTransferReader({ base, celo, avalanche });
+  const arc: TransferReader = async (q) => (seen.push(`arc:${q.network}`), null);
+  const reader = makeChainTransferReader({ base, celo, avalanche, arc });
   assert.deepEqual(await reader({ ...query, network: ARB }), []);
   assert.deepEqual(await reader({ ...query, network: "eip155:42220" }), []);
   assert.deepEqual(await reader({ ...query, network: "eip155:8453" }), []);
-  assert.equal(await reader({ ...query, network: "eip155:5042" }), null, "Arc is read by nobody");
-  assert.deepEqual(seen, ["avalanche:eip155:43114", "celo:eip155:42220", "base:eip155:8453", "base:eip155:5042"]);
+  // 2026-11-03: Arc has a lane of its own; a network without a lane (Polygon) still goes to the Base reader, which answers null.
+  assert.equal(await reader({ ...query, network: "eip155:137" }), null, "a network without a lane goes to the Base reader, which answers null");
+  assert.equal(await reader({ ...query, network: "eip155:5042" }), null, "Arc goes to the Arc reader (null without ARC_RPC_URL), never to Base");
+  assert.deepEqual(seen, ["avalanche:eip155:43114", "celo:eip155:42220", "base:eip155:8453", "base:eip155:137", "arc:eip155:5042"]);
 });
