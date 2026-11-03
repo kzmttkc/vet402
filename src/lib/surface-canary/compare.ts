@@ -13,6 +13,7 @@
 //
 // 「食い違い」は、同じ事実について面どうしが違うことを言うこと。取れなかった面・読めなかった面は
 // 「一致」に数えない（skipped に理由を残す）。比べた項目が 0 なら緑にしない（buildReport）。
+// 食い違いは少し待って読み直し、残ったものだけを赤に数える（settleAfterRecheck）。消えたものは clearedOnRecheck に値を残す。
 // ============================================================
 import type { OpenApiReasonCodes, ReasonTableRow, RecordPage, SellerListing, Side } from "./parse";
 import { sideFromOutcome, sideFromWords } from "./parse";
@@ -20,7 +21,8 @@ import { sideFromOutcome, sideFromWords } from "./parse";
 export const ITEMS = ["verdict", "reason_codes", "side", "money_moved", "failure_count", "l0_state", "l2_state", "rules_version"] as const;
 export type Item = (typeof ITEMS)[number];
 
-export type SurfaceValue = { surface: string; value: unknown };
+/** unread: 面は取れたが、比べる語が読めなかった（読み直しの一致の根拠にしない）。 */
+export type SurfaceValue = { surface: string; value: unknown; unread?: boolean };
 export type Check = {
   item: Item;
   rule: string;
@@ -233,7 +235,15 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
       if (others.length > 0)
         push("verdict", "block_vs_unmeasured", false, [{ surface: "decision", value: `BLOCK (${blockCodes.join(", ")})` }, ...others],
           "BLOCK rests only on codes that say vet402 has not measured the listing");
-      else push("verdict", "block_vs_unmeasured", true, [{ surface: "decision", value: `BLOCK (${blockCodes.join(", ")})` }]);
+      else
+        // 一致の根拠にした面を値に残す。面が取れなかった一致は、読み直しで「消えた」に数えない（settleAfterRecheck）。
+        push("verdict", "block_vs_unmeasured", true, [
+          { surface: "decision", value: `BLOCK (${blockCodes.join(", ")})` },
+          ...(l0 ? [{ surface: "l0", value: `published ${l0.published_verdict}` }] : []),
+          ...(rec?.publishedState ? [{ surface: "record", value: rec.publishedState }] : []),
+          ...(sellers ? [{ surface: "sellers", value: sellers.outcome }] : []),
+          ...(page?.latestAttempt ? [{ surface: "seller_page", value: page.latestAttempt }] : []),
+        ]);
     }
   }
 
@@ -432,13 +442,13 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
       const vals: SurfaceValue[] = [{ surface: "sellers", value: `${sellers.outcome}${sellers.side_label ? ` (${sellers.side_label})` : ""}` }];
       const sides: Side[] = [sideFromOutcome(sellers.outcome)].filter((s): s is Side => s !== null);
       if (pg) {
-        vals.push({ surface: "seller_page", value: `${pg.whoseSide}${pg.ledgerReadAt ? ` (page read ${pg.ledgerReadAt})` : ""}` });
         const s = sideFromWords(pg.whoseSide);
+        vals.push({ surface: "seller_page", value: `${pg.whoseSide}${pg.ledgerReadAt ? ` (page read ${pg.ledgerReadAt})` : ""}`, ...(s ? {} : { unread: true }) });
         if (s) sides.push(s);
       }
       if (recRow) {
-        vals.push({ surface: "record", value: recRow.whoseSide });
         const s = sideFromWords(recRow.whoseSide);
+        vals.push({ surface: "record", value: recRow.whoseSide, ...(s ? {} : { unread: true }) });
         if (s) sides.push(s);
       }
       // 「not sorted」の語は面の間で一字一句同じはず（記録頁は「the same words as the seller page」と書く）
@@ -710,10 +720,70 @@ export type Report = {
   surfaces: { attempted: number; fetched: number; failed: number; failedList: SurfaceTally["failed"] };
   compared: number;
   comparedByItem: Record<string, number>;
+  /** 赤に数える食い違い。読み直しをしたときは、読み直しでも残ったものと読み直せなかったものだけ。 */
   discrepancies: Check[];
+  /** 1 回目の読みの食い違いの数（読み直しの前）。 */
+  firstReadDiscrepancies: number;
+  /** 1 回目は食い違い、読み直しでは一致したもの（時間差。赤にしないが値を残す）。 */
+  clearedOnRecheck: Check[];
+  /** 読み直しで初めて出た食い違い（赤には数えない。report と step summary に値を残す）。 */
+  appearedOnRecheck: Check[];
+  recheck: { waitedMs: number; listings: string[]; failedList: SurfaceTally["failed"]; skips: Skip[] } | null;
+  /** 締切で読み切らずに止めた時の理由（赤）。止めなければ null。 */
+  stoppedEarly: string | null;
   skipped: number;
   skips: Skip[];
 };
+
+/** 少し待って読み直した結果（buildReport に渡す）。 */
+export type Recheck = {
+  checks: Check[];
+  skips: Skip[];
+  waitedMs: number;
+  listings: string[];
+  failed: SurfaceTally["failed"];
+};
+
+const checkKey = (c: Pick<Check, "item" | "rule" | "listing" | "observatoryId">) => `${c.item}|${c.rule}|${c.listing}|${c.observatoryId ?? ""}`;
+
+/**
+ * 1 回目の食い違いを読み直しの結果で振り分ける。1 回目に語を読めた面が全部、読み直しでも語を読めた比較で一致した時だけ消す。
+ * 読み直しでも食い違えば読み直しの値で残す。比べられなかったもの、面が欠けた一致（面が取れない・語が読めない・先頭の頁に無い・
+ * 読み置きで外された）は、食い違っていた面の一致を確かめていないので残す。
+ */
+export function settleAfterRecheck(first: readonly Check[], second: readonly Check[]): { persisted: Check[]; cleared: Check[]; appeared: Check[] } {
+  const firstKeys = new Set(first.map(checkKey));
+  const persisted: Check[] = [];
+  const cleared: Check[] = [];
+  for (const c of first) {
+    const again = second.filter((s) => checkKey(s) === checkKey(c));
+    const stillWrong = again.filter((s) => !s.ok);
+    const covers = (s: Check) => c.values.filter((v) => !v.unread).every((v) => s.values.some((w) => w.surface === v.surface && !w.unread));
+    if (stillWrong.length > 0) {
+      if (!persisted.some((p) => checkKey(p) === checkKey(c))) persisted.push(...stillWrong);
+    } else if (again.some(covers)) cleared.push(c);
+    else persisted.push({ ...c, detail: [c.detail, "not compared on every surface on the re-read, so it stays"].filter(Boolean).join("; ") });
+  }
+  const appeared = second.filter((s) => !s.ok && !firstKeys.has(checkKey(s)));
+  return { persisted, cleared, appeared };
+}
+
+/** 出品ごとの比較と登録簿の比較をまとめて回す（1 回目と読み直しで同じ）。 */
+export function compareAll(listings: readonly ListingInput[], registry: Registry): { checks: Check[]; skips: Skip[] } {
+  const checks: Check[] = [];
+  const skips: Skip[] = [];
+  const rulesVersions: string[] = [];
+  for (const l of listings) {
+    if (l.decision.ok === true && l.decision.value.rules_version) rulesVersions.push(l.decision.value.rules_version);
+    const c = compareListing(l, registry);
+    checks.push(...c.checks);
+    skips.push(...c.skips);
+  }
+  const r = compareRegistry(registry, rulesVersions);
+  checks.push(...r.checks);
+  skips.push(...r.skips);
+  return { checks, skips };
+}
 
 export type Thresholds = { minSample: number; requiredTypes: string[]; requiredVerdicts: string[]; maxSurfaceFailureRate: number };
 
@@ -729,34 +799,30 @@ export function buildReport(args: {
   registry: Registry;
   tally: SurfaceTally;
   thresholds?: Thresholds;
+  recheck?: Recheck;
+  stoppedEarly?: string;
 }): Report {
   const t = args.thresholds ?? DEFAULT_THRESHOLDS;
-  const checks: Check[] = [];
-  const skips: Skip[] = [];
   const byType: Record<string, number> = {};
   const byVerdict: Record<string, number> = {};
-  const rulesVersions: string[] = [];
   for (const l of args.listings) {
     for (const ty of l.types) byType[ty] = (byType[ty] ?? 0) + 1;
     if (l.decision.ok === true) {
       const r = l.decision.value.recommendation ?? "?";
       byVerdict[r] = (byVerdict[r] ?? 0) + 1;
-      if (l.decision.value.rules_version) rulesVersions.push(l.decision.value.rules_version);
     }
-    const c = compareListing(l, args.registry);
-    checks.push(...c.checks);
-    skips.push(...c.skips);
   }
-  const r = compareRegistry(args.registry, rulesVersions);
-  checks.push(...r.checks);
-  skips.push(...r.skips);
+  const { checks, skips } = compareAll(args.listings, args.registry);
 
   const comparedByItem: Record<string, number> = Object.fromEntries(ITEMS.map((i) => [i, 0]));
   for (const c of checks) comparedByItem[c.item] = (comparedByItem[c.item] ?? 0) + 1;
 
   const failReasons: string[] = [];
-  const discrepancies = checks.filter((c) => !c.ok);
+  const firstRead = checks.filter((c) => !c.ok);
+  const settled = args.recheck ? settleAfterRecheck(firstRead, args.recheck.checks) : { persisted: firstRead, cleared: [], appeared: [] };
+  const discrepancies = settled.persisted;
   if (discrepancies.length > 0) failReasons.push(`${discrepancies.length} discrepancies between surfaces`);
+  if (args.stoppedEarly) failReasons.push(`stopped before reading everything: ${args.stoppedEarly}`);
   if (args.tally.fetched === 0) failReasons.push("no surface was fetched");
   if (checks.length === 0) failReasons.push("no item was compared");
   const sampled = args.listings.filter((l) => l.decision.ok === true).length;
@@ -779,7 +845,51 @@ export function buildReport(args: {
     compared: checks.length,
     comparedByItem,
     discrepancies,
+    firstReadDiscrepancies: firstRead.length,
+    clearedOnRecheck: settled.cleared,
+    appearedOnRecheck: settled.appeared,
+    recheck: args.recheck
+      ? { waitedMs: args.recheck.waitedMs, listings: args.recheck.listings, failedList: args.recheck.failed, skips: args.recheck.skips }
+      : null,
+    stoppedEarly: args.stoppedEarly ?? null,
     skipped: skips.length,
     skips,
   };
+}
+
+/**
+ * 登録簿の食い違いを読み直すときに取り直す出品。判定が言う規則の版ごとに 1 件は入れ（配備の途中で版が割れた回を、片方だけ読んで
+ * 「消えた」としないため）、足りなければ先頭から min 件まで足す。
+ */
+export function listingsForRegistryRecheck(listings: readonly ListingInput[], min: number): string[] {
+  const ids = new Set<string>();
+  const versions = new Set<string>();
+  for (const l of listings) {
+    const v = l.decision.ok === true ? l.decision.value.rules_version : undefined;
+    if (v && !versions.has(v)) {
+      versions.add(v);
+      ids.add(l.observatoryId);
+    }
+  }
+  for (const l of listings) {
+    if (ids.size >= min) break;
+    ids.add(l.observatoryId);
+  }
+  return [...ids];
+}
+
+/** $GITHUB_STEP_SUMMARY に出す読み直しの結果。赤に数えなかった食い違いも値ごと見えるように。 */
+export function recheckSummaryMarkdown(r: Pick<Report, "ok" | "failReasons" | "firstReadDiscrepancies" | "discrepancies" | "clearedOnRecheck" | "appearedOnRecheck" | "recheck" | "stoppedEarly">): string {
+  const line = (c: Check) =>
+    `- \`${c.item}/${c.rule}\` ${c.listing}: ${c.values.map((v) => `${v.surface}=${typeof v.value === "string" ? v.value : JSON.stringify(v.value)}`).join(" | ")}`.slice(0, 400);
+  const out = [`### Surface canary: ${r.ok ? "green" : "red"}`, ""];
+  if (r.stoppedEarly) out.push(`Stopped before reading everything: ${r.stoppedEarly}`, "");
+  if (!r.recheck) out.push(`${r.firstReadDiscrepancies} discrepancies on the first read; nothing was re-read.`);
+  else {
+    out.push(`${r.firstReadDiscrepancies} discrepancies on the first read, re-read after ${r.recheck.waitedMs / 1000} s; ${r.discrepancies.length} counted as red.`);
+    out.push("", `Cleared on the re-read (${r.clearedOnRecheck.length}):`, ...r.clearedOnRecheck.map(line));
+    out.push("", `First seen on the re-read, not counted (${r.appearedOnRecheck.length}):`, ...r.appearedOnRecheck.map(line));
+  }
+  if (r.failReasons.length) out.push("", "Fail reasons:", ...r.failReasons.map((f) => `- ${f}`));
+  return `${out.join("\n")}\n`;
 }

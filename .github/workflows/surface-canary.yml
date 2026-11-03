@@ -10,10 +10,11 @@ name: surface-canary
 # 理由コードは /docs/api・/openapi.yaml・/llms.txt・/llms-full.txt の一覧とも照らす。実装は import しない（出力だけ）。
 #
 # 通知は uptime.yml・skill-live.yml と同じ: 赤で issue を開く（＝オーナーへメール）、緑で閉じる。ラベルで分ける。
-# 赤の条件: 食い違いが 1 件でもある・取れた面が 0・比べた項目が 0・標本が 40 未満・必須の型／区分が欠ける・
+# 赤の条件: 読み直しでも残った食い違いが 1 件でもある（食い違いは 6 分待って読み直す）・取れた面が 0・比べた項目が 0・標本が 40 未満・必須の型／区分が欠ける・
 # 面の取得の失敗が 10% 超（「結果が出ない」も赤）。
 #
 # 負荷: 読み取りのみ・鍵なし・1 秒に 1 回以下・/decision は 6.5 秒に 1 回（鍵なし 10 回/分の内側）。約 15〜20 分。
+# 読み直しがあれば、待ちと読み直しの分だけ延びる。report.json は成果物に 30 日残す（赤でも緑でも。skip の蓄積を後から読める）。
 # 時刻: 03:15 UTC。L1 の購入（00/06/12/18 時台）と L0 の巡回（毎時 40 分）の間で、面のキャッシュ差による揺れを避ける。
 # VOUCH_API_KEY はこの workflow に渡さない（スクリプトも消してから MCP のクライアントを呼ぶ）。
 
@@ -37,7 +38,7 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -63,12 +64,25 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           exit "$RC"
 
+      - name: Keep the report as an artifact
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: surface-canary-report
+          path: |
+            ${{ runner.temp }}/surface-canary.json
+            ${{ runner.temp }}/surface-canary.log
+          retention-days: 30
+          if-no-files-found: warn
+
       - name: Open or update an alert issue on failure
-        if: failure()
+        # 時間切れ（cancelled）でも知らせる。スクリプトは 50 分の締切で先に赤の report を書くので、ここに来るのは想定外の時。
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          SUMMARY: ${{ steps.canary.outputs.summary }}
+          SUMMARY: ${{ steps.canary.outputs.summary || 'the run was cancelled or timed out before it wrote a summary' }}
           EXCERPT: ${{ steps.canary.outputs.excerpt }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |

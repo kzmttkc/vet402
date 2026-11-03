@@ -16,12 +16,15 @@
 // 判定・/sellers・export・MCP の分類がどう組まれていても（1 つの関数に寄せる前でも後でも）動く。
 //
 // 読み取りのみ（GET だけ・鍵なし）。要求は 1 秒に 1 回以下、鍵なしの /decision は 10 回/分の枠の内側
-// （6.5 秒に 1 回）。429・503 は Retry-After を待って 3 回まで取り直す。
-// 緑にしない条件（fail-loud）: 食い違いが 1 件でもある・取れた面が 0・比べた項目が 0・標本が 40 未満・
+// （6.5 秒に 1 回）。429・503・504 と接続の失敗は待って 3 回まで取り直す。
+// 食い違いが出たら少し待って（--recheck-wait-sec・既定 6 分）その出品と全体の面を読み直し、残ったものだけを赤に数える。
+// 面の読み置きは 5 分（PUBLIC_READ_REVALIDATE・判定のキャッシュ）なので、購入の直後の時間差はここで消える。消えたものも report に値を残す。
+// 全体の締切（--deadline-min・既定 50 分）を超えたら読み切らずに止め、赤の report を書く（job の時間切れで何も残らないのを避ける）。
+// 緑にしない条件（fail-loud）: 読み直しでも残った食い違いが 1 件でもある・全部の面で読み直せなかった食い違いがある・締切で止めた・取れた面が 0・比べた項目が 0・標本が 40 未満・
 // 必須の型（L1 の失敗・L2 mismatch・L2 not_checked・未プローブ・path_template）か区分（ALLOW/WARN/BLOCK）が欠ける・
 // 一度も比べなかった項目がある・面の取得の失敗が 10% を超える。exit 1。
 // ============================================================
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 import {
   parseCsv,
   parseDocsReasonTable,
@@ -33,13 +36,19 @@ import {
 } from "../src/lib/surface-canary/parse";
 import {
   buildReport,
+  compareAll,
+  listingsForRegistryRecheck,
+  recheckSummaryMarkdown,
+  type Check,
   type DecisionBody,
   type Fetched,
   type ListingInput,
   type McpView,
+  type Recheck,
   type Registry,
   type SurfaceTally,
 } from "../src/lib/surface-canary/compare";
+import { isRetryableStatus, retryBackoffMs } from "../src/lib/surface-canary/retry";
 import { buildLedgerIndex } from "../src/lib/surface-canary/ledger";
 import { buildPools, PoolCursor, seedFor, TYPES_FOR_VERDICT, type Candidate, type SampleType } from "../src/lib/surface-canary/sample";
 // MCP の道具が叩く呼び出しそのもの（index.ts はサーバを起動するので import しない。応答の写し方は下の mcpView）。
@@ -60,29 +69,48 @@ const argOf = (name: string) => {
 };
 const MAX_SAMPLE = Math.min(60, Number(argOf("--max") ?? 60));
 const OUT = argOf("--out");
+const RECHECK_WAIT_MS = Math.max(0, Number(argOf("--recheck-wait-sec") ?? 360)) * 1000;
+const DEADLINE_MIN = Math.max(0, Number(argOf("--deadline-min") ?? 50));
+const DEADLINE_AT = Date.now() + DEADLINE_MIN * 60_000;
+let deadlineHit = false;
+/** 締切までの残り（ms）。0 以下で締切超え。 */
+const remainingMs = () => DEADLINE_AT - Date.now();
+const pastDeadline = () => {
+  if (remainingMs() > 0) return false;
+  deadlineHit = true;
+  return true;
+};
+/** 登録簿の食い違い（規則の版など）を読み直すとき、取り直す出品の最低の数（判定の版ごとに 1 件は必ず入る）。 */
+const RECHECK_REGISTRY_LISTINGS = 3;
 
 // ---- 間隔と取り直しを全要求（MCP のクライアントの要求を含む）に掛ける ----------------------------
 const realFetch = globalThis.fetch.bind(globalThis);
 let lastAt = 0;
 let lastDecisionAt = 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const sleepWithinDeadline = (ms: number) => sleep(Math.min(ms, Math.max(0, remainingMs())));
 
 globalThis.fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
   const isDecision = /\/api\/v1\/resources\/[0-9a-f]{64}\/decision/.test(url);
   for (let attempt = 0; ; attempt++) {
     const wait = Math.max(lastAt + MIN_GAP_MS, isDecision ? lastDecisionAt + DECISION_GAP_MS : 0) - Date.now();
-    if (wait > 0) await sleep(wait);
+    if (wait > 0) await sleepWithinDeadline(wait);
+    if (pastDeadline()) throw new Error(`not fetched: past the ${DEADLINE_MIN}-minute deadline`);
     lastAt = Date.now();
     if (isDecision) lastDecisionAt = lastAt;
     const headers = new Headers(init?.headers);
     headers.set("user-agent", UA);
-    const res = await realFetch(input, { ...init, headers, redirect: "follow", signal: AbortSignal.timeout(TIMEOUT_MS) });
-    if ((res.status === 429 || res.status === 503) && attempt < MAX_RETRIES) {
-      const ra = Number(res.headers.get("retry-after"));
-      const reset = Number(res.headers.get("ratelimit-reset"));
-      const backoff = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Number.isFinite(reset) && reset > 1e9 ? reset * 1000 - Date.now() : 15_000;
-      await sleep(Math.min(Math.max(backoff, 2_000), 90_000));
+    let res: Response;
+    try {
+      res = await realFetch(input, { ...init, headers, redirect: "follow", signal: AbortSignal.timeout(Math.min(TIMEOUT_MS, Math.max(1, remainingMs()))) });
+    } catch (e) {
+      if (attempt >= MAX_RETRIES || pastDeadline()) throw e;
+      await sleepWithinDeadline(retryBackoffMs(new Headers(), Date.now(), attempt));
+      continue;
+    }
+    if (isRetryableStatus(res.status) && attempt < MAX_RETRIES && !pastDeadline()) {
+      await sleepWithinDeadline(retryBackoffMs(res.headers, Date.now(), attempt));
       continue;
     }
     return res;
@@ -90,8 +118,6 @@ globalThis.fetch = async (input: string | URL | Request, init?: RequestInit): Pr
 };
 
 // ---- 取得と数え --------------------------------------------------------------------------------
-const tally: SurfaceTally = { attempted: 0, fetched: 0, failed: [] };
-
 async function getText(path: string): Promise<{ body: string; headers: Headers }> {
   const res = await fetch(`${BASE}${path}`, { headers: { accept: "*/*" } });
   const body = await res.text();
@@ -99,7 +125,7 @@ async function getText(path: string): Promise<{ body: string; headers: Headers }
   return { body, headers: res.headers };
 }
 
-async function surface<T>(name: string, listing: string, f: () => Promise<T>): Promise<Fetched<T>> {
+async function surface<T>(tally: SurfaceTally, name: string, listing: string, f: () => Promise<T>): Promise<Fetched<T>> {
   tally.attempted++;
   try {
     const value = await f();
@@ -129,25 +155,20 @@ function mcpView(outcome: Awaited<ReturnType<typeof resourceDecision>>): McpView
   return { resourceId: outcome.resourceId, decision: allow ? "ALLOW_PAY" : "REFUSE", refuseReasons: refusal, measurement: result as unknown as DecisionBody };
 }
 
-async function main() {
-  // MCP のクライアントは本番へ鍵なしで（払う経路に近い鍵をこの計器に渡さない）。間隔待ちで時間切れにならないよう長めに。
-  process.env.VOUCH_API_URL = `${BASE}/api/v1`;
-  delete process.env.VOUCH_API_KEY;
-  process.env.VOUCH_TIMEOUT_MS = String(10 * 60_000);
-
-  const started = new Date();
+/** 出品ごとではない面（export 3 本・登録簿）。1 回目と読み直しで同じ読み方。 */
+async function readGlobals(tally: SurfaceTally) {
   const g = "(global)";
-  const sellersCsv = await surface("sellers", g, async () => parseCsv((await getText("/api/v1/sellers/export.csv")).body));
-  const ledgerCsv = await surface("ledger", g, async () => {
+  const sellersCsv = await surface(tally, "sellers", g, async () => parseCsv((await getText("/api/v1/sellers/export.csv")).body));
+  const ledgerCsv = await surface(tally, "ledger", g, async () => {
     const r = await getText("/api/v1/observatory/export.csv?days=90");
     return { rows: parseCsv(r.body), retrievedAt: r.headers.get("x-vet402-retrieved-at") };
   });
-  const l0Csv = await surface("l0", g, async () => parseCsv((await getText("/api/v1/observatory/l0/export.csv")).body));
-  const docs = await surface("docs", g, async () => must(parseDocsReasonTable((await getText("/docs/api")).body), "/docs/api#reason-codes"));
-  const openapi = await surface("openapi", g, async () => must(parseOpenApiReasonCodes((await getText("/openapi.yaml")).body), "/openapi.yaml DecisionReasonCode"));
+  const l0Csv = await surface(tally, "l0", g, async () => parseCsv((await getText("/api/v1/observatory/l0/export.csv")).body));
+  const docs = await surface(tally, "docs", g, async () => must(parseDocsReasonTable((await getText("/docs/api")).body), "/docs/api#reason-codes"));
+  const openapi = await surface(tally, "openapi", g, async () => must(parseOpenApiReasonCodes((await getText("/openapi.yaml")).body), "/openapi.yaml DecisionReasonCode"));
   const llms: Registry["llms"] = [];
   for (const name of ["llms.txt", "llms-full.txt"]) {
-    const t = await surface(name, g, async () => parseLlmsText((await getText(`/${name}`)).body));
+    const t = await surface(tally, name, g, async () => parseLlmsText((await getText(`/${name}`)).body));
     if (t.ok === true) llms.push({ name, ...t.value });
   }
   const registry: Registry = {
@@ -155,118 +176,184 @@ async function main() {
     openapi: openapi.ok === true ? openapi.value : null,
     llms,
   };
+  const csv =
+    sellersCsv.ok === true && ledgerCsv.ok === true && l0Csv.ok === true
+      ? { sellers: sellersCsv.value, ledger: ledgerCsv.value, l0: l0Csv.value }
+      : null;
+  return { csv, registry };
+}
 
-  const listings: ListingInput[] = [];
+type Csvs = NonNullable<Awaited<ReturnType<typeof readGlobals>>["csv"]>;
+
+/** 1 件の出品を全部の面から読む読み手。読み直しは同じ手順を新しい export で作り直す。 */
+function listingReader(csv: Csvs, tally: SurfaceTally) {
   const unresolved: string[] = [];
   // /decision が同じ resource の別の endpoint について答えた出品（比べる項目の一部は compare.ts が skip に回す）
   const otherSubject: string[] = [];
-  if (sellersCsv.ok === true && ledgerCsv.ok === true && l0Csv.ok === true) {
-    const sellersById = new Map(sellersCsv.value.map((r) => [r.endpoint_id, r]));
-    const l0ById = new Map(l0Csv.value.map((r) => [r.endpoint_id, r]));
-    // 台帳の行の付け方は src/lib/surface-canary/ledger.ts（判定・/purchases と同じく endpoint 単位。別のチェーンで買った行も含む）。
-    const ledgerIndex = buildLedgerIndex({ l0: l0Csv.value, ledger: ledgerCsv.value.rows });
+  const sellersById = new Map(csv.sellers.map((r) => [r.endpoint_id, r]));
+  const l0ById = new Map(csv.l0.map((r) => [r.endpoint_id, r]));
+  // 台帳の行の付け方は src/lib/surface-canary/ledger.ts（判定・/purchases と同じく endpoint 単位。別のチェーンで買った行も含む）。
+  const ledgerIndex = buildLedgerIndex({ l0: csv.l0, ledger: csv.ledger.rows });
+  const hostEndpoints = new Map<string, Map<string, string>>();
+  const sellerPages = new Map<string, { page: number; listings: Map<string, SellerListing>; hasNext: boolean }[]>();
+
+  const resolveId = async (c: Candidate): Promise<string | null> => {
+    if (!hostEndpoints.has(c.host)) {
+      const m = new Map<string, string>();
+      try {
+        const r = JSON.parse((await getText(`/api/v1/resolve?q=${encodeURIComponent(c.host)}`)).body) as { endpoints?: { observatory_id?: string; resource_id?: string }[] };
+        for (const e of r.endpoints ?? []) if (e.observatory_id && e.resource_id) m.set(e.observatory_id, e.resource_id);
+      } catch {
+        /* 下で URL から引き直す */
+      }
+      hostEndpoints.set(c.host, m);
+    }
+    const hit = hostEndpoints.get(c.host)!.get(c.observatoryId);
+    if (hit) return hit;
+    try {
+      const r = JSON.parse((await getText(`/api/v1/resolve?q=${encodeURIComponent(`https://${c.resourceKey}`)}`)).body) as {
+        resource?: { observatory_id?: string; resource_id?: string } | null;
+        endpoints?: { observatory_id?: string; resource_id?: string }[];
+      };
+      const all = [r.resource, ...(r.endpoints ?? [])].filter(Boolean) as { observatory_id?: string; resource_id?: string }[];
+      return all.find((e) => e.observatory_id === c.observatoryId)?.resource_id ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const sellerListing = async (c: Candidate): Promise<SellerListing | null> => {
+    const pages = sellerPages.get(c.host) ?? [];
+    sellerPages.set(c.host, pages);
+    for (const p of pages) if (p.listings.has(c.observatoryId)) return p.listings.get(c.observatoryId)!;
+    while (pages.length < MAX_SELLER_PAGES && (pages.length === 0 || pages[pages.length - 1]!.hasNext)) {
+      const n = pages.length + 1;
+      const html = (await getText(`/sellers/${encodeURIComponent(c.host)}${n > 1 ? `?page=${n}` : ""}`)).body;
+      const parsed = must(parseSellerHostPage(html), `/sellers/${c.host}?page=${n}`);
+      pages.push({ page: n, listings: parsed.listings, hasNext: parsed.hasNextPage });
+      if (parsed.listings.has(c.observatoryId)) return parsed.listings.get(c.observatoryId)!;
+    }
+    return null;
+  };
+
+  const read = async (c: Candidate): Promise<ListingInput | null> => {
+    const rid = await resolveId(c);
+    if (!rid) {
+      unresolved.push(`${c.resourceKey} (${c.observatoryId})`);
+      return null;
+    }
+    const decision = await surface(tally, "decision", c.resourceKey, async () => {
+      const body = JSON.parse((await getText(`/api/v1/resources/${rid}/decision?role=payer`)).body) as DecisionBody;
+      if (!body.recommendation) throw new Error("no recommendation in the body");
+      return body;
+    });
+    // MCP の url の問いは /resolve を method なしで引き、GET → POST の順にしか当たらない（src/lib/resolve/lookup.ts）。
+    // HEAD・DELETE などの出品を url で問うと「目録に無い」になるので、その出品は resource_id で問う（2026-10-30
+    // storage.mpp.tempo.xyz/:key+ の HEAD で mcp_* が 6 件とも赤になった誤検知）。
+    const subjectMethod = decision.ok === true ? (decision.value.subject?.method ?? "GET").toUpperCase() : "GET";
+    const canonical =
+      decision.ok === true && (subjectMethod === "GET" || subjectMethod === "POST") ? decision.value.subject?.canonical_url : undefined;
+    const mcp = await surface(tally, "mcp", c.resourceKey, async () =>
+      mcpView(await resourceDecision(canonical ? { url: canonical } : { resourceId: rid }, { role: "payer" })),
+    );
+    const record = await surface(tally, "record", c.resourceKey, async () =>
+      must(parseRecordPage((await getText(`/observatory/e/${c.observatoryId}`)).body), `/observatory/e/${c.observatoryId}`),
+    );
+    const sRow = sellersById.get(c.observatoryId);
+    const sellersRow: Fetched<Record<string, string>> = sRow
+      ? { ok: true, value: sRow }
+      : { ok: "n/a", why: c.network === "eip155:8453" ? "not in /api/v1/sellers/export.csv" : "sellers covers Base only" };
+    let sellerPage: Fetched<SellerListing> = { ok: "n/a", why: "not in the sellers export" };
+    if (sRow) {
+      const got = await surface(tally, "seller_page", c.resourceKey, () => sellerListing(c));
+      sellerPage = got.ok === true ? (got.value ? { ok: true, value: got.value } : { ok: "n/a", why: `not on the first ${MAX_SELLER_PAGES} pages` }) : got;
+    }
+    const l0Row = l0ById.get(c.observatoryId);
+    const ledger = ledgerIndex.rowsOf(c, sRow?.purchase_id);
+    const subject = decision.ok === true ? decision.value.subject?.observatory_id : undefined;
+    if (subject && subject !== c.observatoryId) otherSubject.push(`${c.resourceKey} (${c.observatoryId} → decision speaks for ${subject})`);
+    return {
+      observatoryId: c.observatoryId,
+      resourceKey: c.resourceKey,
+      network: c.network,
+      types: c.types,
+      decision,
+      mcp,
+      sellersRow,
+      sellerPage,
+      record,
+      ledgerRows: { ok: true, value: ledger.rows },
+      ledgerUnplaced: ledger.unplaced,
+      ledgerRetrievedAt: csv.ledger.retrievedAt,
+      l0Row: l0Row ? { ok: true, value: l0Row } : { ok: "n/a", why: "not in l0 export" },
+    };
+  };
+
+  return { read, unresolved, otherSubject };
+}
+
+/**
+ * 食い違いのあった出品と全体の面を、少し待って読み直す。読み直しの取得の失敗は標本の失敗率に混ぜない。
+ * 食い違いが無ければ何も読まない。
+ */
+async function recheckDiscrepancies(first: Check[], listings: ListingInput[], candidates: Map<string, Candidate>): Promise<Recheck | null> {
+  if (first.length === 0) return null;
+  if (remainingMs() <= RECHECK_WAIT_MS) {
+    deadlineHit = true;
+    return { checks: [], skips: [], waitedMs: 0, listings: [], failed: [{ surface: "(re-read)", listing: "(all)", error: `not re-read: the wait would pass the ${DEADLINE_MIN}-minute deadline` }] };
+  }
+  console.error(`  ${first.length} discrepancies on the first read; re-reading after ${RECHECK_WAIT_MS / 1000} s`);
+  await sleep(RECHECK_WAIT_MS);
+  const tally: SurfaceTally = { attempted: 0, fetched: 0, failed: [] };
+  const { csv, registry } = await readGlobals(tally);
+  const ids = new Set(first.flatMap((c) => (c.observatoryId ? [c.observatoryId] : [])));
+  if (first.some((c) => c.listing === "(registry)")) for (const id of listingsForRegistryRecheck(listings, RECHECK_REGISTRY_LISTINGS)) ids.add(id);
+  const again: ListingInput[] = [];
+  if (csv) {
+    const reader = listingReader(csv, tally);
+    for (const id of ids) {
+      if (pastDeadline()) break;
+      const c = candidates.get(id);
+      const l = c ? await reader.read(c) : null;
+      if (l) again.push(l);
+    }
+  }
+  const { checks, skips } = compareAll(again, registry);
+  return { checks, skips, waitedMs: RECHECK_WAIT_MS, listings: again.map((l) => l.resourceKey), failed: tally.failed };
+}
+
+async function main() {
+  // MCP のクライアントは本番へ鍵なしで（払う経路に近い鍵をこの計器に渡さない）。間隔待ちで時間切れにならないよう長めに。
+  process.env.VOUCH_API_URL = `${BASE}/api/v1`;
+  delete process.env.VOUCH_API_KEY;
+  process.env.VOUCH_TIMEOUT_MS = String(10 * 60_000);
+
+  const started = new Date();
+  const tally: SurfaceTally = { attempted: 0, fetched: 0, failed: [] };
+  const { csv, registry } = await readGlobals(tally);
+
+  const listings: ListingInput[] = [];
+  const candidates = new Map<string, Candidate>();
+  let unresolved: string[] = [];
+  let otherSubject: string[] = [];
+  if (csv) {
     const pools = buildPools({
-      sellers: sellersCsv.value,
-      l0: l0Csv.value,
-      ledger: ledgerCsv.value.rows,
+      sellers: csv.sellers,
+      l0: csv.l0,
+      ledger: csv.ledger.rows,
       now: started.getTime(),
       seed: seedFor(started.toISOString().slice(0, 10)),
     });
     const cursor = new PoolCursor(pools);
-    const hostEndpoints = new Map<string, Map<string, string>>();
-    const sellerPages = new Map<string, { page: number; listings: Map<string, SellerListing>; hasNext: boolean }[]>();
-
-    const resolveId = async (c: Candidate): Promise<string | null> => {
-      if (!hostEndpoints.has(c.host)) {
-        const m = new Map<string, string>();
-        try {
-          const r = JSON.parse((await getText(`/api/v1/resolve?q=${encodeURIComponent(c.host)}`)).body) as { endpoints?: { observatory_id?: string; resource_id?: string }[] };
-          for (const e of r.endpoints ?? []) if (e.observatory_id && e.resource_id) m.set(e.observatory_id, e.resource_id);
-        } catch {
-          /* 下で URL から引き直す */
-        }
-        hostEndpoints.set(c.host, m);
-      }
-      const hit = hostEndpoints.get(c.host)!.get(c.observatoryId);
-      if (hit) return hit;
-      try {
-        const r = JSON.parse((await getText(`/api/v1/resolve?q=${encodeURIComponent(`https://${c.resourceKey}`)}`)).body) as {
-          resource?: { observatory_id?: string; resource_id?: string } | null;
-          endpoints?: { observatory_id?: string; resource_id?: string }[];
-        };
-        const all = [r.resource, ...(r.endpoints ?? [])].filter(Boolean) as { observatory_id?: string; resource_id?: string }[];
-        return all.find((e) => e.observatory_id === c.observatoryId)?.resource_id ?? null;
-      } catch {
-        return null;
-      }
-    };
-
-    const sellerListing = async (c: Candidate): Promise<SellerListing | null> => {
-      const pages = sellerPages.get(c.host) ?? [];
-      sellerPages.set(c.host, pages);
-      for (const p of pages) if (p.listings.has(c.observatoryId)) return p.listings.get(c.observatoryId)!;
-      while (pages.length < MAX_SELLER_PAGES && (pages.length === 0 || pages[pages.length - 1]!.hasNext)) {
-        const n = pages.length + 1;
-        const html = (await getText(`/sellers/${encodeURIComponent(c.host)}${n > 1 ? `?page=${n}` : ""}`)).body;
-        const parsed = must(parseSellerHostPage(html), `/sellers/${c.host}?page=${n}`);
-        pages.push({ page: n, listings: parsed.listings, hasNext: parsed.hasNextPage });
-        if (parsed.listings.has(c.observatoryId)) return parsed.listings.get(c.observatoryId)!;
-      }
-      return null;
-    };
-
+    const reader = listingReader(csv, tally);
+    unresolved = reader.unresolved;
+    otherSubject = reader.otherSubject;
     const take = async (c: Candidate) => {
-      const rid = await resolveId(c);
-      if (!rid) {
-        unresolved.push(`${c.resourceKey} (${c.observatoryId})`);
-        return;
-      }
-      const decision = await surface("decision", c.resourceKey, async () => {
-        const body = JSON.parse((await getText(`/api/v1/resources/${rid}/decision?role=payer`)).body) as DecisionBody;
-        if (!body.recommendation) throw new Error("no recommendation in the body");
-        return body;
-      });
-      // MCP の url の問いは /resolve を method なしで引き、GET → POST の順にしか当たらない（src/lib/resolve/lookup.ts）。
-      // HEAD・DELETE などの出品を url で問うと「目録に無い」になるので、その出品は resource_id で問う（2026-10-30
-      // storage.mpp.tempo.xyz/:key+ の HEAD で mcp_* が 6 件とも赤になった誤検知）。
-      const subjectMethod = decision.ok === true ? (decision.value.subject?.method ?? "GET").toUpperCase() : "GET";
-      const canonical =
-        decision.ok === true && (subjectMethod === "GET" || subjectMethod === "POST") ? decision.value.subject?.canonical_url : undefined;
-      const mcp = await surface("mcp", c.resourceKey, async () =>
-        mcpView(await resourceDecision(canonical ? { url: canonical } : { resourceId: rid }, { role: "payer" })),
-      );
-      const record = await surface("record", c.resourceKey, async () =>
-        must(parseRecordPage((await getText(`/observatory/e/${c.observatoryId}`)).body), `/observatory/e/${c.observatoryId}`),
-      );
-      const sRow = sellersById.get(c.observatoryId);
-      const sellersRow: Fetched<Record<string, string>> = sRow
-        ? { ok: true, value: sRow }
-        : { ok: "n/a", why: c.network === "eip155:8453" ? "not in /api/v1/sellers/export.csv" : "sellers covers Base only" };
-      let sellerPage: Fetched<SellerListing> = { ok: "n/a", why: "not in the sellers export" };
-      if (sRow) {
-        const got = await surface("seller_page", c.resourceKey, () => sellerListing(c));
-        sellerPage = got.ok === true ? (got.value ? { ok: true, value: got.value } : { ok: "n/a", why: `not on the first ${MAX_SELLER_PAGES} pages` }) : got;
-      }
-      const l0Row = l0ById.get(c.observatoryId);
-      const ledger = ledgerIndex.rowsOf(c, sRow?.purchase_id);
-      const subject = decision.ok === true ? decision.value.subject?.observatory_id : undefined;
-      if (subject && subject !== c.observatoryId) otherSubject.push(`${c.resourceKey} (${c.observatoryId} → decision speaks for ${subject})`);
-      listings.push({
-        observatoryId: c.observatoryId,
-        resourceKey: c.resourceKey,
-        network: c.network,
-        types: c.types,
-        decision,
-        mcp,
-        sellersRow,
-        sellerPage,
-        record,
-        ledgerRows: { ok: true, value: ledger.rows },
-        ledgerUnplaced: ledger.unplaced,
-        ledgerRetrievedAt: ledgerCsv.value.retrievedAt,
-        l0Row: l0Row ? { ok: true, value: l0Row } : { ok: "n/a", why: "not in l0 export" },
-      });
-      const v = decision.ok === true ? decision.value.recommendation : decision.ok === false ? `error: ${decision.error}` : "n/a";
+      const l = await reader.read(c);
+      if (!l) return;
+      listings.push(l);
+      candidates.set(c.observatoryId, c);
+      const v = l.decision.ok === true ? l.decision.value.recommendation : l.decision.ok === false ? `error: ${l.decision.error}` : "n/a";
       console.error(`  [${listings.length}] ${c.types.join("+")} ${c.resourceKey} → ${v}`);
     };
 
@@ -275,9 +362,10 @@ async function main() {
       l1_failure: 6, l2_mismatch: 6, l2_not_checked: 6, unprobed: 5, path_template: 5, delivered: 6, l0_fail: 5, not_bought: 2, pending: 2,
     };
     const left = { ...QUOTA };
-    for (let progressed = true; progressed && listings.length < MAX_SAMPLE; ) {
+    for (let progressed = true; progressed && listings.length < MAX_SAMPLE && !pastDeadline(); ) {
       progressed = false;
       for (const ty of Object.keys(left) as SampleType[]) {
+        if (pastDeadline()) break;
         if ((left[ty] ?? 0) <= 0 || listings.length >= MAX_SAMPLE) continue;
         const c = cursor.next(ty);
         if (!c) {
@@ -290,7 +378,7 @@ async function main() {
       }
     }
     for (const verdict of ["ALLOW", "WARN", "BLOCK"]) {
-      for (let tries = 0; tries < 8 && listings.length < MAX_SAMPLE; tries++) {
+      for (let tries = 0; tries < 8 && listings.length < MAX_SAMPLE && !pastDeadline(); tries++) {
         const have = listings.filter((l) => l.decision.ok === true && l.decision.value.recommendation === verdict).length;
         if (have >= 3) break;
         const ty = TYPES_FOR_VERDICT[verdict]!.find((t) => cursor.size(t) > 0);
@@ -301,7 +389,14 @@ async function main() {
     }
   }
 
-  const report = buildReport({ listings, registry, tally });
+  const recheck = await recheckDiscrepancies(compareAll(listings, registry).checks.filter((c) => !c.ok), listings, candidates);
+  const report = buildReport({
+    listings,
+    registry,
+    tally,
+    ...(recheck ? { recheck } : {}),
+    ...(deadlineHit ? { stoppedEarly: `the ${DEADLINE_MIN}-minute deadline passed` } : {}),
+  });
   const out = {
     ...report,
     base: BASE,
@@ -311,6 +406,7 @@ async function main() {
     otherSubject,
   };
   if (OUT) writeFileSync(OUT, JSON.stringify(out, null, 2));
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, recheckSummaryMarkdown(report));
 
   for (const d of report.discrepancies.slice(0, 60)) {
     console.log(`✖ [${d.item}/${d.rule}] ${d.listing}${d.observatoryId ? ` (${d.observatoryId})` : ""}`);
@@ -318,6 +414,9 @@ async function main() {
     if (d.detail) console.log(`    — ${d.detail}`);
   }
   if (report.discrepancies.length > 60) console.log(`  … and ${report.discrepancies.length - 60} more (see --out)`);
+  for (const d of report.clearedOnRecheck) console.log(`  ~ cleared on the re-read: [${d.item}/${d.rule}] ${d.listing}: ${d.values.map((v) => `${v.surface}=${typeof v.value === "string" ? v.value : JSON.stringify(v.value)}`).join(" | ")}`);
+  for (const d of report.appearedOnRecheck) console.log(`  ~ first seen on the re-read (not counted): [${d.item}/${d.rule}] ${d.listing}: ${d.values.map((v) => `${v.surface}=${typeof v.value === "string" ? v.value : JSON.stringify(v.value)}`).join(" | ")}`);
+  for (const f of report.recheck?.failedList ?? []) console.log(`  ! re-read fetch failed: ${f.surface} ${f.listing}: ${f.error}`);
   for (const f of report.surfaces.failedList.slice(0, 20)) console.log(`  ! fetch failed: ${f.surface} ${f.listing}: ${f.error}`);
   if (otherSubject.length) console.log(`  ! /decision answered for another endpoint of the same resource (decision-vs-ledger counts and L2 skipped): ${otherSubject.join(", ")}`);
   if (unresolved.length) console.log(`  ! not resolvable through /api/v1/resolve (skipped): ${unresolved.join(", ")}`);
@@ -327,7 +426,7 @@ async function main() {
   console.log(
     `${report.ok ? "✔" : "✖"} surface-canary: ${report.sampled} listings (${Object.entries(report.byVerdict).map(([k, n]) => `${k} ${n}`).join(" · ")}), ` +
       `${report.surfaces.fetched}/${report.surfaces.attempted} surfaces fetched, ${report.compared} items compared, ` +
-      `${report.discrepancies.length} discrepancies, ${report.skipped} skipped` +
+      `${report.discrepancies.length} discrepancies${report.recheck ? ` (${report.firstReadDiscrepancies} on the first read, ${report.clearedOnRecheck.length} cleared on the re-read)` : ""}, ${report.skipped} skipped` +
       (report.ok ? "." : ` — FAIL: ${report.failReasons.join("; ")}`),
   );
   if (!report.ok) process.exitCode = 1;

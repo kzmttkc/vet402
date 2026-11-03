@@ -6,6 +6,8 @@
 // を確かめる。
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   parseCsv,
   parseDocsReasonTable,
@@ -15,7 +17,8 @@ import {
   parseSellerHostPage,
   sideFromWords,
 } from "@/lib/surface-canary/parse";
-import { buildReport, compareListing, type DecisionBody, type ListingInput, type Registry, type SurfaceTally } from "@/lib/surface-canary/compare";
+import { buildReport, compareAll, compareListing, listingsForRegistryRecheck, recheckSummaryMarkdown, settleAfterRecheck, type Check, type DecisionBody, type ListingInput, type Registry, type SurfaceTally } from "@/lib/surface-canary/compare";
+import { isRetryableStatus, retryBackoffMs } from "@/lib/surface-canary/retry";
 import { buildLedgerIndex } from "@/lib/surface-canary/ledger";
 import { buildPools, PoolCursor, seedFor } from "@/lib/surface-canary/sample";
 
@@ -752,4 +755,293 @@ test("L2 の行: 宣言のある出品で判定 undeclared × 行 match は食�
   const c = compareListing(y, registry()).checks.find((k) => k.rule === "l2_same_row");
   assert.ok(c, "l2_same_row was not compared");
   assert.equal(c.ok, false, JSON.stringify(c.values));
+});
+
+// ---- 取り直しと読み直し（2026-11-03。失敗 24 run の切り分けで計器側の誤報が 13 run、定義差の語彙が 7、キャッシュが 2、504 が 1） ----
+
+test("取り直し: 504 は 429・503 と同じ。他の 5xx・4xx は取り直さない", () => {
+  for (const code of [429, 503, 504]) assert.equal(isRetryableStatus(code), true, String(code));
+  for (const code of [200, 400, 404, 500, 502]) assert.equal(isRetryableStatus(code), false, String(code));
+});
+
+test("取り直しの待ち: Retry-After → ratelimit-reset → 15 秒から倍々。2 秒〜90 秒に収める", () => {
+  const now = 1_800_000_000_000;
+  assert.equal(retryBackoffMs(new Headers({ "retry-after": "7" }), now, 0), 7_000);
+  assert.equal(retryBackoffMs(new Headers({ "ratelimit-reset": String(now / 1000 + 20) }), now, 0), 20_000);
+  assert.equal(retryBackoffMs(new Headers(), now, 0), 15_000);
+  assert.equal(retryBackoffMs(new Headers(), now, 1), 30_000);
+  assert.equal(retryBackoffMs(new Headers(), now, 2), 60_000);
+  assert.equal(retryBackoffMs(new Headers({ "retry-after": "1" }), now, 0), 2_000);
+  assert.equal(retryBackoffMs(new Headers({ "retry-after": "900" }), now, 0), 90_000);
+});
+
+function staleSellerPage(listings: ListingInput[]) {
+  const x = listings[1]!;
+  assert.ok(x.sellerPage.ok === true);
+  const fresh = x.sellerPage;
+  x.sellerPage = { ok: true, value: { ...x.sellerPage.value, whoseSide: "seller's side" } };
+  return { x, fresh };
+}
+
+function recheckOf(listings: ListingInput[]) {
+  const { checks, skips } = compareAll(listings, registry());
+  return { checks, skips, waitedMs: 360_000, listings: listings.map((l) => l.resourceKey), failed: [] };
+}
+
+test("読み直し: 1 回目の食い違いが読み直しで一致すれば赤にせず、値を残す", () => {
+  const listings = consistentSample();
+  const fixed = structuredClone(listings);
+  const { x } = staleSellerPage(listings);
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: recheckOf(fixed) });
+  assert.deepEqual(r.discrepancies, []);
+  assert.equal(r.ok, true, r.failReasons.join(" | "));
+  assert.equal(r.firstReadDiscrepancies, 1);
+  assert.deepEqual(r.clearedOnRecheck.map((c) => `${c.rule}:${c.listing}`), [`latest_row_side:${x.resourceKey}`]);
+  assert.ok(JSON.stringify(r.clearedOnRecheck[0]!.values).includes("seller's side"), "the first read's values are kept");
+  assert.equal(r.recheck?.waitedMs, 360_000);
+});
+
+test("読み直し: 読み直しでも残れば赤で、読み直しの値を出す", () => {
+  const listings = consistentSample();
+  staleSellerPage(listings);
+  const again = structuredClone(listings);
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: recheckOf(again) });
+  assert.equal(r.ok, false);
+  assert.equal(r.discrepancies.length, 1);
+  assert.equal(r.discrepancies[0]!.rule, "latest_row_side");
+  assert.deepEqual(r.clearedOnRecheck, []);
+  assert.ok(r.failReasons.some((f) => f.startsWith("1 discrepancies")));
+});
+
+test("読み直し: 比べられなかった食い違い（読み直しで面が取れない）は赤のまま", () => {
+  const listings = consistentSample();
+  const { x } = staleSellerPage(listings);
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: { checks: [], skips: [], waitedMs: 360_000, listings: [], failed: [{ surface: "sellers", listing: "(global)", error: "HTTP 504" }] } });
+  assert.equal(r.ok, false);
+  assert.equal(r.discrepancies[0]!.listing, x.resourceKey);
+  assert.match(r.discrepancies[0]!.detail ?? "", /not compared on every surface on the re-read/);
+  assert.equal(r.recheck?.failedList.length, 1);
+});
+
+test("読み直し: 読み直しで初めて出た食い違いは赤に数えず、値を残す", () => {
+  const ok = (rule: string): Check => ({ item: "side", rule, listing: "a", observatoryId: "1", ok: true, values: [] });
+  const bad = (rule: string): Check => ({ ...ok(rule), ok: false });
+  const s = settleAfterRecheck([bad("r1")], [ok("r1"), bad("r2")]);
+  assert.deepEqual(s.persisted, []);
+  assert.deepEqual(s.cleared.map((c) => c.rule), ["r1"]);
+  assert.deepEqual(s.appeared.map((c) => c.rule), ["r2"]);
+});
+
+test("読み直し: 同じ出品の鍵は同じ resource_key でも endpoint で分ける", () => {
+  const c = (id: string, ok: boolean): Check => ({ item: "side", rule: "r", listing: "same/key", observatoryId: id, ok, values: [] });
+  const s = settleAfterRecheck([c("base", false)], [c("base", true), c("tempo", false)]);
+  assert.deepEqual(s.persisted, []);
+  assert.deepEqual(s.appeared.map((x) => x.observatoryId), ["tempo"]);
+});
+
+// ---- 面の欠けた読み直しは「消えた」に数えない（確かめ役の再現 2026-11-03） ----
+
+test("読み直し: 食い違った面が読み直しで取れない（売り手頁の 504）なら赤のまま", () => {
+  const listings = consistentSample();
+  const { x } = staleSellerPage(listings);
+  const again = structuredClone(listings);
+  again[1]!.sellerPage = { ok: false, error: "HTTP 504" };
+  const { checks, skips } = compareAll(again, registry());
+  const r = buildReport({
+    listings,
+    registry: registry(),
+    tally: tallyFor(listings.length),
+    recheck: { checks, skips, waitedMs: 360_000, listings: again.map((l) => l.resourceKey), failed: [{ surface: "seller_page", listing: x.resourceKey, error: "HTTP 504" }] },
+  });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.clearedOnRecheck, []);
+  assert.deepEqual(r.discrepancies.map((c) => c.rule), ["latest_row_side"]);
+  assert.match(r.discrepancies[0]!.detail ?? "", /not compared on every surface/);
+});
+
+test("読み直し: 売り手頁が先頭の頁に無い（n/a）・読み置きで外された時も赤のまま", () => {
+  const listings = consistentSample();
+  staleSellerPage(listings);
+  const na = structuredClone(listings);
+  na[1]!.sellerPage = { ok: "n/a", why: "not on the first 4 pages" };
+  const a = compareAll(na, registry());
+  assert.deepEqual(buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: { ...a, waitedMs: 1, listings: [], failed: [] } }).clearedOnRecheck, []);
+  const stale = structuredClone(listings);
+  const y = stale[1]!;
+  assert.ok(y.sellerPage.ok === true);
+  y.sellerPage = { ok: true, value: notTriedPageReadAt(y, "2026-09-20 11:00") };
+  const b = compareAll(stale, registry());
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: { ...b, waitedMs: 1, listings: [], failed: [] } });
+  assert.deepEqual(r.clearedOnRecheck, []);
+  assert.equal(r.ok, false);
+});
+
+test("読み直し: 登録簿の llms-full が読み直しで取れない時、llms.txt の一致では消さない", () => {
+  const c = (surface: string, ok: boolean): Check => ({ item: "reason_codes", rule: "llms_codes_defined", listing: "(registry)", observatoryId: null, ok, values: [{ surface, value: "" }, { surface: "openapi", value: "" }] });
+  const s = settleAfterRecheck([c("llms-full.txt", false)], [c("llms.txt", true)]);
+  assert.equal(s.cleared.length, 0);
+  assert.equal(s.persisted.length, 1);
+  assert.deepEqual(settleAfterRecheck([c("llms-full.txt", false)], [c("llms.txt", true), c("llms-full.txt", true)]).cleared.length, 1);
+});
+
+for (const [rule, first, partial, full] of [
+  ["latest_row_status", ["sellers", "seller_page", "record"], ["sellers", "record"], ["sellers", "seller_page", "record"]],
+  ["l0_published_state", ["decision", "l0", "record"], ["decision", "l0"], ["decision", "l0", "record"]],
+  ["l2_same_row", ["decision", "ledger", "record"], ["decision", "ledger"], ["decision", "ledger", "record"]],
+  ["rules_version_everywhere", ["decision", "docs", "openapi"], ["docs", "openapi"], ["decision", "docs", "openapi"]],
+] as const) {
+  test(`読み直し: ${rule} は 1 回目の面が全部そろった一致でだけ消える`, () => {
+    const c = (surfaces: readonly string[], ok: boolean): Check => ({ item: "side", rule, listing: "a", observatoryId: "1", ok, values: surfaces.map((surface) => ({ surface, value: "v" })) });
+    assert.equal(settleAfterRecheck([c(first, false)], [c(partial, true)]).cleared.length, 0);
+    assert.equal(settleAfterRecheck([c(first, false)], [c(full, true)]).cleared.length, 1);
+  });
+}
+
+test("block_vs_unmeasured: 一致の値に読めた面を残す。面が取れない一致では 1 回目の食い違いを消さない", () => {
+  const bad: Check = { item: "verdict", rule: "block_vs_unmeasured", listing: "a", observatoryId: "1", ok: false, values: [{ surface: "decision", value: "BLOCK" }, { surface: "record", value: "unverified" }] };
+  const decisionOnly: Check = { ...bad, ok: true, values: [{ surface: "decision", value: "BLOCK" }] };
+  const withRecord: Check = { ...bad, ok: true, values: [{ surface: "decision", value: "BLOCK" }, { surface: "record", value: "fail" }] };
+  assert.equal(settleAfterRecheck([bad], [decisionOnly]).cleared.length, 0);
+  assert.equal(settleAfterRecheck([bad], [withRecord]).cleared.length, 1);
+  // 本体: 未プローブの BLOCK で他の面が「未確定」と言わない時、ok の比較は読めた面を値に持つ
+  const x = listing(1, "block_l0", ["unprobed"]);
+  assert.ok(x.decision.ok === true && x.mcp.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.reason_codes = ["l0_unverified_no_recent_probe"];
+  x.decision = { ok: true, value: d };
+  // 他の面は「未確定・まだ試していない」と言わない（BLOCK と矛盾しない）形にする
+  assert.ok(x.sellersRow.ok === true && x.sellerPage.ok === true);
+  x.sellersRow = { ok: true, value: { ...x.sellersRow.value, outcome: "seller" } };
+  x.sellerPage = { ok: true, value: { ...x.sellerPage.value, latestAttempt: "2026-09-20 12:00 UTC" } };
+  const reg: Registry = { ...registry(), docs: { ...registry().docs!, rows: registry().docs!.rows.map((row) => (row.code.startsWith("l0_unverified_") ? { ...row, verdict: "BLOCK" } : row)) } };
+  const got = compareListing(x, reg).checks.find((k) => k.rule === "block_vs_unmeasured");
+  assert.ok(got, "block_vs_unmeasured was not compared");
+  assert.equal(got.ok, true, JSON.stringify(got.values));
+  assert.deepEqual(got.values.map((v) => v.surface), ["decision", "l0", "record", "sellers", "seller_page"]);
+});
+
+/** 判定だけが「測っていない」で BLOCK し、他の面は矛盾しない出品。 */
+function blockListing(): ListingInput {
+  const x = listing(1, "block_l0", ["unprobed"]);
+  assert.ok(x.decision.ok === true && x.sellersRow.ok === true && x.sellerPage.ok === true);
+  const d = structuredClone(x.decision.value);
+  d.reason_codes = ["l0_unverified_no_recent_probe"];
+  x.decision = { ok: true, value: d };
+  x.sellersRow = { ok: true, value: { ...x.sellersRow.value, outcome: "seller" } };
+  x.sellerPage = { ok: true, value: { ...x.sellerPage.value, latestAttempt: "2026-09-20 12:00 UTC" } };
+  return x;
+}
+const blockReg = (): Registry => ({ ...registry(), docs: { ...registry().docs!, rows: registry().docs!.rows.map((row) => (row.code.startsWith("l0_unverified_") ? { ...row, verdict: "BLOCK" } : row)) } });
+const ruleOf = (x: ListingInput, r: string) => compareListing(x, blockReg()).checks.filter((k) => k.rule === r);
+
+test("読み直し: block_vs_unmeasured は記録頁が取れても状態が読めなければ消さない。読めて矛盾しなければ消す", () => {
+  const first = blockListing();
+  assert.ok(first.record.ok === true);
+  const recVal = first.record.value;
+  first.record = { ok: true, value: { ...recVal, publishedState: "unverified" } };
+  const a = ruleOf(first, "block_vs_unmeasured");
+  assert.equal(a[0]?.ok, false);
+  const unreadable = structuredClone(first);
+  unreadable.record = { ok: true, value: { ...recVal, publishedState: null as never } };
+  const s = settleAfterRecheck(a, ruleOf(unreadable, "block_vs_unmeasured"));
+  assert.deepEqual([s.persisted.length, s.cleared.length], [1, 0]);
+  const failed = structuredClone(first);
+  failed.record = { ok: false, error: "HTTP 504" };
+  assert.deepEqual(settleAfterRecheck(a, ruleOf(failed, "block_vs_unmeasured")).cleared, []);
+  const readable = structuredClone(first);
+  readable.record = { ok: true, value: { ...recVal, publishedState: "fail" } };
+  assert.equal(settleAfterRecheck(a, ruleOf(readable, "block_vs_unmeasured")).cleared.length, 1);
+});
+
+test("読み直し: 売り手頁が取れても誰の側かの語が読めなければ、食い違いを消さない", () => {
+  const listings = consistentSample();
+  staleSellerPage(listings);
+  const again = structuredClone(listings);
+  const y = again[1]!;
+  assert.ok(y.sellerPage.ok === true);
+  y.sellerPage = { ok: true, value: { ...y.sellerPage.value, whoseSide: "layout changed" } };
+  const { checks, skips } = compareAll(again, registry());
+  const v = checks.find((c) => c.rule === "latest_row_side" && c.listing === y.resourceKey)!.values.find((w) => w.surface === "seller_page");
+  assert.equal(v?.unread, true);
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: { checks, skips, waitedMs: 360_000, listings: [], failed: [] } });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.clearedOnRecheck, []);
+  assert.equal(r.discrepancies.length, 1);
+});
+
+test("読み直し: 1 回目から語が読めなかった面は、読み直しの一致の条件にしない", () => {
+  const c = (values: Check["values"], ok: boolean): Check => ({ item: "side", rule: "latest_row_side", listing: "a", observatoryId: "1", ok, values });
+  const first = c([{ surface: "sellers", value: "seller" }, { surface: "record", value: "vet402" }, { surface: "seller_page", value: "?", unread: true }], false);
+  const second = c([{ surface: "sellers", value: "seller" }, { surface: "record", value: "seller" }], true);
+  assert.equal(settleAfterRecheck([first], [second]).cleared.length, 1);
+});
+
+test("規則の版の読み直し: 版ごとに 1 件は入れ、足りなければ最低の数まで足す", () => {
+  const listings = consistentSample();
+  const last = listings[listings.length - 1]!;
+  assert.ok(last.decision.ok === true);
+  last.decision = { ok: true, value: { ...last.decision.value, rules_version: "2026-09-29.4" } };
+  const ids = listingsForRegistryRecheck(listings, 3);
+  assert.ok(ids.includes(last.observatoryId), "the listing with the other version is re-read");
+  assert.ok(ids.includes(listings[0]!.observatoryId));
+  assert.equal(ids.length, 3);
+  // 版が最低の数より多ければ全部の版を入れる
+  const many = consistentSample().map((l, i) => {
+    assert.ok(l.decision.ok === true);
+    return { ...l, decision: { ok: true as const, value: { ...l.decision.value, rules_version: `v${i}` } } };
+  });
+  assert.equal(listingsForRegistryRecheck(many, 3).length, many.length);
+  assert.match(readFileSync(join(process.cwd(), "scripts/surface-consistency-canary.ts"), "utf8"), /listingsForRegistryRecheck\(listings, RECHECK_REGISTRY_LISTINGS\)/);
+});
+
+test("締切で止めた回は赤で、理由を報告に残す", () => {
+  const listings = consistentSample();
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), stoppedEarly: "the 50-minute deadline passed" });
+  assert.equal(r.ok, false);
+  assert.equal(r.stoppedEarly, "the 50-minute deadline passed");
+  assert.ok(r.failReasons.some((f) => f.startsWith("stopped before reading everything")));
+  const script = readFileSync(join(process.cwd(), "scripts/surface-consistency-canary.ts"), "utf8");
+  assert.match(script, /--deadline-min/);
+  const yml = readFileSync(join(process.cwd(), ".github/workflows/surface-canary.yml"), "utf8");
+  assert.match(yml, /- name: Open or update an alert issue on failure[\s\S]*?if: failure\(\) \|\| cancelled\(\)/);
+  assert.match(yml, /outputs\.summary \|\| 'the run was cancelled or timed out/);
+});
+
+test("step summary: 消えたものと読み直しで初めて出たものを値ごと出す", () => {
+  const listings = consistentSample();
+  const fixed = structuredClone(listings);
+  const { x } = staleSellerPage(listings);
+  const r = buildReport({ listings, registry: registry(), tally: tallyFor(listings.length), recheck: recheckOf(fixed) });
+  const md = recheckSummaryMarkdown({ ...r, appearedOnRecheck: [{ item: "side", rule: "later", listing: "b", observatoryId: "2", ok: false, values: [{ surface: "record", value: "w" }] }] });
+  assert.match(md, /Cleared on the re-read \(1\):/);
+  assert.ok(md.includes(x.resourceKey));
+  assert.match(md, /First seen on the re-read, not counted \(1\):/);
+  assert.match(md, /`side\/later` b: record=w/);
+  assert.match(recheckSummaryMarkdown(buildReport({ listings: consistentSample(), registry: registry(), tally: tallyFor(40) })), /nothing was re-read/);
+  assert.match(readFileSync(join(process.cwd(), "scripts/surface-consistency-canary.ts"), "utf8"), /GITHUB_STEP_SUMMARY/);
+});
+
+// 2026-10-04〜10-30 の赤のうち定義差と切り分けた語の組（判定 / 台帳 / 記録頁）。どれも同じ状態を別の語で言っているので赤にしない。
+for (const [dec, row, rec, who] of [
+  ["undeclared", "not_checked", "not_checked", "fairseal・oneshotagent・cultos・witnessd・remix.live・datasieve"],
+  ["not_checked", "no_declaration", "no_declaration", "x402engine・fetchdelta・linkrra"],
+  ["undeclared", "no_declaration", "no_declaration", "従来どおり"],
+  ["not_checked", "", "", "空欄の行"],
+] as const) {
+  test(`定義差の語彙: 判定 ${dec} × 行 ${row || "(空欄)"} × 記録頁 ${rec || "(空欄)"} は食い違いではない（${who}）`, () => {
+    const c = l2SameRow(dec, row, rec);
+    assert.equal(c.ok, true, JSON.stringify(c.values));
+  });
+}
+
+test("workflow: report を赤でも緑でも成果物に残す（版は SHA で固定）", () => {
+  const yml = readFileSync(join(process.cwd(), ".github/workflows/surface-canary.yml"), "utf8");
+  const step = /- name: Keep the report as an artifact[\s\S]*?if-no-files-found: warn/.exec(yml)?.[0] ?? "";
+  assert.match(step, /if: always\(\)/);
+  assert.match(step, /actions\/upload-artifact@[0-9a-f]{40} /);
+  assert.match(step, /runner\.temp \}\}\/surface-canary\.json/);
+  assert.match(yml, /--out "\$RUNNER_TEMP\/surface-canary\.json"/);
+  const script = readFileSync(join(process.cwd(), "scripts/surface-consistency-canary.ts"), "utf8");
+  assert.match(script, /isRetryableStatus\(res\.status\)/);
+  assert.match(script, /recheckDiscrepancies\(/);
 });
