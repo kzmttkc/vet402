@@ -308,7 +308,29 @@ if (!TEST_DB) {
       const alarms = logged.filter((l) => l.includes("spent_unlinked"));
       assert.equal(alarms.length, 1, logged.join("\n"));
       assert.match(alarms[0], /celo/);
-      assert.match(alarms[0], new RegExp(`purchase ${id}: the authorization was used on-chain but no transfer could be linked after ${late.CHAIN_READ_MAX_TRIES} reads`));
+      assert.match(alarms[0], new RegExp(`purchase ${id}: the authorization was used on-chain and a transfer of the exact amount is in the window, but none could be linked after ${late.CHAIN_READ_MAX_TRIES} reads`));
+      // 読めなかった回は数えない（2026-11-03 確かめ役）: Transfer の読み手が null を 5 回返しても spentReads は増えず、次も選ばれる。
+      // 0 件の回も同じ（公開 RPC の取りこぼしかもしれない）。レシートの読み手が null でも同じ。
+      const unreadable: [string, { readTransfers: TransferReader; readNonces: NonceReader }][] = [
+        ["Transfer の読み手が null", { readTransfers: async () => null, readNonces: noncesOf({ [tx("23")]: [NONCE] }).reader }],
+        ["Transfer の読みが例外", { readTransfers: async () => { throw new Error("rpc down"); }, readNonces: noncesOf({ [tx("23")]: [NONCE] }).reader }],
+        ["ログが 0 件", { readTransfers: async () => [], readNonces: noncesOf({}).reader }],
+        ["レシートの読み手が null", { readTransfers: async () => [transfer()], readNonces: async () => null }],
+      ];
+      for (const [name, readers] of unreadable) {
+        await reset();
+        const row = await seedRow();
+        let reads = 0;
+        const counting: TransferReader = async (q) => (reads++, readers.readTransfers(q));
+        for (let i = 0; i < 5; i++) await late.recoverLateSettlements({ readTransfers: counting, readNonces: readers.readNonces, readAuthorizationState: async () => true });
+        assert.equal(reads, 5, `${name}: 毎回また選ばれて読む`);
+        const r = await get(row);
+        assert.equal(r.txHash, null, name);
+        const mark = (r.rawResponseMeta as { lateChainRead?: { spentReads?: number; decided?: boolean } }).lateChainRead;
+        assert.equal(mark?.spentReads ?? 0, 0, `${name}: spentReads は増えない`);
+        assert.equal(mark?.decided, false, name);
+        assert.equal((await corrections(row)).length, 0, name);
+      }
       // 認可の読み手が無い回は、着金があっても貼れなければ印も付けない（決めない）。
       await reset();
       const quiet = await seedRow();

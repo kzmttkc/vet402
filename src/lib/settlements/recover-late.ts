@@ -1090,6 +1090,8 @@ async function linkFromChain(
     const u = unread.get(reason) ?? { groups: 0, rows: 0, error };
     unread.set(reason, { groups: u.groups + 1, rows: u.rows + rows, error: u.error ?? error });
   };
+  /** 認可の状態で決めるレーンで、この回に「使われた」と読めた行（spentReads を数える対象）。 */
+  const spentIds = new Set<string>();
   for (const group of groups.values()) {
     let list = group;
     if (lane.decidesByAuthorizationState) {
@@ -1114,29 +1116,19 @@ async function linkFromChain(
         [spent, false],
       ] as const) {
         if (ids.length === 0) continue;
-        // 使われた認可の行は spentReads を +1（2026-11-03）。CHAIN_READ_MAX_TRIES 回読んでも貼れなければ、この回で最後:
-        // 次からは選ばれない（batch の SELECT）。黙って止めず、行ごとに 1 行鳴らす（認可は使われた＝金は動いた・貼り先が無い）。
-        const marked = await db.execute(sql`
+        // 状態の段では数えない（2026-11-03 確かめ役）: spentReads は、ログを読み切って窓に額ちょうどの着金があるのに貼れなかった
+        // 回だけ +1 する（下の貼り付けの後）。ここは印だけ。既にある spentReads は持ち越す。
+        await db.execute(sql`
           UPDATE x402_l1_purchases
           SET raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object('lateChainRead', jsonb_build_object(
                 'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
                 'decided', ${decided}::boolean,
                 'by', 'authorization_state',
                 'tries', coalesce((raw_response_meta->'lateChainRead'->>'tries')::int, 0),
-                'spentReads', coalesce((raw_response_meta->'lateChainRead'->>'spentReads')::int, 0) + (CASE WHEN ${decided}::boolean THEN 0 ELSE 1 END)))
-          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)
-          RETURNING id::text AS id, (raw_response_meta->'lateChainRead'->>'spentReads')::int AS spent_reads`);
-        if (!decided) {
-          for (const r of rowsOfRaw<{ id: string; spent_reads: number | string | null }>(marked)) {
-            if (Number(r.spent_reads ?? 0) >= CHAIN_READ_MAX_TRIES) {
-              logServerErrorSafe(
-                `settlements.recover_late.spent_unlinked ${lane.key}`,
-                new Error(`purchase ${r.id}: the authorization was used on-chain but no transfer could be linked after ${r.spent_reads} reads; the row stays as it is and is not read again`),
-              );
-            }
-          }
-        }
+                'spentReads', coalesce((raw_response_meta->'lateChainRead'->>'spentReads')::int, 0)))
+          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid)`);
       }
+      for (const id of spent) spentIds.add(id);
       read += unspent.length;
       if (undecided.length === 0) continue;
       list = undecided;
@@ -1260,6 +1252,30 @@ async function linkFromChain(
       if (unlinked.length > 0) {
         read -= unlinked.length;
         noteUnread("the authorization was used or unreadable and no transfer was linked", unlinked.length);
+      }
+      // 2026-11-03（確かめ役）: spentReads を数えるのはここだけ——ログを読み切り（transfers は配列・レシートも読めた）、
+      // 認可は使われたと読め、窓の中に額ちょうどの着金が 1 本以上あるのに貼れなかった行。0 件の回は読み手の取りこぼしかも
+      // しれないので数えない（BNB の公開 RPC は 24 回中 21 回 0 件を返した）。CHAIN_READ_MAX_TRIES 回に達した行は次から選ばれず
+      // （batch の SELECT）、行ごとに 1 行鳴らす（認可は使われた＝金は動いた・貼り先が無い）。
+      const spentUnlinked = unlinked.filter((b) => spentIds.has(b.purchase_id) && inWindow(b)).map((b) => b.purchase_id);
+      if (spentUnlinked.length > 0) {
+        const marked = await db.execute(sql`
+          UPDATE x402_l1_purchases
+          SET raw_response_meta = coalesce(raw_response_meta, '{}'::jsonb) || jsonb_build_object('lateChainRead',
+                coalesce(raw_response_meta->'lateChainRead', '{}'::jsonb) || jsonb_build_object(
+                  'at', to_char(now() AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                  'exactTransfers', ${exact.length}::int,
+                  'spentReads', coalesce((raw_response_meta->'lateChainRead'->>'spentReads')::int, 0) + 1))
+          WHERE id IN (SELECT (jsonb_array_elements_text(${JSON.stringify(spentUnlinked)}::jsonb))::uuid)
+          RETURNING id::text AS id, (raw_response_meta->'lateChainRead'->>'spentReads')::int AS spent_reads`);
+        for (const r of rowsOfRaw<{ id: string; spent_reads: number | string | null }>(marked)) {
+          if (Number(r.spent_reads ?? 0) >= CHAIN_READ_MAX_TRIES) {
+            logServerErrorSafe(
+              `settlements.recover_late.spent_unlinked ${lane.key}`,
+              new Error(`purchase ${r.id}: the authorization was used on-chain and a transfer of the exact amount is in the window, but none could be linked after ${r.spent_reads} reads; the row stays as it is and is not read again`),
+            );
+          }
+        }
       }
       continue;
     }
