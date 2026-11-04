@@ -16,7 +16,7 @@
 // ============================================================
 import { createPublicClient, http, parseAbiItem, type Address } from "viem";
 import { bsc, tempo as tempoChain } from "viem/chains";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
 import { ARC_CHAIN_ID, ARC_USDC_ADDRESS, getArcPublicClient } from "@/lib/chain/arc";
@@ -45,6 +45,37 @@ export const TRANSFER_WITH_MEMO_EVENT = parseAbiItem(
   // memo は indexed（topics[3]）。2026-09-18 本番の receipt で実測。非 indexed で宣言すると viem が decode できない。
   "event TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo)",
 );
+
+type Ep = { id: string; resource_id: string | null; pay_to: string; price_amount: string | null; price_asset: string | null; network: string | null };
+
+const ENDPOINT_PAGE_ROWS = 20_000;
+const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * チェーンの有効なエンドポイントを id の順に分けて読む。
+ * Base は 12 万行・25 MB あり、1 文で読むと HTTP の流れが途中で切れることがある（2026-11-04 実測）。
+ */
+export async function loadChainEndpoints(
+  db: { execute: (query: SQL) => Promise<unknown> },
+  caip2: string,
+  pageRows: number = ENDPOINT_PAGE_ROWS,
+): Promise<Ep[]> {
+  const rows: Ep[] = [];
+  for (let afterId = ZERO_UUID; ; ) {
+    const page = rowsOf<Ep>(
+      await db.execute(sql`
+        SELECT id::text AS id, resource_id, lower(pay_to) AS pay_to, price_amount, price_asset, network
+        FROM x402_endpoints WHERE pay_to IS NOT NULL AND pay_to LIKE '0x%' AND status = 'active'
+          AND (network = ${caip2} OR (${caip2} = 'eip155:8453' AND network = 'base'))
+          AND id > ${afterId}::uuid
+        ORDER BY id LIMIT ${pageRows}
+      `),
+    );
+    rows.push(...page);
+    if (page.length < pageRows) return rows;
+    afterId = page[page.length - 1].id;
+  }
+}
 
 export type EvmIndexChain = {
   caip2: string;
@@ -326,7 +357,6 @@ export async function indexEvmChain(
   const summary: EvmIndexSummary = { chain: chain.caip2, payees: 0, logs: 0, inserted: 0, updated: 0 };
   if (!isEvmChainIndexable(chain)) return { ...summary, skipped: `${chain.rpcEnv}_unset` };
   const { budgetMs = 120_000, now = Date.now } = options;
-  const startedAt = now();
 
   const payees = rowsOf<{ pay_to: string }>(
     await db.execute(sql`
@@ -352,15 +382,10 @@ export async function indexEvmChain(
   const classifier = options.classifier ?? (await loadWashClassifier());
 
   // --- 事前ロード（1 件ごとの Neon 往復を無くす。2026-09-02 実測: 往復 4〜5 回で 2 秒/件） ---
-  // payee → endpoints（payTo・宣言 amount/asset・resource_id）。1 文。
-  type Ep = { id: string; resource_id: string | null; pay_to: string; price_amount: string | null; price_asset: string | null; network: string | null };
-  const epRows = rowsOf<Ep>(
-    await db.execute(sql`
-      SELECT id::text AS id, resource_id, lower(pay_to) AS pay_to, price_amount, price_asset, network
-      FROM x402_endpoints WHERE pay_to IS NOT NULL AND pay_to LIKE '0x%' AND status = 'active'
-        AND (network = ${chain.caip2} OR (${chain.caip2} = 'eip155:8453' AND network = 'base'))
-    `),
-  );
+  // payee → endpoints（payTo・宣言 amount/asset・resource_id）。
+  const epRows = await loadChainEndpoints(db, chain.caip2);
+  // 読み取りは Base で 40 秒を超える。予算は getLogs の分だけを数える。
+  const startedAt = now();
   const epsByPayee = new Map<string, Ep[]>();
   for (const e of epRows) {
     const list = epsByPayee.get(e.pay_to) ?? [];

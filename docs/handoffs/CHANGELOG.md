@@ -2941,3 +2941,5 @@ WO の該当項目は引き取り不要です。
 - 印の guard: `node scripts/refresh-numbers.mjs --check`／`cd packages/sdk && node test-mutations.mjs | tail -1` → `all 45 mutations killed`
 - 対訳の判定: `node scripts/ethonline-commits-en.mjs --check`（note で exit 0）／`--check --strict`（赤）
 - 資格の一次記録: `docs/ethonline-2026/PRIZES.md` §1.1
+
+- 2026-11-04 fix(settlements): the EVM index reads a chain's endpoints in id-ordered pages of 20,000 rows, because one statement over Base's 123,794 rows could lose the HTTP stream. The per-chain budget now starts after that read. New test: tests/settlements-endpoints-paged.pg.test.ts.
