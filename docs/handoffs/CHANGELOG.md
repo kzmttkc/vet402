@@ -2943,3 +2943,5 @@ WO の該当項目は引き取り不要です。
 - 資格の一次記録: `docs/ethonline-2026/PRIZES.md` §1.1
 
 - 2026-11-04 fix(settlements): the EVM index reads a chain's endpoints in id-ordered pages of 20,000 rows, because one statement over Base's 123,794 rows could lose the HTTP stream. The per-chain budget now starts after that read. New test: tests/settlements-endpoints-paged.pg.test.ts.
+
+- 2026-11-04 fix(settlements): the EVM index tries a cut endpoint page read up to 3 times, waiting 5 then 10 seconds, and reports the count as endpointReadRetries in the chain summary. Three cuts in a row still fail that chain's run, so a short list never reaches the index. Test: tests/settlements-endpoints-retry.test.ts.

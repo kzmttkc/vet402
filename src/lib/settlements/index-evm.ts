@@ -25,7 +25,7 @@ import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS, getArbitrumPu
 import { AVALANCHE_CAIP2, AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS, getAvalanchePublicClient } from "@/lib/chain/avalanche";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } from "@/lib/chain/celo";
 import { bnbLedgerUnits } from "@/lib/observatory/x402-payer";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorChainSafe, logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { DeadlineExceededError } from "@/lib/util/deadline";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
@@ -49,31 +49,54 @@ export const TRANSFER_WITH_MEMO_EVENT = parseAbiItem(
 type Ep = { id: string; resource_id: string | null; pay_to: string; price_amount: string | null; price_asset: string | null; network: string | null };
 
 const ENDPOINT_PAGE_ROWS = 20_000;
+const ENDPOINT_PAGE_ATTEMPTS = 3;
+const ENDPOINT_RETRY_DELAY_MS = 5_000;
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 
 /**
  * チェーンの有効なエンドポイントを id の順に分けて読む。
  * Base は 12 万行・25 MB あり、1 文で読むと HTTP の流れが途中で切れることがある（2026-11-04 実測）。
+ * 分けて読んでも切れた回があるので、読むだけのページは試し直す（同じ実測）。
  */
 export async function loadChainEndpoints(
   db: { execute: (query: SQL) => Promise<unknown> },
   caip2: string,
   pageRows: number = ENDPOINT_PAGE_ROWS,
+  retryDelayMs: number = ENDPOINT_RETRY_DELAY_MS,
+  onRetry: () => void = () => {},
 ): Promise<Ep[]> {
   const rows: Ep[] = [];
   for (let afterId = ZERO_UUID; ; ) {
-    const page = rowsOf<Ep>(
-      await db.execute(sql`
-        SELECT id::text AS id, resource_id, lower(pay_to) AS pay_to, price_amount, price_asset, network
-        FROM x402_endpoints WHERE pay_to IS NOT NULL AND pay_to LIKE '0x%' AND status = 'active'
-          AND (network = ${caip2} OR (${caip2} = 'eip155:8453' AND network = 'base'))
-          AND id > ${afterId}::uuid
-        ORDER BY id LIMIT ${pageRows}
-      `),
-    );
+    const query = sql`
+      SELECT id::text AS id, resource_id, lower(pay_to) AS pay_to, price_amount, price_asset, network
+      FROM x402_endpoints WHERE pay_to IS NOT NULL AND pay_to LIKE '0x%' AND status = 'active'
+        AND (network = ${caip2} OR (${caip2} = 'eip155:8453' AND network = 'base'))
+        AND id > ${afterId}::uuid
+      ORDER BY id LIMIT ${pageRows}
+    `;
+    const page = await readEndpointPage(db, query, caip2, retryDelayMs, onRetry);
     rows.push(...page);
     if (page.length < pageRows) return rows;
     afterId = page[page.length - 1].id;
+  }
+}
+
+async function readEndpointPage(
+  db: { execute: (query: SQL) => Promise<unknown> },
+  query: SQL,
+  caip2: string,
+  retryDelayMs: number,
+  onRetry: () => void,
+): Promise<Ep[]> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return rowsOf<Ep>(await db.execute(query));
+    } catch (error) {
+      if (attempt >= ENDPOINT_PAGE_ATTEMPTS) throw error;
+      logServerErrorChainSafe(`settlements.index-evm.endpoint-page-retry:${caip2}`, error);
+      onRetry();
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * attempt));
+    }
   }
 }
 
@@ -297,6 +320,8 @@ export type EvmIndexSummary = {
   partial?: boolean;
   checkpoint?: string;
   skippedKnown?: number;
+  /** エンドポイントのページ読みを試し直した回数。回復した回も launchd の要約 JSON で見えるように載せる。 */
+  endpointReadRetries?: number;
   /** 額を decode できず行にしなかった transfer log の数（event 宣言と実物のずれの fail-loud）。 */
   undecodable?: number;
   /** BNB の USD1 で、18 桁を 6 桁に割り切れず行にしなかった transfer log の数。 */
@@ -383,7 +408,11 @@ export async function indexEvmChain(
 
   // --- 事前ロード（1 件ごとの Neon 往復を無くす。2026-09-02 実測: 往復 4〜5 回で 2 秒/件） ---
   // payee → endpoints（payTo・宣言 amount/asset・resource_id）。
-  const epRows = await loadChainEndpoints(db, chain.caip2);
+  let endpointReadRetries = 0;
+  const epRows = await loadChainEndpoints(db, chain.caip2, ENDPOINT_PAGE_ROWS, ENDPOINT_RETRY_DELAY_MS, () => {
+    endpointReadRetries += 1;
+  });
+  if (endpointReadRetries > 0) summary.endpointReadRetries = endpointReadRetries;
   // 読み取りは Base で 40 秒を超える。予算は getLogs の分だけを数える。
   const startedAt = now();
   const epsByPayee = new Map<string, Ep[]>();
