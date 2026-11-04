@@ -11,7 +11,7 @@
 //
 // ここが固定するのは 3 つ:
 //  - 直近 N 日の再計算で、後から settled になった行が反映されること
-//  - その窓の外の日は勝手に動かないこと（cron が過去へ無限に手を伸ばさない）
+//  - 窓の外で L1 がずれた日は cron が古い順に修復すること（1 回 10 日まで）
 //  - 何度走らせても同値であること（raw からの再導出なので状態を持たない）
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/history-rollup-recompute.pg.test.ts
@@ -184,6 +184,182 @@ if (!TEST_DB) {
       await db.execute(sql`TRUNCATE x402_daily_metrics`);
       const cov = await getDailyMetricsCoverage();
       assert.deepEqual(cov, { coverageFrom: null, rolledUpThrough: null, lastRollupAt: null });
+    });
+  });
+
+  test("窓より古い日の L1 ずれ修復（cron と同じ入口）", async (t) => {
+    const {
+      rollupDailyMetrics,
+      metricsRollupCronRollups,
+      findDailyMetricsL1DriftDays,
+      METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS,
+      shiftDay,
+    } = await import("@/lib/observatory/metrics-rollup");
+    const { resetDerivedOperatorAddresses } = await import("@/lib/observatory/operator");
+    const { getDb } = await import("@/lib/db/client");
+    const schema = await import("@/lib/db/schema");
+    const { sql, eq } = await import("drizzle-orm");
+    const db = getDb()!;
+
+    const END_DAY = "2026-09-15";
+    const LOOKBACK = 14;
+    const SELF = `0x${"f".repeat(40)}`;
+
+    const reset = async () => {
+      await db.execute(
+        sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases, x402_daily_metrics`,
+      );
+      const [ep] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: "late-old.example/api",
+          resourceUrl: "https://late-old.example/api",
+          network: CHAIN,
+          method: "GET",
+        })
+        .returning();
+      return ep.id;
+    };
+
+    const rolled = async (day: string) => {
+      const rows = await db
+        .select()
+        .from(schema.x402DailyMetrics)
+        .where(eq(schema.x402DailyMetrics.day, day));
+      return rows.find((r) => r.chain === CHAIN) ?? null;
+    };
+
+    await t.test("窓より古い日を settled に変えると cron 入口の後に l1_settled が raw と一致", async () => {
+      const endpointId = await reset();
+      const DAY = "2026-08-20";
+      const [pu] = await db
+        .insert(schema.x402L1Purchases)
+        .values({
+          endpointId,
+          status: "settle_failed",
+          network: CHAIN,
+          spentUnits: "1000",
+          attemptedAt: new Date(`${DAY}T12:00:00Z`),
+        })
+        .returning();
+      await rollupDailyMetrics(DAY);
+      assert.equal((await rolled(DAY))!.l1Settled, 0);
+      await db
+        .update(schema.x402L1Purchases)
+        .set({ status: "settled" })
+        .where(eq(schema.x402L1Purchases.id, pu.id));
+      await metricsRollupCronRollups({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      assert.equal((await rolled(DAY))!.l1Settled, 1);
+      assert.deepEqual(await findDailyMetricsL1DriftDays({ endDay: END_DAY, lookbackDays: LOOKBACK }), []);
+    });
+
+    await t.test("ずれの無い日は updated_at が動かない", async () => {
+      const endpointId = await reset();
+      const DAY = "2026-08-21";
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId,
+        status: "settled",
+        network: CHAIN,
+        spentUnits: "1000",
+        attemptedAt: new Date(`${DAY}T12:00:00Z`),
+      });
+      await rollupDailyMetrics(DAY);
+      const before = (await rolled(DAY))!.updatedAt;
+      await metricsRollupCronRollups({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      const after = (await rolled(DAY))!.updatedAt;
+      assert.equal(after?.getTime(), before?.getTime());
+    });
+
+    await t.test("11 日ずれていても 1 回 10 日まで・2 回目で残り", async () => {
+      const endpointId = await reset();
+      const driftDays: string[] = [];
+      for (let i = 0; i < 11; i++) driftDays.push(shiftDay("2026-09-01", -i));
+      driftDays.sort();
+      const purchaseIds: string[] = [];
+      for (const day of driftDays) {
+        const [pu] = await db
+          .insert(schema.x402L1Purchases)
+          .values({
+            endpointId,
+            status: "settle_failed",
+            network: CHAIN,
+            spentUnits: "1000",
+            attemptedAt: new Date(`${day}T12:00:00Z`),
+          })
+          .returning();
+        purchaseIds.push(pu.id);
+        await rollupDailyMetrics(day);
+      }
+      for (const id of purchaseIds) {
+        await db
+          .update(schema.x402L1Purchases)
+          .set({ status: "settled" })
+          .where(eq(schema.x402L1Purchases.id, id));
+      }
+      const pending = await findDailyMetricsL1DriftDays({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      assert.equal(pending.length, 11);
+      const first = await metricsRollupCronRollups({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      assert.equal(first.driftDaysRecomputed.length, METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS);
+      assert.deepEqual(first.driftDaysRecomputed, driftDays.slice(0, 10));
+      const still = await findDailyMetricsL1DriftDays({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      assert.deepEqual(still, [driftDays[10]!]);
+      const second = await metricsRollupCronRollups({ endDay: END_DAY, lookbackDays: LOOKBACK });
+      assert.deepEqual(second.driftDaysRecomputed, [driftDays[10]!]);
+      assert.deepEqual(await findDailyMetricsL1DriftDays({ endDay: END_DAY, lookbackDays: LOOKBACK }), []);
+    });
+
+    await t.test("operator 除外と PAID 以外だけが違う日はずれと判定しない", async () => {
+      const saved = process.env.VET402_OPERATOR_PAYTO;
+      t.after(() => {
+        if (saved === undefined) delete process.env.VET402_OPERATOR_PAYTO;
+        else process.env.VET402_OPERATOR_PAYTO = saved;
+        resetDerivedOperatorAddresses();
+      });
+      await reset();
+      const DAY = "2026-08-22";
+      const [ep] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: "plain.example/api",
+          resourceUrl: "https://plain.example/api",
+          network: CHAIN,
+          method: "GET",
+        })
+        .returning();
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: ep.id,
+        status: "settled",
+        network: CHAIN,
+        spentUnits: "1000",
+        attemptedAt: new Date(`${DAY}T12:00:00Z`),
+      });
+      await rollupDailyMetrics(DAY);
+      const [own] = await db
+        .insert(schema.x402Endpoints)
+        .values({
+          resourceKey: "self.example/api",
+          resourceUrl: "https://self.example/api",
+          network: CHAIN,
+          method: "GET",
+          payTo: SELF,
+        })
+        .returning();
+      process.env.VET402_OPERATOR_PAYTO = SELF;
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: own.id,
+        status: "settled",
+        network: CHAIN,
+        spentUnits: "9000",
+        attemptedAt: new Date(`${DAY}T13:00:00Z`),
+      });
+      await db.insert(schema.x402L1Purchases).values({
+        endpointId: ep.id,
+        status: "budget_denied",
+        network: CHAIN,
+        spentUnits: "0",
+        attemptedAt: new Date(`${DAY}T14:00:00Z`),
+      });
+      assert.deepEqual(await findDailyMetricsL1DriftDays({ endDay: END_DAY, lookbackDays: LOOKBACK }), []);
     });
   });
 }

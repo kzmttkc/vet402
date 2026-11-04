@@ -2753,8 +2753,9 @@ paths:
         `/api/v1/observatory/state` (an attempt is a request whose payment was
         signed and sent). The rollup is recomputed for the trailing
         `recomputeWindowDays` days on every run, so a settlement confirmed
-        after a day's first rollup is folded in on a later run; a day older
-        than that window is frozen until a backfill. Summing `days` therefore
+        after a day's first rollup is folded in on a later run. Days older than
+        that window are reconciled when raw L1 totals diverge from the daily
+        table (up to 10 days per cron run, oldest first). Summing `days` therefore
         tracks, but can trail, the live totals in
         `/api/v1/observatory/state` — `coverageFrom`, `rolledUpThrough` and
         `lastRollupAt` say exactly which span and vintage the sum covers.
@@ -2815,7 +2816,8 @@ paths:
                     example: 14
                     description: >-
                       How many trailing days are recomputed from raw on every
-                      run. Days older than this are frozen until a backfill.
+                      run. Older days are reconciled when raw L1 totals diverge
+                      from the daily table (up to 10 days per cron run).
                   semantics: { type: string }
                   disclaimer: { type: string }
         "400":
@@ -3166,7 +3168,8 @@ paths:
                       restates the trailing recomputeWindowDays days, so the step sits at the
                       oldest day still inside that window at the first run after 2026-09-19,
                       and that boundary then stays where it is — a restated day is not
-                      restated back).
+                      restated back; an older day restated because its raw L1 totals changed
+                      carries the population in force at that restatement).
                       This count does not distinguish "the denylist matched nothing" from
                       "the denylist is empty" — operatorExclusionConfigured does.
                   operatorExclusionConfigured:

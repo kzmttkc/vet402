@@ -34,11 +34,12 @@
 // chainLabel() も空文字をチェーンとして扱わない）。申告が無いことを集計から
 // 黙って消さない（facts with denominators）。
 // ============================================================
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { utcDayStartOf } from "@/lib/db/utc-day";
 import { PAID_ATTEMPT_STATUSES } from "./reader";
 import { operatorExclusionPredicate } from "./operator-sql";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86_400_000;
@@ -49,10 +50,13 @@ const DAY_MS = 86_400_000;
  * なぜ 14 か: 遅れて確定する経路は verify-settlements（当日 14:00 UTC）と
  * recoverLateSettlements（署名した EIP-3009 の有効窓の内側で後から決済された
  * 分の回収）で、いずれも数日以内に落ち着く。2週間はその 2 倍以上の余裕。
- * これより古い日は backfill スクリプトの守備範囲で、cron が過去へ無限に
- * 手を伸ばさない。
+ * これより古い日は metrics-rollup cron が L1 ずれを検出した分だけ古い順に
+ * 再計算する（1 回 10 日まで）。手動の広い backfill は backfill スクリプト。
  */
 export const METRICS_ROLLUP_LOOKBACK_DEFAULT_DAYS = 14;
+
+/** 窓より古い日の L1 ずれを 1 回の cron で直す上限（maxDuration 60s に収める）。 */
+export const METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS = 10;
 
 /**
  * 再計算する日数（env METRICS_ROLLUP_LOOKBACK_DAYS）。
@@ -82,16 +86,37 @@ export function shiftDay(day: string, days: number): string {
   return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
+function paidAttemptStatusesSql() {
+  return sql.join(
+    PAID_ATTEMPT_STATUSES.map((st) => sql`${st}`),
+    sql`, `,
+  );
+}
+
+/** L1 ロールアップ母集団（PAID_ATTEMPT_STATUSES・運営除外・attempted_at 窓）。partsAndAggCte と drift 検出で共有。 */
+function l1RollupPopulationWhere(dayStart: SQL, nextStart: SQL) {
+  return sql`
+    pu.attempted_at >= ${dayStart} AND pu.attempted_at < ${nextStart}
+    AND pu.status IN (${paidAttemptStatusesSql()})
+    AND ${operatorExclusionPredicate("e")}
+  `;
+}
+
+/** 再計算窓より古い UTC 日（文字列 YYYY-MM-DD）。 */
+export function metricsRollupWindowOldestDay(endDay: string, lookbackDays: number): string {
+  if (!DAY_RE.test(endDay)) throw new Error(`metricsRollupWindowOldestDay: not a YYYY-MM-DD day: ${endDay}`);
+  if (!Number.isInteger(lookbackDays) || lookbackDays < 1) {
+    throw new Error(`metricsRollupWindowOldestDay: lookbackDays は 1 以上の整数（受け取った値: ${lookbackDays}）`);
+  }
+  return shiftDay(endDay, -(lookbackDays - 1));
+}
+
 /**
  * その日ぶんの parts / agg CTE。ロールアップ（書く）と preview（書かない）が
  * **同じ文字列**を使う——定義が2箇所にあると、片方だけ直した日に
  * 「backfill の予測」と「実際に書かれる値」が静かにずれる。
  */
 function partsAndAggCte(day: string) {
-  const paidStatuses = sql.join(
-    PAID_ATTEMPT_STATUSES.map((st) => sql`${st}`),
-    sql`, `,
-  );
   // 日境界は接続の TimeZone に依存させない（utcDayStartOf の comment を見よ）。
   // 終端も「+ interval '1 day'」ではなく翌日の 00:00 UTC を名指しする——
   // timestamptz への日加算は session TimeZone で行われる。
@@ -110,7 +135,7 @@ function partsAndAggCte(day: string) {
         -- 2026-09-19 再レビュー V5: /state の byChain が自社を外すようになったので、
         -- ここだけ母集団が旧いままだと公開 API 2 本のチェーン別件数がずれる。
         -- **過去の行は遡って書き換えない**（台帳を書き換えない）ので、この変更より
-        -- 前の日付は旧い母集団のまま残る。
+        -- 前の日付は旧い母集団のまま残る。L1 のずれで再計算した古い日だけ、その時の母集団になる。
         AND ${operatorExclusionPredicate("e")}
       GROUP BY 1
       UNION ALL
@@ -126,11 +151,7 @@ function partsAndAggCte(day: string) {
         coalesce(sum(pu.spent_units::numeric), 0) AS spent_units
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
-      WHERE pu.attempted_at >= ${dayStart} AND pu.attempted_at < ${nextStart}
-        -- state と同じ分母。払っていない試行（budget_denied / no_402 /
-        -- no_eligible_accept / over_cap / …）を attempts と呼ばない。
-        AND pu.status IN (${paidStatuses})
-        AND ${operatorExclusionPredicate("e")}
+      WHERE ${l1RollupPopulationWhere(dayStart, nextStart)}
       GROUP BY 1
     ),
     agg AS (
@@ -216,6 +237,96 @@ export async function rollupRecentDailyMetrics(
   for (let i = days - 1; i >= 0; i--) list.push(shiftDay(endDay, -i));
   for (const day of list) await rollupDailyMetrics(day);
   return list;
+}
+
+/**
+ * 再計算窓より古い日のうち、raw L1（attempts・settled）の日次合計と
+ * x402_daily_metrics の日次合計が食い違う UTC 日を返す（古い順）。
+ * L0 は読まない（x402_l0_probes の全期間走査を避ける）。
+ */
+export async function findDailyMetricsL1DriftDays(
+  options: { endDay?: string; lookbackDays?: number } = {},
+): Promise<string[]> {
+  const lookbackDays = options.lookbackDays ?? metricsRollupLookbackDays();
+  const endDay = options.endDay ?? utcDayString();
+  if (!DAY_RE.test(endDay)) {
+    throw new Error(`findDailyMetricsL1DriftDays: not a YYYY-MM-DD day: ${endDay}`);
+  }
+  const windowOldestDay = metricsRollupWindowOldestDay(endDay, lookbackDays);
+  const beforeWindowStart = utcDayStartOf(windowOldestDay);
+  const db = getDb();
+  if (!db) throw new Error("findDailyMetricsL1DriftDays: DATABASE_URL is not configured");
+
+  const raw = await db.execute(sql`
+    WITH raw AS (
+      SELECT
+        to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD') AS day,
+        count(*)::bigint AS l1_attempts,
+        count(*) FILTER (WHERE pu.status = 'settled')::bigint AS l1_settled
+      FROM x402_l1_purchases pu
+      JOIN x402_endpoints e ON e.id = pu.endpoint_id
+      WHERE pu.attempted_at < ${beforeWindowStart}
+        AND pu.status IN (${paidAttemptStatusesSql()})
+        AND ${operatorExclusionPredicate("e")}
+      GROUP BY 1
+    ),
+    rolled AS (
+      SELECT
+        day,
+        sum(l1_attempts)::bigint AS l1_attempts,
+        sum(l1_settled)::bigint AS l1_settled
+      FROM x402_daily_metrics
+      WHERE day < ${windowOldestDay}
+      GROUP BY day
+    ),
+    days AS (
+      SELECT day FROM raw
+      UNION
+      SELECT day FROM rolled
+    )
+    SELECT d.day
+    FROM days d
+    LEFT JOIN raw r ON r.day = d.day
+    LEFT JOIN rolled ro ON ro.day = d.day
+    WHERE coalesce(r.l1_attempts, 0) <> coalesce(ro.l1_attempts, 0)
+       OR coalesce(r.l1_settled, 0) <> coalesce(ro.l1_settled, 0)
+    ORDER BY d.day ASC
+  `);
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
+    string,
+    unknown
+  >[];
+  return rows.map((r) => String(r.day));
+}
+
+/** ずれている古い日を古い順に最大 maxDays 日まで再計算する。 */
+export async function rollupDriftDailyMetrics(
+  options: { endDay?: string; lookbackDays?: number; maxDays?: number } = {},
+): Promise<string[]> {
+  const maxDays = options.maxDays ?? METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS;
+  const driftDays = await findDailyMetricsL1DriftDays(options);
+  const batch = driftDays.slice(0, maxDays);
+  for (const day of batch) await rollupDailyMetrics(day);
+  return batch;
+}
+
+/**
+ * metrics-rollup cron が行うロールアップ本体（直近窓＋古い日の L1 ずれ修復）。
+ * アンカーは呼び手（route）が続けて刻む。
+ */
+export async function metricsRollupCronRollups(
+  options: { endDay?: string; lookbackDays?: number } = {},
+): Promise<{ lookbackDays: number; days: string[]; driftDaysRecomputed: string[] }> {
+  const lookbackDays = options.lookbackDays ?? metricsRollupLookbackDays();
+  const endDay = options.endDay ?? utcDayString();
+  const days = await rollupRecentDailyMetrics({ days: lookbackDays, endDay });
+  let driftDaysRecomputed: string[] = [];
+  try {
+    driftDaysRecomputed = await rollupDriftDailyMetrics({ endDay, lookbackDays });
+  } catch (error) {
+    logServerErrorSafe("cron.metrics-rollup.drift", error);
+  }
+  return { lookbackDays, days, driftDaysRecomputed };
 }
 
 export type DailyMetricsRow = {

@@ -1597,6 +1597,20 @@ claims:
     check: null
     why_unverifiable: "2026-09-19 独立レビュー W5: 以前は recomputeWindowDays > 0 を当てていたが、それは窓の値が正であることしか見ておらず、**直近 window 日を毎回計算し直しているか**を検査していない（走行間で値が変わることを見ないと言えない）。再計算は src/lib/observatory/metrics-rollup.ts が持ち、tests/observatory-metrics-rollup.test.ts が守る"
     verified_at: 2026-09-19
+  - id: api_history_reconciles_older_days_on_drift
+    surface: src/app/api/v1/observatory/history/route.ts
+    quote: "Days older than that window are reconciled when raw L1 totals diverge from the daily table"
+    means: "窓より古い日は、生の L1 の合計が日次の表と食い違ったときに数え直す（1 回の cron で上限の日数まで・古い日から）。cron の応答の driftDaysRecomputed が数え直した日数"
+    check: null
+    why_unverifiable: "数え直しが起きたかは走行の間の差でしか見えず、公開 GET の 1 回では判定できない。規則は src/lib/observatory/metrics-rollup.ts、tests/history-rollup-recompute.pg.test.ts が守る"
+    verified_at: 2026-11-08
+  - id: methodology_state_counts_all_time
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "counts all time. To recount from the CSV, pass"
+    means: "state の合計は窓を切らない全期間。CSV から数え直すときは days を渡し、応答の x-vet402-window-days を読む"
+    check: null
+    why_unverifiable: "全期間であることは state の応答の数値 1 回では判定できない（窓の端の行が無いことを見る必要がある）。state の集計は窓を取らない SQL で、export の既定 90 日とは別"
+    verified_at: 2026-11-08
   - id: api_history_disclaimer_counts_not_assessment
     surface: src/app/api/v1/observatory/history/route.ts
     quote: "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes."

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
 import {
-  metricsRollupLookbackDays,
-  rollupRecentDailyMetrics,
+  metricsRollupCronRollups,
   shiftDay,
   utcDayString,
 } from "@/lib/observatory/metrics-rollup";
@@ -16,7 +15,8 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
 // その日の後半に settled へ昇格した行は 2 日窓を抜けたあと二度と集計へ入らなかった
 // （実測 2026-09-05: Base の settled が 221 件過小）。再計算は raw からの再導出で
 // 冪等なので、窓を広げる以外に持つべき状態は無い。
-// N より古い日は scripts/backfill-daily-metrics.ts の守備範囲。
+// N より古い日は metrics-rollup cron が L1 ずれを検出した分だけ古い順に再計算する（1 回 10 日まで）。
+// 手動の広い backfill は scripts/backfill-daily-metrics.ts。
 //
 // 台帳アンカー（ledger_anchors）は L1 の生行を直接ハッシュしていて
 // x402_daily_metrics を読まないので、この再計算はアンカーの root を動かさない。
@@ -27,15 +27,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   try {
-    const lookbackDays = metricsRollupLookbackDays();
-    const today = utcDayString();
-    const days = await rollupRecentDailyMetrics({ days: lookbackDays, endDay: today });
+    const { lookbackDays, days, driftDaysRecomputed } = await metricsRollupCronRollups({
+      endDay: utcDayString(),
+    });
     // 台帳ハッシュチェーン: 完結した前日だけをアンカーする（当日は行が増える）。
     // conflict_frozen（刻印済みrootと現データの食い違い）は整合性イベント——
     // 握りつぶさず監視ログに出す。
     // 2026-09-02 監査: 欠けた日を古い順に埋めてから昨日を固定する。cron が 1 回
     // 落ちても翌日に鎖が自己修復する（以前は穴を飛ばして連結し、5 日間検出されなかった）。
-    const anchors = await anchorThrough(shiftDay(today, -1));
+    const anchors = await anchorThrough(shiftDay(utcDayString(), -1));
     for (const anchor of anchors) {
       if (anchor.status === "conflict_frozen") {
         logServerErrorSafe(
@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
       ok: true,
       lookbackDays,
       days,
+      driftDaysRecomputed,
       anchor,
       backfilled: anchors.length - 1,
     });

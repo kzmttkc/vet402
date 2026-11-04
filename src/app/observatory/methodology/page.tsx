@@ -1281,7 +1281,11 @@ export default async function ObservatoryMethodologyPage() {
           comment — carries <code>x-vet402-license</code>, <code>x-vet402-retrieved-at</code>,{" "}
           <code>x-vet402-rows</code>, <code>x-vet402-window-days</code> and a <code>Link</code>{" "}
           header pointing at the licence and at this page. A file that ends up on someone
-          else&apos;s disk still knows where it came from.
+          else&apos;s disk still knows where it came from.{" "}
+          <code>/api/v1/observatory/export.csv</code> defaults to the last 90 days;{" "}
+          <code>?days=</code> accepts 1 through 366.{" "}
+          <code>/api/v1/observatory/state</code> counts all time. To recount from the CSV, pass{" "}
+          <code>days</code> and read <code>x-vet402-window-days</code> on the response.
         </p>
         <p className="doc-p">
           Purchase rows are ordered by <code>attempted_at</code>. A published row can change

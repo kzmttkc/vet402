@@ -8,6 +8,7 @@ import {
 import {
   getDailyMetricsCoverage,
   getDailyMetricsHistory,
+  METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS,
   metricsRollupLookbackDays,
 } from "@/lib/observatory/metrics-rollup";
 import { withNoindex } from "@/lib/api/public-read-robots";
@@ -64,9 +65,9 @@ export async function GET(request: NextRequest) {
         // 表そのものの被覆（いつから・どこまで・いつ集計したか）を応答に載せる。
         ...coverage,
         recomputeWindowDays: window,
-        semantics: `Daily rollup, recomputed for the trailing ${window} days on each run; late settlements are folded in on the next run, so a day older than that window is frozen until a backfill. Attempts use the same paid-attempt denominator as /api/v1/observatory/state. For live totals use /api/v1/observatory/state.`,
+        semantics: `Daily rollup, recomputed for the trailing ${window} days on each run; late settlements are folded in on the next run. Days older than that window are reconciled when raw L1 totals diverge from the daily table (up to ${METRICS_ROLLUP_DRIFT_RECOMPUTE_MAX_DAYS} days per cron run, oldest first). Attempts use the same paid-attempt denominator as /api/v1/observatory/state. For live totals use /api/v1/observatory/state.`,
         disclaimer:
-          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network. Endpoints paying vet402's own addresses are left out of the rollup as of 2026-09-19, matching /api/v1/observatory/state. Each run restates the trailing recomputeWindowDays days, so days inside that window carry the new population and older days keep the old one — the step sits at the oldest day still inside the window at the first run after 2026-09-19. That boundary then stays where it is: a restated day is not restated back.",
+          "Daily L0/L1 aggregates per chain, rolled up from the same raw measurements the Observatory publishes. Counts with denominators, not an assessment. Chain 'unknown' means neither the payment rail nor the catalog row declares a network. Endpoints paying vet402's own addresses are left out of the rollup as of 2026-09-19, matching /api/v1/observatory/state. Each run restates the trailing recomputeWindowDays days, so days inside that window carry the new population and older days keep the old one — the step sits at the oldest day still inside the window at the first run after 2026-09-19. That boundary then stays where it is: a restated day is not restated back. An older day restated because its raw L1 totals changed carries the population in force at that restatement.",
         humanReadable: "https://vet402.com/observatory/state",
         methodology: "https://vet402.com/observatory/methodology",
         license: "CC-BY-4.0",

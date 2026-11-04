@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 History rollup reconciles pre-window L1 drift after late settlements
+
+- **What**: The metrics-rollup cron still recomputes the trailing window each run, then detects UTC days older than that window where raw L1 attempts/settled totals disagree with `x402_daily_metrics`, and recomputes up to 10 of those days per run (oldest first). `/api/v1/observatory/history` semantics and `docs/openapi.yaml` now describe that behavior instead of “frozen until a backfill”. The methodology page notes that `export.csv` defaults to 90 days (`?days=` up to 366) while state is all-time.
+- **Why**: Settlements confirmed more than 14 days after the attempt day were never rolled again, so history sums could trail `/api/v1/observatory/state` even inside the published coverage span.
+- **Impact**: Cron JSON adds `driftDaysRecomputed`. No change to anchors, export columns, or `recomputeWindowDays` in API responses.
+- **Commits**: this entry.
+
 ## 2026-11-07 /about is new, and the home status line follows the purchase record
 
 - **What**: New `/about` page: who builds vet402, what it does, its track record, npm downloads of `@vet402/sdk`, data and code, contact, and a closing link to the Legal Notice. The track record and the builder names come from `src/lib/about/credentials.json` (loaded and validated by `src/lib/about/credentials.ts`): the Prezenti grant on Celo (announced 2026-11-02), Circle's Arc Microgrants (October 2026), the ETHOnline 2026 Bazantic prize for payOrRefuse, and NEAR Japan. The download count is read from the npm downloads API (`last-month`) with its own start and end dates and the time it was read, cached 24 hours; a failed read is not cached and the section links to npm instead. The lead sentence uses the same cached ledger read as the home page. The mobile menu's "About" now opens `/about` (it opened `/legal/notice`), the footer's About column starts with "About vet402", and the sitemap lists `/about`. The Legal Notice links stay in the footer.
