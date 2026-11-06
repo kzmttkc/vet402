@@ -78,7 +78,8 @@ import {
   selectAccept,
   signX402Payment,
 } from "./x402-payer";
-import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
+import { ARKIV_RULING_GATE_TIMEOUT_MS, checkArkivRuling as defaultCheckArkivRuling, createBatchRulingBreaker, type ArkivRulingCheck } from "./arkiv-ruling-gate";
 import { isWellFormedSettlementTx } from "@/lib/validation/settlement-tx";
 import { Keypair } from "@solana/web3.js";
 import {
@@ -302,6 +303,12 @@ export type L1BatchSummary = {
   primaryFetchMs: number | null;
   /** レーン枠の取得のミリ秒をレーンごとに（2026-10-27・並べて走らせる）。問い合わせなかったレーンは載せない。 */
   laneFetchMs: Record<string, number>;
+  /** 払う直前の Arkiv 判定の関門（2026-11-06）で止めた回数（購入行は書かない）。 */
+  arkivRulingBlocked: number;
+  /** 同じ関門で読めず、今までどおり払いへ進んだ回数（バッチ内の遮断器が開いた後の分を含む）。 */
+  arkivRulingUnread: number;
+  /** 同じ関門が投げて（差し替え口・不具合）、その 1 件を払わずに飛ばした回数。 */
+  arkivRulingThrew: number;
 };
 
 /**
@@ -326,6 +333,7 @@ export type L1BatchSummary = {
 // primaryFetchMs・laneFetchMs（2026-10-27）も同じ理由で出さない（準備の内訳の計器）。
 // payerUnfundedChains（2026-11-02）も出さない: どの購入元が空かは運用の内訳で、cron の応答だけに載せる。
 // unprovenCapped・unprovenPriceExcluded・unprovenPoolClosed・overDimeCapped・overDimePoolClosed（2026-11-02）も出さない: 上限の内訳で、その 1 件の計測の事実ではない。
+// arkivRulingBlocked・arkivRulingUnread・arkivRulingThrew（2026-11-06）も出さない: 払う直前の関門の内訳で、cron の応答だけに載せる。
 export type PublicL1BatchSummary = Omit<
   L1BatchSummary,
   | "haltReason"
@@ -347,6 +355,9 @@ export type PublicL1BatchSummary = Omit<
   | "attemptsByNetwork"
   | "primaryFetchMs"
   | "laneFetchMs"
+  | "arkivRulingBlocked"
+  | "arkivRulingUnread"
+  | "arkivRulingThrew"
 >;
 
 export function publicL1Summary(summary: L1BatchSummary): PublicL1BatchSummary {
@@ -937,10 +948,11 @@ const DAILY_BUDGET_UNITS = BigInt(DAILY_BUDGET_USD) * BigInt(USDC_PER_USD);
  * 対策は「走っている購入を殺す」ではなく「**新しい購入を始めない**」。
  * 1件の最悪ケースは HTTP 2本（各 timeoutMs・本文読み取り込み）＋ 署名・
  * 予約・記帳・Solana の blockhash RPC で、後者を L1_PURCHASE_SLACK_MS で
- * 見積もる。既定では 210s + (20s + 20s + 20s) = 270s < 300s なので、
+ * 見積もる（2026-11-06 から Arkiv 判定の関門の 3s を含めて 23s）。既定では
+ * 210s + (20s + 20s + 23s) = 273s < 300s なので、
  * デッドライン直前に始めた1件が最悪でも maxDuration の内側で終わる。
  * Celo の候補は支払い付きだけ 45s（無払いは 20s のまま）なので
- * 210s + (20s + 45s + 20s) = 295s。ルートの maxDuration 300s の内側。
+ * 210s + (20s + 45s + 23s) = 298s。ルートの maxDuration 300s の内側。
  * 45s を 2 本分見込むと 210s + 110s で 300s を超えるので、見込まない。
  */
 export const L1_BATCH_BUDGET_MS = 210_000;
@@ -951,8 +963,12 @@ export const L1_BATCH_BUDGET_MS = 210_000;
  */
 export const CDP_BAZAAR_L1_FRESH_HOURS = 36;
 
-/** 1購入あたり、2本の HTTP 以外（署名・DB・blockhash RPC）に見込む余裕。 */
-export const L1_PURCHASE_SLACK_MS = 20_000;
+/**
+ * 1購入あたり、2本の HTTP 以外（署名・DB・blockhash RPC）に見込む余裕。払う直前の Arkiv 判定の関門
+ * （2026-11-06・上限 ARKIV_RULING_GATE_TIMEOUT_MS = 3 秒）を明示的に足す。Celo の最悪は
+ * 210s + (20s + 45s + 23s) = 298s で、maxDuration 300s の内側。
+ */
+export const L1_PURCHASE_SLACK_MS = 20_000 + ARKIV_RULING_GATE_TIMEOUT_MS;
 
 /**
  * 1件の購入の最悪所要時間。無払いは timeoutMs、支払い付きは paidTimeoutMs。
@@ -2315,6 +2331,11 @@ export async function runL1Batch(
     /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
     createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
     /**
+     * Test seam: 払う直前の Arkiv 判定の関門（2026-11-06）。既定は checkArkivRuling（Arkiv と Arc testnet へ出る）。
+     * node:test の下では差し替えない限り読まない（既存のテストをネットへ出さない）。
+     */
+    checkArkivRuling?: ArkivRulingCheck;
+    /**
      * Test seam: レーン枠の時間の上限（L1_LANE_TIME_SHARE）と setupMs が読む時計。既定は Date.now。
      * デッドライン（createDeadline）は差し替えない——maxDuration を守る判定は従来どおり壁時計で決める。
      */
@@ -2340,6 +2361,24 @@ export async function runL1Batch(
   const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
   const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
   const createStellarPayment = options.createStellarPayment ?? defaultCreateStellarPayment;
+  // バッチ内の遮断器: 時間切れの allow_unread が 2 回続いたら、そのバッチの残りは読まない（Arkiv が落ちたとき、
+  // EVM 候補ごとに 3 秒ずつ持ち時間を食わない）。429 などのすぐ返る失敗は数えない。結果はバッチの summary に数える（DB と CSV には書かない）。
+  const breakerGate = createBatchRulingBreaker(
+    options.checkArkivRuling ?? (process.env.NODE_TEST_CONTEXT ? skipArkivRulingUnderTest : defaultCheckArkivRuling),
+  );
+  const checkArkivRuling: ArkivRulingCheck = async (payTo, opts) => {
+    let result: Awaited<ReturnType<ArkivRulingCheck>>;
+    try {
+      result = await breakerGate(payTo, opts);
+    } catch (error) {
+      // purchaseOne がこの 1 件を払わずに飛ばす。数だけここで取る。
+      summary.arkivRulingThrew++;
+      throw error;
+    }
+    if (result.action === "block") summary.arkivRulingBlocked++;
+    else if (result.action === "allow_unread") summary.arkivRulingUnread++;
+    return result;
+  };
   const summary: L1BatchSummary = {
     attempted: 0,
     settled: 0,
@@ -2378,6 +2417,9 @@ export async function runL1Batch(
     attemptsByNetwork: {},
     primaryFetchMs: null,
     laneFetchMs: {},
+    arkivRulingBlocked: 0,
+    arkivRulingUnread: 0,
+    arkivRulingThrew: 0,
   };
 
   // 1. Master switches — fail-closed before any network traffic.
@@ -2936,6 +2978,7 @@ export async function runL1Batch(
           readArcGatewayAvailable,
           commitArcGateway,
           signArcGateway: options.signArcGateway ?? signArcGatewayPayment,
+          checkArkivRuling,
         };
         const outcome = await purchaseOne({ ...purchaseInput, preferNetworks: [] });
         spentToday += outcome.spent;
@@ -3082,7 +3125,7 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment };
+      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment, checkArkivRuling };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
       // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
@@ -3667,6 +3710,9 @@ function declaredQueryEnabled(network: string): boolean {
   return network.length > 0 && allowed.includes(network);
 }
 
+/** node:test の下の既定。差し替えないテストは Arkiv も Arc も読まない。 */
+const skipArkivRulingUnderTest: ArkivRulingCheck = async () => ({ action: "allow", reason: "disabled" });
+
 async function purchaseOne(input: {
   candidate: Candidate;
   /** selectAccept に先に選ばせる network（LANE_NETWORK・settled 済みは除く）。 */
@@ -3700,6 +3746,8 @@ async function purchaseOne(input: {
   /** Tempo（MPP）を買ってよいか（フラグ・別枠）。false なら Tempo 候補は試行しない。 */
   tempoEnabled: boolean;
   mppxCharge?: MppxCharge;
+  /** 払う直前の Arkiv 判定の関門（2026-11-06）。 */
+  checkArkivRuling: ArkivRulingCheck;
 }): Promise<{
   kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "seller_capped" | "unproven_capped" | "over_dime_capped";
   /** kind === "unproven_capped" のとき、1 件の上限か全体の日次合計か。 */
@@ -4234,6 +4282,28 @@ async function purchaseOne(input: {
       },
     });
     return { kind: "skipped", settled: false, spent: 0n };
+  }
+
+  // Arkiv の判定の関門（2026-11-06）。自己取引の関門の直後、予約と署名の前。vet402 が Arkiv に書き、
+  // Arc の SealedDelivery の Silent / Fraud の事象で確かめられた判定が 7 日以内にある payTo には払わない。
+  // 行は書かない（DB の status に新しい値を足さない）。読めない・時間切れは今までどおり払う。
+  let arkivRuling: Awaited<ReturnType<ArkivRulingCheck>>;
+  try {
+    arkivRuling = await input.checkArkivRuling(accept.payTo);
+  } catch (error) {
+    // checkArkivRuling は投げない約束。投げたら（差し替え口・不具合）この 1 件は払わずに飛ばし、バッチは続ける。
+    logServerErrorSafe("observatory.l1.arkiv_ruling_threw", redactedError(error));
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  if (arkivRuling.action === "block") {
+    logServerWarnSafe(
+      "observatory.l1.arkiv_ruling_block",
+      `payTo=${accept.payTo.toLowerCase()} verdict=${arkivRuling.verdict} claimId=${arkivRuling.claimId}`,
+    );
+    return { kind: "skipped", settled: false, spent: 0n };
+  }
+  if (arkivRuling.action === "allow_unread") {
+    logServerWarnSafe("observatory.l1.arkiv_ruling_unread", `arkiv ruling gate unread, paying as before: ${arkivRuling.error}`);
   }
 
   // 実行時の停止スイッチ・1 回目（2026-09-05 監査 P0）。予約の**前**に読む。

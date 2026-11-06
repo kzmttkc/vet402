@@ -272,6 +272,104 @@ if (!TEST_DB) {
       void summary;
     });
 
+    // 2026-11-06: 払う直前の Arkiv 判定の関門（arkiv-ruling-gate.ts）をランナーごと通す。差し替え口 checkArkivRuling。
+    const arkivGateFixture = async () => {
+      await db.execute(sql`TRUNCATE x402_l1_purchases`);
+      const eps = await db
+        .select({ id: schema.x402Endpoints.id, url: schema.x402Endpoints.resourceUrl })
+        .from(schema.x402Endpoints);
+      const seller1 = eps.find((e) => e.url.includes("seller1"));
+      assert.ok(seller1, "fixture seller1 must exist");
+      const seen: { url: string; paid: boolean }[] = [];
+      const fetchImpl = async (url: string, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        const paid = headers.has("PAYMENT-SIGNATURE") || headers.has("X-PAYMENT");
+        seen.push({ url, paid });
+        if (!paid) return new Response(challengeFor(url), { status: 402, headers: { "content-type": "application/json" } });
+        return new Response(JSON.stringify({ data: "the goods" }), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "PAYMENT-RESPONSE": Buffer.from(
+              JSON.stringify({ success: true, transaction: `0x${"ee".repeat(32)}`, network: "eip155:8453", payer: "0xf39F" }),
+            ).toString("base64"),
+          },
+        });
+      };
+      return { seller1Id: seller1.id, seen, fetchImpl };
+    };
+
+    await t.test("Arkiv 判定の関門: block なら購入行・予約・署名が 0 で summary.arkivRulingBlocked=1", async () => {
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      const { seller1Id, seen, fetchImpl } = await arkivGateFixture();
+      const gateCalls: string[] = [];
+      const summary = await runL1Batch({
+        getPayerUsdcBalance: FUNDED_PAYER,
+        fetchImpl,
+        limit: 1,
+        onlyEndpointId: seller1Id,
+        checkArkivRuling: async (payTo) => {
+          gateCalls.push(payTo);
+          return { action: "block", verdict: "fraud", claimId: `0x${"31".repeat(32)}` };
+        },
+      });
+      assert.deepEqual(gateCalls.map((p) => p.toLowerCase()), [payToFor(1)]);
+      assert.equal(summary.arkivRulingBlocked, 1);
+      assert.equal(summary.arkivRulingUnread, 0);
+      assert.equal(summary.arkivRulingThrew, 0);
+      assert.equal(summary.attempted, 0);
+      assert.equal(summary.skipped, 1);
+      assert.equal(summary.spentUnitsTotal, "0");
+      assert.equal(seen.filter((r) => r.paid).length, 0, "署名した要求を送っていない");
+      const rows = await db.select().from(schema.x402L1Purchases);
+      assert.equal(rows.length, 0, "購入行も in_flight の予約も書いていない");
+    });
+
+    await t.test("Arkiv 判定の関門: allow_unread なら今までどおり払う経路へ進む", async () => {
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      const { seller1Id, seen, fetchImpl } = await arkivGateFixture();
+      const summary = await runL1Batch({
+        getPayerUsdcBalance: FUNDED_PAYER,
+        fetchImpl,
+        limit: 1,
+        onlyEndpointId: seller1Id,
+        checkArkivRuling: async () => ({ action: "allow_unread", error: "Arkiv answered 503" }),
+      });
+      assert.equal(summary.arkivRulingUnread, 1);
+      assert.equal(summary.arkivRulingBlocked, 0);
+      assert.equal(summary.attempted, 1);
+      assert.equal(summary.settled, 1);
+      assert.equal(seen.filter((r) => r.paid).length, 1, "署名した要求を 1 本送った");
+      const rows = await db.select().from(schema.x402L1Purchases);
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].status, "settle_claimed");
+      assert.equal(rows[0].spentUnits, "3000");
+    });
+
+    await t.test("Arkiv 判定の関門: 差し替え口が reject してもバッチは落ちず、その 1 件は払わずに skipped", async () => {
+      process.env.OBSERVATORY_L1_ENABLED = "true";
+      process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
+      const { seller1Id, seen, fetchImpl } = await arkivGateFixture();
+      const summary = await runL1Batch({
+        getPayerUsdcBalance: FUNDED_PAYER,
+        fetchImpl,
+        limit: 1,
+        onlyEndpointId: seller1Id,
+        checkArkivRuling: async () => {
+          throw new Error("gate exploded");
+        },
+      });
+      assert.equal(summary.skipped, 1);
+      assert.equal(summary.attempted, 0);
+      assert.equal(summary.arkivRulingBlocked, 0);
+      assert.equal(summary.arkivRulingUnread, 0);
+      assert.equal(summary.arkivRulingThrew, 1);
+      assert.equal(seen.filter((r) => r.paid).length, 0);
+      assert.equal((await db.select().from(schema.x402L1Purchases)).length, 0);
+    });
+
     await t.test("onlyEndpointId narrows the batch to that endpoint (playground demo path)", async () => {
       await db.execute(sql`TRUNCATE x402_l1_purchases`);
       const eps = await db

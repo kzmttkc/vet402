@@ -53,11 +53,12 @@ test("予算: Celo レーンは支払い付き 45 秒を見込み、バッチ予
   assert.equal(celoPrimary, 45_000);
   const baseWorst = worstCasePurchaseMs(L1_REQUEST_TIMEOUT_MS, basePaid);
   const celoWorst = worstCasePurchaseMs(L1_REQUEST_TIMEOUT_MS, celoPaid);
-  assert.equal(baseWorst, 60_000);
+  // 2026-11-06 から余裕に Arkiv 判定の関門の 3 秒を含む（20 + 20 + 23）。
+  assert.equal(baseWorst, 63_000);
   assert.equal(celoWorst, 20_000 + 45_000 + L1_PURCHASE_SLACK_MS);
   assert.equal(canStartAnotherPurchase(celoWorst, L1_REQUEST_TIMEOUT_MS, celoPaid), true);
   assert.equal(canStartAnotherPurchase(celoWorst - 1, L1_REQUEST_TIMEOUT_MS, celoPaid), false);
-  // 無払い 20 秒のままなので 45 秒を 2 本にはしない。210 + 85 = 295 <= 300。
+  // 無払い 20 秒のままなので 45 秒を 2 本にはしない。210 + 88 = 298 <= 300。
   assert.ok(L1_BATCH_BUDGET_MS + celoWorst <= 300_000);
   assert.ok(L1_BATCH_BUDGET_MS + baseWorst <= 300_000);
 });

@@ -144,7 +144,7 @@ test("docs/api の Quickstart は例の番号を正しく指し、npm スコー�
 // .env.example
 // ------------------------------------------------------------------
 /** 実行環境が注入する変数。運用者が .env に書くものではないので除外。 */
-const PLATFORM_VARS = new Set(["NODE_ENV", "VERCEL", "VERCEL_ENV", "NEXT_RUNTIME", "TEST_DATABASE_URL"]);
+const PLATFORM_VARS = new Set(["NODE_ENV", "VERCEL", "VERCEL_ENV", "NEXT_RUNTIME", "TEST_DATABASE_URL", "NODE_TEST_CONTEXT"]);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {

@@ -57,6 +57,9 @@ const HALTED: L1BatchSummary = {
   attemptsByNetwork: { "eip155:8453": 2 },
   primaryFetchMs: 7_732,
   laneFetchMs: { solana: 1_320, avalanche: 1_568 },
+  arkivRulingBlocked: 1,
+  arkivRulingUnread: 2,
+  arkivRulingThrew: 3,
 };
 
 test("publicL1Summary は haltReason を落とし、計測の数字はそのまま通す", () => {
@@ -126,4 +129,11 @@ test("公開口の応答（L1 OFF の実走）に haltReason の鍵が存在し�
     delete process.env.DEMO_L1_ENABLED;
     delete process.env.DEMO_L1_DAILY_MAX;
   }
+});
+
+test("publicL1Summary は Arkiv 判定の関門の内訳（arkivRulingBlocked・arkivRulingUnread・arkivRulingThrew）を公開口へ出さない（2026-11-06）", () => {
+  const out = publicL1Summary(HALTED) as Record<string, unknown>;
+  assert.equal("arkivRulingBlocked" in out, false);
+  assert.equal("arkivRulingUnread" in out, false);
+  assert.equal("arkivRulingThrew" in out, false);
 });
