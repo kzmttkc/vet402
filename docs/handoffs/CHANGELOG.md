@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 The state API counts purchases from ERC-8004 registered agents
+
+- **What**: `/api/v1/observatory/state` adds a top-level `erc8004` object. It counts exact lowercase address equality between the payTo of vet402's purchase rows and the owner of an agent in vet402's index of the ERC-8004 Identity Registry on Base (and the agentWallet, once that index holds rows): `scannedAgents`, `matchedAgents`, `matchedPayTo`, `matchedPurchases` (each purchase row once, even when its payTo owns several agents), `matchedSettled`, `byChain` with `indexBlock`, up to 200 `matches` and `notes`. Ethereum and BNB Chain say `not_indexed`. A failed read says `status: "unavailable"` with no counts. It is read from the database only, cached for the same 300 seconds as the public aggregates, and carries its own `readAt`. New module `src/lib/observatory/erc8004-match.ts`, documented in `docs/openapi.yaml` and a short paragraph on the methodology page (`#erc8004`).
+- **Why**: First stage of linking vet402's purchase record to ERC-8004 agent identities, so a buyer can see which registered agents it has already paid and what came back.
+- **Impact**: New key only. Every existing state API key, export.csv (URL, columns, values, status meanings) and the payment path are unchanged. Nothing is written on-chain.
+
 ## 2026-11-08 The ledger export says what its default window covers
 
 - **What**: The export.csv entry on `/docs/api` and in `llms.txt` now says that without `days` the window is the last 90 days, that the ledger starts at 2026-08-14T09:54:31Z, and that from 2026-11-12T09:54:31Z the default window no longer reaches the first rows, so `?days=366` reads the whole ledger.

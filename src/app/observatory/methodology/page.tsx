@@ -1166,6 +1166,23 @@ export default async function ObservatoryMethodologyPage() {
           its decision and on its facts document, and <code>l2_schema</code> on its purchase rows.
         </p>
 
+        <h3 className="doc-p font-semibold" id="erc8004">
+          ERC-8004 matches
+        </h3>
+        <p className="doc-p">
+          The <code>erc8004</code> object in the{" "}
+          <Link href="/api/v1/observatory/state" className="underline">
+            state API
+          </Link>{" "}
+          counts exact address equality between the payTo of a vet402 purchase row and the owner
+          of an agent in vet402&apos;s index of the ERC-8004 Identity Registry on Base (or the
+          agent&apos;s agentWallet, once that index holds rows). Addresses are compared in
+          lowercase and nothing else is compared. It does not cover other chains (Ethereum and
+          BNB Chain say <code>not_indexed</code>, never 0), similar names, or the endpoints in an
+          agent&apos;s registration file. A read that fails says{" "}
+          <code>unavailable</code> and carries no counts.
+        </p>
+
         <h2 className="sec-head">
           <span className="sec-no">8.</span>
           <span>Fairness commitments</span>

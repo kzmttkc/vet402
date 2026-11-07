@@ -2864,6 +2864,51 @@ paths:
                   cite: { type: string, description: The citation to use, with the retrieval time. }
                   humanReadable: { type: string, format: uri }
                   methodology: { type: string, format: uri }
+                  erc8004:
+                    type: object
+                    description: >-
+                      Exact address matches between the payTo of vet402's purchase
+                      rows and the owner (or agentWallet) of an ERC-8004 agent in
+                      the Base Identity Registry index. Lowercase address equality
+                      only, no name or fuzzy matching. Read from vet402's own index,
+                      cached for 5 minutes, with its own readAt. status unavailable
+                      carries no counts. A chain vet402 does not index says
+                      not_indexed, never 0. Since 2026-11-08.
+                    required: [status, checkedAt, readAt]
+                    properties:
+                      status: { type: string, enum: [ok, unavailable] }
+                      checkedAt: { type: string, format: date-time }
+                      readAt: { type: string, format: date-time }
+                      reason: { type: string, description: Present only when status is unavailable. }
+                      about: { type: string, description: One line on what is counted, how a payTo with several agents is counted, and what readAt means. }
+                      scannedAgents: { type: integer, description: Agent rows in the Base owner index. }
+                      matchedAgents: { type: integer }
+                      matchedPayTo: { type: integer }
+                      matchedPurchases: { type: integer, description: Purchase attempt rows whose payTo matched, each counted once. }
+                      matchedSettled: { type: integer, description: The part of matchedPurchases with status settled. }
+                      byChain:
+                        type: object
+                        description: '"eip155:8453" is scanned with indexBlock. "eip155:1" and "eip155:56" are not_indexed.'
+                        additionalProperties:
+                          type: object
+                          properties:
+                            status: { type: string, enum: [scanned, not_indexed] }
+                            scannedAgents: { type: integer }
+                            matchedAgents: { type: integer }
+                            indexBlock: { type: string }
+                      matches:
+                        type: array
+                        description: Up to 200, largest purchases first.
+                        items:
+                          type: object
+                          properties:
+                            agentId: { type: string }
+                            chainId: { type: string }
+                            payTo: { type: string }
+                            matchKind: { type: string, enum: [owner, agent_wallet] }
+                            purchases: { type: integer }
+                            settled: { type: integer }
+                      notes: { type: array, items: { type: string } }
                   totalEndpoints: { type: integer }
                   activeEndpoints: { type: integer }
                   delistedEndpoints: { type: integer }
