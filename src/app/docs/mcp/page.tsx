@@ -135,6 +135,14 @@ export default async function McpDocsPage() {
           <p className="text-[0.84375rem] text-brand">
             Production <code className="text-brand-deep">tools/list</code> returns three read-only tools. Titles and descriptions below come from the server catalog.
           </p>
+          <p className="text-[0.84375rem] text-brand">
+            The same <code className="text-brand-deep">check_x402_seller</code> answer is also available over key-less REST at{" "}
+            <code className="text-brand-deep">GET /api/v1/check?url=</code> (see{" "}
+            <a href="/docs/api" className="doc-link">
+              /docs/api
+            </a>
+            ).
+          </p>
           {(
             [
               ["check_x402_seller", TOOL_TEXT.check_x402_seller],

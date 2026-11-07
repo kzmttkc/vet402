@@ -68,6 +68,9 @@ export type McpDeps = {
   now?: () => Date;
 };
 
+/** ① check_x402_seller が読む読み手だけ（tests の最小 fake deps 用）。 */
+export type CheckSellerDeps = Pick<McpDeps, "resolve" | "decide" | "l1Purchases"> & { now?: () => Date };
+
 /** 1 回の要求の状態。DB を読めなかった tool があれば route が 503 にする。 */
 export type McpRequestState = { unavailable: boolean };
 
@@ -130,7 +133,7 @@ function hostnameOf(url: string): string | null {
 // ① check_x402_seller
 // ------------------------------------------------------------
 
-export async function checkSeller(deps: McpDeps, input: { url: string; method?: string }): Promise<CheckSellerOutput> {
+export async function checkSeller(deps: CheckSellerDeps, input: { url: string; method?: string }): Promise<CheckSellerOutput> {
   const now = (deps.now ?? (() => new Date()))();
   const method = input.method ? input.method.toUpperCase() : undefined;
   const resolved = await deps.resolve(input.url, method ? { method } : {});

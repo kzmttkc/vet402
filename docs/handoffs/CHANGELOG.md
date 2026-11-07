@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 Key-less REST twin of MCP check_x402_seller
+
+- **What**: `GET /api/v1/check?url=` returns the same JSON as MCP `check_x402_seller` through `checkSeller` and `mcpDeps()`. Query validation follows export-style `invalid_query`, MCP-style https-only `invalid_url`, and `invalid_method`. Responses share the resolve IP bucket; cacheable 200s use shared-cache rate-limit headers. Handler module `src/lib/api/check-handler.ts`, route `src/app/api/v1/check/route.ts`.
+- **Why**: Agents and shell callers need the seller-check document without MCP or a key, with edge caching and the same readers as the hosted tool.
+- **Impact**: New `rest:check` row in client usage when key-less. OpenAPI, llms.txt, `/docs/api` and `/docs/mcp` document the route. No change to MCP tool behaviour, export columns, or observatory state fields.
 ## 2026-11-08 A command that indexes only the EVM chains other than Base
 
 - **What**: `scripts/index-evm-chains.ts --chains <CAIP-2,...> --budget-ms <ms>` runs the settlements index for the listed EVM chains only, splitting its budget across the ones that are configured. Base is refused (the existing `scripts/index-settlements.ts` job keeps it). It prints one JSON line like the existing job.

@@ -1484,6 +1484,66 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /api/v1/check:
+    get:
+      operationId: checkX402Seller
+      tags: [Observatory]
+      summary: What vet402 recorded when it paid an x402 URL — same document as MCP check_x402_seller
+      description: |
+        Key-less REST twin of the hosted MCP tool `check_x402_seller`. Returns the
+        same JSON document the tool returns (`recommendation`, `delivery`, the five
+        latest purchases with explorer links, `verified_terms`, `listing_sources`).
+        Uses the same cached readers as `POST /mcp` tools/call. Counts against the
+        same per-IP rate limit as `GET /api/v1/resolve`. The CDN may serve a
+        response up to 60 seconds old, and up to five more minutes while it
+        refreshes in the background (`max-age=60`, `s-maxage=60`, `stale-while-revalidate=300`).
+        `url` must be an absolute https URL (up to 2048 characters), like MCP
+        `check_x402_seller`.
+        Optional `method` is an HTTP method name (1–10 letters), like `/resolve`.
+        No query parameters other than `url` and `method`; duplicates or unknown
+        names are 400 `invalid_query` with `allowed`. Bad `url` is 400
+        `invalid_url`; bad `method` is 400 `invalid_method`. Store read errors
+        are 503 `temporarily_unavailable` (`Cache-Control: no-store`).
+      security: []
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string, maxLength: 2048 }
+          description: The x402 URL to look up.
+        - in: query
+          name: method
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z]{1,10}$" }
+          description: HTTP method to use when resolving the URL (default GET).
+      responses:
+        "200":
+          description: >-
+            check_x402_seller document. Headers include x-vet402-retrieved-at,
+            x-vet402-license, and x-robots-tag noindex.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: Same shape as MCP structuredContent for check_x402_seller.
+        "400":
+          description: invalid_query, invalid_url or invalid_method.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ErrorResponse"
+                  - type: object
+                    properties:
+                      allowed:
+                        type: array
+                        items: { type: string }
+                      expected: { type: string, enum: [method] }
+                      message: { type: string }
+                      documentation: { type: string, format: uri }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/resolve:
     get:
       operationId: resolveQuery
@@ -5897,6 +5957,7 @@ components:
             # error リテラル ⊆ この enum」を機械検査する。
             # --- §7.3 / §9.1 resolve / resources / endpoints / payees / facts ---
             - invalid_query
+            - invalid_url
             - invalid_method
             - resolve_unavailable
             - invalid_resource_id

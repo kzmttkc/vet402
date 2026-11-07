@@ -50,7 +50,7 @@ import { OWN_ORIGINS } from "@/lib/decision/lookup-caller";
  */
 export const MCP_USAGE_ROUTES = ["mcp:initialize", "mcp:check_x402_seller", "mcp:check_my_x402_endpoint", "mcp:find_x402_sellers"] as const;
 export type McpUsageRoute = (typeof MCP_USAGE_ROUTES)[number];
-export type ClientUsageRoute = "resolve" | "decision" | McpUsageRoute;
+export type ClientUsageRoute = "resolve" | "decision" | "rest:check" | McpUsageRoute;
 
 /**
  * 配布物（利用者の手元で動き、vet402 の API を呼ぶときにこの名前を UA に名乗るもの）。

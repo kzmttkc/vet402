@@ -223,6 +223,12 @@ const endpoints: Endpoint[] = [
   // ------------------------------------------------------------------
   // 2026-10-28: MCP の入口（https://vet402.com/mcp）。tests/docs-api-public-paths.test.ts が openapi の paths と突き合わせる。
   {
+    method: "GET",
+    path: "/api/v1/check?url=https%3A%2F%2Fapi.example.com%2Fx402",
+    note: `Key-less REST twin of MCP check_x402_seller — the same JSON document (recommendation, delivery, the five latest purchases, verified_terms). Optional method= narrows the HTTP method like /resolve. Counts against the same per-IP limit as /resolve (${keylessResolvePerMinute()} requests per minute per IP). The CDN may serve an answer up to 60 seconds old, and up to five more minutes while it refreshes in the background. Unknown or duplicate query parameters are 400 invalid_query (allowed lists url and method). url must be https (http → invalid_url); bad method → invalid_method. 503 temporarily_unavailable when the store cannot be read.`,
+    response: `{ "not_in_catalog": false, "recommendation": "ALLOW", "delivery": { "paid_attempts": 3, "delivered": 3, "settled_not_delivered": 0, "window_days": 30 }, "l1_purchases": [ … ], "as_of": "…" }`,
+  },
+  {
     method: "POST",
     path: "/api/mcp",
     note: "The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again) and find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count). 120/min per IP, plus 30/min per IP for find_x402_sellers and 30/min per IP for check_my_x402_endpoint (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB.",
