@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 The ledger export says what its default window covers
+
+- **What**: The export.csv entry on `/docs/api` and in `llms.txt` now says that without `days` the window is the last 90 days, that the ledger starts at 2026-08-14T09:54:31Z, and that from 2026-11-12T09:54:31Z the default window no longer reaches the first rows, so `?days=366` reads the whole ledger.
+- **Why**: Anyone who reads the default export after 2026-11-12 would otherwise see a ledger that seems to start later than it does.
+- **Impact**: Text only. The export's URL, columns, row values, status meanings and default are unchanged.
 ## 2026-11-08 History rollup reconciles pre-window L1 drift after late settlements
 
 - **What**: The metrics-rollup cron still recomputes the trailing window each run, then detects UTC days older than that window where raw L1 attempts/settled totals disagree with `x402_daily_metrics`, and recomputes up to 10 of those days per run (oldest first). `/api/v1/observatory/history` semantics and `docs/openapi.yaml` now describe that behavior instead of “frozen until a backfill”. The methodology page notes that `export.csv` defaults to 90 days (`?days=` up to 366) while state is all-time.
