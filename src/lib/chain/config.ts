@@ -27,8 +27,8 @@ export const CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Owner-index staleness threshold for SCORING (2026-08-05 R&D).
- * Base produces a block every ~2s, so 43,200 blocks is roughly one day of
- * lag. Below this, the index is fresh enough that multi_agent_owner /
+ * One day of lag, measured in chain time (2026-11-07: this was 43,200 blocks,
+ * which stopped being a day when Base moved to 0.2 s blocks at 53,556,127). Below this, the index is fresh enough that multi_agent_owner /
  * funding-cluster checks are trustworthy; above it, recently registered
  * agents may be invisible to those checks, so the engine adds a SOFT
  * `owner_index_stale` flag — the data exists but may miss the newest
@@ -37,7 +37,7 @@ export const CACHE_TTL_MS = 5 * 60 * 1000;
  * The monitor's own alert threshold (500,000 in uptime-cron) is about
  * paging a human; this one is about being honest inside the score.
  */
-export const OWNER_INDEX_STALE_BLOCKS = 43_200;
+export const OWNER_INDEX_STALE_SECONDS = 86_400;
 /** Aligned with score cache so wallet metrics cannot outlive chain score freshness. */
 export const WALLET_METRICS_CACHE_TTL_MS = CACHE_TTL_MS;
 

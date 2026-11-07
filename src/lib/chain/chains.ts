@@ -1,5 +1,12 @@
 import { base, mainnet, polygon } from "viem/chains";
 import type { Chain } from "viem";
+import {
+  BASE_BLOCK_TIME_SCHEDULE,
+  constantClock,
+  scheduleClock,
+  type BlockTimeSegment,
+  type ChainClock,
+} from "./block-clock";
 
 /**
  * Multichain registry (2026-08-05 R&D, C-8).
@@ -39,8 +46,14 @@ export interface SupportedChain {
   defaultRpc: string;
   /** blockscout API base for wallet metrics; null = metrics unsupported */
   blockscoutApi: string | null;
-  /** approximate blocks per day — used for time-windowed log scans */
+  /**
+   * Blocks per day at the CURRENT block time. Do not turn a day count into
+   * blocks with this directly when the window can reach back past a
+   * block-time change — use chainClock() (block-clock.ts).
+   */
   blocksPerDay: number;
+  /** Exact block-time history, when known. chainClock() prefers it over blocksPerDay. */
+  blockTimeSchedule?: readonly BlockTimeSegment[];
   /** earliest block worth scanning for ERC-8004 logs on this chain */
   registryFromBlock: bigint;
 }
@@ -53,7 +66,10 @@ export const CHAINS: Record<number, SupportedChain> = {
     rpcEnv: "BASE_RPC_URL",
     defaultRpc: "https://mainnet.base.org",
     blockscoutApi: "https://base.blockscout.com/api",
-    blocksPerDay: 43_200, // ~2s blocks
+    // 0.2 s blocks since block 53,556,127 (2026-11-05T18:00:01Z); 2 s before that.
+    // Windows use blockTimeSchedule through chainClock(), so they stay right across the change.
+    blocksPerDay: 432_000,
+    blockTimeSchedule: BASE_BLOCK_TIME_SCHEDULE,
     registryFromBlock: BigInt(41_663_783), // IDENTITY_REGISTRY_FROM_BLOCK (verified on-chain)
   },
   // 製品定義書 §7.1 / §14 P1: 決済索引の次点チェーン。POLYGON_RPC_URL が入るまで
@@ -96,6 +112,16 @@ export function chainBySlug(slug: string): SupportedChain | null {
 
 export function chainById(id: number): SupportedChain | null {
   return CHAINS[id] ?? null;
+}
+
+/**
+ * Block ↔ time arithmetic for a chain (2026-11-07). The schedule when the chain
+ * has one (Base), its constant blocksPerDay otherwise. Unknown chains get the
+ * Base clock, matching the `?? 43_200` fallbacks this replaced.
+ */
+export function chainClock(id: number = DEFAULT_CHAIN_ID): ChainClock {
+  const chain = chainById(id) ?? chainById(DEFAULT_CHAIN_ID)!;
+  return chain.blockTimeSchedule ? scheduleClock(chain.blockTimeSchedule) : constantClock(chain.blocksPerDay);
 }
 
 /** RPC url for the chain, or null when the chain is not enabled here.

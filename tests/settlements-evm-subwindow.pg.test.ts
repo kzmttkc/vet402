@@ -29,7 +29,7 @@ if (!TEST_DB) {
   process.env.DATABASE_URL = TEST_DB;
 
   test("EVM index saves progress per sub-window and survives a deadline mid-run", async () => {
-    const { EVM_INDEX_CHAINS, indexEvmChain } = await import("@/lib/settlements/index-evm");
+    const { EVM_INDEX_CHAINS, indexEvmChain, initialLookbackBlocksAt } = await import("@/lib/settlements/index-evm");
     const { DeadlineExceededError } = await import("@/lib/util/deadline");
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
@@ -38,7 +38,7 @@ if (!TEST_DB) {
 
     const base = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453")!;
     const W = base.subWindowBlocks!;
-    assert.equal(W, 4_000n);
+    assert.equal(W, 20_000n); // 2026-11-07: ≈ 67 分の 0.2 秒ブロック（以前は 2 秒ブロックの 4,000）
     assert.equal(base.maxBlocksPerRun % W, 0n, "the run splits into whole windows");
 
     const PAYEE = "0x00000000000000000000000000000000000000b1";
@@ -53,7 +53,7 @@ if (!TEST_DB) {
       getBlockNumber: async () => TIP,
       getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({ timestamp: 1_789_000_000n + blockNumber * 2n }),
     };
-    const firstFrom = TIP - base.confirmations - base.initialLookbackBlocks;
+    const firstFrom = TIP - base.confirmations - initialLookbackBlocksAt(base, TIP - base.confirmations);
     // 1 区切りに 1 件ずつ転送がある
     const txAt = (n: bigint) => `0x${n.toString(16).padStart(64, "0")}`;
     const logsIn = (from: bigint, to: bigint) => {

@@ -4,7 +4,7 @@ import { getIndexedFeedbackWindow } from "@/lib/db/feedback-index";
 import { getLogsChunked, getLogsChunkSize } from "./chunked-logs";
 import { getLogScanClient, getPublicClient } from "./client";
 import { ERC8004_ADDRESSES, IDENTITY_REGISTRY_FROM_BLOCK } from "./config";
-import { DEFAULT_CHAIN_ID, chainById } from "./chains";
+import { DEFAULT_CHAIN_ID, chainById, chainClock } from "./chains";
 import {
   feedbackUnavailableMessage,
   feedbackWindowFromBlock,
@@ -309,16 +309,18 @@ export async function fetchRecentFeedbackStats(
 
   try {
     const latestBlock = await client.getBlockNumber();
-    // Chain-aware window: Base mints ~43,200 blocks/day, Ethereum ~7,200.
-    // Using the Base figure everywhere would scan a 6x longer window on
-    // mainnet — a silent 6x RPC bill and a wrong "recent" definition.
+    // Chain-aware window, decided by block TIME (2026-11-07). Base went from
+    // 2 s to 0.2 s blocks at 53,556,127; the old fixed 43,200 blocks/day made
+    // this "7 days" ~17 hours, and a window reaching back across the change
+    // needs both rates. chainClock() follows Base's exact schedule (0 RPC
+    // calls) and keeps the constant blocksPerDay for chains without one.
     const meta = chainById(resolvedChainId);
-    const blocksPerDay = meta?.blocksPerDay ?? 43_200;
+    const clock = chainClock(resolvedChainId);
     const floorBlock = meta?.registryFromBlock ?? IDENTITY_REGISTRY_FROM_BLOCK;
     const fromBlock = feedbackWindowFromBlock(
       latestBlock,
       windowDays,
-      blocksPerDay,
+      clock,
       floorBlock,
     );
 
@@ -333,7 +335,7 @@ export async function fetchRecentFeedbackStats(
       index,
       fromBlock,
       latestBlock,
-      tailMax: tailMaxBlocks(blocksPerDay),
+      tailMax: tailMaxBlocks(clock, latestBlock),
       allowFullScan: options?.allowFullScan === true,
     });
 

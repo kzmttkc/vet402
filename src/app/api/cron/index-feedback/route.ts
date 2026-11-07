@@ -15,10 +15,10 @@ export async function GET(request: NextRequest) {
   // 理由をログへ残し、{ ok:false, error } を 500 で返す（cron は CRON_SECRET 越しの運用面）。
   try {
     // Production ignores attacker-controlled maxBlocks (RPC burn); use default.
-    // 400k covers the 8-day bootstrap (~345,600 blocks) in a single run and
-    // leaves margin for catching up after a missed daily run, while staying far
-    // inside the 300s budget — Base produces ~43,200 blocks a day, so steady
-    // state needs a tenth of this.
+    // 400k leaves margin for catching up after missed runs while staying far
+    // inside the 300s budget. Since 2026-11-05 Base produces 432,000 blocks a
+    // day (0.2 s); the 3-hourly cron needs ~54,000 per run, and the 8-day
+    // bootstrap (chain time, block-clock.ts) takes several runs.
     const raw = request.nextUrl.searchParams.get("maxBlocks");
     const requested = raw ? Number(raw) : 400_000;
     const maxBlocks = isProduction()

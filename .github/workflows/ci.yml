@@ -19,6 +19,12 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege for the workflow token (audit 2026-11-07 SEC-7). Every job
+# only reads the repository. notify-red-main keeps its own job-level
+# `issues: write`, which replaces this default for that job alone.
+permissions:
+  contents: read
+
 # Supply-chain guard (security audit 2026-10-28 #3). The root .npmrc sets
 # ignore-scripts=true, but npm reads .npmrc only from the project it runs in:
 # `npm ci --prefix packages/*`, `--prefix examples/*` and the per-package

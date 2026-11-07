@@ -8,7 +8,7 @@ import {
   type AgentResolvePlan,
 } from "./agent-resolve-window";
 import { readCanonicalAgentWallet } from "./agent-wallet";
-import { chainById, DEFAULT_CHAIN_ID } from "./chains";
+import { chainClock, DEFAULT_CHAIN_ID } from "./chains";
 import { getLogScanClient, getPublicClient, isValidAddress } from "./client";
 import { ERC8004_ADDRESSES } from "./config";
 import { findIndexedAgentIdsByWallet } from "@/lib/db/agent-wallet-index";
@@ -143,7 +143,8 @@ export function invalidateResolverCache(wallet?: string): void {
  * どちらか欠けていれば索引は無いものとして扱う。
  */
 async function planTailFromCheckpoints(): Promise<AgentResolvePlan> {
-  const blocksPerDay = chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 43_200;
+  // 2026-11-07: 2 日は時間で数える（Base は 53,556,127 から 0.2 秒ブロック）。
+  const clock = chainClock(DEFAULT_CHAIN_ID);
 
   let tip: bigint;
   let ownerCheckpoint: bigint | null;
@@ -168,7 +169,7 @@ async function planTailFromCheckpoints(): Promise<AgentResolvePlan> {
   return planAgentResolveScan({
     checkpoint,
     tip,
-    maxTailBlocks: agentResolveTailMaxBlocks(blocksPerDay),
+    maxTailBlocks: agentResolveTailMaxBlocks(clock, tip),
   });
 }
 
@@ -263,13 +264,12 @@ async function getTailSnapshot(
   toBlock: bigint,
   deadlineMs: number = TAIL_SCAN_DEADLINE_MS,
 ): Promise<TailSnapshot> {
-  const blocksPerDay = chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 43_200;
   const use = planTailSnapshotUse({
     snapshot: tailSnapshot,
     fromBlock,
     toBlock,
     now: Date.now(),
-    maxTailBlocks: agentResolveTailMaxBlocks(blocksPerDay),
+    maxTailBlocks: agentResolveTailMaxBlocks(chainClock(DEFAULT_CHAIN_ID), toBlock),
   });
 
   if (use.kind === "reuse" && tailSnapshot) return tailSnapshot;

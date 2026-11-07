@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
-import { chainById, DEFAULT_CHAIN_ID } from "@/lib/chain/chains";
+import { chainById, chainClock, DEFAULT_CHAIN_ID } from "@/lib/chain/chains";
 import { getIndexerPublicClient } from "@/lib/chain/client";
 import { ERC8004_ADDRESSES, IDENTITY_REGISTRY_FROM_BLOCK } from "@/lib/chain/config";
 import { NEW_FEEDBACK_EVENT } from "@/lib/chain/erc8004";
@@ -10,6 +10,7 @@ import {
   FEEDBACK_INDEX_CHECKPOINT,
 } from "@/lib/db/feedback-index";
 import {
+  lowerFeedbackCoverageStart,
   pruneFeedbackEvents,
   recordFeedbackEvents,
   type FeedbackEventRow,
@@ -48,12 +49,18 @@ export type FeedbackIndexResult = {
   partial: boolean;
   /** partial のときだけ: なぜ止まったか（`time_budget`・`hard_stop`・`rpc:<読み先の言い分>`）。 */
   stoppedBy?: string;
+  /**
+   * 2026-11-07: 被覆の始点が bootstrap の時刻（8 日前）より新しかったので、手前へ読み足した区間。
+   * 読み足した回だけ載る。`stoppedBy` があれば途中で止まった（次の回が続きを読む）。
+   */
+  backfill?: { fromBlock: string; toBlock: string; events: number; stoppedBy?: string };
 };
 
 /**
- * Blocks per run. Base produces ~43,200 a day and the cron runs daily, so
- * steady state needs a fraction of this; the headroom is for the bootstrap
- * run (8 days ≈ 345,600 blocks) and for catching up after a missed run.
+ * Blocks per run. Since 2026-11-05 Base produces 432,000 blocks a day (0.2 s)
+ * and the cron runs every 3 hours (vercel.json, ≈54,000 blocks), so steady
+ * state needs a fraction of this; the headroom is for catching up after missed
+ * runs. One run reads at most ~22 hours of 0.2 s chain time.
  */
 const DEFAULT_MAX_BLOCKS = 400_000n;
 
@@ -102,6 +109,8 @@ export type FeedbackIndexDeps = {
   setCheckpoints: typeof setIndexerCheckpoints;
   record: typeof recordFeedbackEvents;
   prune: typeof pruneFeedbackEvents;
+  /** 既定は lowerFeedbackCoverageStart。古いテストの差し替えが持たないので任意。 */
+  lowerCoverage?: (lastBlock: bigint) => Promise<void>;
   now: () => number;
 };
 
@@ -113,11 +122,48 @@ function stopReason(error: unknown): string {
   return `rpc:${redactSecretsForLog(String(text)).replace(/https?:\/\/\S+/g, "<url>").split("\n")[0]!.slice(0, 160)}`;
 }
 
+/** NewFeedback logs → rows. Logs missing a field we need to dedupe or window are dropped. */
+function toRows(chainId: number, logs: readonly unknown[]): FeedbackEventRow[] {
+  const rows: FeedbackEventRow[] = [];
+  for (const log of logs) {
+    const entry = log as {
+      args?: { agentId?: bigint; clientAddress?: Address };
+      blockNumber?: bigint | null;
+      logIndex?: number | null;
+      transactionHash?: `0x${string}` | null;
+    };
+    const agentId = entry.args?.agentId;
+    const clientAddress = entry.args?.clientAddress;
+    const blockNumber = entry.blockNumber;
+    const logIndex = entry.logIndex;
+    const txHash = entry.transactionHash;
+
+    // A log missing any of these cannot be deduplicated or windowed, and a row
+    // we cannot place in the window is worse than no row: it would be counted
+    // for whatever range it happened to satisfy.
+    if (
+      agentId === undefined ||
+      !clientAddress ||
+      blockNumber === null ||
+      blockNumber === undefined ||
+      logIndex === null ||
+      logIndex === undefined ||
+      !txHash
+    ) {
+      continue;
+    }
+
+    rows.push({ chainId, agentId, clientAddress, blockNumber, logIndex, txHash });
+  }
+  return rows;
+}
+
 function chainMeta() {
   const meta = chainById(DEFAULT_CHAIN_ID);
   return {
     chainId: DEFAULT_CHAIN_ID,
-    blocksPerDay: meta?.blocksPerDay ?? 43_200,
+    // 2026-11-07: 日数は時間で数える（Base は 53,556,127 から 0.2 秒ブロック）。
+    clock: chainClock(DEFAULT_CHAIN_ID),
     registryFromBlock: meta?.registryFromBlock ?? IDENTITY_REGISTRY_FROM_BLOCK,
   };
 }
@@ -139,9 +185,11 @@ export async function indexFeedbackEvents(options?: {
   const setCheckpoints = deps?.setCheckpoints ?? setIndexerCheckpoints;
   const record = deps?.record ?? recordFeedbackEvents;
   const prune = deps?.prune ?? pruneFeedbackEvents;
+  const lowerCoverage =
+    deps?.lowerCoverage ?? ((lastBlock: bigint) => lowerFeedbackCoverageStart(FEEDBACK_COVERAGE_CHECKPOINT, lastBlock));
   const now = deps?.now ?? Date.now;
 
-  const { chainId, blocksPerDay, registryFromBlock } = chainMeta();
+  const { chainId, clock, registryFromBlock } = chainMeta();
   const chainTip = await client.getBlockNumber();
 
   const existingCheckpoint = await getCheckpoint(FEEDBACK_INDEX_CHECKPOINT);
@@ -152,10 +200,11 @@ export async function indexFeedbackEvents(options?: {
   // starting at deployment would deliver the oldest blocks first and leave the
   // last 7 days — the only range this signal reads — until millions of blocks
   // later. Starting 8 days back makes the scoring window whole in one run.
-  const bootstrap = chainTip > bootstrapBlocks(blocksPerDay)
-    ? chainTip - bootstrapBlocks(blocksPerDay)
-    : registryFromBlock;
-  const coverageStart = existingCoverage ?? (bootstrap < registryFromBlock ? registryFromBlock : bootstrap);
+  const bootstrapSpan = bootstrapBlocks(clock, chainTip);
+  const bootstrap = chainTip > bootstrapSpan ? chainTip - bootstrapSpan : registryFromBlock;
+  const bootstrapStart = bootstrap < registryFromBlock ? registryFromBlock : bootstrap;
+  // let: the backfill below may move it down (and only after the rows are written).
+  let coverageStart = existingCoverage ?? bootstrapStart;
   const fromBlock = existingCheckpoint ?? coverageStart;
 
   const maxBlocks = options?.maxBlocks ?? DEFAULT_MAX_BLOCKS;
@@ -235,37 +284,7 @@ export async function indexFeedbackEvents(options?: {
       break;
     }
 
-    const rows: FeedbackEventRow[] = [];
-    for (const log of logs) {
-      const entry = log as {
-        args?: { agentId?: bigint; clientAddress?: Address };
-        blockNumber?: bigint | null;
-        logIndex?: number | null;
-        transactionHash?: `0x${string}` | null;
-      };
-      const agentId = entry.args?.agentId;
-      const clientAddress = entry.args?.clientAddress;
-      const blockNumber = entry.blockNumber;
-      const logIndex = entry.logIndex;
-      const txHash = entry.transactionHash;
-
-      // A log missing any of these cannot be deduplicated or windowed, and a row
-      // we cannot place in the window is worse than no row: it would be counted
-      // for whatever range it happened to satisfy.
-      if (
-        agentId === undefined ||
-        !clientAddress ||
-        blockNumber === null ||
-        blockNumber === undefined ||
-        logIndex === null ||
-        logIndex === undefined ||
-        !txHash
-      ) {
-        continue;
-      }
-
-      rows.push({ chainId, agentId, clientAddress, blockNumber, logIndex, txHash });
-    }
+    const rows = toRows(chainId, logs);
 
     // 書けなかったら throw のまま（下の checkpoint へ進まない）。行が無いのに
     // checkpoint だけ進むと、その範囲は二度と読まれない＝件数の取りこぼしになる。
@@ -295,12 +314,76 @@ export async function indexFeedbackEvents(options?: {
     );
   }
 
+  // Backfill (2026-11-07). Until this change, retention was 35 × 43,200 blocks.
+  // Once Base moved to 0.2 s blocks that was ~3.5 days of chain time and still
+  // shrinking, so the prune below deleted rows the 7-day window needs and
+  // dragged the coverage floor forward with it. A floor newer than the
+  // bootstrap time means the index cannot answer the scoring window
+  // (window_not_covered), and a forward scan never moves the floor back. So
+  // read the missing span BACKWARDS in segments, newest first, and lower the
+  // floor only after each segment's rows are written. Runs only after the
+  // forward scan reached the tip, so the live tail stays short first.
+  // In steady state the floor sits ~35 days back, far below bootstrapStart,
+  // and this does nothing.
+  let backfill: FeedbackIndexResult["backfill"];
+  if (existingCoverage !== null && coverageStart > bootstrapStart && stoppedBy === undefined && cursor > chainTip) {
+    const backfillTo = coverageStart - 1n;
+    let low = coverageStart;
+    let backfillEvents = 0;
+    let backfillStoppedBy: string | undefined;
+    while (low > bootstrapStart) {
+      if (now() - t0 >= timeBudgetMs) {
+        backfillStoppedBy = "time_budget";
+        break;
+      }
+      const segEnd = low - 1n;
+      const segStart = segEnd - segmentBlocks + 1n > bootstrapStart ? segEnd - segmentBlocks + 1n : bootstrapStart;
+      let logs: readonly unknown[];
+      try {
+        const remainingMs = Math.max(0, hardStopMs - (now() - t0));
+        logs = await withDeadline(
+          getLogs(
+            client,
+            { address: ERC8004_ADDRESSES.reputationRegistry, event: NEW_FEEDBACK_EVENT, fromBlock: segStart, toBlock: segEnd },
+            undefined,
+            undefined,
+            { deadlineMs: remainingMs },
+          ),
+          remainingMs,
+          "feedback-indexer.backfill",
+        );
+      } catch (error) {
+        // 読み足しは追加の仕事。落ちても前向きの走査の結果は捨てない（次の回が続きを読む）。
+        backfillStoppedBy = stopReason(error);
+        break;
+      }
+      const rows = toRows(chainId, logs);
+      inserted += await record(rows);
+      backfillEvents += logs.length;
+      await lowerCoverage(segStart);
+      coverageStart = segStart;
+      low = segStart;
+    }
+    if (low <= backfillTo) {
+      backfill = {
+        fromBlock: low.toString(),
+        toBlock: backfillTo.toString(),
+        events: backfillEvents,
+        ...(backfillStoppedBy ? { stoppedBy: backfillStoppedBy } : {}),
+      };
+      logServerInfoSafe("feedback-indexer.backfill", `logs=${backfillEvents} blocks=${low}-${backfillTo}`);
+    } else if (backfillStoppedBy) {
+      backfill = { fromBlock: coverageStart.toString(), toBlock: backfillTo.toString(), events: 0, stoppedBy: backfillStoppedBy };
+      logServerWarnSafe("feedback-indexer.backfill", `not started below ${coverageStart}: ${backfillStoppedBy}`);
+    }
+  }
+
   // Retention. Rows before this boundary are gone, so coverage must move with
   // it — a reader that believed in the old coverage start would answer a wide
-  // window from rows this line just deleted.
-  const pruneBefore = chainTip > retentionBlocks(blocksPerDay)
-    ? chainTip - retentionBlocks(blocksPerDay)
-    : 0n;
+  // window from rows this line just deleted. Measured in chain time (35 days),
+  // not in a block count (2026-11-07).
+  const retentionSpan = retentionBlocks(clock, chainTip);
+  const pruneBefore = chainTip > retentionSpan ? chainTip - retentionSpan : 0n;
   const nextCoverageStart = pruneBefore > coverageStart ? pruneBefore : coverageStart;
   const caughtUp = cursor > chainTip;
 
@@ -330,5 +413,6 @@ export async function indexFeedbackEvents(options?: {
     caughtUp,
     partial,
     ...(stoppedBy !== undefined ? { stoppedBy } : {}),
+    ...(backfill ? { backfill } : {}),
   };
 }

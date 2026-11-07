@@ -9,6 +9,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { BASE_BLOCK_TIME_SCHEDULE } from "@/lib/chain/block-clock";
 import { EVM_INDEX_CHAINS, TRANSFER_WITH_MEMO_EVENT, evmIndexLag, indexErrorSkipped, indexFatalErrorText, isEvmChainIndexable, perChainBudgetMs } from "@/lib/settlements/index-evm";
 import { decodeEventLog } from "viem";
 import { readFileSync } from "node:fs";
@@ -44,12 +45,14 @@ test("Base's row is unchanged", () => {
       chainId: 8453,
       usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
       rpcEnv: "BASE_RPC_URL",
-      initialLookbackBlocks: 43_200n * 7n,
-      maxBlocksPerRun: 40_000n,
-      // 2026-10-02: 4,000 ブロックずつ読み切って保存する（tests/settlements-evm-subwindow.pg.test.ts）
-      subWindowBlocks: 4_000n,
+      // 2026-11-07: Base は 0.2 秒ブロック（1 日 432,000）。初回の遡りは 7 日（時間）、上限は ≈ 22 時間、区切りは ≈ 67 分。
+      initialLookbackDays: 7,
+      maxBlocksPerRun: 400_000n,
+      // 2026-10-02: 区切りごとに読み切って保存する（tests/settlements-evm-subwindow.pg.test.ts）
+      subWindowBlocks: 20_000n,
       confirmations: 32n,
-      blocksPerDay: 43_200n,
+      blocksPerDay: 432_000n,
+      blockTimeSchedule: BASE_BLOCK_TIME_SCHEDULE,
       makeClient: undefined,
     },
   );
@@ -92,7 +95,7 @@ test("evmIndexLag: null while within a day of the safe tip, the block gap once b
   assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_401n), 86_401n);
   const base = byId(8453)!;
   assert.equal(evmIndexLag(base, 500_000n, 500_000n - 43_200n), null);
-  assert.equal(evmIndexLag(base, 500_000n, 400_000n), 100_000n, "Base is measured against its own 43,200/day");
+  assert.equal(evmIndexLag(base, 500_000n, 400_000n), 100_000n, "Base is measured in its own chain time (2 s blocks back then)");
 });
 
 test("indexEvmChain reports lag in the summary (lagBlocks set, partial true) — the source wires evmIndexLag in", async () => {

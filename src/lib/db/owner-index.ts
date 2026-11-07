@@ -2,6 +2,7 @@ import { count, eq, sql } from "drizzle-orm";
 import type { Address } from "viem";
 import { getDb } from "./client";
 import { indexerCheckpoints, ownerAgents } from "./schema";
+import { chainById, chainClock, DEFAULT_CHAIN_ID } from "@/lib/chain/chains";
 
 export const OWNER_INDEX_CHECKPOINT = "identity_registry";
 
@@ -15,17 +16,27 @@ export const AGENT_WALLET_INDEX_CHECKPOINT = "identity_registry_wallets";
 /** Blocks behind live tip treated as fully caught up for trusting the DB index alone. */
 export const INDEX_CATCHUP_MARGIN_BLOCKS = 0n;
 
-/** Blocks behind live tip that flags "lagging" in deep health (informational, not HTTP 503). */
-const DEFAULT_HEALTH_INDEXER_LAG_BLOCKS = 500_000n;
+/**
+ * Chain time behind the live tip that flags "lagging" in deep health
+ * (informational, not HTTP 503). 2026-11-07: this was 500,000 blocks, i.e.
+ * ~11.6 days at Base's old 2 s blocks; kept as that length of time now that
+ * a block is 0.2 s. HEALTH_INDEXER_LAG_BLOCKS still overrides it in blocks.
+ */
+const DEFAULT_HEALTH_INDEXER_LAG_SECONDS = 1_000_000;
 
-export function getOwnerIndexerLagThreshold(): bigint {
+export function getOwnerIndexerLagThreshold(tip?: bigint): bigint {
+  const fromTime = (): bigint => {
+    if (tip !== undefined) return chainClock().blocksIn(DEFAULT_HEALTH_INDEXER_LAG_SECONDS, tip);
+    const perDay = chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 432_000;
+    return BigInt(Math.ceil((DEFAULT_HEALTH_INDEXER_LAG_SECONDS * perDay) / 86_400));
+  };
   const raw = process.env.HEALTH_INDEXER_LAG_BLOCKS;
-  if (!raw) return DEFAULT_HEALTH_INDEXER_LAG_BLOCKS;
+  if (!raw) return fromTime();
   try {
     const parsed = BigInt(raw);
-    return parsed > 0n ? parsed : DEFAULT_HEALTH_INDEXER_LAG_BLOCKS;
+    return parsed > 0n ? parsed : fromTime();
   } catch {
-    return DEFAULT_HEALTH_INDEXER_LAG_BLOCKS;
+    return fromTime();
   }
 }
 

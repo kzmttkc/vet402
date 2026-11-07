@@ -23,6 +23,8 @@
  * 「上限を超えたら全部走査する」は取ってはいけない選択肢である。
  */
 
+import { asClock, SECONDS_PER_DAY, type ChainClock } from "./block-clock";
+
 export type AgentResolvePlan =
   | { kind: "indexed_only" }
   | { kind: "tail_scan"; fromBlock: bigint; toBlock: bigint }
@@ -44,8 +46,11 @@ export type AgentResolvePlan =
  */
 export const AGENT_RESOLVE_TAIL_MAX_DAYS = 2;
 
-export function agentResolveTailMaxBlocks(blocksPerDay: number): bigint {
-  return BigInt(Math.ceil(AGENT_RESOLVE_TAIL_MAX_DAYS * blocksPerDay));
+export function agentResolveTailMaxBlocks(blocksPerDay: number): bigint;
+export function agentResolveTailMaxBlocks(clock: ChainClock, end: bigint): bigint;
+/** 2026-11-07: Base は ChainClock で渡す（0.2 秒ブロックへの変化をまたいでも「2 日」が 2 日のまま）。 */
+export function agentResolveTailMaxBlocks(rate: number | ChainClock, end: bigint = 0n): bigint {
+  return asClock(rate).blocksIn(AGENT_RESOLVE_TAIL_MAX_DAYS * SECONDS_PER_DAY, end);
 }
 
 /**

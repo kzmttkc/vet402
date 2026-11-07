@@ -19,6 +19,8 @@
  * chain do its job.
  */
 
+import { asClock, SECONDS_PER_DAY, type ChainClock } from "./block-clock";
+
 export type RecentFeedbackStats = {
   recentCount: number;
   uniqueClients: number;
@@ -62,36 +64,53 @@ export const FEEDBACK_BOOTSTRAP_DAYS = 8;
  */
 export const FEEDBACK_RETENTION_DAYS = 35;
 
-function blocksFor(days: number, blocksPerDay: number): bigint {
-  return BigInt(Math.ceil(days * blocksPerDay));
+/**
+ * Blocks in `days` of chain time that end at block `end`.
+ *
+ * 2026-11-07: `rate` is either the old constant blocks-per-day (other chains,
+ * and the arithmetic the tests pinned) or a ChainClock. Base passes its clock:
+ * its block time went from 2 s to 0.2 s at block 53,556,127, so a fixed
+ * blocks-per-day turned these day counts into the wrong lengths of time
+ * (43,200 made the 7-day window ~17 hours), and any single new constant is
+ * wrong for windows that straddle the change. `end` only matters for a clock.
+ */
+function blocksFor(days: number, rate: number | ChainClock, end: bigint): bigint {
+  return asClock(rate).blocksIn(days * SECONDS_PER_DAY, end);
 }
 
 /**
  * First block of the "recent" window — deliberately identical to the
  * expression the chain scan used, so the signal's meaning does not move:
  * `latestBlock - blocksPerDay * windowDays`, floored at the registry's own
- * first block.
+ * first block. With a ChainClock it is the first block whose timestamp is
+ * within `windowDays` of `latestBlock`'s.
  */
 export function feedbackWindowFromBlock(
   latestBlock: bigint,
   windowDays: number,
-  blocksPerDay: number,
+  rate: number | ChainClock,
   floorBlock: bigint,
 ): bigint {
-  const span = blocksFor(windowDays, blocksPerDay);
+  const span = blocksFor(windowDays, rate, latestBlock);
   return latestBlock > span ? latestBlock - span : floorBlock;
 }
 
-export function tailMaxBlocks(blocksPerDay: number): bigint {
-  return blocksFor(FEEDBACK_TAIL_MAX_DAYS, blocksPerDay);
+export function tailMaxBlocks(blocksPerDay: number): bigint;
+export function tailMaxBlocks(clock: ChainClock, end: bigint): bigint;
+export function tailMaxBlocks(rate: number | ChainClock, end: bigint = 0n): bigint {
+  return blocksFor(FEEDBACK_TAIL_MAX_DAYS, rate, end);
 }
 
-export function bootstrapBlocks(blocksPerDay: number): bigint {
-  return blocksFor(FEEDBACK_BOOTSTRAP_DAYS, blocksPerDay);
+export function bootstrapBlocks(blocksPerDay: number): bigint;
+export function bootstrapBlocks(clock: ChainClock, end: bigint): bigint;
+export function bootstrapBlocks(rate: number | ChainClock, end: bigint = 0n): bigint {
+  return blocksFor(FEEDBACK_BOOTSTRAP_DAYS, rate, end);
 }
 
-export function retentionBlocks(blocksPerDay: number): bigint {
-  return blocksFor(FEEDBACK_RETENTION_DAYS, blocksPerDay);
+export function retentionBlocks(blocksPerDay: number): bigint;
+export function retentionBlocks(clock: ChainClock, end: bigint): bigint;
+export function retentionBlocks(rate: number | ChainClock, end: bigint = 0n): bigint {
+  return blocksFor(FEEDBACK_RETENTION_DAYS, rate, end);
 }
 
 /**

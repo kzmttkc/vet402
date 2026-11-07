@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { agentResolveTailMaxBlocks } from "@/lib/chain/agent-resolve-window";
-import { chainById, DEFAULT_CHAIN_ID } from "@/lib/chain/chains";
-import { tailMaxBlocks } from "@/lib/chain/feedback-window";
+import { AGENT_RESOLVE_TAIL_MAX_DAYS } from "@/lib/chain/agent-resolve-window";
+import { SECONDS_PER_DAY } from "@/lib/chain/block-clock";
+import { chainClock, DEFAULT_CHAIN_ID } from "@/lib/chain/chains";
+import { FEEDBACK_TAIL_MAX_DAYS } from "@/lib/chain/feedback-window";
 import { getProductionEnvErrors } from "@/lib/config/env";
 import { getDb } from "@/lib/db/client";
 import { getFeedbackIndexerStatus } from "@/lib/db/feedback-index";
@@ -13,6 +14,7 @@ import {
 } from "@/lib/db/owner-index";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { runScoringProbe } from "./scoring-probe";
+import { blockScheduleVerdict, indexLag, SETTLEMENTS_INDEX_MAX_LAG_SECONDS } from "./index-lag";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export type DeepHealthStatus = "ok" | "degraded";
@@ -66,11 +68,32 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
   }
 
   let liveTip: bigint | undefined;
+  // 2026-11-07: every lag below is judged in chain time through this clock (Base: exact schedule).
+  const clock = chainClock(DEFAULT_CHAIN_ID);
+  let scheduleDrift = false;
   try {
     const { getPublicClient } = await import("@/lib/chain/client");
     const client = getPublicClient();
     liveTip = await client.getBlockNumber();
     checks.rpc = "ok";
+    // The schedule is only right until Base changes its block time again. One
+    // real block tells us; a drift means every day-window is the wrong length,
+    // which no other check would notice (the 2026-11-05 change went unnoticed for ~32 h).
+    try {
+      const latest = await client.getBlock({ blockTag: "latest" });
+      const verdict = blockScheduleVerdict(latest.number, Number(latest.timestamp));
+      checks.block_schedule_drift_s = String(verdict.driftSeconds);
+      scheduleDrift = verdict.drift;
+      checks.block_schedule = scheduleDrift ? "drift" : "ok";
+      // Critical, not just degraded: a degraded 200 passes smoke-production.sh and
+      // monitor-health, and a wrong schedule silently mis-sizes every day-window.
+      if (scheduleDrift) {
+        criticalFailure = true;
+        logServerErrorSafe("deep-health block_schedule", `Base block time no longer matches BASE_BLOCK_TIME_SCHEDULE: ${verdict.driftSeconds}s at ${latest.number}`);
+      }
+    } catch {
+      checks.block_schedule = "unknown";
+    }
   } catch {
     checks.rpc = "error";
     criticalFailure = true;
@@ -93,7 +116,7 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
   const indexerStatus = await getOwnerIndexerStatus(
     liveTip !== undefined ? { liveTip } : undefined,
   );
-  const lagThreshold = getOwnerIndexerLagThreshold();
+  const lagThreshold = getOwnerIndexerLagThreshold(liveTip);
   let indexerPayload: DeepHealthResult["indexer"];
 
   if (!indexerStatus) {
@@ -136,10 +159,14 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
       const behind = feedbackStatus.blocksBehind;
       checks.feedback_indexer_blocks_behind = behind?.toString() ?? "unknown";
       // Past this the tail is wider than the live scan will attempt, so the
-      // signal is unavailable rather than merely stale.
-      const maxTail = tailMaxBlocks(chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 43_200);
-      checks.feedback_indexer =
-        behind !== null && behind > maxTail ? "lagging" : "ok";
+      // signal is unavailable rather than merely stale. Measured in time (2 days).
+      if (behind !== null && liveTip !== undefined) {
+        const lag = indexLag(clock, liveTip - behind, liveTip, FEEDBACK_TAIL_MAX_DAYS * SECONDS_PER_DAY);
+        checks.feedback_indexer_seconds_behind = String(lag.secondsBehind);
+        checks.feedback_indexer = lag.lagging ? "lagging" : "ok";
+      } else {
+        checks.feedback_indexer = "ok";
+      }
     }
   } catch {
     checks.feedback_indexer = "error";
@@ -154,10 +181,13 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
     if (walletCheckpoint === null) {
       checks.agent_wallet_index = "unconfigured";
     } else {
-      const behind = liveTip !== undefined ? liveTip - walletCheckpoint : null;
-      checks.agent_wallet_index_blocks_behind = behind?.toString() ?? "unknown";
-      const maxTail = agentResolveTailMaxBlocks(chainById(DEFAULT_CHAIN_ID)?.blocksPerDay ?? 43_200);
-      checks.agent_wallet_index = behind !== null && behind > maxTail ? "lagging" : "ok";
+      const lag =
+        liveTip !== undefined
+          ? indexLag(clock, walletCheckpoint, liveTip, AGENT_RESOLVE_TAIL_MAX_DAYS * SECONDS_PER_DAY)
+          : null;
+      checks.agent_wallet_index_blocks_behind = lag?.blocksBehind.toString() ?? "unknown";
+      if (lag) checks.agent_wallet_index_seconds_behind = String(lag.secondsBehind);
+      checks.agent_wallet_index = lag?.lagging ? "lagging" : "ok";
     }
   } catch {
     checks.agent_wallet_index = "error";
@@ -165,16 +195,21 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
 
   // 決済索引（§7.2）の停滞。2026-09-04 監査 D: 9/2 20:43 UTC から 17 回連続で失敗していたのに
   // ルートも launchd も ok:true を返し、deep health も見ていなかったので 39 時間素通りした。
-  // 1 日分（43,200 ブロック）を超えて遅れていたら degraded。
+  // 1 日分を超えて遅れていたら degraded。2026-11-07: 「1 日」はブロック数（43,200）ではなく
+  // チェーンの時間で測る。Base は 0.2 秒ブロックになり、43,200 ブロックは 2.4 時間しかない。
   try {
     const settlementsCheckpoint = await getIndexerCheckpoint("settlements:eip155:8453");
     if (settlementsCheckpoint === null) {
       checks.settlements_index = "unconfigured";
     } else {
-      const behind = liveTip !== undefined ? liveTip - settlementsCheckpoint : null;
-      checks.settlements_index_blocks_behind = behind?.toString() ?? "unknown";
-      checks.settlements_index = behind !== null && behind > 43_200n ? "lagging" : "ok";
-      if (behind !== null && behind > 43_200n) criticalFailure = true;
+      const lag =
+        liveTip !== undefined
+          ? indexLag(clock, settlementsCheckpoint, liveTip, SETTLEMENTS_INDEX_MAX_LAG_SECONDS)
+          : null;
+      checks.settlements_index_blocks_behind = lag?.blocksBehind.toString() ?? "unknown";
+      if (lag) checks.settlements_index_seconds_behind = String(lag.secondsBehind);
+      checks.settlements_index = lag?.lagging ? "lagging" : "ok";
+      if (lag?.lagging) criticalFailure = true;
     }
   } catch {
     checks.settlements_index = "error";

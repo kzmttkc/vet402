@@ -1,6 +1,7 @@
 import { countAgentsByOwner } from "@/lib/chain/agent-resolver";
 import { getOwnerIndexerStatus } from "@/lib/db/owner-index";
-import { OWNER_INDEX_STALE_BLOCKS } from "@/lib/chain/config";
+import { OWNER_INDEX_STALE_SECONDS } from "@/lib/chain/config";
+import { chainClock } from "@/lib/chain/chains";
 import type { AgentIdentity, RecentFeedbackStats } from "@/lib/chain/erc8004";
 import { getFunderClusterSize, isFundingCluster } from "@/lib/db/funder-index";
 import type { WalletMetrics } from "@/lib/chain/wallet-metrics";
@@ -71,7 +72,14 @@ export async function detectReputationSybilFlags(
     try {
       const status = await getOwnerIndexerStatus();
       const behind = status?.blocksBehind;
-      if (behind !== null && behind !== undefined && behind > BigInt(OWNER_INDEX_STALE_BLOCKS)) {
+      const tipForLag = status?.liveTip ?? status?.chainTipAtRun;
+      if (
+        behind !== null &&
+        behind !== undefined &&
+        tipForLag !== null &&
+        tipForLag !== undefined &&
+        chainClock().secondsBetween(tipForLag - behind, tipForLag) > OWNER_INDEX_STALE_SECONDS
+      ) {
         flags.push("owner_index_stale");
       }
     } catch {

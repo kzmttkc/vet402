@@ -127,6 +127,8 @@ import { arbitrum, arc, avalanche, base, bsc, celo, tempo as tempoChain } from "
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { getLogsChunked } from "@/lib/chain/chunked-logs";
+import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
 import { ARC_CAIP2, ARC_CHAIN_ID, ARC_USDC_ADDRESS } from "@/lib/chain/arc";
 import { AVALANCHE_CAIP2, AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanche";
@@ -146,7 +148,7 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  * 認可の有効期間の上限は 120 秒（x402-payer.MAX_AUTHORIZATION_WINDOW_SECONDS）
  * なので、それを過ぎた authorization は**チェーンが受け付けない**。窓を 30 分に
  * してあるのは、ブロック時刻の補間誤差（index-evm は窓の両端を実測して間を
- * 2 秒/ブロックで補間する）と、旧い 600 秒窓で署名された行の取りこぼしを
+ * 補間する。Base は 2026-11-07 からブロック時間の履歴で決める）と、旧い 600 秒窓で署名された行の取りこぼしを
  * 拾うため。窓を広げても、金額・宛先・払い元の 3 つ一致と「未使用の tx」の
  * 条件が効いているので、他人の決済を拾うことはない。
  */
@@ -1434,14 +1436,15 @@ async function promoteNamedTx(db: Db): Promise<LinkedRow[]> {
 
 const TRANSFER_LOG = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
-/** Base のブロック間隔（秒）。窓の端はブロック番号で広めに取り、着金の時刻はブロックを読んで決める。 */
-const BASE_BLOCK_SECONDS = 2;
 
 type TransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs">;
 
 /**
  * Base の USDC Transfer（from → to）を時刻の窓で読む読み手（cron と一度きりの再照合が linkFromChain に渡す）。
- * Base 以外は null。時刻からブロック番号を 2 秒/ブロックで見積もり、両端に 60 ブロックの余裕を足す。
+ * Base 以外は null。時刻からブロック番号は Base のブロック時間の履歴（block-clock.ts・2026-11-05 から 0.2 秒）で
+ * 決め、両端に 60 ブロックの余裕を足す。着金の時刻はブロックを読んで決める。
+ * 2026-11-07: 以前は head から 2 秒/ブロックで数え戻していた。0.2 秒ブロックの区間では、窓が実際より新しい側へずれる
+ * （30 分前の窓が、およそ 3 分前からを読む）。
  */
 export function makeBaseTransferReader(client?: TransferClient): TransferReader {
   return async ({ network, payer, payTo, from, to, timeoutMs }) => {
@@ -1451,18 +1454,28 @@ export function makeBaseTransferReader(client?: TransferClient): TransferReader 
     const c = client ?? (typeof timeoutMs === "number" ? boundedBaseClient(timeoutMs) : getLogScanClient(8453));
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const head = await c.getBlock({ blockTag: "latest" });
-    const headMs = Number(head.timestamp) * 1000;
-    const blockAt = (t: Date) => head.number - BigInt(Math.ceil((headMs - t.getTime()) / (BASE_BLOCK_SECONDS * 1000)));
+    const blockAt = (t: Date) => firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, t.getTime() / 1000);
     const fromBlock = blockAt(from) - 60n;
     const toBlock = blockAt(to) + 60n > head.number ? head.number : blockAt(to) + 60n;
     if (fromBlock < 0n || fromBlock > toBlock) return [];
-    const logs = await c.getLogs({
-      address: BASE_USDC,
-      event: TRANSFER_LOG,
-      args: { from: payer as Address, to: payTo as Address },
-      fromBlock,
-      toBlock,
-    });
+    // 2026-11-07: 0.2 秒ブロックでは 1 行の窓が約 9,700 ブロックになり、1 回の getLogs では読み先の範囲の上限
+    // （tenderly 系は 1,000）を超える。index-evm と同じ helper・同じ区切り（GET_LOGS_CHUNK_BLOCKS と読み先が言った
+    // 上限）で分けて読む。区切りが 1 つでも読めなければ getLogsChunked が投げ、呼び手はその行を「未読」と数える
+    // ——読めた区切りだけで「着金なし」とは決めない。
+    const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+    const logs = (await getLogsChunked(
+      c as unknown as Parameters<typeof getLogsChunked>[0],
+      {
+        address: BASE_USDC,
+        event: TRANSFER_LOG,
+        args: { from: payer as Address, to: payTo as Address },
+        fromBlock,
+        toBlock,
+      } as never,
+      undefined,
+      undefined,
+      remainingMs === undefined ? undefined : { deadlineMs: remainingMs, delayMs: 0 },
+    )) as unknown as { blockNumber: bigint | null; transactionHash: string | null; args: { from: Address; to: Address; value?: bigint } }[];
     const times = new Map<bigint, number>();
     const out: ChainTransfer[] = [];
     for (const l of logs) {

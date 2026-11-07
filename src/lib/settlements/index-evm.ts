@@ -27,6 +27,14 @@ import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS, getCeloPublicClient } fro
 import { bnbLedgerUnits } from "@/lib/observatory/x402-payer";
 import { logServerErrorChainSafe, logServerErrorSafe } from "@/lib/util/log-safe";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
+import {
+  BASE_BLOCK_TIME_SCHEDULE,
+  SECONDS_PER_DAY,
+  constantClock,
+  scheduleClock,
+  timestampOfBlock,
+  type BlockTimeSegment,
+} from "@/lib/chain/block-clock";
 import { DeadlineExceededError } from "@/lib/util/deadline";
 import { getIndexerCheckpoint, setIndexerCheckpoint } from "@/lib/db/owner-index";
 import { payeeId as toPartyId } from "@/lib/ids/canonical";
@@ -105,8 +113,10 @@ export type EvmIndexChain = {
   chainId: number;
   usdc: Address;
   rpcEnv: string;
-  /** 初回の遡り幅（ブロック）。Base は ~2s/ブロック。 */
-  initialLookbackBlocks: bigint;
+  /** 初回の遡り幅（ブロック）。blockTimeSchedule と initialLookbackDays を持つチェーン（Base）は時間で数える。 */
+  initialLookbackBlocks?: bigint;
+  /** 初回の遡り幅（日・チェーンの時間）。blockTimeSchedule と組で使う（2026-11-07・Base）。 */
+  initialLookbackDays?: number;
   /** 1 回の走査で読む最大ブロック数。 */
   maxBlocksPerRun: bigint;
   /**
@@ -116,8 +126,10 @@ export type EvmIndexChain = {
   subWindowBlocks?: bigint;
   /** 確定待ち（reorg 余裕）。 */
   confirmations: bigint;
-  /** 1 日のブロック数（遅れの判定 evmIndexLag に使う）。 */
+  /** 1 日のブロック数（いまのブロック時間で）。遅れの判定 evmIndexLag は blockTimeSchedule があればそちらで時間を測る。 */
   blocksPerDay: bigint;
+  /** ブロック時間の履歴（Base）。あれば遅れを「チェーンの時間」で測る（2026-11-07）。 */
+  blockTimeSchedule?: readonly BlockTimeSegment[];
   /** TransferWithMemo も読む（TIP-20・Tempo）。memo が MPP の tag を持つ転送は raw.mppAttributed=true。 */
   memoTransfers?: boolean;
   /** 既定は getLogScanClient(chainId)。CHAINS 登録簿に無いチェーン（Arc・Tempo）はここで組む。 */
@@ -130,14 +142,23 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     chainId: 8453,
     usdc: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     rpcEnv: "BASE_RPC_URL",
-    initialLookbackBlocks: 43_200n * 7n,
-    maxBlocksPerRun: 40_000n,
+    // 2026-11-07: Base は 2026-11-05T18:00Z（ブロック 53,556,127）から 0.2 秒ブロック（1 日 432,000）。
+    // 以前の 40,000 ブロック（2 秒で ≈ 22 時間）は 0.2 秒では ≈ 2.2 時間で、2 時間おきの launchd とほぼ
+    // 同じ速さしか進めず、Mac が止まった間の遅れ（11/07 01:25Z に 183,167 ブロック ≈ 10 時間）を
+    // 取り戻せなかった。1 回の上限を時間の意味で元に戻す（400,000 ≈ 22 時間）。実際に 1 回で読む量は
+    // 時間の予算と、下の区切りごとのチェックポイントで決まる。
+    // 初回の遡りは 7 日（チェーンの時間）。変化点をまたいでも 7 日（initialLookbackBlocksAt）。
+    initialLookbackDays: 7,
+    maxBlocksPerRun: 400_000n,
     // 2026-10-02: Base は受取先 1,864 件（500 件ずつ 4 スライス）× 40,000 ブロックを全部読み切らないと
     // チェックポイントが進まない作りで、10/1 23:06 JST の混んだ区間から毎回予算切れ（deadline_exceeded）→
     // 何も保存されず同じ区間をやり直していた。4,000 ブロック（≈ 2.2 時間）ずつ読み切って保存する。
-    subWindowBlocks: 4_000n,
+    // 2026-11-07: 0.2 秒ブロックでは 4,000 ブロックは 13 分で、400,000 ブロックを読むと区切りが 100 個・
+    // getLogs の往復が 10 倍になる。20,000 ブロック（≈ 67 分・ログの量は 10/02 の区切りの約半分）にする。
+    subWindowBlocks: 20_000n,
     confirmations: 32n,
-    blocksPerDay: 43_200n,
+    blocksPerDay: 432_000n,
+    blockTimeSchedule: BASE_BLOCK_TIME_SCHEDULE,
   },
   {
     caip2: "eip155:137",
@@ -157,7 +178,7 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
   //    2026-09-17 指摘）。2 日ぶん読めば、遅れた日も翌日に回収できる。往復数: 既定の
   //    GET_LOGS_CHUNK_BLOCKS 2,000 で 87 チャンク／payee 500 件のスライス 1 つ、
   //    GET_LOGS_CHUNK_CONCURRENCY 4 で約 22 ラウンド。1 ラウンド 0.2〜0.5 秒なら 5〜11 秒。
-  //    （Base は 2 秒/ブロックで 40,000 = ≈ 22 時間・20 チャンク。）
+  //    （当時の Base は 2 秒/ブロックで 40,000 = ≈ 22 時間・20 チャンク。2026-11-05 から 0.2 秒。）
   //  - 遅れが 1 日ぶん（blocksPerDay）を超えたら summary.lagBlocks と partial で鳴らす
   //    （evmIndexLag・全チェーン共通）。
   //  - 確定待ち 64 ブロック（≈ 64 秒）。Arc の合意は BFT 系で確定的と Circle は説明するが、
@@ -334,10 +355,20 @@ export type EvmIndexSummary = {
  * 走査後の遅れ（2026-09-17 レビュー）。safeTip − checkpoint が 1 日ぶんを超えたら
  * その差を返す（summary.lagBlocks に載せ、partial として鳴らす）。超えなければ null。
  * 純関数。cron の日次 1 回で追いつけていないチェーンを、静かに遅れさせない。
+ * 2026-11-07: 「1 日」はチェーンの時間。blockTimeSchedule のあるチェーン（Base）は
+ * その履歴で、無いチェーンは blocksPerDay で秒に直す（無いチェーンの判定は以前と同じ）。
  */
-export function evmIndexLag(chain: Pick<EvmIndexChain, "blocksPerDay">, safeTip: bigint, checkpoint: bigint): bigint | null {
+export function evmIndexLag(
+  chain: Pick<EvmIndexChain, "blocksPerDay" | "blockTimeSchedule">,
+  safeTip: bigint,
+  checkpoint: bigint,
+): bigint | null {
   const lag = safeTip - checkpoint;
-  return lag > chain.blocksPerDay ? lag : null;
+  if (lag <= 0n) return null;
+  const clock = chain.blockTimeSchedule
+    ? scheduleClock(chain.blockTimeSchedule)
+    : constantClock(Number(chain.blocksPerDay));
+  return clock.secondsBetween(checkpoint, safeTip) > SECONDS_PER_DAY ? lag : null;
 }
 
 /**
@@ -348,6 +379,38 @@ export function evmIndexLag(chain: Pick<EvmIndexChain, "blocksPerDay">, safeTip:
 export function perChainBudgetMs(budgetMs: number, chains: readonly EvmIndexChain[] = EVM_INDEX_CHAINS): number {
   const indexable = chains.filter(isEvmChainIndexable).length;
   return Math.max(20_000, Math.floor(budgetMs / Math.max(1, indexable)));
+}
+
+/**
+ * 初回（チェックポイント無し）の遡り幅（ブロック）。Base はブロック時間の履歴で「safeTip から 7 日」を数える
+ * （2026-11-07: 2 秒 → 0.2 秒の変化点をまたぐと、どの固定値も 7 日にならない）。ほかは表の固定値。
+ */
+export function initialLookbackBlocksAt(
+  chain: Pick<EvmIndexChain, "initialLookbackBlocks" | "initialLookbackDays" | "blockTimeSchedule">,
+  safeTip: bigint,
+): bigint {
+  if (chain.blockTimeSchedule && chain.initialLookbackDays !== undefined) {
+    return scheduleClock(chain.blockTimeSchedule).blocksIn(chain.initialLookbackDays * SECONDS_PER_DAY, safeTip);
+  }
+  return chain.initialLookbackBlocks ?? 0n;
+}
+
+/**
+ * 窓の中のブロックの時刻。Base（blockTimeSchedule あり）は履歴から正確に出す——変化点をまたぐ窓を
+ * 両端の線形補間で埋めると、0.2 秒側の時刻が最大で数時間ずれる（2026-11-07）。ほかのチェーンは従来どおり、
+ * 窓の両端を実測して間を線形に補間する。
+ */
+export function evmBlockTimeOf(
+  chain: Pick<EvmIndexChain, "blockTimeSchedule">,
+  fromBlock: bigint,
+  t0Ms: number,
+  toBlock: bigint,
+  t1Ms: number,
+): (n: bigint) => Date {
+  const schedule = chain.blockTimeSchedule;
+  if (schedule) return (n) => new Date(timestampOfBlock(schedule, n) * 1000);
+  const span = Number(toBlock - fromBlock) || 1;
+  return (n) => new Date(t0Ms + (Number(n - fromBlock) / span) * (t1Ms - t0Ms));
 }
 
 export function isEvmChainIndexable(chain: EvmIndexChain): boolean {
@@ -398,7 +461,8 @@ export async function indexEvmChain(
   const safeTip = latest > chain.confirmations ? latest - chain.confirmations : 0n;
   const scope = `settlements:${chain.caip2}`;
   const checkpoint = await getIndexerCheckpoint(scope);
-  const fromBlock = checkpoint !== null ? checkpoint + 1n : safeTip > chain.initialLookbackBlocks ? safeTip - chain.initialLookbackBlocks : 0n;
+  const lookback = initialLookbackBlocksAt(chain, safeTip);
+  const fromBlock = checkpoint !== null ? checkpoint + 1n : safeTip > lookback ? safeTip - lookback : 0n;
   if (fromBlock > safeTip) return { ...summary, skipped: "caught_up", fromBlock: String(fromBlock), toBlock: String(safeTip) };
   const toBlock = fromBlock + chain.maxBlocksPerRun - 1n < safeTip ? fromBlock + chain.maxBlocksPerRun - 1n : safeTip;
   summary.fromBlock = String(fromBlock);
@@ -449,12 +513,10 @@ export async function indexEvmChain(
     return { attribution: "probable" as const, resourceId: null, endpointId: null };
   };
 
-  // ブロック時刻は窓の両端を実測し、間は 2 秒/ブロックで補間する（帰属窓は 15 分・十分）。
+  // ブロック時刻は窓の両端を実測し、間を補間する（帰属窓は 15 分・十分）。Base はブロック時間の履歴で決める
+  // （evmBlockTimeOf・2026-11-07）。両端の実測は残す——読み先が答えることの確認を兼ねる。
   const [b0, b1] = await Promise.all([client.getBlock({ blockNumber: fromBlock }), client.getBlock({ blockNumber: toBlock })]);
-  const t0 = Number(b0.timestamp) * 1000;
-  const t1 = Number(b1.timestamp) * 1000;
-  const span = Number(toBlock - fromBlock) || 1;
-  const blockTimeOf = (n: bigint) => new Date(t0 + ((Number(n - fromBlock) / span) * (t1 - t0)));
+  const blockTimeOf = evmBlockTimeOf(chain, fromBlock, Number(b0.timestamp) * 1000, toBlock, Number(b1.timestamp) * 1000);
 
   let cutOff = false;
   const pending: SettlementRow[] = [];
@@ -624,7 +686,7 @@ export async function indexEvmChain(
     // 1 日 1 回の cron で追いつけていない。partial に乗せて cron の応答に出し、ログでも鳴らす。
     summary.lagBlocks = String(lag);
     summary.partial = true;
-    logServerErrorSafe("settlements.index_evm.lag", new Error(`${chain.caip2} is ${lag} blocks behind the safe tip (> ${chain.blocksPerDay}/day)`));
+    logServerErrorSafe("settlements.index_evm.lag", new Error(`${chain.caip2} is ${lag} blocks behind the safe tip (> 1 day of chain time)`));
   }
   return summary;
 }

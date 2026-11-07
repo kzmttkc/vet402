@@ -25,7 +25,7 @@ if (!TEST_DB) {
   process.env.DATABASE_URL = TEST_DB;
 
   test("Tempo settlement index", async (t) => {
-    const { EVM_INDEX_CHAINS, TRANSFER_EVENT, TRANSFER_WITH_MEMO_EVENT, indexEvmChain, isEvmChainIndexable } = await import("@/lib/settlements/index-evm");
+    const { EVM_INDEX_CHAINS, TRANSFER_EVENT, TRANSFER_WITH_MEMO_EVENT, indexEvmChain, initialLookbackBlocksAt, isEvmChainIndexable } = await import("@/lib/settlements/index-evm");
     const { encodeMppAttributionMemo, MPP_CLIENT_ID, TEMPO_USDC_E } = await import("@/lib/observatory/mpp-payer");
     const { getDb } = await import("@/lib/db/client");
     const { sql } = await import("drizzle-orm");
@@ -126,8 +126,8 @@ if (!TEST_DB) {
       INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, resource_id)
       VALUES ('seller.example/api', 'https://seller.example/api', 'cdp_bazaar', 'GET', 'eip155:8453', ${PAYEE}, '25000', ${base.usdc.toLowerCase()}, 'active', 'res-base-1')
     `);
-    // Base は 4,000 ブロックずつ区切って読む（2026-10-02）。偽の RPC も本物と同じく範囲内のログだけを返す。
-    const baseFirstFrom = 40_000_100n - base.confirmations - base.initialLookbackBlocks;
+    // Base は区切りごとに読む（2026-10-02・2026-11-07 から 20,000 ブロック）。偽の RPC も本物と同じく範囲内のログだけを返す。
+    const baseFirstFrom = 40_000_100n - base.confirmations - initialLookbackBlocksAt(base, 40_000_100n - base.confirmations);
     const BASE_BLOCK = baseFirstFrom + 10n;
     const baseCalls: string[] = [];
     const baseGetLogs = (async (_c: unknown, params: { event: { name: string }; fromBlock: bigint; toBlock: bigint }) => {
@@ -148,7 +148,7 @@ if (!TEST_DB) {
     // チェックポイントは Tempo 固有の scope。初回は safeTip − 遡り幅 から maxBlocksPerRun ぶんだけ進む
     // （3 日分の遡りは 1 回では終わらず、次回に持ち越す——Base と同じ）。
     const safeTip = 40_000_100n - chain.confirmations;
-    const firstFrom = safeTip - chain.initialLookbackBlocks;
+    const firstFrom = safeTip - initialLookbackBlocksAt(chain, safeTip);
     assert.equal(summary.fromBlock, String(firstFrom));
     assert.equal(summary.toBlock, String(firstFrom + chain.maxBlocksPerRun - 1n));
     const cp = rows<{ scope: string; last_block: string }>(await db.execute(sql`SELECT scope, last_block::text AS last_block FROM indexer_checkpoints WHERE scope = 'settlements:eip155:4217'`));

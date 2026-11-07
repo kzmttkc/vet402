@@ -1,6 +1,6 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "./client";
-import { feedbackEvents } from "./schema";
+import { feedbackEvents, indexerCheckpoints } from "./schema";
 import { isMissingSchemaError } from "./pg-errors";
 
 /** One NewFeedback log, flattened for insertion. */
@@ -73,4 +73,23 @@ export async function pruneFeedbackEvents(
     if (isMissingSchemaError(error)) return 0;
     throw error;
   }
+}
+
+/**
+ * Move the coverage floor DOWN after a backfill (2026-11-07).
+ *
+ * setIndexerCheckpoints keeps every checkpoint monotone (GREATEST), which is
+ * right for a forward scan and makes it impossible to say "rows now exist
+ * further back". The only caller is the feedback indexer's backfill, and only
+ * after the rows of [lastBlock, old floor) are written — so the floor never
+ * claims rows that are not there. LEAST keeps an out-of-order run from
+ * raising it.
+ */
+export async function lowerFeedbackCoverageStart(scope: string, lastBlock: bigint): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  await db
+    .update(indexerCheckpoints)
+    .set({ lastBlock: sql`LEAST(${indexerCheckpoints.lastBlock}, ${lastBlock.toString()}::bigint)`, updatedAt: new Date() })
+    .where(eq(indexerCheckpoints.scope, scope));
 }

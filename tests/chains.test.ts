@@ -62,8 +62,10 @@ test("getPublicClient with no argument still builds a Base client", () => {
   assert.equal(client.chain?.id, 8453);
 });
 
-test("per-chain scan windows differ (Base 2s blocks vs Ethereum 12s)", () => {
-  assert.equal(CHAINS[8453].blocksPerDay, 43_200);
+test("per-chain scan windows differ (Base 0.2s blocks since 2026-11-05 vs Ethereum 12s)", () => {
+  // 2026-11-07: Base was 43,200 (2 s). Day windows on Base go through its block-time schedule
+  // (tests/block-clock.test.ts); this constant is the current rate only.
+  assert.equal(CHAINS[8453].blocksPerDay, 432_000);
   assert.equal(CHAINS[1].blocksPerDay, 7_200);
 });
 
