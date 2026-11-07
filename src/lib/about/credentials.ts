@@ -12,13 +12,14 @@ export type Credential = {
   when: string;
   whenLabel: string;
   link: CredentialLink | null;
+  /** Grants and prizes only: the status line the Legal Notice discloses. Amounts only where the other party published them. */
+  disclosure: { status: string } | null;
 };
 
 export type AboutCredentials = {
   revision: string;
   builder: {
     builderName: string;
-    publicName: string;
     publisher: string;
   };
   credentials: Credential[];
@@ -95,6 +96,20 @@ function validateCredentials(data: unknown): AboutCredentials {
     if (kind !== "background" && link === null) {
       throw new Error(`credentials.json: credential ${id} must have a link`);
     }
+    let disclosure: { status: string } | null = null;
+    if (row.disclosure !== null && row.disclosure !== undefined) {
+      const dsc = row.disclosure as Record<string, unknown>;
+      if (typeof dsc !== "object" || typeof dsc.status !== "string" || !dsc.status) {
+        throw new Error(`credentials.json: credential ${id} disclosure must have a status`);
+      }
+      disclosure = { status: dsc.status };
+    }
+    if (kind === "background" && disclosure !== null) {
+      throw new Error(`credentials.json: background credential ${id} has nothing to disclose`);
+    }
+    if (kind !== "background" && disclosure === null) {
+      throw new Error(`credentials.json: credential ${id} needs a disclosure status for the Legal Notice`);
+    }
     credentials.push({
       id,
       kind: kind as Credential["kind"],
@@ -103,10 +118,16 @@ function validateCredentials(data: unknown): AboutCredentials {
       when: row.when as string,
       whenLabel: row.whenLabel as string,
       link,
+      disclosure,
     });
   }
   const b = builder as Record<string, unknown>;
-  for (const key of ["builderName", "publicName", "publisher"] as const) {
+  // 2026-11-08: no second public name here. vet402's face is the builder name, and the
+  // product site names no person beyond it (the naming rule for public surfaces).
+  if ("publicName" in b) {
+    throw new Error("credentials.json: builder.publicName is not published on vet402 surfaces");
+  }
+  for (const key of ["builderName", "publisher"] as const) {
     if (typeof b[key] !== "string" || !b[key]) {
       throw new Error(`credentials.json: builder.${key} must be a non-empty string`);
     }
@@ -115,7 +136,6 @@ function validateCredentials(data: unknown): AboutCredentials {
     revision,
     builder: {
       builderName: b.builderName as string,
-      publicName: b.publicName as string,
       publisher: b.publisher as string,
     },
     credentials,
@@ -123,3 +143,17 @@ function validateCredentials(data: unknown): AboutCredentials {
 }
 
 export const CREDENTIALS: AboutCredentials = validateCredentials(raw);
+
+/** Prize and grant titles, for the Organization JSON-LD `award` list and llms-full.txt. */
+export function credentialAwards(): string[] {
+  return CREDENTIALS.credentials.filter((c) => c.kind !== "background").map((c) => c.title);
+}
+
+/** The track record as Markdown bullets (llms-full.txt), from the same record /about renders. */
+export function credentialLines(): string[] {
+  return CREDENTIALS.credentials.map((c) => {
+    const when = c.whenLabel ? ` ${c.whenLabel}.` : "";
+    const link = c.link ? ` ${c.link.label}: ${c.link.url}` : "";
+    return `- ${c.title}: ${c.detail}${when}${link}`;
+  });
+}

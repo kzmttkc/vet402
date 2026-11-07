@@ -313,3 +313,31 @@ export async function loadMonthlyDecisionUsage(
   const stored = existing.length > 0 ? existing : await readPublished(db, query);
   return { chain: query.chain, month: query.month, relations: publishRelations(stored) };
 }
+
+/**
+ * Read-only twin of loadMonthlyDecisionUsage (2026-11-08, the state API's `adoption`). Reads only
+ * a month already frozen in decision_usage_monthly_published and never freezes one, so a read of
+ * the state API cannot fix a month's published value. Null when the month is not frozen yet.
+ */
+export async function readPublishedMonthlyDecisionUsage(
+  query: Extract<MonthlyUsageQuery, { ok: true }>,
+  now: Date = new Date(),
+): Promise<MonthlyDecisionUsage | null> {
+  if (monthlyPublicationError(query, now)) return null;
+  const db = getDb();
+  if (!db) return null;
+  const stored = await readPublished(db, query);
+  if (stored.length === 0) return null;
+  return { chain: query.chain, month: query.month, relations: publishRelations(stored) };
+}
+
+/** The newest month whose public value may exist: the previous UTC month from the 3rd, else the one before. */
+export function latestPublishableMonth(now: Date = new Date()): string {
+  let year = now.getUTCFullYear();
+  let month = now.getUTCMonth() + 1 - (now.getUTCDate() >= 3 ? 1 : 2);
+  while (month < 1) {
+    month += 12;
+    year -= 1;
+  }
+  return `${year}-${pad2(month)}`;
+}

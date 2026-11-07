@@ -2,15 +2,19 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
-import { CREDENTIALS } from "@/lib/about/credentials";
+import { CREDENTIALS, credentialAwards } from "@/lib/about/credentials";
 import { fetchSdkDownloads } from "@/lib/about/npm-downloads";
+import { readAdoption } from "@/lib/observatory/adoption";
+import { publicChainLabel } from "@/lib/observatory/chains";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, organizationJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+
+const ABOUT_DESCRIPTION = "Who builds vet402, what it does, and the prizes and grants behind it.";
 
 export const metadata: Metadata = pageMetadata({
   title: "About",
-  description: "Who builds vet402, what it does, and the prizes and grants behind it.",
+  description: ABOUT_DESCRIPTION,
   path: "/about",
 });
 
@@ -39,10 +43,12 @@ export default async function AboutPage() {
     { name: "About", path: "/about" },
   ]);
 
-  const [stats, downloads] = await Promise.all([
+  const [stats, downloads, adoption] = await Promise.all([
     getObservatoryStatsCached().catch(() => null),
     fetchSdkDownloads(),
+    readAdoption().catch(() => null),
   ]);
+  const outsideCalls = adoption?.keyedDecisionCalls ?? [];
   const leadStats = observatoryLeadSentence(stats);
 
   return (
@@ -53,6 +59,12 @@ export default async function AboutPage() {
           nonce={nonce}
           suppressHydrationWarning
           dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd({ ...organizationJsonLd(ABOUT_DESCRIPTION), award: credentialAwards() }) }}
         />
         <div className="doc-head doc-head-compact">
           <div className="doc-head-col">
@@ -82,7 +94,7 @@ export default async function AboutPage() {
         <section className="space-y-2">
           <h2 className="sec-head">Who builds vet402</h2>
           <p>
-            I&apos;m {builder.builderName}, and I build vet402 on my own. Elsewhere I go by {builder.publicName}.
+            I&apos;m {builder.builderName}, and I build vet402 on my own.
             The site is published by {builder.publisher}, my sole proprietorship in Japan.
           </p>
         </section>
@@ -129,7 +141,7 @@ export default async function AboutPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="sec-head">Downloads</h2>
+          <h2 className="sec-head">Use</h2>
           {downloads ? (
             <p>
               The @vet402/sdk package was downloaded {downloads.downloads.toLocaleString("en-US")} times
@@ -145,6 +157,17 @@ export default async function AboutPage() {
               .
             </p>
           )}
+          {outsideCalls.map((c) => (
+            <p key={`${c.chain}-${c.month}-${c.ownerRelation}`}>
+              In {c.month}, {c.owners.toLocaleString("en-US")}{" "}
+              {c.ownerRelation === "prezenti_grantee" ? "Prezenti grantees" : "key owners outside vet402"} made{" "}
+              {c.calls.toLocaleString("en-US")} keyed decision calls on {publicChainLabel(c.chain)} (
+              <a className="doc-link" href={c.source}>
+                monthly usage
+              </a>
+              ).
+            </p>
+          ))}
         </section>
 
         <section className="space-y-2">

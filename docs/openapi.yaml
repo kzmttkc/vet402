@@ -3202,6 +3202,37 @@ paths:
                           attempts: { type: integer }
                           notHeld: { type: integer }
                           finalOutcome: { type: integer }
+                  adoption:
+                    type: object
+                    description: >-
+                      Use of vet402 by others, each figure with its period, read time and
+                      source. sdkDownloads is npm's own last-month window for @vet402/sdk.
+                      keyedDecisionCalls repeats the monthly values /api/v1/usage/monthly
+                      publishes for key owners outside vet402 (owner_relation external or
+                      prezenti_grantee): closed months only, public chains only, groups of 3
+                      or more owners only. A figure that cannot be read or published is left
+                      out, field and all. Since 2026-11-08.
+                    properties:
+                      sdkDownloads:
+                        type: object
+                        properties:
+                          package: { type: string }
+                          downloads: { type: integer }
+                          start: { type: string, format: date }
+                          end: { type: string, format: date }
+                          readAt: { type: string, format: date-time }
+                          source: { type: string, format: uri }
+                      keyedDecisionCalls:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            chain: { type: string }
+                            month: { type: string }
+                            ownerRelation: { type: string, enum: [external, prezenti_grantee] }
+                            owners: { type: integer }
+                            calls: { type: integer }
+                            source: { type: string, format: uri }
                   operatorEndpointsExcluded:
                     type: integer
                     description: >-

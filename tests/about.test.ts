@@ -10,7 +10,7 @@ const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
 test("credentials.json loads with four entries and unique ids", () => {
-  assert.equal(CREDENTIALS.revision, "2026-11-07");
+  assert.equal(CREDENTIALS.revision, "2026-11-08");
   assert.equal(CREDENTIALS.credentials.length, 4);
   const ids = CREDENTIALS.credentials.map((c) => c.id);
   assert.equal(new Set(ids).size, ids.length);
@@ -109,4 +109,31 @@ test("npm の読みは失敗をキャッシュしない（unstable_cache の中�
 test("liveStatusLabel tolerates a purchase up to 5 minutes newer than the stats read (separate caches)", () => {
   assert.equal(liveStatusLabel("2026-11-07T12:04:00.000Z", "2026-11-07T12:00:00.000Z"), "Live, buying daily");
   assert.equal(liveStatusLabel("2026-11-07T12:06:00.000Z", "2026-11-07T12:00:00.000Z"), "Live, last purchase 2026-11-07");
+});
+
+test("vet402 surfaces carry the builder name only, no second public name (2026-11-08)", () => {
+  const json = read("src/lib/about/credentials.json");
+  assert.doesNotMatch(json, /publicName|Takeshi/);
+  const about = read("src/app/about/page.tsx");
+  assert.doesNotMatch(about, /publicName|Takeshi|Elsewhere I go by/);
+  assert.equal(CREDENTIALS.builder.builderName, "Sen");
+});
+
+test("every grant and prize carries the status the Legal Notice discloses", () => {
+  for (const c of CREDENTIALS.credentials) {
+    if (c.kind === "background") assert.equal(c.disclosure, null);
+    else assert.ok(c.disclosure && c.disclosure.status.length > 0, `${c.id} has no disclosure status`);
+  }
+  const prezenti = CREDENTIALS.credentials.find((c) => c.id === "prezenti-celo-2026")!;
+  assert.match(prezenti.disclosure!.status, /2026-10-31/);
+  // 額は相手が公開した物だけ。Prezenti と Arc の額は出さない。
+  assert.doesNotMatch(prezenti.disclosure!.status, /\$|USD/);
+  const arc = CREDENTIALS.credentials.find((c) => c.id === "circle-arc-microgrants-2026")!;
+  assert.doesNotMatch(arc.disclosure!.status, /\$|USD/);
+});
+
+test("/about, the Legal Notice and llms-full.txt read the same credentials record", () => {
+  assert.match(read("src/app/about/page.tsx"), /award: credentialAwards\(\)/);
+  assert.match(read("src/app/legal/notice/page.tsx"), /CREDENTIALS\.credentials/);
+  assert.match(read("src/app/llms-full.txt/route.ts"), /credentialLines\(\)/);
 });

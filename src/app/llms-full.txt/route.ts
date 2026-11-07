@@ -9,6 +9,7 @@ import { SITE_URL } from "@/lib/site-url";
 import { FRESHNESS_LEAD, freshnessLines } from "@/lib/observatory/freshness";
 import { LLM_QUESTIONS } from "@/components/site/x402-answers";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
+import { CREDENTIALS, credentialLines } from "@/lib/about/credentials";
 
 export const dynamic = "force-static";
 
@@ -91,6 +92,12 @@ ${blog}
 - ${SITE_URL}/api/v1/observatory/l0/export.csv — latest public L0 verdict per endpoint as CSV (the data behind the state L0 counts), no key
 - ${SITE_URL}/api/v1/sellers/export.csv — the /sellers classification per active Base listing as CSV (counting by outcome gives the page totals), no key
 - ${SITE_URL}/observatory — L0/L1/L2 register
+
+## Who builds vet402
+
+${CREDENTIALS.builder.builderName} builds vet402 alone. The site is published by ${CREDENTIALS.builder.publisher}, a sole proprietorship in Japan. Track record (the same record as ${SITE_URL}/about and the funding rows of ${SITE_URL}/legal/notice#relationships):
+
+${credentialLines().join("\n")}
 
 ## Freshness
 

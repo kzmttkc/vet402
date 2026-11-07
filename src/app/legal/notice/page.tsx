@@ -23,6 +23,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { BILLING_PLANS } from "@/lib/billing/plans";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { CREDENTIALS } from "@/lib/about/credentials";
 
 export const metadata: Metadata = pageMetadata({
   // 2026-08-13 [m2]: 二重サフィックス解消（template が " | vet402" を付ける）。
@@ -35,18 +36,16 @@ export const metadata: Metadata = pageMetadata({
 const PLAN_ORDER = ["free", "pro", "scale"] as const;
 
 /**
- * Funding received (grants, prizes, investment), as of the revision date. 2026-09-29: pending or
- * declined applications are not listed — they are not a funding relationship, and listing them
- * would publish the operator's own application history. A row is added when money or a prize is
- * actually received, from the operator's records (grant and hackathon ledgers).
+ * Funding relationships, as of the revision date. 2026-09-29: pending or declined applications are
+ * not listed — they are not a funding relationship, and listing them would publish the operator's
+ * own application history. 2026-11-08: the rows come from src/lib/about/credentials.json, the one
+ * record /about also reads, so a grant cannot be on one page and missing from the other. A row is
+ * added when a prize is awarded, a grant selects vet402 or a grant agreement is signed. Amounts
+ * appear only where the other party published them.
  */
-const RELATIONSHIPS: { who: string; what: string; status: string }[] = [
-  {
-    who: "ETHOnline 2026 (ETHGlobal) — Bazantic prize",
-    what: "vet402's pre-payment gate payOrRefuse won the prize “Help an Agent Use Your Hackathon Project” (500 USDC), announced 2026-09-17.",
-    status: "Awarded",
-  },
-];
+const RELATIONSHIPS: { who: string; what: string; status: string }[] = CREDENTIALS.credentials
+  .filter((c) => c.disclosure !== null)
+  .map((c) => ({ who: c.title, what: c.detail, status: c.disclosure!.status }));
 
 export default async function LegalNoticePage() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
@@ -70,19 +69,19 @@ export default async function LegalNoticePage() {
             <span>Instrument: legal notice</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">September 29, 2026</span>
+              Revision: <span className="text-signal">November 8, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>September 2026</span>
+            <span>November 2026</span>
           </div>
         </div>
         <div>
           <h1 className="doc-title mt-8">Legal Notice</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-          <p className="doc-note mt-3 text-center">Last updated: September 29, 2026</p>
+          <p className="doc-note mt-3 text-center">Last updated: November 8, 2026</p>
         </div>
 
         <section className="space-y-2">
@@ -219,13 +218,14 @@ export default async function LegalNoticePage() {
 
         {/* 2026-09-29: 独立性の開示。記録で確かめられた事実だけを載せる。 */}
         <section id="relationships" className="scroll-mt-24 space-y-3">
-          <h2 className="sec-head">Relationships: grants and prizes received</h2>
+          <h2 className="sec-head">Relationships: grants and prizes</h2>
           <p>
             vet402 calls itself an independent measurement. So that you can judge that for
-            yourself, these are the grants, prizes and funding vet402 has received as of September
-            29, 2026, including from parties connected to networks or payment companies whose
-            payments we measure. vet402 also applies to ecosystem grant programs and enters
-            hackathons; a row is added here when money or a prize is received.
+            yourself, these are the grants, prizes and funding vet402 has been awarded as of November
+            8, 2026, including from parties connected to networks or payment companies whose
+            payments vet402 measures. vet402 also applies to ecosystem grant programs and enters
+            hackathons. A row is added here when a prize is awarded, a grant selects vet402 or a
+            grant agreement is signed.
           </p>
           <ul className="space-y-3">
             {RELATIONSHIPS.map((r) => (
@@ -240,7 +240,7 @@ export default async function LegalNoticePage() {
             Separately, vet402 pays ordinary list prices to the businesses it uses: it buys from
             x402 sellers with its own funds to produce the measurement record, pays network fees on
             each chain, and bills paid plans through Stripe, one of the companies behind Tempo, a
-            network we measure. None of these is funding.
+            network vet402 measures. None of these is funding.
           </p>
           <p>
             <strong>Our rule:</strong> no grant, prize, application or payment changes how we

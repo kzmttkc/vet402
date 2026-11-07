@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 One credentials record for /about, the Legal Notice and llms-full.txt, and `adoption` in the state API
+
+- **What**: `src/lib/about/credentials.json` now feeds `/about` (with an Organization JSON-LD `award` list), the funding rows of `/legal/notice#relationships` and a "Who builds vet402" section in `llms-full.txt`. The Legal Notice lists the ETHOnline 2026 Bazantic prize, the Circle Arc Microgrants selection and the Prezenti grant on Celo (agreement signed 2026-10-31), and adds a row when a prize is awarded, a grant selects vet402 or a grant agreement is signed. `/about` names the builder as Sen only. `GET /api/v1/observatory/state` adds `adoption`: npm downloads of @vet402/sdk and the published monthly keyed decision calls by key owners outside vet402, each with its period, read time and source. `/about` shows both under "Use".
+- **Why**: Reviewers look for who builds vet402 and who uses it. Those facts now come from one record and one API field, so a grant cannot be on one page and missing from another, and grant applications can quote the same numbers.
+- **Impact**: The state API keeps every existing key. `adoption` reads only months already frozen in `decision_usage_monthly_published` and never freezes one. Amounts appear only where the other party published them.
+
 ## 2026-11-08 /impact's Abstract leads with what is published
 
 - **What**: The Abstract on `/impact` now starts with the published results (every purchase result, data under CC BY 4.0, MIT code, a daily hash-chain root) and points to §4 for how the chain is kept and what it can and cannot show. §4 is unchanged.
