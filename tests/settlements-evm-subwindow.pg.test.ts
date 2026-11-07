@@ -48,7 +48,8 @@ if (!TEST_DB) {
       INSERT INTO x402_endpoints (resource_key, resource_url, source, method, network, pay_to, price_amount, price_asset, status, resource_id)
       VALUES ('seller.example/api', 'https://seller.example/api', 'cdp_bazaar', 'GET', 'eip155:8453', ${PAYEE}, '10000', ${base.usdc.toLowerCase()}, 'active', 'res-base-sw')
     `);
-    const TIP = 50_000_000n;
+    // 0.2 秒ブロックに切り替わった 53,556,127 より後の tip（7 日の遡り ≈ 3,024,000 ブロックが 1 回の上限より長い）。
+    const TIP = 60_000_000n;
     const client = {
       getBlockNumber: async () => TIP,
       getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({ timestamp: 1_789_000_000n + blockNumber * 2n }),

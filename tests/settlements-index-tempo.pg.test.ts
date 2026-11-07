@@ -139,7 +139,12 @@ if (!TEST_DB) {
       ];
     }) as never;
     const baseSummary = await indexEvmChain(base, { client: client as never, getLogs: baseGetLogs, classifier, budgetMs: 30_000 });
-    assert.equal(baseCalls.length, Number(base.maxBlocksPerRun / base.subWindowBlocks!), "one Transfer query per 4,000-block window");
+    // tip（40,000,100）は 0.2 秒への切り替えより前なので、7 日の遡りは 2 秒ブロックの 302,400 で 1 回の上限より短い。
+    // 読む範囲は「遡り＋1」と上限の小さい方で、区切りの数はその切り上げ。
+    const baseSpan = initialLookbackBlocksAt(base, 40_000_100n - base.confirmations) + 1n;
+    const baseRead = baseSpan < base.maxBlocksPerRun ? baseSpan : base.maxBlocksPerRun;
+    const W = base.subWindowBlocks!;
+    assert.equal(baseCalls.length, Number((baseRead + W - 1n) / W), "one Transfer query per sub-window");
     assert.ok(baseCalls.every((n) => n === TRANSFER_EVENT.name), "Base asks for Transfer only (no TransferWithMemo)");
     assert.equal(baseSummary.logs, 2);
     assert.equal(baseSummary.inserted, 1);
