@@ -124,13 +124,13 @@ export default async function ImpactPage() {
         <div className="mt-8 flex flex-col gap-1 sm:flex-row sm:gap-0">
           <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
           <p className="min-w-0 max-w-[62ch] text-brand">
-            vet402 measures the x402 agent-payment economy by <strong>actually using it</strong>,
-            and gives the results away: the data is public, the code is MIT, and the purchase
-            ledger gets a daily prev-hash chain root, kept by vet402 itself (on-chain anchoring is
-            not yet enabled — see §4). A reader who saves a root can later tell whether the
-            published one changed; the chain does not stop vet402 from editing rows. This page states the contribution as
-            numbers — and every number below links to the endpoint that produces it, so you can
-            check it rather than trust it.
+            {/* 2026-11-08: what exists comes first. How the hash chain is kept, and what it can and
+                cannot show, is stated in full in §4 (moved, not removed). */}
+            vet402 measures the x402 agent-payment economy by <strong>actually buying from it</strong>,
+            and publishes every result. The data is open under CC BY 4.0, the code is MIT, and the
+            purchase ledger carries a daily hash-chain root. This page states the contribution as
+            numbers. Every number below links to the endpoint that produces it, so you can check it
+            rather than trust it. How the chain is kept, and what it can and cannot show, is in §4.
           </p>
         </div>
 

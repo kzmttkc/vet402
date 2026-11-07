@@ -496,12 +496,20 @@ claims:
     verified_at: 2026-09-04
   - id: impact_hash_anchored_a_daily_prev
     surface: src/app/impact/page.tsx
-    quote: "ledger gets a daily prev-hash chain root, kept by vet402 itself (on-chain anchoring is"
-    means: "購入台帳に日次 prev-hash 鎖の root がある。鎖は vet402 自身が持ち、オンチェーンのアンカーはまだ無効。保存した root が後で変わったかは分かるが、行の書き換えそのものは止めない（2026-09-29 監査4周目で「nobody can quietly rewrite it」を改めた）"
+    quote: "purchase ledger carries a daily hash-chain root"
+    means: "購入台帳に日次 prev-hash 鎖の root がある。鎖は vet402 自身が持ち、オンチェーンのアンカーはまだ無効で、その限界は §4 に全文で書く（2026-11-08 に Abstract から §4 へ移した。消してはいない）。保存した root が後で変わったかは分かるが、行の書き換えそのものは止めない（2026-09-29 監査4周目で「nobody can quietly rewrite it」を改めた）"
     check:
       url: https://vet402.com/api/v1/observatory/anchors
       assert: "anchors.0.rootHash != null"
     verified_at: 2026-09-04
+  - id: impact_abstract_publishes_every_result
+    surface: src/app/impact/page.tsx
+    quote: "and publishes every result."
+    means: "買った結果は届かなかった物も含めて全部公開している（台帳 export.csv に 1 試行 1 行）。下の impact_payments_before_signing_overcharging_or と同じ事実を Abstract で言う"
+    check:
+      url: https://vet402.com/api/v1/observatory/state
+      assert: "l1.attempts >= 1"
+    verified_at: 2026-11-08
   - id: impact_payments_before_signing_overcharging_or
     surface: src/app/impact/page.tsx
     quote: "unpayable walls) and published every one of them."

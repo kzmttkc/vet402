@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 /impact's Abstract leads with what is published
+
+- **What**: The Abstract on `/impact` now starts with the published results (every purchase result, data under CC BY 4.0, MIT code, a daily hash-chain root) and points to §4 for how the chain is kept and what it can and cannot show. §4 is unchanged.
+- **Why**: A reviewer reads the Abstract first. What the hash chain does not do is stated in §4 in full, so it was moved there, not removed.
+- **Impact**: Text only. The claims registry entry for the hash chain now quotes the new sentence.
+
 ## 2026-11-08 /status shows data freshness by chain, and the state API reads the shared data cache
 
 - **What**: `/status` has a new section 2, "Data freshness, by chain": for each chain the settlements index covers, when the index last saved its place, how far that place is behind the newest block (the time between the two blocks' own timestamps), and the measured block interval against the one the time windows assume. It is streamed, so slow chain reads do not hold the page. The deep health check reports the same interval as `block_interval` (`ok`, `drift:<chains>` or `unknown`, not critical). `scripts/uptime-cron.sh` writes ALERTS once when a chain's interval moves 2x or more, and once when a public page (or the state API) takes more than 0.8 s to its first byte three runs in a row. `GET /api/v1/observatory/state` now reads its aggregates through the same 5-minute data cache as the HTML pages, and `retrievedAt` is when those aggregates were read.
