@@ -23,11 +23,14 @@
 // 次の cron まで凍るという意味ではない。頁は readAt を出し、API の
 // retrievedAt とは別に読む。
 //
-// **API ルートはここを使わない。** `/api/v1/observatory/state` は body に
-// `retrievedAt` を入れて「取得時刻つきで引用してよい」と宣言している面なので、
-// このキャッシュを API に噛ませると、その時刻が充填時刻のまま残る。HTML 頁は
-// 同じ充填で readAt を刻み、描画のたびに新しい Date を出さない
-// （tests/public-page-cache.test.ts が、API ルートがこのファイルを import しないことを固定する）。
+// **API ルートはここを直接使わない。** `retrievedAt` を応答の時刻で刻む API にこのキャッシュを
+// 噛ませると、時刻だけ新しく数字が古い本文になる。HTML 頁は同じ充填で readAt を刻み、描画のたびに
+// 新しい Date を出さない。
+// 2026-11-08 の例外は 1 つ: `/api/v1/observatory/state` は src/lib/observatory/state-reads.ts を通して
+// ここを読み、`retrievedAt` を「集計を読んだ時刻」（充填の readAt のうち一番古いもの）に変えた。
+// CDN が外れた初回に全集計をその場で計算していた（2026-11-08 実測 4.15 秒）のを止めるため。
+// （tests/public-page-cache.test.ts が、API ルートがこのファイルを import しないことと、
+//  state-reads.ts が readAt から retrievedAt を作ることを固定する）。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";

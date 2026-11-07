@@ -6,7 +6,7 @@ import {
   ipRateLimitHeaders,
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
-import { getChainScope, getCoverageShare, getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
+import { readStateAggregates } from "@/lib/observatory/state-reads";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { getErc8004MatchCached } from "@/lib/observatory/erc8004-match";
@@ -46,11 +46,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [stats, byChain, chainScope, coverage, halt, erc8004] = await Promise.all([
-      getObservatoryStats(),
-      getObservatoryStatsByChain(),
-      getChainScope(),
-      getCoverageShare(),
+    // 2026-11-08: the same shared data cache the HTML pages read (state-reads.ts).
+    const [{ stats, byChain, chainScope, coverage, retrievedAt }, halt, erc8004] = await Promise.all([
+      readStateAggregates(),
       // 集計とは別に、毎回読み直す。ObservatoryStats に入れると公開頁側の
       // 300 秒の読み取りキャッシュに載り、止めた直後の 5 分間「止めていない」と
       // 表示し得る。止めた事実は即時に見えなければ意味がない。
@@ -58,8 +56,6 @@ export async function GET(request: NextRequest) {
       // 失敗しても投げない（status: "unavailable" で返る）ので、他の数を道連れにしない。
       getErc8004MatchCached(),
     ]);
-
-    const retrievedAt = new Date().toISOString();
     return NextResponse.json(
       {
         ...stats,

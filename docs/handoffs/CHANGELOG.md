@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 /status shows data freshness by chain, and the state API reads the shared data cache
+
+- **What**: `/status` has a new section 2, "Data freshness, by chain": for each chain the settlements index covers, when the index last saved its place, how far that place is behind the newest block (the time between the two blocks' own timestamps), and the measured block interval against the one the time windows assume. It is streamed, so slow chain reads do not hold the page. The deep health check reports the same interval as `block_interval` (`ok`, `drift:<chains>` or `unknown`, not critical). `scripts/uptime-cron.sh` writes ALERTS once when a chain's interval moves 2x or more, and once when a public page (or the state API) takes more than 0.8 s to its first byte three runs in a row. `GET /api/v1/observatory/state` now reads its aggregates through the same 5-minute data cache as the HTML pages, and `retrievedAt` is when those aggregates were read.
+- **Why**: Reviewers open `/status` to see whether vet402 runs. A data lag is not an outage, so it now has its own place instead of only showing up as a degraded day. A CDN miss on the state API recomputed every aggregate live (4.15 s on the first call, measured 2026-11-08).
+- **Also**: the settlements index now sizes BNB Chain and Tempo windows by their measured block interval (450.1 ms and 538.2 ms over the latest 100,000 blocks, read 2026-11-08), with the same number of days per run and lookback as before.
+- **Impact**: `/api/health` is unchanged (same body, same 200/503), so `.github/workflows/uptime.yml` and uptime-cron read it exactly as before. The state API's JSON shape is unchanged. The Freshness line for the state API in `llms.txt` says a copy can additionally be up to the data cache's age.
 ## 2026-11-08 The ERC-8004 match is one query with a bounded list
 
 - **What**: The `erc8004` read in the state API now runs one SQL statement that counts every match in the database and carries only the top 200 matches back, in place of two statements that returned every matching row. The cached reader is built from a factory (`makeErc8004CachedReader`) so tests can swap the cache wrapper. New tests cover counts taken from the SQL totals, an ok read that gets its readAt, a failure that is not cached and is retried on the next read, a broken cache wrapper, how the state route assembles an ok result (about, byChain, existing keys), and a payTo that owns several agents.

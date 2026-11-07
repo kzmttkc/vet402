@@ -16,7 +16,7 @@ test("BNB index: USD1 の 18 桁を 6 桁で記録し、BNB_RPC_URL が無けれ
   assert.equal(row.caip2, "eip155:56");
   assert.equal(row.usdc, BNB_USD1_ADDRESS);
   assert.equal(row.rpcEnv, "BNB_RPC_URL");
-  assert.equal(row.blocksPerDay, 86_400n);
+  assert.equal(row.blocksPerDay, 192_000n); // 2026-11-08 実測 450.1 ms/ブロック
   assert.ok(row.maxBlocksPerRun > row.blocksPerDay);
   const src = readFileSync("src/lib/settlements/index-evm.ts", "utf8");
   assert.equal(src.includes("bsc-dataseed"), false, "索引は公開 RPC の URL を持たない");

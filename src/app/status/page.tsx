@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import { headers } from "next/headers";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
 import { currentVerdict, getStatusHistory, STATUS_STALE_AFTER_MS, type CurrentVerdict } from "@/lib/health/snapshot";
+import { readChainFreshness, type ChainFreshness } from "@/lib/health/chain-freshness";
 
 /**
  * /status — B5, 2026-08-15. The record of vet402's own uptime, published the
@@ -75,12 +77,82 @@ function headWord(v: CurrentVerdict): string {
   return "not yet observed";
 }
 
+function fmtSeconds(s: number): string {
+  if (s < 120) return `${Math.round(s)} s`;
+  if (s < 7_200) return `${Math.round(s / 60)} min`;
+  if (s < 172_800) return `${(s / 3_600).toFixed(1)} h`;
+  return `${(s / 86_400).toFixed(1)} days`;
+}
+
+function fmtInterval(ms: number | null): string {
+  if (ms === null) return "\u2014";
+  return ms < 1_000 ? `${Math.round(ms)} ms` : `${(ms / 1_000).toFixed(ms < 10_000 ? 2 : 1)} s`;
+}
+
+function IntervalCell({ row }: { row: ChainFreshness }) {
+  if (row.expectedMsPerBlock === null) return <span className="text-brand-lift">&mdash;</span>;
+  const pair = `${fmtInterval(row.measuredMsPerBlock)} measured, ${fmtInterval(row.expectedMsPerBlock)} expected`;
+  if (row.interval === "drift") return <span className="text-warn-ink">{pair} (differs from assumed)</span>;
+  if (row.interval === "unknown") return <span className="text-brand-lift">not measured</span>;
+  return <span>{pair}</span>;
+}
+
 function fmtDay(date: string): string {
   return date;
 }
 
 function fmtDateTime(d: Date): string {
   return d.toISOString().slice(0, 16).replace("T", " ") + " UTC";
+}
+
+async function FreshnessTable() {
+  const freshness = await readChainFreshness();
+  return (
+    <>
+        {freshness === null ? (
+          <p className="doc-p text-brand-lift">
+            The index record could not be read when this page was built. Nothing here is assumed in
+            the meantime.
+          </p>
+        ) : (
+          <TableScroll label="Settlements index freshness by chain">
+            <table className="fact-table">
+              <caption className="sr-only">Settlements index freshness by chain</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Chain</th>
+                  <th scope="col">Index last saved</th>
+                  <th scope="col" className="num">
+                    Behind the newest block
+                  </th>
+                  <th scope="col">Block interval</th>
+                </tr>
+              </thead>
+              <tbody>
+                {freshness.map((row) => (
+                  <tr key={row.network}>
+                    <td className="whitespace-nowrap">{row.label}</td>
+                    <td className="whitespace-nowrap">
+                      {row.lastIndexedAt ? fmtDateTime(row.lastIndexedAt) : <span className="text-brand-lift">{row.note ?? "\u2014"}</span>}
+                    </td>
+                    <td className="num">
+                      {row.secondsBehind !== null ? (
+                        fmtSeconds(row.secondsBehind)
+                      ) : (
+                        <span className="text-brand-lift">{row.note === "indexed per payee" ? "per payee" : "not measured"}</span>
+                      )}
+                    </td>
+                    <td>
+                      <IntervalCell row={row} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
+    </>
+  );
 }
 
 export default async function StatusPage() {
@@ -176,6 +248,23 @@ export default async function StatusPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">2.</span>
+          <span>Data freshness, by chain</span>
+        </h2>
+        <p className="doc-p">
+          Status above says whether the service answers. This says how current the data behind
+          it is. For each chain, when vet402&apos;s settlements index last saved its place, how far
+          that place is behind the newest block (the time between the two blocks&apos; own
+          timestamps), and whether the chain&apos;s block interval still matches the number
+          vet402&apos;s time windows assume. A data lag is not an outage, so it does not change the
+          status above. Read at most two minutes before this page was built.
+        </p>
+        {/* Streamed: up to a few seconds of chain reads must not hold the first byte of the page. */}
+        <Suspense fallback={<p className="doc-p text-brand-lift">Reading the chains&hellip;</p>}>
+          <FreshnessTable />
+        </Suspense>
+
+        <h2 className="sec-head">
+          <span className="sec-no">3.</span>
           <span>Last 30 days, by day</span>
         </h2>
         <p className="doc-p">
@@ -243,7 +332,7 @@ export default async function StatusPage() {
         )}
 
         <h2 className="sec-head">
-          <span className="sec-no">3.</span>
+          <span className="sec-no">4.</span>
           <span>What ok / degraded / error mean here</span>
         </h2>
         <p className="doc-p">

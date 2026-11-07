@@ -100,6 +100,8 @@ if [[ -n "$TEAM_NOTE" ]]; then
   note_alert "$TEAM_NOTE — Vercel のチーム状態。プランか停止状態が変わった。課金ページ: https://vercel.com/gokaku/~/settings/billing"
 fi
 
+# 前の回の deep の本文を、下のブロック間隔の判定で読み違えないように消してから測る。
+rm -f /tmp/vouch-monitor.json
 if OUT=$(./scripts/smoke-production.sh 2>&1); then
   printf '%s\n[%s] OK\n' "$OUT" "$ts" >>"$LOG"
   if [[ -f "$FAIL_MARKER" ]]; then
@@ -153,4 +155,75 @@ Vercel がデプロイを止めている（$verr）。コードの不具合で�
     # マーカーは維持したまま最終アラート時刻を保つ（連投しない）。
     printf '%s\n%s\n%s\n' "$ts" "$last" "$first" >"$FAIL_MARKER"
   fi
+fi
+
+# 2026-11-08: ブロック間隔の変化を 1 回だけ知らせる。deep health の block_interval / block_schedule は
+# 重大扱いにしていない（monitor-health の 503 は smoke では失敗にならない）ので、ここで拾わないと誰にも届かない。
+# 11/05 の Base の 2 秒 → 0.2 秒は 2 日気づかなかった。smoke が書いた /tmp/vouch-monitor.json を読むだけで、
+# 追加の呼び出しはしない。マーカーがある間は書かず、戻ったら復旧を 1 行書く。
+INTERVAL_MARKER="logs/block-interval.ALERTED"
+interval_note=$(python3 - /tmp/vouch-monitor.json <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    checks = json.load(open(sys.argv[1])).get("checks") or {}
+except Exception:
+    sys.exit(0)
+bad = []
+bi = checks.get("block_interval")
+if isinstance(bi, str) and bi.startswith("drift"):
+    bad.append(f"block_interval={bi}")
+if checks.get("block_schedule") == "drift":
+    bad.append(f"block_schedule=drift（{checks.get('block_schedule_drift_s', '?')} 秒ずれ）")
+if bad:
+    print("DRIFT " + " / ".join(bad))
+elif bi == "ok" and checks.get("block_schedule") == "ok":
+    # 解消と言えるのは両方を実際に測って ok だったときだけ。401/403 の本文や unknown は解消ではない。
+    print("RESOLVED")
+PYEOF
+)
+if [[ "$interval_note" == DRIFT* ]]; then
+  interval_note="${interval_note#DRIFT }"
+  if [[ ! -f "$INTERVAL_MARKER" ]]; then
+    note_alert "チェーンのブロック間隔が、時間の窓が前提にしている値から 2 倍以上ずれた: $interval_note
+窓と遅れの判定（src/lib/chain/chains.ts の blocksPerDay・block-clock.ts の履歴、src/lib/settlements/index-evm.ts）を実測に合わせる。どのチェーンかは https://vet402.com/status の 2 節にも出る。"
+    printf '%s\n%s\n' "$ts" "$interval_note" >"$INTERVAL_MARKER"
+  fi
+elif [[ "$interval_note" == "RESOLVED" ]] && [[ -f "$INTERVAL_MARKER" ]]; then
+  [[ -f "$ALERTS" ]] && printf '\n## [%s] vet402 ブロック間隔のずれが解消 (uptime-cron)\n\n直前の知らせは解消。\n' "$ts" >>"$ALERTS"
+  rm -f "$INTERVAL_MARKER"
+fi
+
+# 2026-11-08: 公開ページの速さ。審査員は 1 回だけ開くので、冷えた 1 回が遅いと 11 秒に見える
+# （11/07 実測: /accuracy 初回 11.18 秒）。最初の 1 バイトまでが目標 0.8 秒を 3 回続けて超えたページを、
+# 1 回だけ知らせる。この呼び出し自体が 30 分ごとにキャッシュを温める。
+PAGE_TARGET_S="0.8"
+PAGE_STATE="logs/page-speed.state"
+PAGE_MARKER="logs/page-speed.ALERTED"
+page_slow=""
+new_state=""
+for path in / /about /accuracy /impact /sellers /observatory /status /api/v1/observatory/state; do
+  t=$(curl -sL -o /dev/null --max-time 20 -w '%{time_starttransfer}' "${PROD_URL:-https://vet402.com}$path" 2>/dev/null || echo "")
+  prev=$(grep -m1 "^$path " "$PAGE_STATE" 2>/dev/null | awk '{print $2}')
+  [[ "$prev" =~ ^[0-9]+$ ]] || prev=0
+  if [[ -z "$t" ]] || [[ "$t" == "0.000000" ]]; then
+    n=$prev   # 測れなかった回は数えも戻しもしない（ネットに出られない Mac）
+  elif awk -v a="$t" -v b="$PAGE_TARGET_S" 'BEGIN{exit !(a>b)}'; then
+    n=$((prev + 1))
+  else
+    n=0
+  fi
+  new_state+="$path $n $t"$'\n'
+  (( n >= 3 )) && page_slow+="$path ${t}s（${n} 回連続）、"
+done
+printf '%s' "$new_state" >"$PAGE_STATE"
+printf '[%s] page-speed %s\n' "$ts" "$(printf '%s' "$new_state" | awk '{printf "%s=%s ", $1, $3}')" >>"$LOG"
+if [[ -n "$page_slow" ]]; then
+  if [[ ! -f "$PAGE_MARKER" ]]; then
+    note_alert "公開ページの最初の 1 バイトまでが目標 ${PAGE_TARGET_S} 秒を 3 回続けて超えた: ${page_slow%、}
+キャッシュ（ISR・データキャッシュ）が効いているか、x-vercel-cache と Cache-Control を curl -sIL で見る。"
+    printf '%s\n%s\n' "$ts" "$page_slow" >"$PAGE_MARKER"
+  fi
+elif [[ -f "$PAGE_MARKER" ]]; then
+  [[ -f "$ALERTS" ]] && printf '\n## [%s] vet402 公開ページの速さが目標に戻った (uptime-cron)\n\n直前の知らせは解消。\n' "$ts" >>"$ALERTS"
+  rm -f "$PAGE_MARKER"
 fi

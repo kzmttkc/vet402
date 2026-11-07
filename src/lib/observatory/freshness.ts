@@ -55,11 +55,16 @@ export const PUBLIC_FRESHNESS: readonly FreshnessRow[] = [
     mechanism:
       "no `Cache-Control`; each server instance reuses a decision it computed for up to 5 minutes (`DECISION_CACHE_TTL_MS`), so a copy can be up to 5 minutes old",
   },
-  cc(
-    "`GET /api/v1/observatory/state`",
-    ["src/app/api/v1/observatory/state/route.ts"],
-    "public, s-maxage=900, stale-while-revalidate=1800",
-  ),
+  {
+    ...cc(
+      "`GET /api/v1/observatory/state`",
+      ["src/app/api/v1/observatory/state/route.ts"],
+      "public, s-maxage=900, stale-while-revalidate=1800",
+    ),
+    // 2026-11-08: a CDN miss reads the aggregates through the pages' 5-minute data cache, not live.
+    mechanism:
+      "On a miss the aggregates come from the same 5-minute data cache as the HTML pages, so a copy can be older by that much, or more once after a quiet spell. `retrievedAt` in the body is when the aggregates were read",
+  },
   cc(
     "`GET /api/v1/observatory/decisions`",
     ["src/app/api/v1/observatory/decisions/route.ts"],
@@ -127,7 +132,7 @@ export const FRESHNESS_LEAD =
 export function freshnessLines(): string[] {
   return PUBLIC_FRESHNESS.map((r) =>
     r.cacheControl
-      ? `- ${r.surface}: \`Cache-Control: ${r.cacheControl}\` — a copy can be up to ${humanDuration(r.maxStaleSec)} old.`
+      ? `- ${r.surface}: \`Cache-Control: ${r.cacheControl}\` — a copy can be up to ${humanDuration(r.maxStaleSec)} old.${r.mechanism ? ` ${r.mechanism}.` : ""}`
       : `- ${r.surface}: ${r.mechanism}.`,
   );
 }

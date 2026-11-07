@@ -85,6 +85,13 @@ test("API ルートは cached-reads を使わない（retrievedAt を嘘にし�
   assert.deepEqual(offenders, []);
 });
 
+test("state API の唯一の例外: state-reads.ts を通り、retrievedAt は充填の readAt から作る（2026-11-08）", () => {
+  const reads = read("src/lib/observatory/state-reads.ts");
+  assert.match(reads, /from "@\/lib\/observatory\/cached-reads"/);
+  assert.match(reads, /const retrievedAt = \[statsReadAt, coverageReadAt, byChainRead\.readAt\]\.sort\(\)\[0\]/);
+  assert.doesNotMatch(reads, /retrievedAt[^\n]*new Date\(\)\.toISOString\(\)[^\n]*\n[^\n]*statsReadAt/);
+});
+
 test("公開頁用のキャッシュはどれも PUBLIC_READ_REVALIDATE の窓を使う（面ごとに刻まない）", () => {
   for (const file of [
     "src/lib/observatory/cached-reads.ts",

@@ -215,6 +215,22 @@ export async function runDeepHealthChecks(): Promise<DeepHealthResult> {
     checks.settlements_index = "error";
   }
 
+  // 2026-11-08: every indexed chain's block interval, measured from two real blocks, against the
+  // number its windows assume. Not critical (a changed interval is not an outage, and /api/health
+  // must not move): scripts/uptime-cron.sh reads this value and writes ALERTS once per change.
+  try {
+    const { readChainFreshness } = await import("@/lib/health/chain-freshness");
+    const freshness = await readChainFreshness();
+    if (freshness === null) {
+      checks.block_interval = "unknown";
+    } else {
+      const drifted = freshness.filter((r) => r.interval === "drift").map((r) => r.label);
+      checks.block_interval = drifted.length > 0 ? `drift:${drifted.join("+")}` : "ok";
+    }
+  } catch {
+    checks.block_interval = "unknown";
+  }
+
   // 実行時の支出停止スイッチの現在値（2026-09-05 監査 P0・kill-switch.ts）。
   // **degraded にはしない**——停止は障害ではなく運用者の意思決定で、正常な
   // 状態のひとつ。だが「なぜ L1 が 1 件も買っていないのか」を調べる人が

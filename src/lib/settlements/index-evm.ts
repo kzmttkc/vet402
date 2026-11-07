@@ -289,10 +289,12 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     chainId: BNB_CHAIN_ID,
     usdc: BNB_USD1_ADDRESS,
     rpcEnv: "BNB_RPC_URL",
-    initialLookbackBlocks: 86_400n * 7n,
-    maxBlocksPerRun: 86_400n * 2n,
+    // 2026-11-08: 実測 450.1 ms/ブロック（BNB Chain の公開 RPC で直近 100,000 ブロックの時刻差・1 日 191,957）。
+    // 1 秒の見積もりのままだと 2 日ぶんの走査が 1 日に届かず、遅れの判定も 2.2 倍甘い。日数は据え置き、ブロック数を実測に合わせる。
+    initialLookbackBlocks: 192_000n * 7n,
+    maxBlocksPerRun: 192_000n * 2n,
     confirmations: 64n,
-    blocksPerDay: 86_400n,
+    blocksPerDay: 192_000n,
     makeClient: () => {
       const rpc = process.env.BNB_RPC_URL?.trim();
       if (!rpc) throw new Error("BNB_RPC_URL_unset");
@@ -316,10 +318,12 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     chainId: TEMPO_CHAIN_ID,
     usdc: TEMPO_USDC_E as Address,
     rpcEnv: "TEMPO_RPC_URL",
-    initialLookbackBlocks: 86_400n * 3n,
-    maxBlocksPerRun: 86_400n * 2n,
+    // 2026-11-08: 実測 538.2 ms/ブロック（rpc.tempo.xyz の直近 100,000 ブロックの時刻差・1 日 160,544）。
+    // 上の「~1 秒」の見積もりから日数は据え置き、ブロック数を実測に合わせる。
+    initialLookbackBlocks: 160_500n * 3n,
+    maxBlocksPerRun: 160_500n * 2n,
     confirmations: 64n,
-    blocksPerDay: 86_400n,
+    blocksPerDay: 160_500n,
     memoTransfers: true,
     makeClient: () => {
       const rpc = tempoRpcUrl();
