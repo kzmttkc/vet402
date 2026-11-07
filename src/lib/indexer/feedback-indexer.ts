@@ -58,7 +58,7 @@ export type FeedbackIndexResult = {
 
 /**
  * Blocks per run. Since 2026-11-05 Base produces 432,000 blocks a day (0.2 s)
- * and the cron runs every 3 hours (vercel.json, ≈54,000 blocks), so steady
+ * and the cron runs every 30 minutes (vercel.json, ≈9,000 blocks per run), so steady
  * state needs a fraction of this; the headroom is for catching up after missed
  * runs. One run reads at most ~22 hours of 0.2 s chain time.
  */
@@ -73,7 +73,7 @@ const DEFAULT_MAX_BLOCKS = 400_000n;
  * 読む量が増え、どこかで落ちる見込みも増えるので、遅れた索引ほど追いつけない形だった。
  * 区切りごとに「読む → 書く → checkpoint を進める」にすると、落ちた回も手前までは残る。
  *
- * 20,000 ブロック ≈ Base の 11 時間。平常（3 時間ごとの cron で 5,400 ブロック）は
+ * 20,000 ブロック ≈ Base の 67 分（0.2 秒ブロック）。平常（30 分ごとの cron で約 9,000 ブロック）は
  * 1 区切りで終わるので、平常時の書き込みの回数は変わらない。
  */
 const DEFAULT_SEGMENT_BLOCKS = 20_000n;

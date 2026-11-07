@@ -217,6 +217,9 @@ function liveScanChunkBlocks(): bigint {
  * be kind to the RPC during nightly catch-up, and its mere presence forces
  * getLogsChunked onto its strictly-sequential path — correct for a cron, wrong
  * for a request someone is waiting on.
+ *
+ * The tail stays under ~30 minutes of chain time because index-feedback runs
+ * every 30 minutes (vercel.json).
  */
 const TAIL_SCAN_CONCURRENCY = 2;
 const TAIL_SCAN_DEADLINE_MS = 2_500;

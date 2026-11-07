@@ -42,11 +42,7 @@
     },
     {
       "path": "/api/cron/index-feedback",
-      "schedule": "0 2 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 14 * * *"
+      "schedule": "0,30 * * * *"
     },
     {
       "path": "/api/cron/monitor-health",
@@ -147,30 +143,6 @@
     {
       "path": "/api/cron/notify-subscribers",
       "schedule": "0 15 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 20 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 11 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 17 * * *"
-    },
-    {
-      "path": "/api/cron/index-feedback",
-      "schedule": "0 23 * * *"
     }
   ]
 }
