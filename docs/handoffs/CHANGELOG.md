@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 The ERC-8004 match is one query with a bounded list
+
+- **What**: The `erc8004` read in the state API now runs one SQL statement that counts every match in the database and carries only the top 200 matches back, in place of two statements that returned every matching row. The cached reader is built from a factory (`makeErc8004CachedReader`) so tests can swap the cache wrapper. New tests cover counts taken from the SQL totals, an ok read that gets its readAt, a failure that is not cached and is retried on the next read, a broken cache wrapper, how the state route assembles an ok result (about, byChain, existing keys), and a payTo that owns several agents.
+- **Why**: The list stays bounded however many agents one payTo owns, and the read takes one round trip (about 4.0 s to 1.7 s from a local client to the production database, 2026-11-08). scannedAgents stays an exact count (73 ms server side in EXPLAIN ANALYZE), not an estimate.
+- **Impact**: Same response shape and the same numbers in production (100 agents, 76 payTo, 1,645 purchase rows). export.csv and every other state API key are unchanged.
+
 ## 2026-11-08 The state API counts purchases from ERC-8004 registered agents
 
 - **What**: `/api/v1/observatory/state` adds a top-level `erc8004` object. It counts exact lowercase address equality between the payTo of vet402's purchase rows and the owner of an agent in vet402's index of the ERC-8004 Identity Registry on Base (and the agentWallet, once that index holds rows): `scannedAgents`, `matchedAgents`, `matchedPayTo`, `matchedPurchases` (each purchase row once, even when its payTo owns several agents), `matchedSettled`, `byChain` with `indexBlock`, up to 200 `matches` and `notes`. Ethereum and BNB Chain say `not_indexed`. A failed read says `status: "unavailable"` with no counts. It is read from the database only, cached for the same 300 seconds as the public aggregates, and carries its own `readAt`. New module `src/lib/observatory/erc8004-match.ts`, documented in `docs/openapi.yaml` and a short paragraph on the methodology page (`#erc8004`).

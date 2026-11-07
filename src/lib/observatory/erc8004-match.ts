@@ -36,7 +36,19 @@ export type Erc8004MatchInput =
       ownerMatches: Erc8004MatchRow[];
       /** null = agentWallet の索引が空（走査していない）。[] = 走査して一致なし。 */
       walletMatches: Erc8004MatchRow[] | null;
+      /**
+       * 全件の数を SQL で数えた時に渡す。行は上位だけ（一覧用）なので、数はこちらを使う。
+       * 無い時は渡された行から数える。
+       */
+      totals?: Erc8004MatchTotals;
     };
+
+export type Erc8004MatchTotals = {
+  matchedAgents: number;
+  matchedPayTo: number;
+  matchedPurchases: number;
+  matchedSettled: number;
+};
 
 export type Erc8004Match = {
   agentId: string;
@@ -90,6 +102,38 @@ export function summarizeErc8004Match(input: Erc8004MatchInput): Erc8004MatchSum
     ...(input.walletMatches ?? []).map((r) => toMatch(r, "agent_wallet")),
   ];
 
+  const totals = input.totals ?? totalsFromRows(matches);
+
+  const listed = [...matches]
+    // SQL の ORDER BY（purchases DESC, pay_to COLLATE "C", agent_id の数の順）と同じ順。
+    .sort((a, b) => b.purchases - a.purchases || compareBytes(a.payTo, b.payTo) || compareIds(a.agentId, b.agentId))
+    .slice(0, MAX_LISTED);
+
+  const notIndexed = Object.fromEntries(NOT_INDEXED_CHAINS.map((c) => [c, { status: "not_indexed" as const }])) as {
+    "eip155:1": Erc8004NotIndexedChain;
+    "eip155:56": Erc8004NotIndexedChain;
+  };
+
+  return {
+    status: "ok",
+    checkedAt: input.checkedAt,
+    scannedAgents: input.scannedAgents,
+    ...totals,
+    byChain: {
+      [ERC8004_INDEXED_CHAIN]: {
+        status: "scanned",
+        scannedAgents: input.scannedAgents,
+        matchedAgents: totals.matchedAgents,
+        indexBlock: input.indexBlock,
+      },
+      ...notIndexed,
+    },
+    matches: listed,
+    notes: input.walletMatches === null ? [ERC8004_AGENT_WALLET_EMPTY_NOTE] : [],
+  };
+}
+
+function totalsFromRows(matches: Erc8004Match[]): Erc8004MatchTotals {
   const agents = new Set(matches.map((m) => m.agentId));
   // 実データでは同じ payTo の行は同じ (purchases, settled) を持つので 1 回だけ足す。
   // 数の違う行は別の購入の集計として足す（合格の表の 1 本目）。
@@ -109,35 +153,7 @@ export function summarizeErc8004Match(input: Erc8004MatchInput): Erc8004MatchSum
     }
   }
 
-  const listed = [...matches]
-    .sort((a, b) => b.purchases - a.purchases || a.payTo.localeCompare(b.payTo) || compareIds(a.agentId, b.agentId))
-    .slice(0, MAX_LISTED);
-
-  const notIndexed = Object.fromEntries(NOT_INDEXED_CHAINS.map((c) => [c, { status: "not_indexed" as const }])) as {
-    "eip155:1": Erc8004NotIndexedChain;
-    "eip155:56": Erc8004NotIndexedChain;
-  };
-
-  return {
-    status: "ok",
-    checkedAt: input.checkedAt,
-    scannedAgents: input.scannedAgents,
-    matchedAgents: agents.size,
-    matchedPayTo: countsByPayTo.size,
-    matchedPurchases,
-    matchedSettled,
-    byChain: {
-      [ERC8004_INDEXED_CHAIN]: {
-        status: "scanned",
-        scannedAgents: input.scannedAgents,
-        matchedAgents: agents.size,
-        indexBlock: input.indexBlock,
-      },
-      ...notIndexed,
-    },
-    matches: listed,
-    notes: input.walletMatches === null ? [ERC8004_AGENT_WALLET_EMPTY_NOTE] : [],
-  };
+  return { matchedAgents: agents.size, matchedPayTo: countsByPayTo.size, matchedPurchases, matchedSettled };
 }
 
 function toMatch(r: Erc8004MatchRow, matchKind: Erc8004Match["matchKind"]): Erc8004Match {
@@ -151,14 +167,21 @@ function toMatch(r: Erc8004MatchRow, matchKind: Erc8004Match["matchKind"]): Erc8
   };
 }
 
+function compareBytes(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 function compareIds(a: string, b: string): number {
-  return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+  return a.length - b.length || compareBytes(a, b);
 }
 
 /**
- * 照合の SQL（完全一致だけ）。先に購入側の payTo（約 2,000 種）を小文字で畳み、
- * そこから owner_agents（約 110 万行）と agents を索引で引く。
- * match_kind 'owner' | 'agent_wallet' の行を返す。
+ * 照合の SQL（完全一致だけ）。1 往復で 1 行を返す。
+ * 先に購入側の payTo（約 2,000 種）を小文字で畳み、そこから owner_agents（約 110 万行）と
+ * agents を索引で引く。数（agent・payTo・購入・settled）は全件を SQL の中で数え、
+ * 一覧は上位 200 行だけを top（JSON）で運ぶ。購入は paid の側で payTo ごとに 1 回だけ足す。
+ * 2026-11-08 本番の EXPLAIN ANALYZE: owner_agents の件数 73ms（並列の全件走査）、照合 53ms（索引のみ）。
+ * scannedAgents は公開する数なので推定（reltuples）にしない。窓は 300 秒。
  */
 export const ERC8004_MATCH_SQL = `
 WITH paid AS (
@@ -168,19 +191,29 @@ WITH paid AS (
   FROM x402_l1_purchases
   WHERE pay_to IS NOT NULL
   GROUP BY lower(pay_to)
+),
+m AS (
+  SELECT 'owner' AS match_kind, oa.agent_id, paid.pay_to, paid.purchases, paid.settled
+  FROM paid
+  JOIN owner_agents oa ON oa.owner = paid.pay_to
+  UNION ALL
+  SELECT 'agent_wallet' AS match_kind, a.agent_id, paid.pay_to, paid.purchases, paid.settled
+  FROM paid
+  JOIN agents a ON a.wallet = paid.pay_to AND a.chain_id = 8453
 )
-SELECT 'owner' AS match_kind, oa.agent_id::text AS agent_id, paid.pay_to, paid.purchases, paid.settled
-FROM paid
-JOIN owner_agents oa ON oa.owner = paid.pay_to
-UNION ALL
-SELECT 'agent_wallet' AS match_kind, a.agent_id::text AS agent_id, paid.pay_to, paid.purchases, paid.settled
-FROM paid
-JOIN agents a ON a.wallet = paid.pay_to AND a.chain_id = 8453
-`;
-
-const COUNTS_SQL = `
-SELECT (SELECT count(*) FROM owner_agents)::bigint::text AS scanned_agents,
-       (SELECT count(*) FROM agents WHERE wallet IS NOT NULL AND chain_id = 8453)::int AS wallet_rows
+SELECT
+  (SELECT count(*) FROM owner_agents)::bigint::text AS scanned_agents,
+  (SELECT count(*) FROM agents WHERE wallet IS NOT NULL AND chain_id = 8453)::int AS wallet_rows,
+  (SELECT count(DISTINCT agent_id) FROM m)::int AS matched_agents,
+  (SELECT count(DISTINCT pay_to) FROM m)::int AS matched_pay_to,
+  (SELECT coalesce(sum(purchases), 0) FROM paid WHERE pay_to IN (SELECT pay_to FROM m))::bigint::text AS matched_purchases,
+  (SELECT coalesce(sum(settled), 0) FROM paid WHERE pay_to IN (SELECT pay_to FROM m))::bigint::text AS matched_settled,
+  (SELECT coalesce(json_agg(t), '[]'::json) FROM (
+     SELECT match_kind, agent_id::text AS agent_id, pay_to, purchases, settled
+     FROM m
+     ORDER BY m.purchases DESC, m.pay_to COLLATE "C", m.agent_id
+     LIMIT ${MAX_LISTED}
+   ) t) AS top
 `;
 
 function rowsOf(raw: unknown): Record<string, unknown>[] {
@@ -196,31 +229,34 @@ export async function readErc8004Match(): Promise<Erc8004MatchSummary> {
     const indexBlock = await getIndexerCheckpoint(OWNER_INDEX_CHECKPOINT);
     if (indexBlock === null) return summarizeErc8004Match({ checkedAt, error: "owner_index_checkpoint_unreadable" });
 
-    const [countsRaw, matchRaw] = await Promise.all([
-      db.execute(sql.raw(COUNTS_SQL)),
-      db.execute(sql.raw(ERC8004_MATCH_SQL)),
-    ]);
-    const counts = rowsOf(countsRaw)[0];
-    if (!counts) return summarizeErc8004Match({ checkedAt, error: "agent_counts_unreadable" });
+    const row = rowsOf(await db.execute(sql.raw(ERC8004_MATCH_SQL)))[0];
+    if (!row) return summarizeErc8004Match({ checkedAt, error: "agent_counts_unreadable" });
 
+    const top = (typeof row.top === "string" ? JSON.parse(row.top) : (row.top ?? [])) as Record<string, unknown>[];
     const ownerMatches: Erc8004MatchRow[] = [];
     const walletMatches: Erc8004MatchRow[] = [];
-    for (const r of rowsOf(matchRaw)) {
-      const row = {
+    for (const r of top) {
+      const match = {
         agentId: String(r.agent_id),
         payTo: String(r.pay_to),
         purchases: Number(r.purchases),
         settled: Number(r.settled),
       };
-      (r.match_kind === "agent_wallet" ? walletMatches : ownerMatches).push(row);
+      (r.match_kind === "agent_wallet" ? walletMatches : ownerMatches).push(match);
     }
 
     return summarizeErc8004Match({
       checkedAt,
-      scannedAgents: Number(counts.scanned_agents),
+      scannedAgents: Number(row.scanned_agents),
       indexBlock: indexBlock.toString(),
       ownerMatches,
-      walletMatches: Number(counts.wallet_rows) > 0 ? walletMatches : null,
+      walletMatches: Number(row.wallet_rows) > 0 ? walletMatches : null,
+      totals: {
+        matchedAgents: Number(row.matched_agents),
+        matchedPayTo: Number(row.matched_pay_to),
+        matchedPurchases: Number(row.matched_purchases),
+        matchedSettled: Number(row.matched_settled),
+      },
     });
   } catch (error) {
     // 公開の reason は固定の語だけ。DB の文言（接続先など）は外に出さずログへ。
@@ -237,25 +273,46 @@ class Erc8004Unavailable extends Error {
   }
 }
 
-const readErc8004MatchCachedInner = unstable_cache(
-  async (): Promise<Erc8004MatchRead> => {
-    const summary = await readErc8004Match();
-    // 失敗を窓のあいだ居座らせない: 投げて unstable_cache に保存させない。
-    if (summary.status !== "ok") throw new Erc8004Unavailable(summary);
-    return { ...summary, readAt: summary.checkedAt };
-  },
-  ["observatory:erc8004-match:readAt"],
-  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory", "erc8004"] },
-);
+type CacheFn = typeof unstable_cache;
 
-/** 公開の集計と同じ窓で載せる。失敗は保存せず、その場の unavailable を返す。 */
-export async function getErc8004MatchCached(): Promise<Erc8004MatchRead> {
-  try {
-    return await readErc8004MatchCachedInner();
-  } catch (error) {
-    if (error instanceof Erc8004Unavailable) return { ...error.summary, readAt: error.summary.checkedAt };
-    logServerErrorSafe("erc8004_match_cache", error);
-    const checkedAt = new Date().toISOString();
-    return { status: "unavailable", checkedAt, reason: "query_failed", readAt: checkedAt };
-  }
+/**
+ * キャッシュの包みを差し替えられる形で作る（本番は unstable_cache。テストは tsx の中で
+ * incrementalCache が無く unstable_cache が投げるので、素通しの包みで成功の経路を試す）。
+ */
+export function makeErc8004CachedReader(
+  cache: CacheFn,
+  read: () => Promise<Erc8004MatchSummary> = readErc8004Match,
+): () => Promise<Erc8004MatchRead> {
+  const inner = cache(
+    async (): Promise<Erc8004MatchRead> => {
+      const summary = await read();
+      // 失敗を窓のあいだ居座らせない: 投げて unstable_cache に保存させない。
+      if (summary.status !== "ok") throw new Erc8004Unavailable(summary);
+      return { ...summary, readAt: summary.checkedAt };
+    },
+    ["observatory:erc8004-match:readAt"],
+    { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory", "erc8004"] },
+  );
+  /** 公開の集計と同じ窓で載せる。失敗は保存せず、その場の unavailable を返す。 */
+  return async () => {
+    try {
+      return await inner();
+    } catch (error) {
+      if (error instanceof Erc8004Unavailable) return { ...error.summary, readAt: error.summary.checkedAt };
+      logServerErrorSafe("erc8004_match_cache", error);
+      const checkedAt = new Date().toISOString();
+      return { status: "unavailable", checkedAt, reason: "query_failed", readAt: checkedAt };
+    }
+  };
+}
+
+let cachedReader = makeErc8004CachedReader(unstable_cache);
+
+/** テストの差し替え口。null で本番の unstable_cache に戻す。 */
+export function __setErc8004CacheForTests(cache: CacheFn | null): void {
+  cachedReader = makeErc8004CachedReader(cache ?? unstable_cache);
+}
+
+export function getErc8004MatchCached(): Promise<Erc8004MatchRead> {
+  return cachedReader();
 }
