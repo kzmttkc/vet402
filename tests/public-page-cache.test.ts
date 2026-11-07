@@ -43,10 +43,34 @@ test("集計を出す公開頁は cached-reads 経由で読む", () => {
       ["getObservatoryStatsCached", "getObservatoryStatsByChainCached", "getCoverageShareCached"],
     ],
     ["src/app/observatory/methodology/page.tsx", ["getUnverifiedBreakdownCached"]],
+    [
+      "src/app/accuracy/page.tsx",
+      [
+        "getAccuracyReportCached",
+        "getBenchmarkReportCached",
+        "getL0AccuracyCached",
+        "getSloSnapshotCached",
+      ],
+    ],
+    [
+      "src/app/impact/page.tsx",
+      [
+        "getImpactHeadlineCached",
+        "getSpendGuardBacktestCached",
+        "getDecisionFeed30Cached",
+        "getImpactAnchorsCached",
+        "getLatestSettledReceipts5Cached",
+      ],
+    ],
   ];
   for (const [file, symbols] of expected) {
     const src = read(file);
-    assert.ok(src.includes('from "@/lib/observatory/cached-reads"'), `${file} が cached-reads を読んでいない`);
+    assert.ok(
+      src.includes('from "@/lib/observatory/cached-reads"') ||
+        src.includes('from "@/lib/scoring/accuracy-cached-reads"') ||
+        src.includes('from "@/lib/observatory/impact-cached-reads"'),
+      `${file} が公開頁用 cached-reads を読んでいない`,
+    );
     for (const sym of symbols) {
       assert.ok(src.includes(sym), `${file} に ${sym} が無い`);
     }
@@ -54,10 +78,24 @@ test("集計を出す公開頁は cached-reads 経由で読む", () => {
 });
 
 test("API ルートは cached-reads を使わない（retrievedAt を嘘にしない）", () => {
+  const pattern = /cached-reads|accuracy-cached-reads|impact-cached-reads/;
   const offenders = filesUnder(join(ROOT, "src/app/api"))
-    .filter((f) => /cached-reads/.test(readFileSync(f, "utf8")))
+    .filter((f) => pattern.test(readFileSync(f, "utf8")))
     .map((f) => f.slice(ROOT.length));
   assert.deepEqual(offenders, []);
+});
+
+test("公開頁用のキャッシュはどれも PUBLIC_READ_REVALIDATE の窓を使う（面ごとに刻まない）", () => {
+  for (const file of [
+    "src/lib/observatory/cached-reads.ts",
+    "src/lib/scoring/accuracy-cached-reads.ts",
+    "src/lib/observatory/impact-cached-reads.ts",
+  ]) {
+    const src = read(file);
+    const windows = [...src.matchAll(/revalidate:\s*([A-Za-z0-9_]+)/g)].map((m) => m[1]);
+    assert.ok(windows.length > 0, `${file} に revalidate が無い`);
+    for (const w of windows) assert.equal(w, "PUBLIC_READ_REVALIDATE", `${file} が独自の窓 ${w} を使っている`);
+  }
 });
 
 test("鮮度の窓は 1 つだけで、頁と API の食い違いが 10 分を超えない", () => {

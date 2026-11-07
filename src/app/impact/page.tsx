@@ -6,12 +6,13 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { formatUsdcUnits } from "@/lib/util/usd";
 import {
-  getCoverageShare,
-  getObservatoryStats,
-} from "@/lib/observatory/reader";
-import { computeSpendGuardBacktest } from "@/lib/observatory/backtest";
-import { getDecisionFeed, getLatestSettledReceipts } from "@/lib/observatory/decisions";
-import { getAnchors } from "@/lib/observatory/anchors";
+  getImpactHeadlineCached,
+  getSpendGuardBacktestCached,
+  getDecisionFeed30Cached,
+  getImpactAnchorsCached,
+  getLatestSettledReceipts5Cached,
+  withoutReadAt,
+} from "@/lib/observatory/impact-cached-reads";
 import { explorerTxUrl } from "@/lib/observatory/chains";
 import { WideColumn } from "@/components/site/WideColumn";
 import { TableScroll } from "@/components/site/TableScroll";
@@ -36,19 +37,32 @@ export const metadata: Metadata = pageMetadata({
 export const revalidate = 900;
 
 
+async function settledRead<T>(p: Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await p };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export default async function ImpactPage() {
-  const drawnAt = new Date().toISOString();
-  const [stats, coverage, backtest, decisions, anchors, receipts] = await Promise.all([
-    getObservatoryStats(),
-    getCoverageShare(),
-    computeSpendGuardBacktest().catch(() => null),
-    getDecisionFeed(30).catch(() => null),
-    getAnchors(1).catch(() => []),
-    getLatestSettledReceipts(5).catch(() => []),
+  // stats と coverage は 1 つの読み（同じ段落に並ぶので同じ時点の数にする）。失敗したら頁ごと落とすのは変更前と同じ。
+  // 残り 4 つは失敗しても頁を出す（変更前の .catch と同じ値に倒す）。全部を 1 段で並列に読む。
+  const [headline, backtestR, decisionsR, anchorsR, receiptsR] = await Promise.all([
+    getImpactHeadlineCached(),
+    settledRead(getSpendGuardBacktestCached()),
+    settledRead(getDecisionFeed30Cached()),
+    settledRead(getImpactAnchorsCached()),
+    settledRead(getLatestSettledReceipts5Cached()),
   ]);
-  const latestAnchor = anchors[0] ?? null;
+  const { stats, coverage } = headline;
+  const backtest = backtestR.ok ? withoutReadAt(backtestR.value) : null;
+  const decisions = decisionsR.ok ? withoutReadAt(decisionsR.value) : null;
+  const receipts = receiptsR.ok ? receiptsR.value.rows : [];
+  const latestAnchor = (anchorsR.ok ? anchorsR.value.rows : [])[0] ?? null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
-  const retrievedOn = drawnAt.slice(0, 10);
+  const drawnAt = headline.readAt;
+  const retrievedOn = headline.readAt.slice(0, 10);
   const webPage = webPageJsonLd({
     name: "Impact",
     description: IMPACT_DESCRIPTION,
@@ -142,7 +156,7 @@ export default async function ImpactPage() {
               <strong>{coverage.activeEndpoints.toLocaleString()}</strong> active records (
               <strong>{coverage.pct}%</strong>) carry an independent L0 measurement from the last 7
               days. That is the machine definition of &quot;under regular verification&quot;. This
-              page drew that share at {drawnAt}. The response at /api/v1/observatory/state carries
+              page read that share at {drawnAt}. The response at /api/v1/observatory/state carries
               its own retrievedAt.
             </>
           )}{" "}

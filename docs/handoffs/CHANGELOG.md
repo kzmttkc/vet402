@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-07 /accuracy and /impact read their aggregates from the data cache
+
+- **What**: New `src/lib/scoring/accuracy-cached-reads.ts` and `src/lib/observatory/impact-cached-reads.ts` put the page aggregates in the Next data cache with the time each was read (`readAt`): on /accuracy the 90-day accuracy and benchmark reports, the L0 rates and the SLO snapshot , read in parallel instead of one after another; on /impact the stats and coverage share as one read, the spend-guard backtest, the 30-day decision feed, the latest anchor and the latest settled receipts. All use the same 300-second window as the other public pages (`PUBLIC_READ_REVALIDATE`). A read that fails is not cached; the page falls back exactly as before. The times the pages print ("in the past 168 hours to …", "as of …", "read on …", "read that share at …", the cite-as date) are the read times, not the render time.
+- **Why**: Every public page renders per request because of the CSP nonce, and these two pages ran their aggregate SQL on every request. Measured on 2026-11-07 (time to first byte): /accuracy 12.7 s cold and 5.0 s warm, /impact 3.8 s and 2.3 s.
+- **Impact**: Figures on both pages can be up to 5 minutes old, and each says when it was read. API routes do not use these caches (`tests/public-page-cache.test.ts`). No change to the CSP, export.csv, the payment path or any API response. Tests: `tests/accuracy-impact-cache.test.ts`.
+
 ## 2026-11-07 The feedback index runs every 30 minutes
 
 - **What**: `vercel.json` schedules `/api/cron/index-feedback` every 30 minutes (`0,30 * * * *`) instead of eight daily runs three hours apart. Comment updates in `feedback-indexer.ts`, `index-feedback/route.ts`, and `erc8004.ts`. New test `tests/feedback-cron-cadence.test.ts` asserts the largest gap between runs is at most 30 minutes and the project stays within Vercel's 100-cron limit.

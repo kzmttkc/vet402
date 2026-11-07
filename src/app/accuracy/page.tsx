@@ -8,17 +8,20 @@ import { formatPct1 } from "@/lib/util/pct";
 import { VerdictBadge } from "@/components/site/VerdictBadge";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
-import { computeAccuracyReport, type AccuracyReport } from "@/lib/scoring/accuracy";
-import { computeBenchmarkReport, type BenchmarkReport } from "@/lib/scoring/benchmark-report";
-import { fetchAccuracyRows, fetchBenchmarkRows } from "@/lib/db/outcome-reader";
 import {
-  computeL0Accuracy,
-  fetchL0AccuracyInput,
-  fetchSloSnapshot,
-  sloRows,
-  type L0Accuracy,
-  type SloRow,
-} from "@/lib/scoring/l0-accuracy";
+  getAccuracyReportCached,
+  getBenchmarkReportCached,
+  getL0AccuracyCached,
+  getSloSnapshotCached,
+  withoutReadAt,
+  type AccuracyReportRead,
+  type BenchmarkReportRead,
+  type L0AccuracyRead,
+  type SloSnapshotRead,
+} from "@/lib/scoring/accuracy-cached-reads";
+import { computeAccuracyReport } from "@/lib/scoring/accuracy";
+import { computeBenchmarkReport } from "@/lib/scoring/benchmark-report";
+import { sloRows, type SloRow } from "@/lib/scoring/l0-accuracy";
 
 /**
  * /accuracy — the page competitors cannot copy without doing the work.
@@ -104,61 +107,74 @@ function Rate({ value }: { value: number | null }) {
   return <span className="text-brand-deep">{value}%</span>;
 }
 
-// 描画の外で現在時刻を読む（React の規則: 描画中に Date.now() を呼ばない）。頁は revalidate=600 で
-// 作り直されるので、ここでの「今」は最長 10 分古い。遅れの判定（8 日超）には十分。
-function daysSince(iso: string): number {
-  return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+// 2026-11-07: 表示時刻は描画時刻ではなく Data Cache が埋まった readAt（SQL の now() の代理）。
+function readOnUtc(readAt: string): string {
+  return readAt.slice(0, 10);
 }
 
-// 2026-09-29 敵対的監査 4 周目: 「this week」「N days ago」は読まれた日で意味が変わる。頁を作った UTC の日付で書く。
-function generatedOnUtc(): string {
-  return new Date().toISOString().slice(0, 10);
+function readAtLabel(readAt: string): string {
+  return `${readAt.slice(0, 16).replace("T", " ")} UTC`;
 }
 
-// 2026-09-29 監査 6 周目: 「the 7 days to 2026-09-29 (UTC)」は暦の 7 日に読めるが、SQL は
-// `now() - interval '7 days'`（頁を作った時刻から遡る 168 時間）。語を計算に合わせ、終わりを分まで書く。
-function generatedAtUtc(): string {
-  return `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
+function daysSince(iso: string, refMs: number): number {
+  return Math.floor((refMs - new Date(iso).getTime()) / 86_400_000);
+}
+
+async function settledRead<T>(p: Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
+  try {
+    return { ok: true, value: await p };
+  } catch {
+    return { ok: false };
+  }
 }
 
 export default async function AccuracyPage() {
-  let report: AccuracyReport;
-  try {
-    report = computeAccuracyReport(await fetchAccuracyRows(90));
-  } catch {
-    report = computeAccuracyReport([]);
+  const [accuracyR, benchmarkR, l0R, sloR] = await Promise.all([
+    settledRead(getAccuracyReportCached()),
+    settledRead(getBenchmarkReportCached()),
+    settledRead(getL0AccuracyCached()),
+    settledRead(getSloSnapshotCached()),
+  ]);
+  const readAts: string[] = [];
+  for (const r of [accuracyR, benchmarkR, l0R, sloR]) {
+    if (r.ok) readAts.push(r.value.readAt);
   }
-
+  // 4 読みが全部失敗したときだけ描画時刻。成功読みの readAt を失敗側に載せないと表示ラベルが無い。
+  const fallbackReadAt = readAts[0] ?? new Date().toISOString();
+  const accuracyRead: AccuracyReportRead =
+    accuracyR.ok ? accuracyR.value : { ...computeAccuracyReport([]), readAt: fallbackReadAt };
   // Operator benchmark — self-seeded on purpose, and therefore fetched,
   // computed, and rendered as its OWN section: fetchAccuracyRows excludes
   // these rows at the SQL layer, so nothing here can pad the external
   // figures above. See src/lib/benchmark/dataset.ts for the address sources.
-  let benchmark: BenchmarkReport;
-  try {
-    benchmark = computeBenchmarkReport(await fetchBenchmarkRows(90));
-  } catch {
-    benchmark = computeBenchmarkReport([]);
-  }
-
+  const benchmarkRead: BenchmarkReportRead =
+    benchmarkR.ok ? benchmarkR.value : { ...computeBenchmarkReport([]), readAt: fallbackReadAt };
   // 2026-09-29 監査: L0 の誤 fail 率は /api/v1/accuracy の l0 にだけ出ていて、
   // 目標（3%）を超えている週も HTML には何も出ていなかった。API と同じ関数で数え、
   // 目標との比較ごと出す（都合の悪い週ほど見える場所に置く）。
-  const l0: L0Accuracy | null = await fetchL0AccuracyInput()
-    .then(computeL0Accuracy)
-    .catch(() => null);
-
+  const l0Read: L0AccuracyRead | null = l0R.ok ? l0R.value : null;
   // 2026-09-29 再監査: c1・c2 などの SLO は API の `slo` にだけ出ていて、目標を大きく下回っても
   // HTML には何も出ていなかった（上の注記は「目標を外したら印字する」と言っている）。同じ関数で読む。
-  const slo = await fetchSloSnapshot().catch(() => null);
+  const sloRead: SloSnapshotRead | null = sloR.ok ? sloR.value : null;
+  const report = withoutReadAt(accuracyRead);
+  const benchmarkReadAt = benchmarkRead.readAt;
+  const benchmark = withoutReadAt(benchmarkRead);
+  const l0 = l0Read?.l0 ?? null;
+  const slo = sloRead?.slo ?? null;
   const sloTable: SloRow[] = slo ? sloRows(slo) : [];
   const sloMisses = sloTable.filter((row) => row.ok === false);
 
+  const l0ReadAt = l0Read?.readAt;
+  const sloReadAt = sloRead?.readAt;
+  const l0At = l0ReadAt ? readAtLabel(l0ReadAt) : sloReadAt ? readAtLabel(sloReadAt) : readAtLabel(benchmarkReadAt);
+  const sloAt = sloReadAt ? readAtLabel(sloReadAt) : l0At;
+
   // 「Weekly」と書いていたが、実行が止まった週があった（2026-09-16 の後、09-29 まで 0 件）。
   // 予定と実績を分けて出す: 予定は vercel.json の週次 cron、実績は最後の scan の日付。
-  const benchmarkAgeDays = benchmark.lastScanAt ? daysSince(benchmark.lastScanAt) : null;
+  const benchmarkRefMs = new Date(benchmarkReadAt).getTime();
+  const benchmarkAgeDays = benchmark.lastScanAt ? daysSince(benchmark.lastScanAt, benchmarkRefMs) : null;
   const benchmarkOverdue = benchmarkAgeDays !== null && benchmarkAgeDays > 8;
-  const generatedOn = generatedOnUtc();
-  const generatedAt = generatedAtUtc();
+  const readOn = readOnUtc(benchmarkReadAt);
 
   const hasAnyData = report.observedVerdicts > 0;
   const benchmarkAddresses = benchmark.knownBad.total + benchmark.knownGood.total;
@@ -313,7 +329,7 @@ export default async function AccuracyPage() {
             <p className="doc-note mt-4 max-w-[70ch]">
               {l0.slo.false_fail_ok === false || l0.slo.false_pass_ok === false ? (
                 <>
-                  At least one of these rates is above its target in the past 168 hours to {generatedAt}.
+                  At least one of these rates is above its target in the past 168 hours to {l0At}.
                   We print it here rather than leave it in the JSON.{" "}
                 </>
               ) : null}
@@ -375,7 +391,7 @@ export default async function AccuracyPage() {
               ) : null}
               Same figures as <code className="text-brand-deep">slo</code> in{" "}
               <code className="text-brand-deep">GET /api/v1/accuracy</code>, computed by the same
-              function, as of {generatedAt}.
+              function, as of {sloAt}.
               {slo.unmeasured.length > 0 ? (
                 <>
                   {" "}Not measured here: {slo.unmeasured.map((k, i) => (
@@ -397,7 +413,7 @@ export default async function AccuracyPage() {
           <p className="doc-note mt-4 max-w-[70ch]">
             Three L1 figures that sound alike count different things. (1) The row above:{" "}
             {slo.l1_7d.request_errors.toLocaleString("en-US")} of{" "}
-            {slo.l1_7d.attempts.toLocaleString("en-US")} L1 attempts in the past 168 hours to {generatedAt}, any
+            {slo.l1_7d.attempts.toLocaleString("en-US")} L1 attempts in the past 168 hours to {sloAt}, any
             status, ended with vet402&apos;s own purchase run not completing (<code>request_error</code> or an
             unfinished <code>in_flight</code>); those rows are not in the ledger export. (2) Held rows: of the{" "}
             {slo.l1_7d.signed.toLocaleString("en-US")} attempts in the same 168 hours where vet402 signed a payment,{" "}
@@ -677,7 +693,7 @@ export default async function AccuracyPage() {
               Scans recorded nothing from 2026-10-08 to 2026-10-30, while the index behind the agent resolver had stopped updating.{" "}
               {benchmarkOverdue ? (
                 <>
-                  The most recent scan is {benchmarkAgeDays} days before this page was generated on {generatedOn} (UTC):
+                  The most recent scan is {benchmarkAgeDays} days before this page was read on {readOn} (UTC):
                   the scheduled weekly pass has not recorded a scan since, so the figures above are older
                   than the schedule suggests.{" "}
                 </>

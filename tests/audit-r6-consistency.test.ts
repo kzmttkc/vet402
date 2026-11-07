@@ -62,7 +62,7 @@ test("1. 公開面は % を自前で丸めない（pct.ts を通す）", () => {
 test("2. /accuracy の窓は 168 時間と終わりの時刻で書く", () => {
   const page = read("src/app/accuracy/page.tsx");
   assert.doesNotMatch(page, /7 days to \{generatedOn\}/);
-  assert.ok(page.includes("past 168 hours to {generatedAt}"));
+  assert.ok(page.includes("past 168 hours to {l0At}"));
   // 計算は変えていない（SQL は now() - interval '7 days' のまま）
   assert.ok(read("src/lib/scoring/l0-accuracy.ts").includes("attempted_at > now() - interval '7 days'"));
 });

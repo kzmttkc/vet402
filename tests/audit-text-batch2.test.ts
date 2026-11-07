@@ -143,7 +143,7 @@ test("A-14 fills cite from the response clock and marks the last history day unf
   assert.match(page, /The last point is not a finished day/);
   assert.match(page, /The last day is partial because the rollup clock is lastRollupAt/);
   const impact = read("src/app/impact/page.tsx");
-  assert.match(impact, /page drew that share at \{drawnAt\}/);
+  assert.match(impact, /page read that share at \{drawnAt\}/);
   const home = read("src/app/page.tsx");
   assert.match(home, /page read \$\{coverage\.readAt\}/);
   assert.equal(read("src/lib/observatory/cached-reads.ts").includes("Recomputed at most daily"), false);
