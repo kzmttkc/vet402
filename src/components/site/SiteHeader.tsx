@@ -43,8 +43,9 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 // モバイルの抽斗にだけ出す二次動線。デスクトップではフッタの索引/奥付が担う。
-// 2026-11-07 /about を新設したので向け先を変えた。
+// 2026-11-07 /about を新設したので向け先を変えた。2026-11-08 /connect（買う側・売る側を選ぶ入口）を先頭に足した。
 const NAV_SECONDARY: NavItem[] = [
+  { label: "Connect", href: "/connect" },
   { label: "Accuracy", href: "/accuracy" },
   { label: "Leaderboard", href: "/leaderboard" },
   { label: "Status", href: "/status" },

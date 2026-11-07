@@ -1,0 +1,62 @@
+{
+  "name": "vet402",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./buyer": {
+      "types": "./dist/buyer.d.ts",
+      "import": "./dist/buyer.js"
+    },
+    "./seller": {
+      "types": "./dist/seller.d.ts",
+      "import": "./dist/seller.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "npm run build && node --test 'test/*.test.mjs'"
+  },
+  "dependencies": {
+    "@vet402/middleware": "^0.5.0",
+    "@vet402/sdk": "^0.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5"
+  },
+  "description": "Put vet402 between AI agents. Both sides trade safely. One package for the buyer side and the seller side of an x402 payment.",
+  "license": "MIT",
+  "author": "KIZUNA Creation",
+  "homepage": "https://vet402.com/connect",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kzmttkc/vet402.git",
+    "directory": "packages/vet402"
+  },
+  "keywords": [
+    "x402",
+    "ai-agents",
+    "agent-payments",
+    "agent-to-agent",
+    "buyer",
+    "seller",
+    "sdk"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

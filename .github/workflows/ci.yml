@@ -56,12 +56,13 @@ jobs:
       # root の npm ci だけでは解決できず、ビルドが TS2307 で落ちる。
       # 手元では node_modules が既にあるので緑に見えていた——クリーンな
       # チェックアウトで初めて出る欠陥クラス。sdk / middleware は依存ゼロだが、
-      # 将来の追加で同じ穴が空かないよう3つとも入れる。
-      - name: Install package deps (sdk / middleware / mcp-server)
+      # 将来の追加で同じ穴が空かないよう4つとも入れる。
+      - name: Install package deps (sdk / middleware / mcp-server / vet402)
         run: |
           npm ci --prefix packages/sdk
           npm ci --prefix packages/middleware
           npm ci --prefix packages/mcp-server
+          npm ci --prefix packages/vet402
       - name: Typecheck
         run: npm run typecheck
       - name: Lint

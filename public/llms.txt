@@ -63,6 +63,7 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 - https://vet402.com/observatory/state — aggregate rates for the whole observed catalog, broken out by chain
 - https://vet402.com/observatory/methodology — full definitions for L0 Liveness, L1 Settle-through and L2 Conformance: what each level measures, what it cannot measure, and the publication gate that keeps one bad sample from branding an endpoint dead
 - https://vet402.com/docs/api — API reference, including copy-paste curl commands that need no key
+- https://vet402.com/connect: start as a buyer, a seller or both, in three steps, with curl, TypeScript, Python, MCP, no-code, Express, Hono or Next.js. The single `vet402` package (buyer and seller sides in one install) is not yet on npm.
 - https://vet402.com/docs/mcp: the hosted MCP server at https://vet402.com/mcp. It returns what vet402 recorded when it paid x402 listings, is read only, needs no key, and costs nothing to call.
 - `GET /api/v1/check?url=` — the same answer as MCP `check_x402_seller`: what vet402 recorded when it paid an x402 URL (`recommendation`, `delivery`, the five latest purchases, `verified_terms`). Key-less; shares the per-IP rate limit with `/api/v1/resolve`. The CDN may serve a response up to 60 seconds old, and up to five more minutes while it refreshes in the background. Optional `method=` narrows the HTTP method like `/api/v1/resolve`. `url` must be https (http is 400 `invalid_url`).
 - https://vet402.com/accuracy — public accuracy ledger: past verdicts, outcomes, and misfire rate

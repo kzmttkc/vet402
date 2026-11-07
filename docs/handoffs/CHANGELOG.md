@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 One package and one page to start on either side
+
+- **What**: `packages/vet402` (npm name `vet402`, 0.1.0, not published) gives one entry point: `check(url)` reads `/api/v1/resolve` and then the payer decision, `vet402/buyer` re-exports `@vet402/sdk` plus `check`, and `vet402/seller` re-exports `@vet402/middleware`. `/connect` lets a reader pick I buy, I sell or Both and shows three steps with real snippets for curl, TypeScript, Python, MCP, no-code, Express, Hono and Next.js. `/connect` is in the sitemap, the mobile menu, the footer and `llms.txt`.
+- **Why**: Both sides of an agent payment start from one name and one page.
+- **Impact**: Root `npm test` runs the new package suite, so `scripts/push-main.sh --full` now expects six `ℹ fail 0` lines, and CI runs `npm ci --prefix packages/vet402`. No payment code and no change to the public APIs of the existing packages. Publishing to npm waits for the owner.
+
 ## 2026-11-08 Key-less REST twin of MCP check_x402_seller
 
 - **What**: `GET /api/v1/check?url=` returns the same JSON as MCP `check_x402_seller` through `checkSeller` and `mcpDeps()`. Query validation follows export-style `invalid_query`, MCP-style https-only `invalid_url`, and `invalid_method`. Responses share the resolve IP bucket; cacheable 200s use shared-cache rate-limit headers. Handler module `src/lib/api/check-handler.ts`, route `src/app/api/v1/check/route.ts`.

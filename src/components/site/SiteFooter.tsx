@@ -47,6 +47,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
     caption: "Use",
     label: "Use vet402",
     links: [
+      { label: "Connect", href: "/connect" },
       { label: "API reference", href: "/docs/api" },
       { label: "Get an API key", href: "/signup" },
       { label: "Dashboard", href: "/dashboard" },

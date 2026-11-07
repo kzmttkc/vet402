@@ -1,0 +1,285 @@
+/* /connect の色。are.na の原理（白地に黒、細い罫、太さと余白で階層）。色は R = G = B の灰だけ。
+   暗色は持たない: 共有のヘッダとフッタが明るい色だけなので、この頁だけ暗くすると明るい枠の中に黒い島ができる。
+  globals.css の紺の輪郭と選択色は、この頁の中では地と字で塗り替える。 */
+
+.page {
+  --ground: #ffffff;
+  --ink: #000000;
+  --ink-soft: #333333;
+  --muted: #5c5c5c;
+  --faint: #6e6e6e;
+  --line: #dedede;
+  --surface: #f7f7f7;
+  --hover: #f7f7f7;
+  --code-hover: #dedede;
+
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+  padding: 3rem 1.5rem 2.5rem;
+  background: var(--ground);
+  color: var(--ink);
+  color-scheme: light;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 16px;
+  }
+}
+
+.page :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.page ::selection {
+  background: var(--ink);
+  color: var(--ground);
+}
+
+.page h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.75rem;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.article {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  min-width: 0;
+}
+
+.lede {
+  max-width: 62ch;
+  margin: 0.75rem auto 0;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.rule {
+  width: 100%;
+  max-width: 34ch;
+  height: 0;
+  margin: 1.5rem auto 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.foot {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.84375rem;
+}
+
+.link {
+  color: var(--ink);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+.chooser,
+.panel,
+.stack,
+.codeWrap {
+  min-width: 0;
+}
+
+.chooser,
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.panel[hidden] {
+  display: none;
+}
+
+.tablist {
+  display: flex;
+  border: 1px solid var(--ink);
+}
+
+.tab {
+  flex: 1 1 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  appearance: none;
+}
+
+.tab + .tab {
+  border-left: 1px solid var(--ink);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--ground);
+}
+
+.tab:hover:not([aria-selected="true"]) {
+  background: var(--hover);
+}
+
+.summary {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 0.9375rem;
+  list-style: none;
+}
+
+.mark {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stackHeading {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84375rem;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--line);
+}
+
+.noteText {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.84375rem;
+}
+
+.codeWrap {
+  position: relative;
+}
+
+.code {
+  margin: 0;
+  min-height: 48px;
+  max-width: 100%;
+  padding: 12px 56px 12px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+  scrollbar-color: var(--faint) var(--surface);
+}
+
+.page .code:focus-visible {
+  outline-offset: -2px;
+}
+
+.code::-webkit-scrollbar {
+  height: 12px;
+}
+
+.code::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+.code::-webkit-scrollbar-thumb {
+  background: var(--faint);
+  border: 3px solid var(--surface);
+}
+
+.code::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+.copy {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.copy:hover {
+  background: var(--code-hover);
+}
+
+.icon {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+}
+
+.switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.switchBtn {
+  min-height: 44px;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--ink);
+  background: var(--ground);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.switchBtn:hover {
+  background: var(--hover);
+}

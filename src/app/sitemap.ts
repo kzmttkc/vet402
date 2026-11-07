@@ -26,6 +26,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/`, lastModified: REV_2026_10_31, changeFrequency: "weekly", priority: 1 },
     { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_31, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/docs/mcp`, lastModified: "2026-10-28", changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE_URL}/connect`, lastModified: "2026-11-08", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE_URL}/leaderboard`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.7 },
     { url: `${SITE_URL}/status`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.6 },
