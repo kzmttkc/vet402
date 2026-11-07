@@ -2,7 +2,7 @@
  * SiteFooter — the page foot of the document.
  *
  * 2026-08-13 vet402: the three-part RFC page foot
- * (`vet402 · Building in public · [Page 1]`) closes every page, under the
+ * (`vet402 · Independent Measurement · [Page 1]`) closes every page, under the
  * double rule that opens a memo's back matter. The index below it is set as an
  * RFC index, not as a marketing sitemap.
  *
@@ -58,6 +58,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
     caption: "About",
     label: "About vet402",
     links: [
+      { label: "About vet402", href: "/about" },
       { label: "FAQ", href: "/faq" },
       { label: "Blog", href: "/blog" },
       { label: "Status", href: "/status" },
@@ -109,7 +110,7 @@ export function SiteFooter({ pathname = "" }: { pathname?: string }) {
         {/* RFC page foot — three parts, left / centre / right. */}
         <div className="flex items-baseline justify-between gap-3 pt-3 text-[0.84375rem] text-brand-lift">
           <Wordmark className="text-[0.84375rem]" />
-          <span className="hidden sm:inline">Building in public</span>
+          <span className="hidden sm:inline">Independent Measurement</span>
           <span>[Page 1]</span>
         </div>
 

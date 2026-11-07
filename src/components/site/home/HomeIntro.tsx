@@ -15,11 +15,13 @@ export function HomeIntro({
   readAt,
   settled4xx,
   example,
+  statusLabel,
 }: {
   ledger: HomeLedger | null;
   readAt: string | null;
   settled4xx: number | null;
   example: HomeExample | null;
+  statusLabel: string;
 }) {
   const big = `${DISPLAY} font-bold tracking-[-0.03em] text-brand-deep`;
   const share = ledger ? lowestChainShareLine(ledger.chains) : "";
@@ -29,7 +31,7 @@ export function HomeIntro({
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-b border-brand-deep pb-3 text-[0.84375rem] text-brand-lift">
         <span className="text-brand-deep">Request for Verification: 402</span>
         <span>
-          Status: <span className="text-signal">Building in public</span>
+          Status: <span className="text-signal">{statusLabel}</span>
         </span>
       </div>
 

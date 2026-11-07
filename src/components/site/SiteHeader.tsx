@@ -43,16 +43,13 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 // モバイルの抽斗にだけ出す二次動線。デスクトップではフッタの索引/奥付が担う。
-// 2026-08-14: 非開発者ペルソナ（P2/P3/P6）が「誰が運営しているか」に辿り着け
-// なかった。デスクトップはフッタ Operator 欄に Legal Notice があるが、モバイルの
-// Menu には運営者への導線が1本も無かったので About（=運営者情報の Legal
-// Notice）を足す。新規ページは作らず既存の /legal/notice へ繋ぐだけ。
+// 2026-11-07 /about を新設したので向け先を変えた。
 const NAV_SECONDARY: NavItem[] = [
   { label: "Accuracy", href: "/accuracy" },
   { label: "Leaderboard", href: "/leaderboard" },
   { label: "Status", href: "/status" },
   { label: "Blog", href: "/blog" },
-  { label: "About", href: "/legal/notice" },
+  { label: "About", href: "/about" },
 ];
 
 // 節アンカー（/#methodology）は頁そのものではないので現在地にしない。

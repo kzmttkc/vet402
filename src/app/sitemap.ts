@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
+import { CREDENTIALS } from "@/lib/about/credentials";
 import { SITE_URL } from "@/lib/site-url";
 
 // 静的頁の lastmod（2026-08-14）。`new Date()` を使うとデプロイのたびに全頁が
@@ -89,6 +90,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/legal/terms`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE_URL}/legal/privacy`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },
     { url: `${SITE_URL}/legal/notice`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE_URL}/about`, lastModified: CREDENTIALS.revision, changeFrequency: "monthly", priority: 0.5 },
   ];
 
   const postRoutes: MetadataRoute.Sitemap = getAllPosts().map((post) => ({

@@ -25,6 +25,7 @@ import { WideColumn } from "@/components/site/WideColumn";
 import { getHomeExampleCached } from "@/lib/observatory/home-example";
 import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
+import { liveStatusLabel } from "@/lib/about/live-status-label";
 
 export const metadata = pageMetadata({
   title: "vet402: verify x402 payments for AI agents",
@@ -52,11 +53,12 @@ export const metadata = pageMetadata({
  * "Chains" and keeps its anchor `#chains`; the old §6 "Status of this work" is §5 now.
  */
 
-const HEAD_LEFT = [
+type HeadLeftRow = { label: string; value: string | null; signal?: boolean };
+
+const HEAD_LEFT: HeadLeftRow[] = [
   { label: "Network Working Group", value: null },
   { label: "Request for Verification", value: "402" },
   { label: "Category", value: "Independent Measurement" },
-  { label: "Status", value: "Building in public", signal: true },
 ];
 
 // 2026-08-13 UX監査R1 [D4]: 4ペルソナが独立に「ヘッダは trust scores を
@@ -136,6 +138,9 @@ export default async function Home() {
     getHomeExampleCached().catch(() => null),
   ]);
   const ledger = homeLedgerOf(stats);
+  const latestPurchaseAt = example?.latest[0]?.attemptedAt ?? null;
+  const statusValue = liveStatusLabel(latestPurchaseAt, stats?.readAt ?? null);
+  const headLeft: HeadLeftRow[] = [...HEAD_LEFT, { label: "Status", value: statusValue, signal: true }];
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
   );
@@ -244,6 +249,7 @@ export default async function Home() {
           readAt={stats?.readAt ?? null}
           settled4xx={ledger ? (stats?.l1.inconclusiveSettled ?? null) : null}
           example={example}
+          statusLabel={statusValue}
         />
 
         {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
@@ -284,7 +290,7 @@ export default async function Home() {
             占めていた。行間と2列間の空きだけを詰める（文字サイズも行数も同じ）。 */}
         <div className="doc-head mt-8 max-sm:gap-2 max-sm:leading-[1.3] sm:mt-10">
           <div className="doc-head-col">
-            {HEAD_LEFT.map((row) => (
+            {headLeft.map((row) => (
               <span key={row.label}>
                 {row.label}
                 {row.value ? ": " : ""}
