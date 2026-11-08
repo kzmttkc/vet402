@@ -319,7 +319,7 @@ the body is not empty.
 await payChecked({ url: "https://api.example.org/v1/quote", rules: { maxPerTxUsd: 0.1, requireAllow: true }, amountUsd: 0.05, account, fetch })
 ```
 
-`refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, or `payee_unknown` when neither resolve nor the decision names a payee.
+`refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, or `payee_unknown` when neither resolve nor the decision names a payee. A key left pending after a crash stays `payment_pending` and is not paid, so check on chain whether it was paid before calling again with a different idempotency key. Only records written by `payChecked` count toward the limit, and a payment made by calling `payOrRefuse` directly is not counted.
 
 ## SpendGuard — pre-payment policy for agents
 

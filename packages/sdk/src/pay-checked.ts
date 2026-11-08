@@ -7,9 +7,11 @@
  *
  * Calls on one store are exclusive from the read through that pending write:
  * an in-process queue, plus a `<store>.lock` file taken with `openSync(path, "wx")`.
- * The payment runs after the lock is released. The pending line is then replaced
- * by one settled or failed line, so a finished call stays a single row and the
- * pending spend is not counted twice.
+ * A lock whose owner pid is alive stays, however old its timestamp is. A dead
+ * pid is reclaimed by renaming the lock aside, reading it again, and deleting
+ * it only when that pid is still dead. The payment runs after the lock is
+ * released. A settled or failed line is appended after the pending line, and
+ * the pending id is closed so that spend is not counted twice.
  *
  * `payOrRefuse` is called as it stands. This file does not sign anything itself
  * and does not touch `account` / `svm` until that call.
@@ -94,7 +96,7 @@ type CheckedState = "pending" | "settled" | "failed";
 
 type SavedChecked = {
   state?: CheckedState;
-  /** Matches the pending row to the settled or failed row that replaces it. */
+  /** Matches the pending row to the settled or failed row appended after it. */
   pendingId?: string;
   idempotencyKey?: string | null;
   rulesJson?: string;
@@ -259,7 +261,6 @@ async function readJson(response: { json?: () => Promise<unknown> }): Promise<un
 
 const PAY_CHECKED_STOPS: readonly PayCheckedStop[] = ["store_unreadable", "payment_pending", "payee_unknown"];
 const LOCK_LIMIT_MS = 10_000;
-const LOCK_STALE_MS = 60_000;
 const LOCK_RETRY_MS = 20;
 
 class StoreLockError extends Error {
@@ -307,39 +308,61 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-/** A lock whose pid is gone, or whose timestamp is older than 60 seconds, may be removed. */
-function lockIsStale(lockPath: string, fs: NodeFs): boolean {
+type LockOwner = "alive" | "dead" | "absent" | "unknown";
+
+/** Alive wins over the timestamp. Only a dead pid may be removed. */
+function lockOwner(lockPath: string, fs: NodeFs): LockOwner {
   let raw: string;
   try {
     raw = fs.readFileSync(lockPath, "utf8");
   } catch (error) {
-    if (errnoCode(error) === "ENOENT") return true;
-    try {
-      return Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS;
-    } catch {
-      return true;
+    return errnoCode(error) === "ENOENT" ? "absent" : "unknown";
+  }
+  try {
+    const row = JSON.parse(raw) as { pid?: unknown };
+    if (typeof row.pid === "number" && Number.isInteger(row.pid) && row.pid > 0) {
+      return pidAlive(row.pid) ? "alive" : "dead";
     }
+  } catch {
+    return "unknown";
+  }
+  return "unknown";
+}
+
+/**
+ * Rename the lock to `<lock>.stale.<our pid>.<random>`, then read that file
+ * and delete it only when it still names a dead pid. A live pid is not moved
+ * back; the caller stops with store_unreadable.
+ */
+function reclaimDeadLock(lockPath: string, fs: NodeFs): void {
+  const dest = `${lockPath}.stale.${process.pid}.${Math.random().toString(16).slice(2)}`;
+  try {
+    fs.renameSync(lockPath, dest);
+  } catch (error) {
+    if (errnoCode(error) === "ENOENT") return;
+    throw new StoreLockError("store_unreadable");
+  }
+  let raw: string;
+  try {
+    raw = fs.readFileSync(dest, "utf8");
+  } catch {
+    throw new StoreLockError("store_unreadable");
   }
   let pid = Number.NaN;
-  let at = Number.NaN;
   try {
-    const row = JSON.parse(raw) as { pid?: unknown; at?: unknown };
+    const row = JSON.parse(raw) as { pid?: unknown };
     if (typeof row.pid === "number") pid = row.pid;
-    if (typeof row.at === "number") at = row.at;
   } catch {
-    pid = Number.NaN;
-    at = Number.NaN;
+    throw new StoreLockError("store_unreadable");
   }
-  // An empty or half-written lock has no pid yet. Leave a fresh one alone.
-  if (!Number.isFinite(pid) || !Number.isFinite(at)) {
-    try {
-      return Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS;
-    } catch {
-      return true;
-    }
+  if (!Number.isInteger(pid) || pid <= 0 || pidAlive(pid)) {
+    throw new StoreLockError("store_unreadable");
   }
-  if (Date.now() - at > LOCK_STALE_MS) return true;
-  return !pidAlive(pid);
+  try {
+    fs.unlinkSync(dest);
+  } catch {
+    // The original path is already clear.
+  }
 }
 
 function createLock(fs: NodeFs, lockPath: string): { ok: true; held: LockHeld } | { ok: false; fatal: boolean; message: string } {
@@ -382,13 +405,8 @@ async function acquireStoreLock(store: string): Promise<LockHeld> {
     const created = createLock(fs, lockPath);
     if (created.ok) return created.held;
     if (created.fatal) throw new StoreLockError(created.message);
-    if (lockIsStale(lockPath, fs)) {
-      try {
-        fs.unlinkSync(lockPath);
-      } catch {
-        // Another caller removed it, or replaced it. Try again.
-      }
-    }
+    const owner = lockOwner(lockPath, fs);
+    if (owner === "dead") reclaimDeadLock(lockPath, fs);
     if (Date.now() - started >= LOCK_LIMIT_MS) throw new StoreLockError("store_unreadable");
     const remaining = LOCK_LIMIT_MS - (Date.now() - started);
     await sleep(Math.max(1, Math.min(LOCK_RETRY_MS, remaining)));
@@ -480,7 +498,7 @@ function spendShapeBroken(payChecked: Record<string, unknown>): boolean {
   if (!isPlain(spend)) return true;
   if (typeof spend.payTo !== "string") return true;
   if (typeof spend.amountUsd !== "number" || !Number.isFinite(spend.amountUsd)) return true;
-  if (typeof spend.at !== "number") return true;
+  if (typeof spend.at !== "number" || !Number.isFinite(spend.at)) return true;
   return false;
 }
 
@@ -516,7 +534,7 @@ function historyOf(lines: SavedLine[]): SpendRecord[] {
     if (!spend) continue;
     if (typeof spend.payTo !== "string") continue;
     if (typeof spend.amountUsd !== "number" || !Number.isFinite(spend.amountUsd)) continue;
-    if (typeof spend.at !== "number") continue;
+    if (typeof spend.at !== "number" || !Number.isFinite(spend.at)) continue;
     if (saved?.state === "pending") {
       if (typeof saved.pendingId === "string" && closedIds.has(saved.pendingId)) continue;
       if (typeof saved.idempotencyKey === "string" && saved.idempotencyKey.length > 0 && closedKeys.has(saved.idempotencyKey)) {
@@ -602,33 +620,6 @@ function decisionRow(input: {
 
 async function appendRow(store: string, row: DecisionRow): Promise<void> {
   await appendDecision(row, { store });
-}
-
-/** Swap the pending row for the final one. A direct write, so a read-only file fails. */
-async function replacePending(store: string, pendingId: string, line: string): Promise<void> {
-  const { readFile, writeFile, appendFile } = await import("node:fs/promises");
-  const text = await readFile(store, "utf8");
-  let found = false;
-  const parts = text.split("\n").map((part) => {
-    if (found || part.trim() === "") return part;
-    try {
-      const row = JSON.parse(part) as { payChecked?: { pendingId?: string } };
-      if (row?.payChecked?.pendingId === pendingId) {
-        found = true;
-        return line;
-      }
-    } catch {
-      return part;
-    }
-    return part;
-  });
-  if (!found) {
-    await appendFile(store, `${line}\n`, "utf8");
-    return;
-  }
-  let body = parts.join("\n");
-  if (!body.endsWith("\n")) body += "\n";
-  await writeFile(store, body, "utf8");
 }
 
 type Payer = { kind: "account"; account: PayerAccount } | { kind: "svm"; svm: SvmPayOptions };
@@ -922,7 +913,7 @@ export async function payChecked(input: PayCheckedInput): Promise<PayCheckedResu
     },
   });
   try {
-    await withStoreLock(store, () => replacePending(store, prepared.pendingId, JSON.stringify(row)));
+    await withStoreLock(store, () => appendRow(store, row));
   } catch (error) {
     // The signature already exists. Return it with the write error attached.
     return { ...result, recordError: errorText(error) };
