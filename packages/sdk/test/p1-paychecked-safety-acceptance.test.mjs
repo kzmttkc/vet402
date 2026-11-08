@@ -10,7 +10,7 @@
 // ============================================================
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, chmodSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, chmodSync, mkdirSync, appendFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -243,5 +243,69 @@ test("安全 5: 払う相手が分からない時は、止めた理由を返す"
   const r = await call(h, { fetch: f.fetch });
   assert.equal(r.paid, false);
   assert.equal(r.refusedBy, "payee_unknown");
+  assert.deepEqual(h.w.signAccesses(), []);
+});
+
+test("安全 6: 記録は末尾に足すだけで、前の中身を書き直さない（払った後に落ちても記録が消えない）", async () => {
+  const h = harness();
+  const foreign = JSON.stringify({ source: "other-agent", note: "kept" }) + "\n";
+  writeFileSync(h.store, foreign);
+  const before1 = readFileSync(h.store, "utf8");
+  const r1 = await call(h, { idempotencyKey: "a-1" });
+  assert.equal(r1.paid, true);
+  const after1 = readFileSync(h.store, "utf8");
+  assert.ok(after1.startsWith(before1), "1 回目の後も、前の中身がそのまま先頭に残る");
+  // 払っている間に別の書き手が足した行も消えない。
+  const orig = h.s.stub;
+  const f = allowlistFetch(["/resolve", "/decision", "kronos", "payments/x402"], {
+    "/resolve": { status: 200, body: resolveBody() },
+    "/decision": { status: 200, body: decisionBody() },
+    kronos: (u, init) => {
+      const r = orig(u, init);
+      if (r.status !== 402) appendFileSync(h.store, JSON.stringify({ source: "other-agent", note: "mid-flight" }) + "\n");
+      return r;
+    },
+    "payments/x402": { status: 200, body: { ok: true } },
+  });
+  const before2 = readFileSync(h.store, "utf8");
+  const r2 = await call(h, { fetch: f.fetch, idempotencyKey: "a-2" });
+  assert.equal(r2.paid, true);
+  const after2 = readFileSync(h.store, "utf8");
+  assert.ok(after2.startsWith(before2), "2 回目の後も、前の中身がそのまま先頭に残る");
+  assert.ok(after2.includes('"mid-flight"'), "払っている間に足された他の行が残る");
+  assert.equal(existsSync(h.store + ".lock"), false, "終わった後にロックが残らない");
+  // 保留の行を書き換えず、確定の行を後ろに足す（書き直しは途中で落ちるとファイルが空になる）。
+  const rows = after2.trim().split("\n").map((l) => JSON.parse(l)).filter((r) => r.source === "pay-checked");
+  const pending = rows.filter((r) => r.payChecked?.state === "pending");
+  const settled = rows.filter((r) => r.payChecked?.state === "settled");
+  assert.equal(pending.length, 2, "保留の行は 2 本とも残る");
+  assert.equal(settled.length, 2, "確定の行が 2 本足される");
+  for (const p of pending) {
+    const i = rows.indexOf(p);
+    const j = rows.findIndex((r) => r.payChecked?.state === "settled" && r.payChecked?.pendingId === p.payChecked.pendingId);
+    assert.ok(j > i, "確定の行は対応する保留の行より後ろにある");
+  }
+  const src = readFileSync(new URL("../src/pay-checked.ts", import.meta.url), "utf8");
+  assert.equal(/\bwriteFile(Sync)?\(\s*store\b/.test(src), false, "記録のファイルを丸ごと書き直さない");
+});
+
+test("安全 7: 生きている持ち主のロックは、古くても外さない", async () => {
+  const h = harness();
+  writeFileSync(h.store, "");
+  // 自分自身（生きている pid）が持つ、時刻の古いロックを置く。
+  writeFileSync(h.store + ".lock", JSON.stringify({ pid: process.pid, at: Date.now() - 3_600_000, token: "held-by-someone" }));
+  const r = await call(h, { rules: COUNT_ONE });
+  assert.equal(r.paid, false, "生きている持ち主のロックを外して入らない");
+  assert.equal(r.refusedBy, "store_unreadable");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.ok(readFileSync(h.store + ".lock", "utf8").includes("held-by-someone"), "他人のロックを消さない");
+});
+
+test("安全 8: 時刻が有限の数でない支出の行があれば止める", async () => {
+  const h = harness();
+  writeFileSync(h.store, '{"source":"pay-checked","payChecked":{"state":"settled","spend":{"payTo":"' + base.payee + '","amountUsd":0.02,"at":1e999}}}\n');
+  const r = await call(h, { rules: COUNT_ONE });
+  assert.equal(r.paid, false);
+  assert.equal(r.refusedBy, "store_unreadable");
   assert.deepEqual(h.w.signAccesses(), []);
 });

@@ -162,8 +162,11 @@ test("決まりを通ったとき、signTypedData がちょうど 1 回で、届
   assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
   assert.equal(h.s.paid.length, 1);
   const lines = readFileSync(h.store, "utf8").trim().split("\n");
-  assert.equal(lines.length, 1);
-  const row = JSON.parse(lines[0]);
+  // 払う前の保留の行と、払った後の確定の行。保留の行は書き換えずに残す。
+  assert.equal(lines.length, 2);
+  assert.equal(JSON.parse(lines[0]).payChecked.state, "pending");
+  const row = JSON.parse(lines[1]);
+  assert.equal(row.payChecked.state, "settled");
   assert.equal(row.payChecked.spend.payTo, base.payee);
   assert.equal(row.payChecked.spend.amountUsd, base.amountUsd);
   assert.equal((await readDemoDecisions({ store: h.store })).length, 0);
@@ -199,7 +202,7 @@ test("同じ呼び出しを冪等の鍵つきで 2 回しても、払うのは 1
   assert.equal(second.receipt?.payTo, base.payee);
   assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
   assert.equal(h.s.paid.length, 1, "売り手への支払い再送は 1 回");
-  assert.equal(readFileSync(h.store, "utf8").trim().split("\n").length, 1, "記録も 1 行のまま");
+  assert.equal(readFileSync(h.store, "utf8").trim().split("\n").length, 2, "記録は保留と確定の 2 行のまま（2 回目は足さない）");
 });
 
 test("記録した支払いは次の呼び出しの時間窓に入る", async () => {
