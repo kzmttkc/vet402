@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 A command that indexes only the EVM chains other than Base
+
+- **What**: `scripts/index-evm-chains.ts --chains <CAIP-2,...> --budget-ms <ms>` runs the settlements index for the listed EVM chains only, splitting its budget across the ones that are configured. Base is refused (the existing `scripts/index-settlements.ts` job keeps it). It prints one JSON line like the existing job.
+- **Why**: Celo, Arc, Tempo and Arbitrum One can then be indexed by a scheduled job of their own, separate from the Base run, which writes about 40,000 transfers per pass and keeps its full budget.
+- **Impact**: A new script and its test. No existing job, table or endpoint changes. RPC endpoints come from each chain's environment variable, as before.
+
 ## 2026-11-08 One credentials record for /about, the Legal Notice and llms-full.txt, and `adoption` in the state API
 
 - **What**: `src/lib/about/credentials.json` now feeds `/about` (with an Organization JSON-LD `award` list), the funding rows of `/legal/notice#relationships` and a "Who builds vet402" section in `llms-full.txt`. The Legal Notice lists the ETHOnline 2026 Bazantic prize, the Circle Arc Microgrants selection and the Prezenti grant on Celo (agreement signed 2026-10-31), and adds a row when a prize is awarded, a grant selects vet402 or a grant agreement is signed. `/about` names the builder as Sen only. `GET /api/v1/observatory/state` adds `adoption`: npm downloads of @vet402/sdk and the published monthly keyed decision calls by key owners outside vet402, each with its period, read time and source. `/about` shows both under "Use".
