@@ -262,7 +262,7 @@ test("an unread ledger: the legend does not define the markers by the ledger, an
 // settled" (src/components/site/HomeLedger.tsx, tests/home-ledger.test.ts), which keeps the #chains
 // anchor and prints the Robinhood Chain row's agreed sentence from this file.
 test("the front page draws the chains from HomeLedger, not from this section (2026-10-21)", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.ok(!home.includes("<SupportedChains"), "the old section is not drawn a second time");
   assert.ok(home.includes("<SettledChainsSection ledger={ledger} />"));
 });
@@ -315,7 +315,7 @@ test("no static count in the section copy — counts come from stats.l1.byChain"
 });
 
 test("no contents row points at an anchor the page does not have (2026-10-21)", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   const ledger = read("src/components/site/HomeLedger.tsx");
   const pricing = read("src/components/site/PricingSection.tsx");
   const hrefs = [...home.matchAll(/\{ no: "[0-9A-Z]+\.", title: "[^"]+", href: "#([a-z-]+)"/g)].map((m) => m[1]);

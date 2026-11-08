@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { evaluateLiveness, livenessHttpStatus } from "@/lib/health/liveness";
-import { livenessBannerMessage } from "@/lib/health/banner-message";
+import { LIVENESS_PUBLIC_SENTENCE, livenessBannerMessage } from "@/lib/health/banner-message";
 
 const probe = (status: "ok" | "degraded" | "error") => async () => ({ status });
 
@@ -106,10 +106,11 @@ test("the public status banner reads GET /api/health and does not import scoring
   assert.match(health, /recordHealthSnapshotIfDue/);
 });
 
-test("outage-strip copy is silent on ok and names the failing side on error", () => {
+test("outage copy is silent on ok and uses one public sentence for a failed read", () => {
   assert.equal(livenessBannerMessage("ok"), null);
   assert.equal(livenessBannerMessage("rate_limited"), null);
   assert.equal(livenessBannerMessage(undefined), null);
-  assert.match(livenessBannerMessage("error") ?? "", /Scoring is failing/);
-  assert.match(livenessBannerMessage("degraded") ?? "", /degraded/);
+  assert.equal(livenessBannerMessage("error"), LIVENESS_PUBLIC_SENTENCE);
+  assert.equal(livenessBannerMessage("degraded"), LIVENESS_PUBLIC_SENTENCE);
+  assert.doesNotMatch(LIVENESS_PUBLIC_SENTENCE, /—|–|payee|indexer/);
 });

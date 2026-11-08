@@ -56,7 +56,7 @@ test("1・4. state API は掲載中の pass と、settled endpoint の内訳を�
 });
 
 test("1・4. トップの図は掲載中の pass を使い、L1 を売り手のレシートと索引のみに分ける", () => {
-  const src = read("src/app/page.tsx");
+  const src = read("src/app/memo/page.tsx");
   assert.ok(src.includes("n: stats.publishedPassActive"), "L0 の段は publishedPassActive");
   assert.ok(!/label: "L0 pass \(402 wall answers\)", n: stats\.publishedPass\b/.test(src), "掲載落ちを含む数を L0 の段に使わない");
   assert.ok(src.includes("n: stats.l1.endpointsSettledSellerReceipt"));

@@ -138,13 +138,18 @@ test("/decisions declares force-dynamic instead of a revalidate that never appli
 
 test("the home page names no past month as a month-and-year (judge-face past_month_mentions)", () => {
   // Tags out and whitespace folded, as the judge-face check reads the rendered text.
-  const src = read("src/app/page.tsx").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-  // The same exclusion the judge-face check keeps: the cited report title "Agentic Payments from the Ground Up, July 2026".
-  const hits = [...src.matchAll(MONTH_YEAR)].filter((m) => !/Ground Up\s*,?\s*$/.test(src.slice(Math.max(0, m.index! - 40), m.index)));
-  assert.deepEqual(
-    hits.map((m) => m[0]),
-    [],
-  );
+  // 2026-11-08: the old front page moved to /memo unchanged. Both carry the same rule.
+  for (const file of ["src/app/page.tsx", "src/app/memo/page.tsx"]) {
+    const text = read(file).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    // The same exclusion the judge-face check keeps: the cited report title "Agentic Payments from the Ground Up, July 2026".
+    const hits = [...text.matchAll(MONTH_YEAR)].filter((m) => !/Ground Up\s*,?\s*$/.test(text.slice(Math.max(0, m.index! - 40), m.index)));
+    assert.deepEqual(
+      hits.map((m) => m[0]),
+      [],
+      file,
+    );
+  }
+  const src = read("src/app/memo/page.tsx").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(src, /returned HTTP 500 on earlier checks and answered HTTP 200 again when rechecked on 2026-09-29\./);
 });
 

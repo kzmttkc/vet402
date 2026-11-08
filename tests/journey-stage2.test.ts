@@ -16,7 +16,7 @@ const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
 test("hero primary CTA opens the observatory; the methodology stays secondary", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   const hero = home.slice(home.indexOf("Abstract</p>"), home.indexOf("dashbox mt-8"));
   assert.ok(hero.includes('position: "hero_observatory"'), "primary CTA is tracked as hero_observatory");
   assert.ok(hero.includes("Open the observatory"), "primary CTA label");
@@ -29,7 +29,7 @@ test("hero primary CTA opens the observatory; the methodology stays secondary", 
 });
 
 test("abstract copy is unchanged", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.ok(
     home.includes(
       "vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came\n            back, checks it against the seller&apos;s output declaration when there is one, and\n            publishes the results.",
@@ -61,7 +61,7 @@ test("DESIGN.md records the 2026-09-02 hero decision instead of the old freeze",
 });
 
 test("§4 action links render as 44px secondary buttons with their events intact", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   const itemRow = home.slice(home.indexOf("function ItemRow("));
   assert.match(itemRow, /buttonClass\(\{\s*variant: "secondary",\s*size: "sm"/);
   assert.ok(itemRow.includes("min-h-11"), "44px hit area on the §4 action");
@@ -79,7 +79,7 @@ test("header signup and nav are click-tracked", () => {
 });
 
 test("LP §4 names @vet402 as the canonical npm scope and @vouchscore as the former name", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.ok(!home.includes("scope is the only one that"));
   assert.match(home, /@vet402\/\*/);
   assert.match(home, /canonical scope/);
@@ -88,13 +88,13 @@ test("LP §4 names @vet402 as the canonical npm scope and @vouchscore as the for
 });
 
 test("LP §2 uses the methodology's L2 vocabulary", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.ok(home.includes('output: "match / mismatch / no_declaration / not_checked"'));
   assert.ok(!home.includes('"conform / mismatch / undeclared"'));
 });
 
 test("RFC header points to how the older score relates to L0–L2 (no bare 'trust scores', not Obsoletes)", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   // 2026-09-29 ペルソナ監査: 先頭画面の「Updates: trust scores」は score を信頼の保証と読ませた
   assert.ok(home.includes('value: "How the older score relates to L0–L2"'));
   assert.ok(!home.includes('value: "Updates: trust scores"'));

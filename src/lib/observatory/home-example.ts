@@ -74,6 +74,36 @@ export type HomeExample = {
   latest: HomeReceipt[];
 };
 
+/**
+ * The card's Delivered value. The HTTP status sits beside it, so the cell
+ * does not also say "2xx", a code the first screen has not defined.
+ */
+export function cardDeliveredLabel(row: { held: boolean; delivered: boolean; httpStatus: number | null }): string {
+  const text = deliveredLine(row).text;
+  if (text === "yes, 2xx") return "Yes";
+  if (text === "no 2xx") return "No";
+  return text;
+}
+
+/**
+ * The "This seller" row. Under 20 paid calls the count is the whole sample,
+ * so the line says so instead of reading as a rate. `days` is the window phrase
+ * the page keeps on one line.
+ */
+export function sellerRecordParts(
+  delivered: number,
+  attempts: number,
+  windowDays: number,
+): { lead: string; days: string; tail: string } {
+  const d = fmt(delivered);
+  const a = fmt(attempts);
+  const days = `last ${fmt(windowDays)} days`;
+  if (attempts < 20) {
+    return { lead: `Only ${d} of ${a} paid calls in the `, days, tail: " delivered." };
+  }
+  return { lead: `${d} of ${a} paid calls delivered, `, days, tail: "" };
+}
+
 /** The Delivered cell. `strong` matches the receipt: a negation is not bold beside the host. */
 export function deliveredLine(row: { held: boolean; delivered: boolean; httpStatus: number | null }): { text: string; strong: boolean } {
   let text = "no 2xx";

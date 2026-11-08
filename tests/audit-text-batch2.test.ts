@@ -48,7 +48,7 @@ test("A-06 keeps the decision enum and states when conform, mismatch, not_checke
   assert.match(facts, /if \(l2\.l2Schema === "match"\) l2Status = "conform"/);
   assert.match(facts, /else if \(l2\.l2Schema === "mismatch"\) l2Status = "mismatch"/);
   assert.equal(/l2Status = "no_declaration"/.test(facts), false);
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.match(home, /output: "match \/ mismatch \/ no_declaration \/ not_checked"/);
   assert.match(flat(home), L2_MAP);
   assert.equal(home.includes("undeclared is no_declaration"), false);
@@ -99,7 +99,7 @@ test("A-13 labels the census frame as a shape and attributes the two published t
   assert.match(census, /"settlements_raw": "<count>"/);
   assert.equal(census.includes("980"), false);
   assert.equal(census.includes("1219706"), false);
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.match(home, /The gap between those two published totals is/);
   assert.match(home, /38\.5% of transactions and 88\.9% of volume/);
   assert.match(home, /not a rate printed in either document/);
@@ -144,7 +144,7 @@ test("A-14 fills cite from the response clock and marks the last history day unf
   assert.match(page, /The last day is partial because the rollup clock is lastRollupAt/);
   const impact = read("src/app/impact/page.tsx");
   assert.match(impact, /page read that share at \{drawnAt\}/);
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.match(home, /page read \$\{coverage\.readAt\}/);
   assert.equal(read("src/lib/observatory/cached-reads.ts").includes("Recomputed at most daily"), false);
   assert.equal(stateRoute.includes("Recomputed at most daily"), false);

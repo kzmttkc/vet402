@@ -27,7 +27,7 @@ test("desktop header names the observatory as a primary path", () => {
 });
 
 test("memo §4 lists the observatory as live and §5 does not call it unbuilt", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   assert.ok(home.includes('position: "s4_observatory"'));
   assert.ok(home.includes('href: "/observatory"'));
   assert.ok(!home.includes("These are not measurements yet"));

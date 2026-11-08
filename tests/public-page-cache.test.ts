@@ -36,7 +36,8 @@ function filesUnder(dir: string, out: string[] = []): string[] {
 
 test("集計を出す公開頁は cached-reads 経由で読む", () => {
   const expected: [string, string[]][] = [
-    ["src/app/page.tsx", ["getCoverageShareCached", "getObservatoryStatsCached"]],
+    ["src/app/page.tsx", ["getObservatoryStatsCached"]],
+    ["src/app/memo/page.tsx", ["getCoverageShareCached", "getObservatoryStatsCached"]],
     ["src/app/observatory/page.tsx", ["getObservatoryStatsCached"]],
     [
       "src/app/observatory/state/page.tsx",

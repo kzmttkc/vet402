@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 Monochrome front page
+
+- **What**: The front page is rebuilt in white, black and grey only. The headline states the product, a real purchase from the public export sits beside it, and the four public counts follow. A five-role audit (web designer, UI/UX, first-time user, security reviewer, judge) across nine axes was applied: the status line moved under the counts and links to /status, the first mobile screen holds the record and the counts, headline leading opened, the seller line no longer double counts, x402 is defined, transaction links accept known explorer hosts only, and the structured data matches the visible page.
+- **Why**: Reviewers found the old page hard to read. The owner approved the new page on 2026-11-08 ("LPこれでいい").
+- **Impact**: Front page only. No change to the state API, the export, /api/health or uptime checks.
+
 ## 2026-11-08 The settlements index sizes Arc windows by its measured block interval
 
 - **What**: Arc's day is now 170,000 blocks in the settlements index (measured 506.9 to 508.1 ms per block over the latest 100,000 and 1,000,000 blocks, read 2026-11-08), with the same number of days per run and lookback as before.

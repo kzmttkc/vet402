@@ -445,3 +445,25 @@ export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   if (!base) return null;
   return EVM_TX_RE.test(tx) ? `${base}${tx}` : null;
 }
+
+/** Hosts `explorerTxUrl` actually emits. A tx link on a public page has to be one of these. */
+const PUBLIC_EXPLORER_HOSTS = new Set<string>([
+  ...Object.values(EVM_EXPLORERS).map((prefix) => new URL(prefix).host),
+  "solscan.io",
+  "livenet.xrpl.org",
+  "stellar.expert",
+]);
+
+/** True when `url` is https and its host is an explorer this repo already links to. */
+export function isPublicExplorerTxUrl(url: string | null | undefined): url is string {
+  if (!url) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  if (parsed.username !== "" || parsed.password !== "") return false;
+  return PUBLIC_EXPLORER_HOSTS.has(parsed.host);
+}

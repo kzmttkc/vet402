@@ -24,7 +24,7 @@ import {
 import { SUPPORTED_CHAINS } from "@/components/site/supported-chains-data";
 
 const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
-const HOME = read("src/app/page.tsx");
+const HOME = read("src/app/memo/page.tsx");
 const LEDGER_SRC = read("src/components/site/HomeLedger.tsx");
 
 function fixture(over: Partial<HomeLedgerStats> = {}): HomeLedgerStats {

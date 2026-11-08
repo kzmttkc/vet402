@@ -579,7 +579,7 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/app/operator-log/page.tsx": 7,
   // LP は床ちょうど（2026-09-20 実測 10・余白 0）。散文を触るときは、この床の更新差分を同じコミットに出す。
   // 2026-11-02: 10 → 8。L3 の "never mixed" と §3.2 の言い直し（断定語を外した）。文言監査 M3・M4。
-  "src/app/page.tsx": 8,
+  "src/app/memo/page.tsx": 8,
   "src/app/status/page.tsx": 7,
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,

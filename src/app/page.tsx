@@ -1,146 +1,203 @@
 import { headers } from "next/headers";
 import Link from "next/link";
+import { Inter } from "next/font/google";
+import { fragmentMono, martianMono } from "./fonts";
 import TrackView from "@/components/site/TrackView";
 import TrackedLink from "@/components/site/TrackedLink";
-import { Mark402 } from "@/components/site/Mark402";
-import { PricingSection } from "@/components/site/PricingSection";
-import { TableScroll } from "@/components/site/TableScroll";
-import { X402_DEFINITION } from "@/components/site/faq-data";
+import { HomeLivenessNote } from "@/components/site/StatusBanner";
 import { BILLING_PLANS, isStripeConfigured } from "@/lib/billing/plans";
-import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
+import { isPublicExplorerTxUrl } from "@/lib/observatory/chains";
 import { organizationJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { formatPct1 } from "@/lib/util/pct";
-import { buildMonth } from "@/lib/build-month";
-import {
-  getCoverageShareCached,
-  getObservatoryStatsCached,
-} from "@/lib/observatory/cached-reads";
-import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
-import { FunnelFigure } from "@/components/site/Figures";
-import { SettledChainsSection, homeLedgerOf } from "@/components/site/HomeLedger";
-import { HomeIntro } from "@/components/site/home/HomeIntro";
-import { WideColumn } from "@/components/site/WideColumn";
-import { getHomeExampleCached } from "@/lib/observatory/home-example";
-import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
-import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
-import { liveStatusLabel } from "@/lib/about/live-status-label";
+import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
+import { homeLedgerOf } from "@/components/site/HomeLedger";
+import { getHomeExampleCached, cardDeliveredLabel, deliveredLine, fmt, sellerRecordParts, utc, type HomeReceipt } from "@/lib/observatory/home-example";
+import s from "./home.module.css";
 
 export const metadata = pageMetadata({
   title: "vet402: verify x402 payments for AI agents",
   description:
-    "vet402 buys from x402 endpoints and publishes whether the paid call was delivered, before an AI agent pays. Settlement assets include USDC.",
+    "vet402 checks an x402 seller before your AI agent pays, caps spending, and publishes what each seller delivered. Settlement assets include USDC.",
   path: "/",
 });
 
-/**
- * The front page is the memo.
- *
- * 2026-08-13 vet402 — direction contract pinned in src/app/layout.tsx and in
- * output/0813/vet402_lp_design_brief.md. The first viewport reproduces the
- * first page of an RFC: the split header block, the centred title, the
- * tagline, the double rule, the mark, the abstract, and two ways in. Everything
- * below is the body of the same document.
- *
- * Copy is the approved deck, verbatim except for typesetting breaks. Nothing on
- * this page claims a measurement that has not been made: §4 lists only what is
- * running today (including the live observatory), §5 is only work that has not shipped.
- *
- * 2026-10-21 owner decision (option A): the first screen stays exactly as it is. Directly under
- * it sit "The public ledger" and "Where purchases settled" (src/components/site/HomeLedger.tsx), both
- * from the same cached ledger read as Fig. 1. The chain table replaced the memo's former §5
- * "Chains" and keeps its anchor `#chains`; the old §6 "Status of this work" is §5 now.
- */
+/* vet402 front page, DIRECTION CONTRACT (2026-11-08, owner 11/07 23:41 and 23:49)
 
-type HeadLeftRow = { label: string; value: string | null; signal?: boolean };
+   THESIS   The safety layer between agents that pay and APIs that get paid, said in one
+            line, then proved with one real purchase. Refuses the old memo-as-front-page
+            and the SaaS card grid.
+   WORLD    Neutral greys only (R = G = B). Light: white, #000 and #333 ink, #f7f7f7 and
+            #dedede hairlines. Dark: #090909, four greys, white rules at low alpha. Inter for
+            words, Fragment Mono only for hosts, transactions and table numbers.
+   STORY    What it is, that it is real (a purchase card and counts with a read time), what
+            goes wrong, where it sits, what is live and what is coming, then the open data.
+   FIRST    Headline, one sentence, two ways in (buyer, seller). Right: the latest real
+   VIEWPORT purchase as a record. Under both: four counts from the state read and its time.
+   SOURCE   .company/WORK_ORDERS.md "LP の見た目を一新する" in the operator repo. The full
+            previous front page lives at /memo, unchanged. */
 
-const HEAD_LEFT: HeadLeftRow[] = [
-  { label: "Network Working Group", value: null },
-  { label: "Request for Verification", value: "402" },
-  { label: "Category", value: "Independent Measurement" },
-];
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
-// 2026-08-13 UX監査R1 [D4]: 4ペルソナが独立に「ヘッダは trust scores を
-// obsoletes と言っているのに §2.1 は今日返るのが trust score だと言っている」
-// と矛盾を報告した。当時はヘッダ文言を据え置き、その行から §2.1 へ飛べるようにした。
-// 2026-09-02 敵対的監査: 今日返るのがまだ trust score である以上、書誌欄は
-// 「Obsoletes（廃止した）」ではなく「Updates（更新する）」が事実。RFC の書誌欄の
-// 語彙のまま、主張を実態に合わせる。§2.1 へのリンクはそのまま。
-const HEAD_RIGHT: { value: string; href?: string; title?: string }[] = [
-  { value: "vet402" },
-  { value: "x402 Economy" },
-  { value: buildMonth() },
+/** The first settled purchase in the public export (export.csv?days=365, read 2026-11-08). A past fact, so it is fixed. */
+const FIRST_SETTLED_AT = "2026-08-14T09:54:33Z";
+
+function daysBetween(fromIso: string, toIso: string): number | null {
+  const a = Date.parse(fromIso);
+  const b = Date.parse(toIso);
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  return Math.floor((b - a) / 86_400_000);
+}
+
+/** The newest purchase in the window whose paid request did not count as delivered, for the events list. */
+function latestMiss(rows: HomeReceipt[]): HomeReceipt | null {
+  return rows.find((r) => !r.delivered && !r.held) ?? null;
+}
+
+const STAGES: {
+  stage: string;
+  buyer: { text: string; live: boolean }[];
+  seller: { text: string; live: boolean }[];
+}[] = [
   {
-    // 2026-09-29 ペルソナ監査: 「Updates: trust scores」は先頭画面で score を信頼の保証と読ませた。
-    value: "How the older score relates to L0–L2",
-    href: "#methodology",
-    title: "The 0–100 score is an older opinion signal, not a measurement or a guarantee — see section 2.1",
+    stage: "Before paying",
+    buyer: [
+      {
+        text: "Check a seller: its delivery record, then one answer, ALLOW, WARN or BLOCK.",
+        live: true,
+      },
+    ],
+    seller: [
+      {
+        text: "Score the wallet that wants to pay you before you serve it.",
+        live: true,
+      },
+    ],
+  },
+  {
+    stage: "While paying",
+    buyer: [
+      {
+        text: "A spending cap per payment and per day that runs in your own process.",
+        live: true,
+      },
+    ],
+    seller: [
+      {
+        text: "Middleware for Express, Next.js and Hono that gates the payment before it settles.",
+        live: true,
+      },
+    ],
+  },
+  {
+    stage: "After paying",
+    buyer: [
+      {
+        text: "The purchases vet402 makes, published with their transactions and what came back.",
+        live: true,
+      },
+      { text: "Settle only once the answer has arrived.", live: false },
+    ],
+    seller: [
+      {
+        text: "Report a settled payment so your record counts it.",
+        live: true,
+      },
+      {
+        text: "One shared desk for both sides when a delivery is disputed.",
+        live: false,
+      },
+    ],
   },
 ];
 
-const CONTENTS = [
-  { no: "1.", title: "The problem this memo addresses", href: "#gap", kind: "background" },
-  { no: "2.", title: "Verification levels", href: "#methodology", kind: "method" },
-  { no: "3.", title: "What a verdict must carry", href: "#evidence", kind: "policy" },
-  { no: "4.", title: "Implemented and live", href: "#working", kind: "live" },
-  { no: "5.", title: "Status of this work", href: "#status", kind: "building" },
-  { no: "A.", title: "Access tiers", href: "#pricing", kind: "terms" },
-  { no: "B.", title: "References", href: "#references", kind: "sources" },
+const OPEN_DATA = [
+  {
+    name: "Observatory",
+    tag: "Listed x402 endpoints and their latest results",
+    href: "/observatory",
+  },
+  {
+    name: "Sellers",
+    tag: "What vet402 bought from each host on Base. Other chains are in the export.",
+    href: "/sellers",
+  },
+  {
+    name: "State API",
+    tag: "The counts on this page, as JSON",
+    href: "/api/v1/observatory/state",
+    raw: true,
+  },
+  {
+    name: "Export",
+    tag: "Purchase rows as CSV, last day",
+    href: "/api/v1/observatory/export.csv?days=1",
+    raw: true,
+  },
+  {
+    name: "Methodology",
+    tag: "What each level and word means",
+    href: "/observatory/methodology",
+  },
+  {
+    name: "The memo",
+    tag: "The full document this page used to be",
+    href: "/memo",
+  },
 ];
 
-const LEVELS = [
-  {
-    level: "L0",
-    name: "Liveness",
-    question: "Does the endpoint answer correctly?",
-    how: "Probe, no purchase",
-    output: "pass / fail / unverified",
-  },
-  {
-    level: "L1",
-    name: "Settle-through",
-    question: "Does the payment settle, and does a non-empty 2xx come back?",
-    how: "Real purchase",
-    // 2026-09-04 監査 E・P0-3: この §2 の定義（settle AND arrive）に対して、
-    // 公開面は settled しか出していなかった。両方を出力語彙に入れる。
-    output: "n of m settled, n delivered",
-  },
-  {
-    level: "L2",
-    name: "Conformance",
-    question: "Does the response match the seller's own declaration?",
-    how: "Purchase + machine diff",
-    // 2026-09-02 監査: 語彙は方法論（/observatory/methodology）と台帳列 l2_schema の正典に揃える。
-    output: "match / mismatch / no_declaration / not_checked",
-  },
-  {
-    level: "L3",
-    name: "Quality",
-    question: "Is the content any good?",
-    how: "Not built",
-    output: "none: this site presents no L3 opinion",
-  },
-];
+const FOOT_PRODUCT = [
+  { label: "Docs", href: "/docs/api" },
+  { label: "MCP", href: "/docs/mcp" },
+  { label: "Get an API key", href: "/signup" },
+  { label: "Dashboard", href: "/dashboard" },
+] as const;
+
+const FOOT_RECORD = [
+  { label: "About", href: "/about" },
+  { label: "FAQ", href: "/faq" },
+  { label: "Blog", href: "/blog" },
+  { label: "Status", href: "/status" },
+  { label: "Corrections", href: "/corrections" },
+  { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
+  { label: "X", href: "https://x.com/vet402_com" },
+] as const;
+
+const FOOT_LEGAL = [
+  { label: "Terms", href: "/legal/terms" },
+  { label: "Privacy", href: "/legal/privacy" },
+  { label: "Legal notice", href: "/legal/notice" },
+] as const;
+
+const EVENT_WORDS = ["zero", "one", "two", "three"];
 
 export default async function Home() {
-  // 2026-07-25 CTO: ホームページのJSON-LDが0件だった非対称を解消(/faqのみ
-  // FAQPage実装済みという状態だった)。数値はsrc/lib/billing/plans.ts(課金の
-  // 単一情報源)から引用し、架空の価格を書かない。
   const nonce = (await headers()).get("x-nonce") ?? undefined;
-  // 2026-09-02 UX 監査: 「probed daily」は事実ではなかった（毎日なのはカタログ取得。
-  // プローブはローリングで、7 日以内に測定済みは 37.6%）。§4 の文は実値で埋める。
-  // 2026-10-22 オーナー決定（案 C）: 第 1 画面は check。台帳は同じ cached read。
-  // 受領証は export.csv?days=1 と同じ窓をプロセス内で読む（home-example.ts）。
-  const [coverage, stats, example] = await Promise.all([
-    getCoverageShareCached().catch(() => null),
+  const [stats, example] = await Promise.all([
     getObservatoryStatsCached().catch(() => null),
     getHomeExampleCached().catch(() => null),
   ]);
   const ledger = homeLedgerOf(stats);
-  const latestPurchaseAt = example?.latest[0]?.attemptedAt ?? null;
-  const statusValue = liveStatusLabel(latestPurchaseAt, stats?.readAt ?? null);
-  const headLeft: HeadLeftRow[] = [...HEAD_LEFT, { label: "Status", value: statusValue, signal: true }];
+  const readAt = stats?.readAt ?? null;
+  const days = readAt ? daysBetween(FIRST_SETTLED_AT, readAt) : null;
+  const notDelivered = ledger ? Math.max(0, ledger.settled - ledger.delivered) : 0;
+  const receipt = example?.receipt ?? null;
+  const decision = example?.decision ?? null;
+  const sellerLine = decision
+    ? sellerRecordParts(decision.l1.delivered, decision.l1.attempts, decision.l1.windowDays)
+    : null;
+  const miss = example ? latestMiss(example.latest) : null;
+  const chains = ledger ? [...ledger.chains].sort((a, b) => b.settled - a.settled) : [];
+  const weakest = chains
+    .filter((c) => c.settled >= 100)
+    .map((c) => ({ ...c, share: c.delivered / c.settled }))
+    .sort((a, b) => a.share - b.share)[0];
+  const eventCount = 1 + (weakest ? 1 : 0) + (miss ? 1 : 0);
+
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
   );
@@ -153,8 +210,7 @@ export default async function Home() {
     "@type": "WebSite",
     name: "vet402",
     url: SITE_URL,
-    description:
-      "Independent verification of x402 payments for AI agents.",
+    description: "Independent verification of x402 payments for AI agents.",
     publisher: publisherOrg(),
     inLanguage: "en",
     sameAs: organization.sameAs,
@@ -166,8 +222,7 @@ export default async function Home() {
     url: SITE_URL,
     applicationCategory: "DeveloperApplication",
     operatingSystem: "Web",
-    description:
-      "Verification API for the x402 agent-payment economy. Prove control of a payee wallet, check a payee before paying it, and read the public accuracy ledger.",
+    description: String(metadata.description),
     // An Offer is a machine-readable assertion that a plan is purchasable at
     // this price — read by search engines and by the buying agents this product
     // exists to serve. The paid entries are therefore tied to whether checkout
@@ -206,19 +261,7 @@ export default async function Home() {
   };
 
   return (
-    // 2026-08-13 UX監査2巡目 [M8]: 1440×720 で2本の CTA の下端が 843px にあり、
-    // fold の 123px 下だった。RFC 第1面の要素と順序（ヘッダ／表題／タグライン／
-    // ダブルルール／マーク／Abstract／2本の入口）は一つも動かさず、行間と
-    // マークの寸法だけを詰めて 712px に収めている。ここは md:pt-12 を外した分。
-    // 2026-08-13 再監査: 同じ [M8] の欠陥がモバイルに残っていた。375×812 で
-    // 2本の CTA の下端は 934px（fold の 122px 下）で、幅の広い端末だけを直して
-    // いたことになる。ここから下の `sm:` 付きの値は 8/13 に承認された desktop の
-    // 組版そのままで、640px 未満にだけ詰めた値を当てている（1440×720 の 706px は
-    // 動かさない）。要素・順序・コピーは一つも変えていない。
-    <main className="px-4 pt-4 pb-4 sm:px-6 sm:pt-8 md:px-8 md:pt-6">
-      {/* 2026-08-06 growth: lp_view opens the funnel (Verilot parity). Without
-          it, CTA click-through rate has no denominator — the automatic
-          pageview can't carry utm_source as a queryable prop. */}
+    <div className={`${inter.variable} ${martianMono.variable} ${fragmentMono.variable} ${s.lp}`}>
       <TrackView event="lp_view" withUtmSource />
       <script
         type="application/ld+json"
@@ -236,826 +279,438 @@ export default async function Home() {
         type="application/ld+json"
         nonce={nonce}
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(softwareApplicationJsonLd) }}
+        dangerouslySetInnerHTML={{
+          __html: safeJsonLd(softwareApplicationJsonLd),
+        }}
       />
 
-      {/* 紙の天地は .sheet の共通値。1200px の列は WideColumn（表の頁も同じ）。 */}
-      <article className="sheet max-w-[1200px]">
-        <WideColumn />
-        {/* 2026-10-22 オーナー決定（案 C）: 第 1 画面は見出しと Figure 1、右に check。
-            書誌欄・Abstract・#gap 以降は下に残す。ETHOnline の導線も書誌欄に残る。 */}
-        <HomeIntro
-          ledger={ledger}
-          readAt={stats?.readAt ?? null}
-          settled4xx={ledger ? (stats?.l1.inconclusiveSettled ?? null) : null}
-          example={example}
-          statusLabel={statusValue}
-        />
-
-        {/* 2026-09-29 ペルソナ監査: 初見が掴む 3 点。文言は据え置き。2 列の直下。 */}
-        <dl className="mx-auto mt-8 grid max-w-[62ch] gap-1 text-[0.84375rem] text-brand sm:grid-cols-[max-content_1fr] sm:gap-x-4">
-          <dt className="font-semibold">What this is</dt>
-          <dd>x402 is how an agent pays an API. vet402 buys from those APIs itself and publishes whether each paid request came back with a successful answer. A 4xx or 5xx, an empty body or a 202 does not count. That shows who answers once paid. It does not check that the content is right.</dd>
-          <dt className="font-semibold">What you give us</dt>
-          <dd>Nothing to look: no wallet, no account, no card. A free key only for score lookups and higher API limits.</dd>
-          <dt className="font-semibold">What vet402 does not do</dt>
-          <dd>Guarantee a seller, refund, handle chargebacks, check identity (KYC), or hold your funds. A spending cap you set runs in your own process, in the SDK.</dd>
-        </dl>
-
-        <div className="rule-double mt-16" />
-        <p className="doc-note mt-4">
-          Customer count and revenue: not published. Counts on this page are read from{" "}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/api/v1/observatory/state" className="doc-link">
-            observatory/state
-          </a>
-          ,{" "}
-          <a href="/api/v1/observatory/export.csv?days=1" className="doc-link">
-            export.csv
-          </a>{" "}
-          and the decision document for the purchase line, at the time of the read.{" "}
-          <Link href="/observatory/methodology" className="doc-link">
-            Methodology
+      <header className={s.wrap}>
+        <div className={s.bar}>
+          <Link href="/" className={s.mark} aria-label="vet402 home">
+            <span>vet</span>
+            <span>402</span>
           </Link>
-          .
-        </p>
+          <nav aria-label="Main navigation" className={s.nav}>
+            <TrackedLink href="/docs/api" event="nav_click" props={{ label: "Docs", position: "lp_bar" }}>
+              Docs
+            </TrackedLink>
+            <TrackedLink href="/about" event="nav_click" props={{ label: "About", position: "lp_bar" }}>
+              About
+            </TrackedLink>
+          </nav>
+        </div>
+      </header>
 
-        {/* チェーン表は残す。Settled, not delivered は settled − delivered で、うち保留（4xx）を隣の列に出す。読めなければ出さない。 */}
-        {ledger ? <SettledChainsSection ledger={ledger} /> : null}
-
-        {/* ================= RFC first page ================= */}
-        {/* 640px 未満ではヘッダの2列が縦に積まれて8行になる（.doc-head の
-            media query）。line-height 1.7 のままだと、この1ブロックだけで
-            198px — モバイルの fold の約1/4 を、まだ何も言っていない書誌情報が
-            占めていた。行間と2列間の空きだけを詰める（文字サイズも行数も同じ）。 */}
-        <div className="doc-head mt-8 max-sm:gap-2 max-sm:leading-[1.3] sm:mt-10">
-          <div className="doc-head-col">
-            {headLeft.map((row) => (
-              <span key={row.label}>
-                {row.label}
-                {row.value ? ": " : ""}
-                {row.value ? (
-                  // シアンは1画面1箇所。この Status 値がその1点で、装飾ではなく
-                  // 「いまどの段階にあるか」という事実に充てている。
-                  // 色は #0e7490（白地 5.36:1）。ブランドシートの #0891b2 は
-                  // 白地 3.68:1 で本文サイズの文字には AA が足りない。
-                  <span className={row.signal ? "text-signal" : undefined}>{row.value}</span>
-                ) : null}
-              </span>
-            ))}
-            {/* 2026-09-09: ETHOnline の提出フォームは Demo URL に vet402.com を指す。判定者が
-                この頁に着いたとき /ethonline へ 1 クリックで行ける導線を Status 行の直下に置く
-                （これが /ethonline への唯一の内部リンク。sitemap.ts の規則の根拠でもある）。 */}
-            <span>
-              <Link
-                href="/ethonline"
-                className="doc-link"
-                title="payOrRefuse, built on vet402, won the Bazantic prize at ETHOnline 2026. The submission page: one command, the documents in reading order, the disclosure"
+      <main className={s.wrap}>
+        <section aria-labelledby="lp-title" className={s.hero}>
+          <div className={s.heroText}>
+            <h1 id="lp-title" className={s.h1}>
+              Safe payments between AI agents and the APIs they buy from.
+            </h1>
+            <p className={s.lede}>
+              vet402 buys from x402 APIs, the ones that ask an agent to pay before they answer, and records whether a
+              real answer came back. Your agent can check a seller and cap its spending before it pays. Your API can
+              check the wallet that pays it.
+            </p>
+            <div className={s.actions}>
+              <TrackedLink
+                href="/docs/api#quickstart"
+                event="lp_cta_click"
+                props={{ position: "hero_buyer" }}
+                className={s.btn}
               >
-                {/* 2026-10-15: judging is over and the prize is paid. The link stays (sitemap rule), the label says the result. */}
-                ETHOnline 2026: payOrRefuse won Bazantic →
-              </Link>
-            </span>
+                Add to an agent that pays
+              </TrackedLink>
+              <TrackedLink
+                href="/docs/api#packages"
+                event="lp_cta_click"
+                props={{ position: "hero_seller" }}
+                className={s.btnQuiet}
+              >
+                Add to an API you sell
+              </TrackedLink>
+            </div>
           </div>
-          <div className="doc-head-col">
-            {HEAD_RIGHT.map((row) =>
-              row.href ? (
-                <span key={row.value}>
-                  <Link href={row.href} className="doc-link" title={row.title}>
-                    {row.value}
-                  </Link>
+
+          <div className={s.heroNote}>
+            <p>
+              <Link href="/signup">
+                Start free with {BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} seller checks a month.
+              </Link>
+            </p>
+            {isStripeConfigured() ? (
+              <p>
+                Pro is ${BILLING_PLANS.pro.monthlyUsd} a month. Scale is ${BILLING_PLANS.scale.monthlyUsd} a month.
+              </p>
+            ) : null}
+          </div>
+
+          {ledger && readAt ? (
+            <div className={s.heroFacts}>
+              <dl className={s.facts} aria-label="The public ledger in four counts">
+                <div className={s.fact}>
+                  <dt>Days running</dt>
+                  <dd>{days !== null ? fmt(days) : "n/a"}</dd>
+                  <dd className={s.factSince}>since {FIRST_SETTLED_AT.slice(0, 10)}</dd>
+                </div>
+                <div className={s.fact}>
+                  <dt>Settled purchases</dt>
+                  <dd>{fmt(ledger.settled)}</dd>
+                </div>
+                <div className={s.fact}>
+                  <dt>Delivered</dt>
+                  <dd>{fmt(ledger.delivered)}</dd>
+                </div>
+                <div className={s.fact}>
+                  <dt>Settled, not delivered</dt>
+                  <dd>{fmt(notDelivered)}</dd>
+                </div>
+              </dl>
+              <p className={s.readAt}>
+                Read from the {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+                <a href="/api/v1/observatory/state" className={s.inlineLink}>
+                  state API
+                </a>{" "}
+                at{" "}
+                <time dateTime={readAt}>
+                  {ledger.readDate} {ledger.readTime} UTC
+                </time>
+                .
+                <HomeLivenessNote linkClassName={s.statusLink} />{" "}
+                <a
+                  href="https://creativecommons.org/licenses/by/4.0/"
+                  className={s.inlineLink}
+                  rel="noopener"
+                >
+                  CC BY 4.0
+                </a>
+                .
+              </p>
+            </div>
+          ) : (
+            <p className={s.readAt}>
+              <HomeLivenessNote linkClassName={s.statusLink} />
+            </p>
+          )}
+
+          {receipt ? (
+            <figure className={`${s.record} ${s.rise2}`} aria-labelledby="lp-record">
+              <figcaption id="lp-record" className={s.recordHead}>
+                <span>
+                  <b>Latest purchase</b> by vet402
                 </span>
-              ) : (
-                <span key={row.value}>{row.value}</span>
-              ),
-            )}
-          </div>
-        </div>
+                <time dateTime={receipt.attemptedAt}>{utc(receipt.attemptedAt, false)} UTC</time>
+              </figcaption>
+              <dl className={s.recordRows}>
+                <div>
+                  <dt>Seller</dt>
+                  <dd className={s.mono}>
+                    {receipt.host.split(".").map((part, i) => (
+                      <span key={i}>
+                        {i > 0 ? "." : ""}
+                        {i > 0 ? <wbr /> : null}
+                        {part}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Paid</dt>
+                  <dd>
+                    {receipt.amount} {receipt.asset} on {receipt.chain}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Transaction</dt>
+                  <dd className={s.mono}>
+                    {isPublicExplorerTxUrl(receipt.txUrl) ? (
+                      <a href={receipt.txUrl} className={s.inlineLink} rel="noopener" target="_blank">
+                        {receipt.txShort}
+                      </a>
+                    ) : (
+                      receipt.txShort
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Delivered</dt>
+                  <dd>
+                    <b>{cardDeliveredLabel(receipt)}</b>
+                    {receipt.httpStatus !== null ? <span className={s.mono}> · HTTP {receipt.httpStatus}</span> : null}
+                  </dd>
+                </div>
+                {sellerLine ? (
+                  <div>
+                    <dt>This seller</dt>
+                    <dd>
+                      {sellerLine.lead}
+                      <span className={s.nowrap}>{sellerLine.days}</span>
+                      {sellerLine.tail}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+              <p className={s.recordFoot}>
+                A real row from the {}
+                <a href="/api/v1/observatory/export.csv?days=1">public export</a>, not a sample. A seller check needs no
+                key.
+              </p>
+            </figure>
+          ) : null}
+        </section>
 
-        <p className="mx-auto mt-4 max-w-[52ch] text-center text-brand-lift sm:mt-6">
-          We buy. We settle. We publish the measurements.
-        </p>
+        {ledger && readAt ? (
+          <section aria-labelledby="lp-problem" className={s.section}>
+            <h2 id="lp-problem" className={s.h2}>
+              A payment on chain says an agent paid. It does not say the API answered.
+            </h2>
+            <p className={s.body}>
+              Since <b>{FIRST_SETTLED_AT.slice(0, 10)}</b>, vet402 has made <b>{fmt(ledger.attempts)}</b> paid attempts
+              on <b>{fmt(chains.length)}</b> chains. <b>{fmt(ledger.settled)}</b> of them settled on chain, and the
+              results are published. Here {eventCount === 1 ? "is one thing" : `are ${EVENT_WORDS[eventCount]} things`}{" "}
+              that record shows.
+            </p>
+            <ol className={s.events}>
+              <li>
+                <span className={s.eventWhen}>Whole ledger</span>
+                <div>
+                  <p className={s.eventLine}>
+                    {fmt(notDelivered)} of {fmt(ledger.settled)} settled purchases did not count as delivered.
+                  </p>
+                  <p className={s.eventNote}>
+                    The money moved on chain. Delivered means a non-empty 2xx. Other answers, including 4xx, stay in
+                    this count. A 4xx is inconclusive, because it can come from the shape of vet402&apos;s own request.
+                    {weakest ? " The weakest chain is next." : null}
+                  </p>
+                </div>
+              </li>
+              {weakest ? (
+                <li>
+                  <span className={s.eventWhen}>{weakest.label}</span>
+                  <div>
+                    <p className={s.eventLine}>
+                      On {weakest.label}, {fmt(weakest.settled - weakest.delivered)} of {fmt(weakest.settled)} settled
+                      purchases did not count as delivered.
+                    </p>
+                    <p className={s.eventNote}>
+                      {fmt(weakest.inconclusiveSettled)} of them answered 4xx and are held as inconclusive, because a
+                      4xx can come from the shape of vet402&apos;s own request.
+                    </p>
+                  </div>
+                </li>
+              ) : null}
+              {miss ? (
+                <li>
+                  <span className={s.eventWhen}>
+                    <time dateTime={miss.attemptedAt}>{utc(miss.attemptedAt, false)} UTC</time>
+                  </span>
+                  <div>
+                    <p className={s.eventLine}>
+                      vet402 paid {miss.amount} {miss.asset} to <span className={s.mono}>{miss.host}</span> on{" "}
+                      {miss.chain}. The answer: {deliveredLine(miss).text}.
+                    </p>
+                    <p className={s.eventNote}>
+                      Transaction{" "}
+                      {isPublicExplorerTxUrl(miss.txUrl) ? (
+                        <a href={miss.txUrl} className={`${s.inlineLink} ${s.mono}`} rel="noopener" target="_blank">
+                          {miss.txShort}
+                        </a>
+                      ) : (
+                        <span className={s.mono}>{miss.txShort}</span>
+                      )}
+                    </p>
+                  </div>
+                </li>
+              ) : null}
+            </ol>
+            <p className={s.body}>
+              So your agent can ask vet402 before it pays, and stop. The answer comes from those purchases, not from
+              what a seller says about itself.
+            </p>
+          </section>
+        ) : null}
 
-        <div className="rule-double mx-auto mt-2 w-full max-w-[34ch] sm:mt-4" />
-
-        {/* マークは 132 → 104px（モバイルと同寸）。[M8] の 123px のうち 28px を
-            ここから出している。紙面の中央・ダブルルールの直下という位置は同じ。
-            2026-08-13 再監査: 640px 未満では 72px。[M8] で desktop の寸法を
-            詰めた時と同じ手で、モバイルにも同じ処置をしているだけ。位置・
-            アニメーション・前後の要素は変わらない。 */}
-        {/* 2026-09-02 敵対的監査 P2: 390×844 で 2 本目の入口の下端が 924px（fold の 80px 下）。
-            640px 未満だけ、行間（1.7 → 1.5）・要素間の余白・マーク（72 → 60px）を詰める。
-            要素・順序・コピーは同じ。sm 以上の値は 8/13 承認のまま。 */}
-        <div className="mt-2 flex justify-center sm:mt-5">
-          <Mark402 animate className="h-auto w-[60px] sm:w-[104px]" />
-        </div>
-
-        <div className="mt-2 flex flex-col gap-0.5 sm:mt-5 sm:flex-row sm:gap-0">
-          <p className="shrink-0 text-brand-deep sm:w-[10ch]">Abstract</p>
-          <p className="min-w-0 max-w-[62ch] text-brand">
-            {/* 引用符は straight。RFC の原典はプレーンテキストで、curly quote は
-                存在しない。/faq と /legal も straight で統一されている。
-
-                2026-08-13 [M8]: 5行 → 3行。落としたのは "Every verdict will carry
-                a transaction hash, a timestamp and reproduction steps." の1文で、
-                これは §3.1 が同じ内容をより強い形（「無ければ公開しない」）で
-                述べている重複。Abstract が §3 を先取りするのをやめただけで、
-                デッキの主張は1つも減っていない。 */}
-            vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came
-            back, checks it against the seller&apos;s output declaration when there is one, and
-            publishes the results.{" "}
-            <strong>
-              A weaker tier of evidence is not rounded up into a stronger one: the settlements
-              vet402 bound to its own signature and the ones matched on amount and payee alone are
-              published as separate counts.
-            </strong>{" "}
-            <Link href="/observatory/state" className="doc-link">
-              See both counts
-            </Link>
-            .
+        <section aria-labelledby="lp-fit" className={s.section}>
+          <h2 id="lp-fit" className={s.h2}>
+            Where vet402 sits
+          </h2>
+          <p className={s.body}>
+            One package for the side that pays, one for the side that is paid. Both read the same record.
           </p>
-        </div>
+          <ol className={s.flow}>
+            <li className={s.part}>
+              <p className={s.partName}>Your agent</p>
+              <p className={s.partTag}>Holds its own wallet and signs its own payments.</p>
+            </li>
+            <li className={`${s.part} ${s.partVetSolid}`}>
+              <p className={s.partName}>vet402 check</p>
+              <p className={s.partTag}>ALLOW, WARN or BLOCK from real purchases, and your spending cap.</p>
+            </li>
+            <li className={s.part}>
+              <p className={s.partName}>x402 payment</p>
+              <p className={s.partTag}>Settles on chain in USDC or the asset the seller names.</p>
+            </li>
+            <li className={`${s.part} ${s.partVet}`}>
+              <p className={s.partName}>Seller API with vet402</p>
+              <p className={s.partTag}>Scores the paying wallet, then serves the answer vet402 records.</p>
+            </li>
+          </ol>
 
-        {/* 2026-08-06 growth: lp_cta_click{position} tells us WHICH CTA converts
-            (hero vs final vs pricing), which a plain /signup pageview can never
-            attribute. */}
-        <div className="mt-3 flex flex-wrap gap-2 sm:mt-5 sm:gap-3 sm:pl-[10ch]">
-          {/* 2026-08-23 UX: 主従を入れ替え、"Verify a payee now" を primary にした。
-              2026-09-02 敵対的監査 F1（オーナー決定）: 製品の核は endpoint 検証に移った。
-              主 CTA は観測所へ。payee 照会は §4 の「Verified Payee」行が担う。
-              副 CTA・Abstract・第 1 面の並びと寸法は据え置き。position は新設
-              （hero_verify の時系列はここで終わり、hero_observatory が始まる）。 */}
-          <TrackedLink
-            href="/observatory"
-            event="lp_cta_click"
-            props={{ position: "hero_observatory" }}
-            // 2026-09-28: 最初の画面の主 CTA は「Check a seller」1 つ。ここは副の見た目に下げた。
-            className={buttonClass({ variant: "secondary", size: "md", className: "w-full max-sm:py-2.5 sm:w-auto" })}
-          >
-            Open the observatory
-          </TrackedLink>
-          {/* 2026-09-02 UX 監査（オーナー判断）: 「methodology」が 3 つあり、主 CTA は LP §2 の
-              4 行表へ飛んでいた。href だけを本物の定義書（/observatory/methodology v2）へ向ける。
-              文言・位置・意匠・イベント名は不変。 */}
-          <TrackedLink
-            href="/observatory/methodology"
-            event="lp_cta_click"
-            props={{ position: "hero_method" }}
-            className={buttonClass({
-              variant: "secondary",
-              size: "md",
-              // 縦に積まれる幅では、内容幅のままだと2本の右端が揃わず雑に見える。
-              className: "w-full max-sm:py-2.5 sm:w-auto",
-            })}
-          >
-            Read the methodology
-          </TrackedLink>
-        </div>
-
-        {/* 2026-08-14 UX: x402 の平易な定義をヒーロー直下へ昇格。この分野の外から
-            来た読者（非開発者ペルソナ P2/P3/P6）は、定義が §1 の中ほど＝fold の
-            下にあると最初の一画面で降りていた。定義そのものは /faq Q1 の承認済み
-            文（faq-data.ts が正典）で、新しいコピーは足していない —— §1 にあった
-            同じ枠を、二本の入口の直下へ動かしただけ。fold の CTA 行より後ろに
-            置いているので、承認済みの第1面（表題／タグライン／マーク／Abstract／
-            二本の入口）の並びと寸法はそのまま。 */}
-        <div className="dashbox mt-8 max-w-[64ch]">
-          <p className="doc-caption">{X402_DEFINITION.question}</p>
-          <p className="mt-3 text-brand">{X402_DEFINITION.answer}</p>
-          <p className="doc-note mt-3">
-            <Link href="/faq" className="doc-link">
-              More questions
-            </Link>
-            <span aria-hidden="true" className="mx-2 text-brand-lift">
-              ·
-            </span>
-            <Link href="/observatory" className="doc-link">
-              Live measurements
-            </Link>
-            <span aria-hidden="true" className="mx-2 text-brand-lift">
-              ·
-            </span>
-            <Link href="/payee" className="doc-link">
-              Score a wallet
-            </Link>
-          </p>
-        </div>
-
-        {/* ================= Table of contents ================= */}
-        <nav aria-label="Table of contents" className="mt-14">
-          <p className="doc-caption">Contents</p>
-          <div className="mt-4 border-t border-hair pt-2">
-            {CONTENTS.map((item) => (
-              <Link key={item.href} href={item.href} className="toc-row">
-                <span className="toc-no">{item.no}</span>
-                <span className="toc-label">{item.title}</span>
-                <span className="toc-lead" aria-hidden="true" />
-                <span className="toc-page">{item.kind}</span>
-              </Link>
-            ))}
-          </div>
-        </nav>
-
-        {/* ================= 1. The gap ================= */}
-        <h2 id="gap" className="sec-head scroll-mt-24">
-          <span className="sec-no">1.</span>
-          <span>The problem this memo addresses</span>
-        </h2>
-
-        {/* 2026-08-13 UX監査R1 [C1][C2]: "x402" を定義しないまま12回使っていた穴は、
-            定義枠をヒーロー直下（第1面の二本の入口の直後）へ昇格して塞いだ
-            ——枠の本体はこの上、fold 付近に置いてある。§1 はそのまま本題（1.1〜）へ
-            入る。 */}
-        <div className="mt-6 space-y-5">
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">1.1</span>
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              x402 settles payments finally and irreversibly. Proof of payment exists on-chain.{" "}
-              <strong>Proof of delivery does not exist anywhere.</strong>
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">1.2</span>
-            {/* 2026-08-13 UX監査R1 [A4]: 98.7% にチェーンの修飾が無く、3チェーン
-                全体の数字として読めた。原典はチェーン別に 98.7%(ETH) /
-                99.3%(Base) / 100.0%(BSC) で、ここは一番低い値を採っている
-                （盛ってはいない）。どのチェーンの数字かを字面に出す。 */}
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              Registries can be written for cents: 98.7% of ERC-8004 reputation feedback on
-              Ethereum has no verifiable transaction behind it.{" "}
-              <a href="#ref-arxiv" className="ref-mark">
-                [ARXIV-2606]
-              </a>
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">1.3</span>
-            {/* 2026-08-13 UX監査R1 [A3]: ここは "roughly half of observed x402
-                traffic is self-dealing" と書き、出典は URL も日付も無い
-                「Artemis, x402 activity analysis, 2026」だった。原典（Visa と
-                Artemis の共同レポート）を当たると、公表されている数字は
-                self-dealing 単独ではなく **wash と test を合わせて除外した
-                分** で、生の 178.3M トランザクションが調整後 109.6M になる
-                = 38.5%。「およそ半分」でも「self-dealing」でもない。
-                追跡できない引用を「Nothing on this site is an estimate」を
-                掲げる頁に置くのは自己矛盾なので、原典が実際に公表している
-                数字と語（adjusted / wash and test）に合わせ、URL・発行者・
-                発行月・データ基準日を References に全部書く。 */}
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              As of 2026-04-21, the Visa and Artemis PDF reports raw x402 activity of $135.7M
-              across 178.3M transactions, and the article reports wash-and-test-adjusted totals of
-              $15.0M across 109.6M transactions. The gap between those two published totals is
-              38.5% of transactions and 88.9% of volume.{" "}
-              <a href="#ref-artemis" className="ref-mark">
-                [VISA-ARTEMIS-2026]
-              </a>
-            </p>
-          </div>
-        </div>
-
-        {/* ================= 2. Method ================= */}
-        <h2 id="methodology" className="sec-head scroll-mt-24">
-          <span className="sec-no">2.</span>
-          <span>Verification levels</span>
-        </h2>
-        <p className="doc-p">
-          Four levels, in order of what they cost us to run and what they prove. A result never
-          moves up a level: an L0 probe cannot report settlement, and an L3 opinion is never
-          folded into an L0&ndash;L2 fact.
-        </p>
-
-        {/* 表は md 以上。768px 未満では同じ配列を定義リストで積む（4列の散文表を
-            横スクロールさせると、この表で一番重要な Output 列が最初から画面外に
-            出る）。表示されない側は display:none なので支援技術にも二重に出ない。
-
-            2026-08-13 アクセシビリティ監査（200%拡大）で、しきい値 640px は
-            低すぎたことが実測で出た: .fact-table-fixed の下限は 39rem = 624px で、
-            紙面の内寸がそれを割るのは 640px ではなく 786px。720px では
-            50px、640px では 66px が隠れ、画面には `conform / mismat` と
-            `opinion — never m` が出ていた。「正確に測る」を売る頁で、検証段の
-            定義そのものが語の途中で切れていたことになる。
-
-            しきい値は md(768px) では足りない（実測: 768px の紙面内寸は 606px で
-            まだ 18px 隠れる）。内寸は viewport - 162px（ページ余白 64 + 紙の
-            左右余白 96 + 罫 2）なので、624px を確保できるのは 786px から。
-            30px の余裕を見て 800px を境にする。 */}
-        <TableScroll
-          label="vet402 verification levels"
-          className="hidden min-[800px]:block"
-        >
-          <table className="fact-table fact-table-fixed">
-            <caption className="sr-only">
-              vet402 verification levels: what each level asks, how it is run, and what it outputs
-            </caption>
-            {/* 列幅は「その列に入る一番長い1語」から決める。表示書体が列ごとに
-                違うので桁数だけでは決まらない（Level 列だけ Martian Mono の
-                0.70em、他は Fragment Mono の 0.618em）。
-                  Level    Conformance   11桁 × 0.70em × 13px = 100px (+20 pad)
-                  Question declaration?  12桁 × 0.618em × 13px = 96px (+20 pad)
-                  How      machine       7桁 = 56px (+20 pad)
-                  Output   unverified   10桁 = 80px（最終列は右パディング0）
-                24% は 1440px の紙面(665px)で 160px を Level 列に配り、
-                `Settle-through`(127px) すら1語のまま置ける。
-                .fact-table-fixed の min-width が下限を押さえている。 */}
-            <colgroup>
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "29%" }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "29%" }} />
-            </colgroup>
+          <table className={s.stages}>
+            <caption className="sr-only">What vet402 does for each side, and what is live today</caption>
             <thead>
               <tr>
-                <th scope="col">Level</th>
-                <th scope="col">Question</th>
-                <th scope="col">How</th>
-                <th scope="col">Output</th>
+                <th scope="col">Stage</th>
+                <th scope="col">For the agent that pays</th>
+                <th scope="col">For the API that is paid</th>
               </tr>
             </thead>
             <tbody>
-              {LEVELS.map((row) => (
-                <tr key={row.level}>
-                  {/* 段名を nowrap で括るのは、ハイフンでの分割を止めるため。
-                      列幅に入らない時、ブラウザは空白より先にハイフンで折る:
-                      `L1 Settle-through`(155px) が 140px の内寸に入らないと
-                      `L1 Settle-` / `through` になり、監査が拾った
-                      `L2 Conformanc / e` と同じ形に見える。nowrap にすると
-                      折れる場所が語間だけになり `L1` / `Settle-through` になる。
-                      1行に収める案（LEVEL 列 27%）も試したが、その幅を保つには
-                      表の下限が 648px になり、640–827px の画面で表が横スクロール
-                      する。語間で折るほうが安い。 */}
-                  <td>
-                    <span className="whitespace-nowrap">{row.level}</span>{" "}
-                    <span className="whitespace-nowrap">{row.name}</span>
-                  </td>
-                  <td>{row.question}</td>
-                  <td>{row.how}</td>
-                  <td className="text-brand-deep">{row.output}</td>
+              {STAGES.map((row) => (
+                <tr key={row.stage}>
+                  <th scope="row">{row.stage}</th>
+                  {(["buyer", "seller"] as const).map((side) => (
+                    <td
+                      key={side}
+                      data-side={side === "buyer" ? "For the agent that pays" : "For the API that is paid"}
+                    >
+                      {row[side].map((item) => (
+                        <p key={item.text} className={s.stageItem}>
+                          {item.text}
+                          <span className={`${s.state} ${item.live ? s.stateLive : ""}`}>
+                            {item.live ? "Live" : "Coming"}
+                          </span>
+                        </p>
+                      ))}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
           </table>
-        </TableScroll>
+        </section>
 
-        <dl className="mt-6 min-[800px]:hidden">
-          {LEVELS.map((row) => (
-            <div key={row.level} className="border-t border-hair py-4 first:border-t-brand-deep">
-              <dt className="font-[family-name:var(--font-display)] font-semibold text-brand-deep">
-                {row.level} {row.name}
-              </dt>
-              <dd className="mt-2 space-y-1 text-[0.84375rem] text-brand">
-                <p>{row.question}</p>
-                <p className="text-brand-lift">How: {row.how}</p>
-                <p className="text-brand-deep">Output: {row.output}</p>
-              </dd>
+        {ledger ? (
+          <section aria-labelledby="chains" className={s.section}>
+            <h2 id="chains" className={s.h2}>
+              Where purchases settled
+            </h2>
+            <p className={s.body}>
+              Read at {ledger.readDate} {ledger.readTime} UTC. Each row is a chain vet402 has paid on.
+            </p>
+            <div className={s.tableWrap} tabIndex={0} role="region" aria-label="Settled purchases by chain">
+              <table className={s.chains}>
+                <thead>
+                  <tr>
+                    <th scope="col">Chain</th>
+                    <th scope="col">Asset</th>
+                    <th scope="col" className={s.num}>
+                      Settled
+                    </th>
+                    <th scope="col" className={s.num}>
+                      Delivered
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {chains.map((c) => (
+                    <tr key={c.chain}>
+                      <th scope="row">{c.label}</th>
+                      <td>{c.asset}</td>
+                      <td className={`${s.num} ${s.mono}`}>{fmt(c.settled)}</td>
+                      <td className={`${s.num} ${s.mono}`}>{fmt(c.delivered)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </dl>
-
-        <p className="doc-p">
-          The L2 output words in that table are the ledger column l2_schema: match, mismatch,
-          no_declaration, or not_checked. The decision document and the facts document store
-          conform, mismatch, undeclared, or not_checked. conform is written when the re-read L2 value
-          (l2_reading) of the latest delivery is match. mismatch is written when that re-read
-          value is mismatch. An older mismatch row with no recorded reason is re-read first, and
-          a cut body reads not_checked. In the other cases the decision word is not_checked when
-          the current declaration names output (a required key or an example property), and undeclared when it does not.
-        </p>
-
-        {/* 2026-08-13 UX監査2巡目 [M5]: この §2 の L0–L3 と、API/SDK が今日返して
-            いる trust score (0–100 / ALLOW-WARN-BLOCK) は別の物差しなのに、両方が
-            同じサイトの上に無説明で並んでいた（/payee は "Level: L0" と
-            "39 BLOCK" を同じ画面に出していた）。関係を書く場所はここ1箇所に決め、
-            docs 側からはここへリンクする。実績の先取りをしないため、置き換えは
-            すべて未来形で書く。 */}
-        <div className="mt-8 flex gap-4">
-          <span className="w-[4ch] shrink-0 text-brand-lift">2.1</span>
-          <p className="min-w-0 max-w-[64ch] text-brand">
-            The trust score this API returns today (0&ndash;100, banded{" "}
-            <span className="whitespace-nowrap">ALLOW / WARN / BLOCK</span>) predates these
-            levels. The resource decision reads L0&ndash;L2 today. The score stays available to
-            API and SDK callers. A score is never reported as an L0&ndash;L2 result.{" "}
-            <Link href="/docs/api#score-breakdown" className="doc-link">
-              How the score is composed
-            </Link>
-            . Full definitions of pass / fail / unverified and the L1 purchase rules:{" "}
-            <Link href="/observatory/methodology" className="doc-link">
-              observatory methodology
-            </Link>
-            .
-          </p>
-        </div>
-
-        {/* ================= 3. Evidence rules ================= */}
-        <h2 id="evidence" className="sec-head scroll-mt-24">
-          <span className="sec-no">3.</span>
-          <span>What a verdict must carry</span>
-        </h2>
-
-        <div className="mt-6 space-y-5">
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">3.1</span>
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              A published L0 fail shows each probe&apos;s time, method, HTTP status, latency and
-              reason code. A published L1 failure also shows the amount vet402 signed for, the
-              chain and, when there is one, the transaction.{" "}
-              <strong>Response bodies are not published.</strong>
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">3.2</span>
-            {/* 2026-08-13 UX監査R1 [D3]: 3ペルソナが独立に「ここは never "bad" と
-                言うが、API は読めなかった入力に対して fail-closed の BLOCK を
-                返す」と矛盾を指摘した。設計としては矛盾していない — 人に見せる
-                面と、金を動かす直前の機械に返す答えは別物にしてある。その意図は
-                docs（Payee score / Availability）と llms.txt には書いてあったが、
-                この頁だけ半分しか言っていなかった。残りの半分を1行で足す。 */}
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              Unverifiable is not a verdict. vet402 says <strong>&quot;unverified&quot;</strong>, never
-              &quot;bad&quot;. For a caller about to move money, a check
-              that could not be completed does not read as ALLOW: the resource decision returns{" "}
-              <span className="whitespace-nowrap">WARN</span> with <code>degraded: true</code> or a{" "}
-              <code>503</code>, and the payee score returns a fail-closed{" "}
-              <span className="whitespace-nowrap">BLOCK</span>. The public page prints &ldquo;not verifiable right now&rdquo; and no number.{" "}
-              <Link href="/docs/api#payee-score" className="doc-link">
-                Why the two answers differ
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="flex gap-4">
-            <span className="w-[4ch] shrink-0 text-brand-lift">3.3</span>
-            {/* 2026-08-13 UX監査R1 [C7][C8]: この2つの約束の実行先が UI のどこにも
-                無かった。異議申立は ToS §8（全文の27%地点）だけ、訂正ログは
-                2箇所で約束しながら該当ページが 404 だった。 */}
-            <p className="min-w-0 max-w-[64ch] text-brand">
-              Sellers can dispute any result for free. {formDisputeQueueSummary(l0ProbeScheduleLabel())}{" "}
-              A signed dispute, which runs one fresh L0 probe of the endpoint when it is accepted,
-              records it like any other probe. The publication gate is unchanged. One failing probe
-              does not publish a fail, and one passing probe becomes the published verdict until the
-              next probe. A dispute does not trigger a new L1 purchase.{" "}
-              <Link href="/legal/terms#corrections" className="doc-link">
-                How to dispute a result
-              </Link>
-              . Corrections are logged publicly &mdash;{" "}
-              <Link href="/corrections" className="doc-link">
-                the corrections log
-              </Link>
-              .
-            </p>
-          </div>
-        </div>
-
-        {/* ================= 4. Working today ================= */}
-        <h2 id="working" className="sec-head scroll-mt-24">
-          <span className="sec-no">4.</span>
-          <span>Implemented and live</span>
-        </h2>
-        <p className="doc-p">
-          Everything in this section is running right now and can be checked without asking us.
-        </p>
-        {stats && stats.totalEndpoints > 0 && (
-          <FunnelFigure
-            n={1}
-            stages={[
-              // 2026-09-04 監査 E: 「Catalog endpoints」は delisted を含む totalEndpoints を指していた。
-              // 分母の名を State of x402 と同じ「Endpoints on record」に揃え、active を併記する。
-              { label: "Endpoints on record", n: stats.totalEndpoints, href: "/observatory" },
-              // 2026-09-29 敵対的監査 4 周目: 「L0 pass 21,229」は掲載落ちを含み、掲載中 20,086 を上回っていた。
-              // 段を「掲載中 → 掲載中の L0 pass」にし、L1 は売り手のレシートと vet402 の索引の紐付けを分ける。
-              { label: "Active (not closed)", n: stats.activeEndpoints, href: "/observatory/state" },
-              { label: "L0 pass, active", n: stats.publishedPassActive, href: "/observatory?verdict=pass" },
-              { label: "L1 settled, seller's receipt", n: stats.l1.endpointsSettledSellerReceipt, href: "/impact" },
-              { label: "L1 settled, no seller receipt", n: stats.l1.endpointsSettledIndexOnly, href: "/impact" },
-            ]}
-            caption={
-              <>
-                Endpoints at each level of evidence
-                {stats.latestSnapshot ? ` as of the ${stats.latestSnapshot.snapshotDate} (UTC) catalog snapshot` : ""}. Bars are
-                proportional to the first row. The first row is every endpoint on record and includes delisted ones (
-                {stats.delistedEndpoints.toLocaleString()}). Active means vet402 has not closed the
-                record. A record from the CDP x402 Bazaar stays active after it leaves the catalog
-                {stats.latestSnapshot
-                  ? `; the latest full read of that catalog saw ${stats.latestSnapshot.fetchedCount.toLocaleString()} listings`
-                  : ""}
-                . The L0 row counts active
-                records whose latest probe returned a valid 402 (<code>publishedPassActive</code>);{" "}
-                {stats.publishedPassActiveProbeOlderThan7d.toLocaleString()} of them were last probed more than 7 days
-                ago, and a further {(stats.publishedPass - stats.publishedPassActive).toLocaleString()} endpoints whose
-                latest probe passed are delisted and are not in this row (<code>publishedPass</code> ={" "}
-                {stats.publishedPass.toLocaleString()} includes them). The two L1 rows count endpoints, active or not, with
-                at least one paid attempt settled on-chain: first those where the seller named the transaction in its
-                own settlement receipt, then those with no seller receipt, where none of the settled transfers was named
-                by the seller and vet402&apos;s own settlements index found them, or Circle&apos;s Gateway API named the batch (<code>settlement_source</code> in the
-                ledger export). Together
-                they are the {stats.l1.endpointsSettled.toLocaleString()} endpoints of <code>l1.endpointsSettled</code> in{" "}
-                <code>/api/v1/observatory/state</code>.
-                {/* 2026-09-19 監査 C1: 棒は先頭行に比例するが、L1 行の分母は先頭行ではない。
-                    L1 が買いに行けたのは endpointsAttempted 件で、その率をここに書く。 */}{" "}
-                Their own denominator is the {stats.l1.endpointsAttempted.toLocaleString()} endpoints L1 has
-                attempted a paid purchase against, not the first row — read as a share of those, the two L1 rows together are{" "}
-                {formatPct1(stats.l1.endpointsSettled, stats.l1.endpointsAttempted)}
-                .
-              </>
-            }
-          />
-        )}
-
-        <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
-          <ItemRow
-            state="live"
-            title="The x402 Observatory"
-            body={
-              <>
-                Each endpoint vet402 has read from the public discovery catalog, and whether its
-                payment wall answers a valid 402. The catalog is read in runs roughly two hours apart; endpoints are
-                probed on a rolling schedule
-                {coverage && coverage.pct !== null
-                  ? `. ${coverage.pct}% of ${coverage.activeEndpoints.toLocaleString()} active records carry a probe from the last 7 days (page read ${coverage.readAt}). The response at ${SITE_URL}/api/v1/observatory/state carries its own retrievedAt. This page reuses that shared read for up to ${PUBLIC_READ_REVALIDATE} seconds`
-                  : ""}
-                . The table shows L0 (payment-wall check) and L1 (real purchases whose transfer
-                vet402 re-read on-chain, whether the seller&apos;s receipt or vet402&apos;s own index
-                named the transaction) in separate cells; they are never mixed.
-              </>
-            }
-            action={{
-              label: "Open the observatory",
-              href: "/observatory",
-              event: "lp_cta_click",
-              position: "s4_observatory",
-            }}
-          />
-          <ItemRow
-            state="live"
-            title="Wallet control, proved by signature"
-            body={
-              <>
-                Prove control of a wallet by signature, get a public verification page and an SVG
-                badge.
-              </>
-            }
-            action={{ label: "Verify a payee", href: "/payee", event: "lp_cta_click", position: "s4_payee" }}
-          />
-          {/* 2026-10-14: vet402's own identity on Celo mainnet (ERC-8004 Identity Registry agentId 9907,
-              Self Agent ID 194). The registration file is public/.well-known/agent-registration.json. */}
-          <ItemRow
-            state="live"
-            title="vet402's own agent identity"
-            body={
-              <>
-                Registered on Celo mainnet as ERC-8004 agent #9907 and as agent #194 in the Self
-                Agent ID registry, so an agent can look up who publishes these reports before it
-                relies on them.
-              </>
-            }
-            action={{
-              label: "Read the registration file",
-              href: "/.well-known/agent-registration.json",
-              event: "lp_cta_click",
-              position: "s4_identity",
-            }}
-          />
-          {/* 2026-08-13 UX監査R1 [C4]: 3つのパッケージは npm に公開済み
-              （いずれも 0.1.0）なのに、サイト全体で "npm" の文字が0件で、
-              「middleware package」と書きながらインストール名がどこにも
-              無かった。しかも npm には無関係の別ベンダーの `vouch-sdk` /
-              `@getvouch/sdk` が実在するので、スコープ付きの正確な名前を
-              名指しする必要がある。 */}
-          <ItemRow
-            state="live"
-            title="Drop-in middleware, REST API and MCP tool"
-            body={
-              <>
-                An x402 middleware package, a REST API, and an MCP tool that answers the question a
-                spending agent should ask before it pays.
-                <span className="mt-3 block text-[0.84375rem] text-brand-lift">
-                  On npm:{" "}
-                  <code className="break-all text-brand-deep">npm i @vet402/sdk</code>,{" "}
-                  <code className="break-all text-brand-deep">@vet402/middleware</code>,{" "}
-                  <code className="break-all text-brand-deep">@vet402/mcp-server</code>.{" "}
-                  {/* 2026-09-02 監査: 「@vouchscore が唯一」と `npm i @vet402/sdk` が自己矛盾していた。 */}
-                  <code className="text-brand-deep">@vet402/*</code> is the canonical scope;{" "}
-                  <code className="text-brand-deep">@vouchscore/*</code> is the{" "}
-                  former name, same publisher. Unscoped <code>vouch-sdk</code> and{" "}
-                  <code>@getvouch/sdk</code> are unrelated.
-                </span>
-              </>
-            }
-            action={{ label: "API reference", href: "/docs/api", event: "docs_click", position: "s4_docs" }}
-          />
-          <ItemRow
-            state="live"
-            title="Public accuracy ledger"
-            body={
-              <>
-                The misfire rates vet402 already has a sample for are published: the L0 false-fail
-                and false-pass rates against re-measurement ship as <code>l0</code> on{" "}
-                <code>/api/v1/accuracy</code>. The verdict-outcome rates wait for a sample &mdash;
-                until enough issued verdicts have resolved, the page below says so instead of
-                printing a number. What is printed goes up whether or not the numbers flatter us.
-              </>
-            }
-            action={{ label: "Measured accuracy", href: "/accuracy", event: "docs_click", position: "s4_accuracy" }}
-          />
-          {/* 2026-08-26 L2 UX監査 #4: 実購買・オンチェーン領収・改ざん検知の
-              最強の証拠ページ(/impact)へ、サイト内のどこからもリンクが無かった
-              （LP内リンク0件・独立確認済み）。他行のコピーと同じ文体（RFC調・
-              事実文・新規数字を作らない）で1行足す。 */}
-          <ItemRow
-            state="live"
-            title="Impact ledger"
-            body={
-              <>
-                Real purchases made and published with evidence &mdash; settled and failed alike
-                &mdash; plus catalog coverage and a hash-anchored ledger (daily prev-hash chain;
-                on-chain anchoring ships behind a flag, OFF by default), synthesized from the
-                sections above into one page for grant reviewers and integrators.
-              </>
-            }
-            action={{ label: "View impact", href: "/impact", event: "docs_click", position: "s4_impact" }}
-          />
-        </div>
-
-        {/* 2026-10-21: 旧 §5「Chains」は第 1 画面の直下の「Where purchases settled」（HomeLedger.tsx・アンカー #chains を引き継ぐ）
-            に一本化した。同じ台帳のチェーン別件数を 2 か所に出さない。Robinhood Chain の合意文とリンク（/rwa）はその表の下に残る。 */}
-        {/* ================= 5. Status of this work ================= */}
-        <h2 id="status" className="sec-head scroll-mt-24">
-          <span className="sec-no">5.</span>
-          <span>Status of this work</span>
-        </h2>
-        <p className="doc-p">
-          Live work is in section 4. This section is only what has not shipped, and this page will
-          not describe it as though it had.
-        </p>
-
-        <div className="mt-6 divide-y divide-hair border-t border-brand-deep">
-          <ItemRow
-            state="building"
-            title="Writing to the Validation Registry"
-            body={
-              <>
-                Verification records will be written to the ERC-8004 Validation Registry, which is
-                nearly unused so far and holds nothing from vet402.
-                <span className="mt-3 block text-[0.84375rem] text-brand-lift">
-                  {/* 2026-09-03: 8/21 以来 14 件が失敗し続けた理由を、事実として出す。
-                      小さく弱みとして書くのではなく、仕様がそうなっているという測定結果として。 */}
-                  Why it has not happened yet, stated plainly: the registry is written in one
-                  direction only. An agent&rsquo;s owner names a validator and opens the request;
-                  the validator answers it. A validator cannot open a request about someone
-                  else&rsquo;s agent &mdash; <code>validationRequest</code> reverts with{" "}
-                  <em>Not authorized</em>, which is what our fourteen attempts between 2026-08-21
-                  and 2026-09-03 did. So this is not a build problem. In the 750,000 blocks of Base we
-                  read on 2026-09-03 (roughly 17 days) the whole registry received{" "}
-                  <strong>two</strong> events, from one validator, about one agent, and{" "}
-                  <strong>none</strong> named us. We can answer the first request the day someone
-                  sends one; until then the honest number is zero.
-                </span>
-              </>
-            }
-          />
-        </div>
-
-        {/* 2026-09-02 Takeshi「ここだけ浮いている」: 破線の囲み（dashbox）は §5（2026-09-19 から §6・2026-10-21 から再び §5）の
-            登録簿の直後に唯一の「箱」として置かれ、紙面の文法（罫と段落）から外れていた。
-            RFC の back matter に倣い、§5 を閉じる 1 文として同じ段落文法で置く。
-            イベント名 follow_click と channel は据え置き。フッタの About 列にも同じ 2 本を置く。 */}
-        <p className="doc-p">
-          Progress is posted as it lands, on{" "}
-          <TrackedLink
-            href="https://x.com/vet402_com"
-            event="follow_click"
-            props={{ channel: "x" }}
-            className="doc-link"
-          >
-            X @vet402_com
-          </TrackedLink>{" "}
-          and{" "}
-          <TrackedLink
-            href="https://github.com/kzmttkc/vet402"
-            event="follow_click"
-            props={{ channel: "github" }}
-            className="doc-link"
-          >
-            GitHub
-          </TrackedLink>
-          .
-        </p>
-
-        {/* ================= Appendix A. Access tiers ================= */}
-        <PricingSection />
-
-        {/* ================= Appendix B. References ================= */}
-        <h2 id="references" className="sec-head scroll-mt-24">
-          <span className="sec-no">B.</span>
-          <span>References</span>
-        </h2>
-        <dl className="mt-6 space-y-5 text-[0.84375rem]">
-          <div id="ref-arxiv" className="flex flex-col gap-1 sm:flex-row sm:gap-4">
-            <dt className="shrink-0 text-brand-deep sm:w-[16ch]">[ARXIV-2606]</dt>
-            <dd className="min-w-0 max-w-[58ch] text-brand">
-              98.7% of ERC-8004 reputation feedback on Ethereum has no verifiable transaction
-              behind it. The paper reports this per chain; §1.2 quotes the Ethereum figure, which
-              is the lowest of the three it measures.{" "}
-              <a
-                href="https://arxiv.org/abs/2606.26028"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="doc-link"
-              >
-                arXiv:2606.26028
-              </a>
-            </dd>
-          </div>
-          <div id="ref-artemis" className="flex flex-col gap-1 sm:flex-row sm:gap-4">
-            <dt className="shrink-0 text-brand-deep sm:w-[16ch]">[VISA-ARTEMIS-2026]</dt>
-            <dd className="min-w-0 max-w-[58ch] text-brand">
-              As of 2026-04-21, the Visa and Artemis PDF reports raw x402 activity of $135.7M
-              across 178.3M transactions, and the article reports wash-and-test-adjusted totals of
-              $15.0M across 109.6M transactions. The gap between those two published totals is
-              38.5% of transactions and 88.9% of volume. $135.7M and 178.3M are in the PDF. $15.0M
-              and 109.6M are in the article and in the archived copy. The two rates are that gap,
-              not a rate printed in either document. Visa and Artemis,{" "}
-              <a
-                href="https://www.visa.com/en-us/thought-leadership/innovation/agentic-payments-from-the-ground-up"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="doc-link"
-              >
-                Agentic Payments from the Ground Up
-              </a>
-              , July 2026 (
-              <a
-                href="https://web.archive.org/web/20260728161825/https://www.visa.com/en-us/thought-leadership/innovation/agentic-payments-from-the-ground-up"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="doc-link"
-              >
-                archived copy
-              </a>
-              ). The PDF is{" "}
-              <a
-                href="https://www.visa.com/vcom-assets/content/dam/visa/reimagine-visa/thought-leadership/documents/agentic-payments-report.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="doc-link"
-              >
-                Agentic Payments report (PDF)
-              </a>
-              . The PDF states the raw totals and dates them as Artemis Analytics data as of April 21,
-              2026. The live
-              article page returned HTTP 500 on earlier checks and answered HTTP 200 again when
-              rechecked on 2026-09-29.
-            </dd>
-          </div>
-        </dl>
-      </article>
-    </main>
-  );
-}
-
-/**
- * ItemRow — one entry in §4 / §5. The state marker is the whole point of the
- * row: `live` means it runs today, `building` means it does not. Keeping the
- * two states in one visual grammar is what stops §5 from reading as a claim.
- */
-function ItemRow({
-  state,
-  title,
-  body,
-  action,
-}: {
-  state: "live" | "building";
-  title: string;
-  body: React.ReactNode;
-  action?: { label: string; href: string; event: string; position: string };
-}) {
-  return (
-    <div className="flex flex-col gap-2 py-5 sm:flex-row sm:gap-6">
-      <div className="shrink-0 sm:w-[14ch] sm:pt-0.5">
-        <span className={state === "live" ? "marker marker-live" : "marker marker-plan"}>
-          {state === "live" ? "implemented" : "building"}
-        </span>
-      </div>
-      <div className="min-w-0 max-w-[58ch]">
-        <p className="font-[family-name:var(--font-display)] font-semibold text-brand-deep">
-          {title}
-        </p>
-        <p className="mt-2 text-brand">{body}</p>
-        {action ? (
-          // 2026-09-02 敵対的監査 F9: 行動リンクが 16px のテキストで、モバイルの当たり判定が
-          // 足りなかった。RFC の紙の文法では押せるものは「囲まれた文字」——secondary の
-          // 罫線ボタン。min-h-11 で 44px を保証する（sm は py-2 で 36px 前後）。
-          <p className="mt-3">
-            <TrackedLink
-              href={action.href}
-              event={action.event}
-              props={{ position: action.position }}
-              className={buttonClass({ variant: "secondary", size: "sm", className: "min-h-11" })}
-            >
-              {action.label}
-            </TrackedLink>
-          </p>
+          </section>
         ) : null}
-      </div>
+
+        <section aria-labelledby="lp-open" className={s.section}>
+          <h2 id="lp-open" className={s.h2}>
+            Everything behind these numbers is open
+          </h2>
+          <p className={s.body}>The data, the method and the old memo are linked below.</p>
+          <ul className={s.links}>
+            {OPEN_DATA.map((l) => (
+              <li key={l.href}>
+                {l.raw ? (
+                  <a href={l.href}>
+                    <span className={s.linkName}>{l.name}</span>
+                    <span className={s.linkTag}>{l.tag}</span>
+                  </a>
+                ) : (
+                  <Link href={l.href}>
+                    <span className={s.linkName}>{l.name}</span>
+                    <span className={s.linkTag}>{l.tag}</span>
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="lp-close" className={s.close}>
+          <h2 id="lp-close" className={s.closeLine}>
+            Give your agent a record to check before it pays.
+          </h2>
+          <div className={s.actions}>
+            <TrackedLink
+              href="/docs/api#quickstart"
+              event="lp_cta_click"
+              props={{ position: "close_buyer" }}
+              className={s.btn}
+            >
+              Add to an agent that pays
+            </TrackedLink>
+            <TrackedLink
+              href="/docs/api#packages"
+              event="lp_cta_click"
+              props={{ position: "close_seller" }}
+              className={s.btnQuiet}
+            >
+              Add to an API you sell
+            </TrackedLink>
+          </div>
+        </section>
+      </main>
+
+      <footer className={s.wrap}>
+        <div className={s.foot}>
+          <div className={s.footGroups}>
+            {(
+              [
+                ["Product", FOOT_PRODUCT],
+                ["Record", FOOT_RECORD],
+                ["Legal", FOOT_LEGAL],
+              ] as const
+            ).map(([title, links]) => (
+              <div key={title} className={s.footGroup}>
+                <p className={s.footGroupLabel}>{title}</p>
+                <ul className={s.footLinks}>
+                  {links.map((f) =>
+                    f.href.startsWith("http") ? (
+                      <li key={f.href}>
+                        <a href={f.href} rel="noopener">
+                          {f.label}
+                        </a>
+                      </li>
+                    ) : (
+                      <li key={f.href}>
+                        <Link href={f.href}>{f.label}</Link>
+                      </li>
+                    ),
+                  )}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <p className={s.footNote}>
+            vet402 is run by KIZUNA Creation. Figures on this page are measurements, shown with the time they were read.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }

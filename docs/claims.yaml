@@ -826,7 +826,7 @@ claims:
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
   - id: lp_four_levels_in_order_of
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "Four levels, in order of what they cost us to run and what they prove. A result never"
     means: "検証段の結果は上の段へ昇格しない（L0 が決済を報告することはない）という設計上の約束"
     check: null
@@ -840,21 +840,21 @@ claims:
     why_unverifiable: "署名前の拒否は x402-payer.ts の関門の性質で、公開 GET が数値で返す種類の主張ではない。拒否の行は /decisions に出る"
     verified_at: 2026-11-02
   - id: lp_then_a_score_is_never
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "A score is never reported as an L0&ndash;L2 result."
     means: "旧 0–100 スコアは移行期間中も API/SDK から使えるが、スコアを L0–L2 の測定結果として出すことはない"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
   - id: lp_bad_a_caller_about_to
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "&quot;bad&quot;. For a caller about to move money, a check"
     means: "測れなかったものを bad と言わず unverified と言う、という判定語の規約"
     check: null
     why_unverifiable: "この文が述べているのは編集方針・設計上の性質であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
   - id: lp_payment_wall_answer_a_valid
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "payment wall answers a valid 402. The catalog is read in runs roughly two hours apart; endpoints are"
     means: "LP のカタログ節。プローブは毎日ではなくローリング。7日カバレッジが 100% 未満であることが「rolling」表記の根拠で、100% に達したらこの文言は逆に過小申告になる（2026-08-13 の事故文言はここにあった）"
     check:
@@ -862,7 +862,7 @@ claims:
       assert: "coverage7d.pct < 100"
     verified_at: 2026-09-04
   - id: lp_an_on_chain_receipt_in
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "named the transaction) in separate cells; they are never mixed."
     means: "L0 と L1 は別セルで出し、混ぜて1つの数字にしない"
     check: null
@@ -1244,14 +1244,14 @@ claims:
     why_unverifiable: "約束しないという宣言であって、公開 GET が数値で返す種類の主張ではない"
     verified_at: 2026-09-04
   - id: audit_e_dispute_runs_one_l0_probe
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "which runs one fresh L0 probe of the"
     means: "署名付き異議は受理時に L0 を 1 回測り、公開ゲートは変わらない。1 回の fail では公開 fail にならず（2 回連続が要る）、1 回の pass は次のプローブまでの公開判定になる（publishedVerdict: 最新が pass なら pass）。フォームの異議は active でパステンプレート以外の出品を優先の列に置き、その実行の普通の列より前に測る。1 回 50 件まで・1 登録ドメイン 5 件まで・公開 fail が先で異議は残りの枠・直近 60 分に測った出品は次の回・7 日で列から落ちる"
     check: null
     why_unverifiable: "処理内容の記載であって、公開 GET が数値で返す種類の主張ではない。実装は disputes.ts、固定は tests/observatory-disputes.test.ts"
     verified_at: 2026-09-04
   - id: audit_e_lp_fig1_denominator_is_on_record
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "The first row is every endpoint on record and includes delisted ones"
     means: "Fig.1 の 1 行目は delisted を含む記録上の総数であって、いまカタログに載っている数ではない"
     check:
@@ -1259,7 +1259,7 @@ claims:
       assert: "totalEndpoints >= 23049"
     verified_at: 2026-09-04
   - id: r4_lp_fig1_l0_row_is_listed_endpoints
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "L0 pass, active"
     means: "Fig.1 の L0 の段は掲載中の endpoint のうち最新の probe が pass のもの（publishedPassActive）。掲載落ちを含む publishedPass（2026-09-29 に 21,229 で掲載中 20,086 を上回っていた）ではない"
     check:
@@ -1267,7 +1267,7 @@ claims:
       assert: "publishedPassActive >= 1"
     verified_at: 2026-09-29
   - id: r4_lp_fig1_l1_rows_split_by_settlement_source
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "L1 settled, no seller receipt"
     means: "Fig.1 の L1 は、売り手のレシートで名指された tx を持つ endpoint と、売り手のレシートが無く vet402 の索引が見つけた tx しか無い endpoint に分けて出す（和は l1.endpointsSettled）"
     check:
@@ -1874,7 +1874,7 @@ claims:
     why_unverifiable: "『下回ったら null』は標本が閾値未満のバケツでしか現れず、本番の値が今どちらかは日によって変わるので、カナリアの式（path op literal）で安定して書けない。実装は src/lib/scoring/benchmark-report.ts:122 の `den >= MIN_SAMPLE ? rate : null` で、tests/accuracy.test.ts の「rates are null below the minimum sample — noise is never published」と「at the minimum sample the rate is published」が境界の両側を固定する"
     verified_at: 2026-09-19
   - id: lp_validation_registry_is_written_in_one_direction
-    surface: src/app/page.tsx
+    surface: src/app/memo/page.tsx
     quote: "the registry is written in one direction only"
     means: "ERC-8004 Validation Registry は、エージェントの持ち主が validator を名指して依頼を開き、validator が答える一方向。validator の側から他人のエージェントについて依頼を開くことはできず、2026-08-21〜09-03 の 14 回はそれで revert した"
     check: null

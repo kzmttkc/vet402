@@ -19,7 +19,7 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 // ---- 1. 分母ラベル ------------------------------------------------------
 
 test("LP Fig.1: first stage is 'Endpoints on record' and the caption says it includes delisted", () => {
-  const home = read("src/app/page.tsx");
+  const home = read("src/app/memo/page.tsx");
   const fig = home.slice(home.indexOf("<FunnelFigure"), home.indexOf("</FunnelFigure>") > 0 ? home.indexOf("</FunnelFigure>") : home.indexOf("/>", home.indexOf("<FunnelFigure")));
   assert.ok(!home.includes('label: "Catalog endpoints"'), "the old label is gone");
   assert.ok(home.includes('label: "Endpoints on record"'), "the first stage names the denominator");
