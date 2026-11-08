@@ -299,6 +299,28 @@ try {
 }
 ```
 
+## Spend rules
+
+`evaluateSpendRules` answers from the rules you wrote, the one payment, your own
+record of payments, and the clock. A rule you leave out is not applied. The day
+is the last 24 hours and the hour is the last 60 minutes. A total that lands on
+the limit passes.
+
+```ts
+evaluateSpendRules({ maxPerTxUsd: 0.1, requireAllow: true, minDeliveryRate: 0.9 }, { payTo: "0x" + "11".repeat(20), host: "api.example.org", resourceId: "r-1", amountUsd: 0.05, recommendation: "ALLOW", deliveryRate: 0.98 }, [], Date.now())
+```
+
+`payChecked` resolves the URL, reads the payer decision, applies those rules to
+the local decision store, and calls `payOrRefuse` only when the rules allow.
+`delivered` is true when the seller's paid response is 2xx other than 202 and
+the body is not empty.
+
+```ts
+await payChecked({ url: "https://api.example.org/v1/quote", rules: { maxPerTxUsd: 0.1, requireAllow: true }, amountUsd: 0.05, account, fetch })
+```
+
+`refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, or `payee_unknown` when neither resolve nor the decision names a payee.
+
 ## SpendGuard — pre-payment policy for agents
 
 Buyer-side counterpart to the score lookups above: before your agent *pays*

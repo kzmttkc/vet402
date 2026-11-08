@@ -1,6 +1,8 @@
 import { SpendGuard, type SpendGuardPolicy } from "./spend-guard.js";
 export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, type SpendGuardPolicy, type SpendGuardTrustPolicy, type SpendEvaluateInput, type SpendDenyReason, type SpendDecision, } from "./spend-guard.js";
 export { payOrRefuse, readDemoDecisions, readL1Decisions, appendDecision, DEFAULT_DECISION_STORE, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, PAY_REFUSE_REASONS, SOLANA_MAINNET, SOLANA_USDC, svmAccountFromKeypair, type PayRail, type SvmPayOptions, type SvmPayerAccount, type SvmTransactionLike, type SvmKeypairLike, type PayOrRefuseBaseInput, type PayOrRefuseInput, type PayOrRefusePayeeInput, type PayOrRefuseNamedPayeeInput, type EnsGateInput, type PayEnsEvidence, type PayOrRefuseResult, type PayReceipt, type PayDecisionRecord, type PayPolicy, type PayEvidencePolicy, type PayEvidenceRow, type PayEvidenceSource, type PayRefuseReason, type PayerAccount, type X402Accept, type X402Settlement, type StoredDecision, type DecisionStoreOptions, type Eip3009Authorization, } from "./pay-or-refuse.js";
+export { evaluateSpendRules, SPEND_RULE_REFUSALS, type SpendRules, type SpendIntent, type SpendRecord, type SpendRuleDecision, type SpendRuleRefusal, } from "./spend-rules.js";
+export { payChecked, type PayCheckedInput, type PayCheckedResult } from "./pay-checked.js";
 /**
  * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
  * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。

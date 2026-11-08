@@ -6,6 +6,10 @@ export { SpendGuard, DEFAULT_MAX_SCORE_AGE_MS, } from "./spend-guard.js";
 export { payOrRefuse, readDemoDecisions, readL1Decisions, appendDecision, DEFAULT_DECISION_STORE, BASE_CHAIN, BASE_CHAIN_ID, BASE_USDC, DEFAULT_MAX_PER_TX_USD, PAY_REFUSE_REASONS, 
 // 2026-09-15: Solana（SVM exact）。payee が base58 なら svm の署名者で払う。web3.js は ALLOW でだけ読む。
 SOLANA_MAINNET, SOLANA_USDC, svmAccountFromKeypair, } from "./pay-or-refuse.js";
+// 手元の支出の決まり（2026-11-08）。vet402 には渡さない。判定の正は test/p1-spend-rules-acceptance.test.mjs。
+export { evaluateSpendRules, SPEND_RULE_REFUSALS, } from "./spend-rules.js";
+// resolve → decision → 手元の記録 → 決まり → 通ったときだけ payOrRefuse。
+export { payChecked } from "./pay-checked.js";
 /**
  * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
  * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。

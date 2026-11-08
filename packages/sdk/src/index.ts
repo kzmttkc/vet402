@@ -57,6 +57,20 @@ export {
   type Eip3009Authorization,
 } from "./pay-or-refuse.js";
 
+// 手元の支出の決まり（2026-11-08）。vet402 には渡さない。判定の正は test/p1-spend-rules-acceptance.test.mjs。
+export {
+  evaluateSpendRules,
+  SPEND_RULE_REFUSALS,
+  type SpendRules,
+  type SpendIntent,
+  type SpendRecord,
+  type SpendRuleDecision,
+  type SpendRuleRefusal,
+} from "./spend-rules.js";
+
+// resolve → decision → 手元の記録 → 決まり → 通ったときだけ payOrRefuse。
+export { payChecked, type PayCheckedInput, type PayCheckedResult } from "./pay-checked.js";
+
 /**
  * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
  * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。
