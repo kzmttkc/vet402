@@ -27,7 +27,7 @@ test("vet402/seller re-exports every value export of @vet402/middleware", () => 
 test("package.json declares the three entry points with types", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.name, "vet402");
-  assert.equal(pkg.version, "0.1.0");
+  assert.equal(pkg.version, "0.1.1");
   assert.equal(pkg.type, "module");
   for (const k of [".", "./buyer", "./seller"]) {
     assert.ok(pkg.exports[k].types, k);

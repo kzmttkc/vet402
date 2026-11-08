@@ -112,10 +112,10 @@ test("every vet402.com URL in a snippet is a route or page in this repo", () => 
   assert.ok(seen >= 3, `expected several vet402.com URLs, saw ${seen}`);
 });
 
-// vet402 0.1.0 is on npm (published 2026-11-08 10:03 JST, npm view: version 0.1.0, shasum
-// 1f38f06ed81b69744aab8f53a4acf6c7effe1916, 10 files). The repo package is that version, so a snippet
-// that imports vet402 installs what it shows. Bump this constant with the next publish.
-const VET402_ON_NPM = "0.1.0";
+// The version the repo publishes as vet402. 0.1.0 went to npm on 2026-11-08 10:03 JST (shasum
+// 1f38f06ed81b69744aab8f53a4acf6c7effe1916, 10 files). 0.1.1 carries the README for the published name
+// and is published from this commit. Bump this constant with the next publish.
+const VET402_ON_NPM = "0.1.1";
 
 test("the vet402 package in the repo is the version on npm", () => {
   assert.equal(JSON.parse(read("packages/vet402/package.json")).version, VET402_ON_NPM);

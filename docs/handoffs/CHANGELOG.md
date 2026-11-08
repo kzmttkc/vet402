@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 vet402 0.1.1 for the README on npm
+
+- **What**: `packages/vet402` is version 0.1.1. The code is the same as 0.1.0. The README is the one that shows `npm install vet402`.
+- **Why**: The README on npm is the one published with the version, so the corrected README needs a new version.
+- **Impact**: The version pin in `tests/connect-page.test.ts` and the package test are 0.1.1. Publishing to npm is a separate step.
+
 ## 2026-11-08 /connect and the README use the vet402 package from npm
 
 - **What**: `vet402` 0.1.0 is on npm. The TypeScript start on `/connect` is `npm install vet402`, then `check` from `vet402` and `payOrRefuse` from `vet402/buyer`. The package README and `llms.txt` show `npm install vet402`, and `scripts/release-packages.mjs` builds, tests and publishes `packages/vet402` with the other three packages (the unscoped name `vet402` is allowed by name).
