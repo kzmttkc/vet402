@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 Domain proof file for the mcptry listing
+
+- **What**: `public/.well-known/mcptry-verify.txt` serves the one-line value mcptry gave for `com.vet402/vet402`.
+- **Why**: mcptry lists servers from the official MCP Registry. The file proves vet402.com runs the listed server, which adds a maintainer badge and down/up email alerts.
+- **Impact**: One static file. No change to the app, APIs or the export.
+
 ## 2026-11-08 vet402 0.1.1 for the README on npm
 
 - **What**: `packages/vet402` is version 0.1.1. The code is the same as 0.1.0. The README is the one that shows `npm install vet402`.
