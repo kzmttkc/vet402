@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 /connect and the README use the vet402 package from npm
+
+- **What**: `vet402` 0.1.0 is on npm. The TypeScript start on `/connect` is `npm install vet402`, then `check` from `vet402` and `payOrRefuse` from `vet402/buyer`. The package README and `llms.txt` show `npm install vet402`, and `scripts/release-packages.mjs` builds, tests and publishes `packages/vet402` with the other three packages (the unscoped name `vet402` is allowed by name).
+- **Why**: One install covers both sides now that the name is on npm.
+- **Impact**: A test pins the repo version of `packages/vet402` to the version on npm (0.1.0). Raise that constant with the next publish. The README on npm changes with the next published version.
+
 ## 2026-11-08 One package and one page to start on either side
 
 - **What**: `packages/vet402` (npm name `vet402`, 0.1.0, not published) gives one entry point: `check(url)` reads `/api/v1/resolve` and then the payer decision, `vet402/buyer` re-exports `@vet402/sdk` plus `check`, and `vet402/seller` re-exports `@vet402/middleware`. `/connect` lets a reader pick I buy, I sell or Both and shows three steps with real snippets for curl, TypeScript, Python, MCP, no-code, Express, Hono and Next.js. `/connect` is in the sitemap, the mobile menu, the footer and `llms.txt`.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// Vouch — publish the SDK and the MCP server to npm.
+// Vouch — publish the SDK, the MCP server, the middleware and the vet402 package to npm.
 //
 // WHY THIS SCRIPT EXISTS. The two packages were finished and never published:
 // both carried `"private": true`, so `npm publish` refused, and the obvious
@@ -13,8 +13,8 @@
 // everything up to that point and then asks. It:
 //   1. refuses to run on a dirty tree — a published tarball must correspond to
 //      a commit somebody can check out;
-//   2. builds both packages from source;
-//   3. runs the SDK tests;
+//   2. builds each package from source;
+//   3. runs each package's tests;
 //   4. shows `npm publish --dry-run` for each, i.e. the exact file list;
 //   5. asks for a typed confirmation before publishing anything.
 //
@@ -31,7 +31,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PACKAGES = ["packages/sdk", "packages/mcp-server", "packages/middleware"];
+const PACKAGES = ["packages/sdk", "packages/mcp-server", "packages/middleware", "packages/vet402"];
 const DRY_RUN_ONLY = process.argv.includes("--dry-run");
 
 const run = (cmd, args, cwd) =>
@@ -63,10 +63,14 @@ try {
   fail("not logged in to npm. Run `npm login` in this terminal first.");
 }
 
+// 2026-11-08: vet402 (one package for both sides) is published under its own unscoped name, which
+// the owner claimed on npm. Every other package stays under the scope.
+const UNSCOPED_OK = new Set(["vet402"]);
+
 const manifests = PACKAGES.map((dir) => {
   const pkg = JSON.parse(readFileSync(path.join(ROOT, dir, "package.json"), "utf8"));
   if (pkg.private) fail(`${dir} still has "private": true`);
-  if (!pkg.name.startsWith("@")) fail(`${dir} has an unscoped name (${pkg.name})`);
+  if (!pkg.name.startsWith("@") && !UNSCOPED_OK.has(pkg.name)) fail(`${dir} has an unscoped name (${pkg.name})`);
   if (pkg.publishConfig?.access !== "public") {
     fail(`${dir} is missing publishConfig.access = "public" (a scoped package defaults to private)`);
   }
@@ -95,6 +99,11 @@ run("npm", ["test"], path.join(ROOT, "packages/middleware"));
 // ここでも回されていなかった。テストを入れたので出荷前の関門に加える。
 console.log("\n── mcp-server tests ──");
 run("npm", ["test"], path.join(ROOT, "packages/mcp-server"));
+
+// 2026-11-08: vet402 re-exports @vet402/sdk and @vet402/middleware from npm. When either is bumped in the
+// same release, publish it first and run `npm install` in packages/vet402 again before this step.
+console.log("\n── vet402 tests ──");
+run("npm", ["test"], path.join(ROOT, "packages/vet402"));
 
 // ---- 4. dry run ------------------------------------------------------------
 for (const { dir } of manifests) {

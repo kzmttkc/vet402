@@ -112,23 +112,22 @@ test("every vet402.com URL in a snippet is a route or page in this repo", () => 
   assert.ok(seen >= 3, `expected several vet402.com URLs, saw ${seen}`);
 });
 
-// The vet402 package is not on npm yet, so no snippet imports it (it would fail to install, and
-// pointing readers at an unclaimed npm name invites someone else to take it).
-test("no snippet imports or installs the unpublished vet402 package", () => {
-  for (const s of allSnippets) {
-    assert.doesNotMatch(s.code, /from "vet402(\/[a-z]+)?"/, s.stack);
-    assert.doesNotMatch(s.code, /npm (i|install) vet402\b/, s.stack);
-    assert.ok(!s.packages.includes("vet402"), s.stack);
-  }
+// vet402 0.1.0 is on npm (published 2026-11-08 10:03 JST, npm view: version 0.1.0, shasum
+// 1f38f06ed81b69744aab8f53a4acf6c7effe1916, 10 files). The repo package is that version, so a snippet
+// that imports vet402 installs what it shows. Bump this constant with the next publish.
+const VET402_ON_NPM = "0.1.0";
+
+test("the vet402 package in the repo is the version on npm", () => {
+  assert.equal(JSON.parse(read("packages/vet402/package.json")).version, VET402_ON_NPM);
 });
 
-test("TypeScript buy snippet resolves, reads the decision, then pays with payOrRefuse from @vet402/sdk", () => {
+test("TypeScript buy snippet checks with vet402, then pays with payOrRefuse from vet402/buyer", () => {
   const ts = CONNECT_CHOICES.find((c) => c.id === "buy")!.stacks.find((s) => s.stack === "TypeScript")!;
-  assert.match(ts.code, /from "@vet402\/sdk"/);
-  assert.match(ts.code, /createVouchClient/);
-  assert.match(ts.code, /\.resolve\(/);
-  assert.match(ts.code, /\.getDecision\(/);
-  assert.match(ts.code, /payOrRefuse/);
+  assert.match(ts.code, /import \{ check \} from "vet402";/);
+  assert.match(ts.code, /import \{ payOrRefuse \} from "vet402\/buyer";/);
+  assert.match(ts.code, /await check\(/);
+  assert.match(ts.intro, /npm install vet402/);
+  assert.deepEqual(ts.packages, ["vet402"]);
 });
 
 test("curl fills RESOURCE_ID from the first call, and no-code names n8n with an encoded q", () => {
@@ -213,16 +212,17 @@ test("/connect is in the sitemap, the header menu and the footer; the home page 
   assert.ok(!read("src/app/page.tsx").includes("/connect"));
 });
 
-test("llms.txt points to /connect and marks the vet402 package as not yet on npm", () => {
+test("llms.txt points to /connect and to the vet402 package on npm", () => {
   const llms = read("public/llms.txt");
   const line = llms.split("\n").find((l) => l.includes("/connect"));
   assert.ok(line, "llms.txt has a /connect line");
   assert.match(line!, /vet402/);
-  assert.match(line!, /not yet on npm/);
+  assert.doesNotMatch(line!, /not yet on npm/);
+  assert.match(line!, /npm install vet402/);
 });
 
 // Copy and it runs: every name a TypeScript snippet imports exists in the build of the package it
-// names (@vet402/sdk and @vet402/middleware, both on npm on 2026-11-08).
+// names (vet402, @vet402/sdk and @vet402/middleware, all on npm on 2026-11-08).
 function distFileFor(spec: string): string {
   const parts = spec.split("/");
   const name = spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
@@ -245,20 +245,13 @@ test("every TypeScript import in a /connect snippet names an export of a publish
   for (const s of allSnippets) {
     for (const m of s.code.matchAll(/import \{([^}]+)\} from "([^"]+)";/g)) {
       const names = m[1].split(",").map((n) => n.trim().replace(/^type\s+/, "")).filter(Boolean);
-      assert.ok(m[2] === "@vet402/sdk" || m[2] === "@vet402/middleware" || m[2].startsWith("@vet402/middleware/"), `${s.stack}: ${m[2]} is not a published package`);
+      assert.ok(/^(vet402(\/(buyer|seller))?|@vet402\/sdk|@vet402\/middleware(\/[a-z]+)?)$/.test(m[2]), `${s.stack}: ${m[2]} is not a published package`);
       const mod = (await import(distFileFor(m[2]))) as Record<string, unknown>;
       for (const n of names) assert.ok(n in mod, `${s.stack}: ${m[2]} has no export ${n}`);
       checked++;
     }
   }
   assert.ok(checked >= 4, `expected the TypeScript, Express, Hono and Next.js imports, saw ${checked}`);
-});
-
-test("the resolve and getDecision calls in the TypeScript snippet exist on the client", async () => {
-  const mod = (await import(distFileFor("@vet402/sdk"))) as { createVouchClient: (o: object) => Record<string, unknown> };
-  const client = mod.createVouchClient({});
-  assert.equal(typeof client.resolve, "function");
-  assert.equal(typeof client.getDecision, "function");
 });
 
 // Second independent review (2026-11-08): what a reader can run today, and what the page may claim.
@@ -271,7 +264,7 @@ test("Python uses plain HTTP on the two routes (vet402-sdk is not on PyPI and ha
   assert.match(py.code, /\/decision/);
 });
 
-test("no snippet promises the unpublished package, and MCP needs no key to paste", () => {
+test("no snippet promises a coming package, and MCP needs no key to paste", () => {
   for (const s of allSnippets) assert.doesNotMatch(`${s.intro}\n${s.code}`, /\bis coming\b|\bcoming soon\b/i, s.stack);
   const mcp = CONNECT_CHOICES.find((c) => c.id === "buy")!.stacks.find((s) => s.stack === "MCP")!;
   assert.doesNotMatch(mcp.code, /VOUCH_API_KEY|your_key_here/);
@@ -299,4 +292,22 @@ test("the Both paragraph tells the two reads apart: URL record for the buyer, pa
 
 test("step three says copy the snippet", () => {
   for (const c of CONNECT_CHOICES) assert.match(c.steps[2], /^Copy the snippet/, c.id);
+});
+
+test("scripts/release-packages.mjs publishes packages/vet402 with the other three", () => {
+  const src = read("scripts/release-packages.mjs");
+  const m = src.match(/const PACKAGES = \[([^\]]+)\]/);
+  assert.ok(m);
+  const list = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+  for (const p of ["packages/sdk", "packages/mcp-server", "packages/middleware", "packages/vet402"]) assert.ok(list.includes(p), p);
+  // Every listed package passes the script's manifest checks (private, scope, publishConfig).
+  const unscopedOk = new Set([...(src.match(/const UNSCOPED_OK = new Set\(\[([^\]]*)\]\)/)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((x) => x[1]));
+  for (const dir of list) {
+    const pkg = JSON.parse(read(`${dir}/package.json`));
+    assert.ok(!pkg.private, `${dir} private`);
+    assert.ok(pkg.name.startsWith("@") || unscopedOk.has(pkg.name), `${dir} unscoped ${pkg.name}`);
+    assert.equal(pkg.publishConfig?.access, "public", `${dir} publishConfig`);
+  }
+  // Each listed package's tests run before the dry run.
+  for (const dir of list) assert.ok(src.includes(`run("npm", ["test"], path.join(ROOT, "${dir}"))`), `${dir} tests are not run`);
 });

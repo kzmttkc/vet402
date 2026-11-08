@@ -3,7 +3,7 @@
 // name and each vet402.com path against this repo). A stack with no real call
 // today is left out, not invented.
 //   curl / No-code: src/app/api/v1/resolve/route.ts, src/app/api/v1/resources/[resourceId]/decision/route.ts
-//   TypeScript: packages/vet402/README.md, packages/sdk/README.md (payOrRefuse)
+//   TypeScript: packages/vet402/README.md (check, vet402/buyer payOrRefuse), vet402 0.1.0 on npm
 //   Python: plain HTTP (httpx) on the two routes. vet402-sdk is not on PyPI.
 //   MCP: src/lib/docs/mcp-page-text.ts (Cursor), src/app/docs/mcp/page.tsx (Claude Code, Claude Desktop, Claude.ai)
 //   Express / Next.js / Hono: packages/middleware/README.md
@@ -49,21 +49,19 @@ const BUY: ConnectStack[] = [
   },
   {
     stack: "TypeScript",
-    intro: "npm install @vet402/sdk (and viem for an EVM signer). Read the decision for the URL, then pay with payOrRefuse after the checks pass.",
+    intro: "npm install vet402 (and viem for an EVM signer). check reads what vet402 saw when it paid the URL. payOrRefuse pays after the checks pass.",
     code: [
-      `import { createVouchClient, payOrRefuse } from "@vet402/sdk";`,
+      `import { check } from "vet402";`,
+      `import { payOrRefuse } from "vet402/buyer";`,
       ``,
       `const payee = "0x..."; // the payTo in the seller's 402`,
       `const account = yourSigner; // a signer, see the payOrRefuse section of the @vet402/sdk README`,
-      `const vouch = createVouchClient({ apiKey: process.env.VOUCH_API_KEY });`,
-      `const found = await vouch.resolve("${SAMPLE_URL}");`,
-      `const resourceId = found.resource?.resource_id;`,
-      `const d = resourceId ? await vouch.getDecision(resourceId, { role: "payer" }) : null;`,
-      `if (d?.recommendation === "ALLOW" && !d.degraded) {`,
-      `  const r = await payOrRefuse({ payee, resource: "${SAMPLE_URL}", amountUsd: 0.01, fetch, account, network: "base-sepolia" });`,
+      `const r = await check("${SAMPLE_URL}");`,
+      `if (r.recommendation === "ALLOW") {`,
+      `  const paid = await payOrRefuse({ payee, resource: "${SAMPLE_URL}", amountUsd: 0.01, fetch, account, network: "base-sepolia" });`,
       `}`,
     ].join("\n"),
-    packages: ["@vet402/sdk"],
+    packages: ["vet402"],
   },
   {
     stack: "Python",

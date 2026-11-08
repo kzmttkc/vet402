@@ -41,19 +41,18 @@ test("README leads with the product sentence", () => {
   assert.ok(readme.includes("Put vet402 between AI agents. Both sides trade safely."));
 });
 
-// Until vet402 is on npm, every README example that a reader can run today imports from the two
-// published packages, and each imported name exists in the installed (npm) build.
-test("README has runnable examples on @vet402/sdk and @vet402/middleware, and their names exist", async () => {
+// vet402 is on npm (0.1.0, 2026-11-08). The README examples import from vet402, vet402/buyer and
+// vet402/seller, and each imported name exists in this package's build.
+test("README examples import from vet402 and its subpaths, and their names exist", async () => {
   const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
-  const today = [...readme.matchAll(/import \{([^}]+)\} from "(@vet402\/(?:sdk|middleware))";/g)];
-  const pkgs = new Set(today.map((m) => m[2]));
-  assert.ok(pkgs.has("@vet402/sdk") && pkgs.has("@vet402/middleware"), "README shows both published packages");
-  for (const m of today) {
-    const mod = m[2] === "@vet402/sdk" ? sdk : middleware;
-    for (const n of m[1].split(",").map((x) => x.trim()).filter(Boolean)) assert.ok(n in mod, `${m[2]} has no export ${n}`);
+  const mods = { vet402: root, "vet402/buyer": buyer, "vet402/seller": seller };
+  const found = [...readme.matchAll(/import \{([^}]+)\} from "(vet402(?:\/buyer|\/seller)?)";/g)];
+  assert.deepEqual([...new Set(found.map((m) => m[2]))].sort(), ["vet402", "vet402/buyer", "vet402/seller"]);
+  for (const m of found) {
+    for (const n of m[1].split(",").map((x) => x.trim()).filter(Boolean)) assert.ok(n in mods[m[2]], `${m[2]} has no export ${n}`);
   }
-  assert.match(readme, /Not yet on npm/);
-  // Values the reader fills are named, not left undefined.
+  assert.doesNotMatch(readme, /not yet on npm/i);
+  assert.match(readme, /npm install vet402/);
   assert.match(readme, /const payee = "/);
   assert.match(readme, /const payerAddress = "/);
 });
