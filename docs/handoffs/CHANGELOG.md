@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-09 Liveness note reads the shared store directly
+
+- **What**: The front page liveness note in `src/components/site/StatusBanner.tsx` subscribes through `useSyncExternalStore` instead of copying the value inside an effect.
+- **Why**: The lint rule for state set inside an effect turned the CI lint step red after the monochrome front page.
+- **Impact**: Same text on the page. CI lint is green again.
+
 ## 2026-11-08 White and black share image
 
 - **What**: `src/app/opengraph-image.png` is the new white and black card with the front page line, and the alt text, default title, og:title, twitter:title and manifest name follow it.

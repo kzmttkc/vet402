@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   freshLivenessCache,
@@ -78,16 +78,20 @@ export function HomeLivenessNote({ linkClassName }: { linkClassName?: string }) 
   );
 }
 
+function subscribeLiveness(onChange: () => void): () => void {
+  const listener: Listener = () => onChange();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 function useLivenessMessage(): string | null {
-  const [message, setMessage] = useState<string | null>(currentMessage);
-  useEffect(() => {
-    listeners.add(setMessage);
-    setMessage(currentMessage);
-    return () => {
-      listeners.delete(setMessage);
-    };
-  }, []);
-  return message;
+  return useSyncExternalStore(
+    subscribeLiveness,
+    () => currentMessage,
+    () => null,
+  );
 }
 
 export function StatusBanner({ variant = "strip" }: { variant?: "quiet" | "strip" }) {
