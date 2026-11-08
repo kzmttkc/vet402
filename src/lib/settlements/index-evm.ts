@@ -171,7 +171,7 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     blocksPerDay: 40_000n,
   },
   // Arc（Circle のステーブルコイン L1・メインネット公開 2026-09-16）。2026-09-17 Arc レーン。
-  //  - ブロックは約 1 秒（オーナー実測 2026-09-17）。7 日の遡りは 86,400 × 7 ブロック。
+  //  - ブロックは約 1 秒（オーナー実測 2026-09-17）→ 2026-11-08 の実測で約 0.51 秒。数字は下の行のとおり 1 日 170,000 ブロックで数える。
   //    チェーンが若いので初回は safeTip − lookback が 0 を割り、実際には genesis 付近から読む。
   //  - 1 回の走査は 172,800 ブロック（= 2 日ぶん）。cron は 1 日 1 回（vercel.json 13:00 UTC）
   //    なので、Base と同じ 40,000 では 1 日 86,400 ブロックに永遠に追いつかない（レビュー
@@ -190,13 +190,19 @@ export const EVM_INDEX_CHAINS: EvmIndexChain[] = [
     chainId: ARC_CHAIN_ID,
     usdc: ARC_USDC_ADDRESS,
     rpcEnv: "ARC_RPC_URL",
-    initialLookbackBlocks: 86_400n * 7n,
-    maxBlocksPerRun: 86_400n * 2n,
+    // 2026-11-08: 実測 506.9〜508.1 ms/ブロック（公開 RPC の直近 10 万／100 万ブロックの時刻差・1 日 約 170,000）。
+    // 上の「約 1 秒」（2026-09-17）のままだと 2 日ぶんの走査が 1 日にしか届かず、遅れの判定も 2 倍甘い。
+    // 日数は据え置き、ブロック数を実測に合わせる（BNB・Tempo と同じ扱い）。
+    // 1 回 340,000 ブロックを区切り無しで読むと、途中で予算が切れた回はチェックポイントが進まない。
+    // 20,000 ブロック（≈ 2.8 時間）ずつ読み切って保存する（Base の subWindow と同じ理由）。
+    initialLookbackBlocks: 170_000n * 7n,
+    maxBlocksPerRun: 170_000n * 2n,
+    subWindowBlocks: 20_000n,
     confirmations: 64n,
-    blocksPerDay: 86_400n,
+    blocksPerDay: 170_000n,
     makeClient: () => getArcPublicClient("batch"),
   },
-  // Celo mainnet（2026-10-10 Celo レーン）。数字は Arc と同じ理由で同じ値:
+  // Celo mainnet（2026-10-10 Celo レーン）。理由は Arc と同じ（Celo は実測で 1 秒）:
   //  - ブロックは 1 秒（2026-10-10 実測: forno の直近 86,400 ブロックの時刻差がちょうど 86,400 秒）。
   //  - 1 回の走査は 2 日ぶん（172,800 ブロック）。日次 cron が 1 日 86,400 ブロックに追いつき、遅れた日も翌日に回収できる。
   //    eth_getLogs は既定の 2,000 ブロックずつ（forno は 2,000 ブロックの問い合わせに答え、2 日ぶんを 1 回で問うと断る——実測）。

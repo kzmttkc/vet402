@@ -25,10 +25,13 @@ test("Arc is in the EVM index table with the measured USDC and ARC_RPC_URL", () 
   assert.equal(arc.usdc, ARC_USDC_ADDRESS);
   assert.equal(arc.usdc, "0x3600000000000000000000000000000000000000");
   assert.equal(arc.rpcEnv, "ARC_RPC_URL");
-  // ~1s blocks: the lookback must express the same 7 days as Base's (2s blocks) window,
+  // ~0.5s blocks (measured 2026-11-08): the lookback must express the same 7 days as Base's window,
   // and the per-run cap must stay inside what one cron pass can read.
-  assert.equal(arc.initialLookbackBlocks, 86_400n * 7n);
-  assert.equal(arc.blocksPerDay, 86_400n);
+  // 2026-11-08 実測: Arc は 1 日 約 170,000 ブロック（506.9〜508.1 ms・直近 10 万／100 万ブロック）。
+  assert.equal(arc.initialLookbackBlocks, 170_000n * 7n);
+  assert.equal(arc.blocksPerDay, 170_000n);
+  assert.equal(arc.maxBlocksPerRun, 170_000n * 2n);
+  assert.equal(arc.subWindowBlocks, 20_000n);
   // 2026-09-17 review: the cron runs once a day; 40,000 blocks/run could never catch up with
   // 86,400 blocks/day. One run must cover more than a day, so a lagging day is recovered.
   assert.ok(arc.maxBlocksPerRun >= 120_000n, `maxBlocksPerRun ${arc.maxBlocksPerRun} < 120,000`);
@@ -91,8 +94,8 @@ test("perChainBudgetMs never divides by zero (a table with nothing indexable sti
 test("evmIndexLag: null while within a day of the safe tip, the block gap once behind by more than a day", () => {
   const arc = byId(5042)!;
   assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n), null, "caught up");
-  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_400n), null, "exactly a day is not yet lag");
-  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_401n), 86_401n);
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 170_000n), null, "exactly a day is not yet lag");
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 170_001n), 170_001n);
   const base = byId(8453)!;
   assert.equal(evmIndexLag(base, 500_000n, 500_000n - 43_200n), null);
   assert.equal(evmIndexLag(base, 500_000n, 400_000n), 100_000n, "Base is measured in its own chain time (2 s blocks back then)");

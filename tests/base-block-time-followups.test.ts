@@ -114,7 +114,7 @@ test("first settlement run on Base reaches back 7 days of time; other chains kee
   const later = firstBlockAtOrAfter(S, utc("2026-11-20T00:00:00Z"));
   assert.equal(initialLookbackBlocksAt(base, later), 7n * 432_000n);
   const arc = EVM_INDEX_CHAINS.find((c) => c.chainId === 5042)!;
-  assert.equal(initialLookbackBlocksAt(arc, 10_000_000n), 86_400n * 7n);
+  assert.equal(initialLookbackBlocksAt(arc, 10_000_000n), 170_000n * 7n);
 });
 
 test("settlement block times follow the schedule inside a window that straddles the change", () => {

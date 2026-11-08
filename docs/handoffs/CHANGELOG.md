@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 The settlements index sizes Arc windows by its measured block interval
+
+- **What**: Arc's day is now 170,000 blocks in the settlements index (measured 506.9 to 508.1 ms per block over the latest 100,000 and 1,000,000 blocks, read 2026-11-08), with the same number of days per run and lookback as before.
+- **Why**: A run now covers the two days it is meant to cover, and the lag check measures a day of Arc time.
+- **Impact**: Index scan widths for Arc only. No table, endpoint or export changes.
+
 ## 2026-11-08 Domain proof file for the mcptry listing
 
 - **What**: `public/.well-known/mcptry-verify.txt` serves the one-line value mcptry gave for `com.vet402/vet402`.

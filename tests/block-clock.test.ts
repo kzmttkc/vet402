@@ -171,7 +171,7 @@ test("settlement indexer lag uses Base's schedule; other chains keep blocksPerDa
   assert.equal(evmIndexLag(base, TIP_1107, 53_937_211n), null, "10.6 h behind is not a day");
   const arc = EVM_INDEX_CHAINS.find((c) => c.chainId === 5042)!;
   assert.equal(arc.blockTimeSchedule, undefined);
-  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 86_401n), 86_401n);
+  assert.equal(evmIndexLag(arc, 1_000_000n, 1_000_000n - 170_001n), 170_001n); // 2026-11-08 実測の 1 日 170,000 ブロック
 });
 
 test("constantClock reproduces the pre-2026-11-07 arithmetic exactly", () => {
