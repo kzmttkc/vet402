@@ -19,7 +19,7 @@ import {
   measuredChainsSentence,
 } from "@/components/site/x402-answers";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
-import { ETHONLINE_OG_IMAGE_ALT, OG_IMAGE_ALT, pageMetadata, webApiJsonLd } from "@/lib/seo";
+import { OG_IMAGE_ALT, pageMetadata, webApiJsonLd } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 
 const ROOT = process.cwd();
@@ -235,7 +235,8 @@ test("x402 payments for AI agents はトップの頁だけが使う", () => {
 
 // 2026-11-02: layout.tsx を外した。/rwa と Tokyo の凍結は 2026-10-23 に解除済みで、この固定はそのあとに残ったもの。
 // SITE_DESCRIPTION が "verifies fulfillment" のままになっていた（公開面の文言監査 H4）。
-test("凍結面のファイルは origin/main と同じで、ethonline の og alt も同じ", () => {
+// 2026-11-09: 共有画像が差し替わったので、ethonline の og alt もその画像の文（OG_IMAGE_ALT）。頁のファイルは origin/main のまま。
+test("凍結面のファイルは origin/main と同じで、ethonline の og alt は共有画像の文", () => {
   const diff = execFileSync(
     "git",
     // judge-panel.tsx だけ外す（2026-11-02 監査 L2）: GET /api/tokyo/state が書かなくなり、90 秒後の戻しを画面が呼ぶ。見た目は同じ。
@@ -245,7 +246,7 @@ test("凍結面のファイルは origin/main と同じで、ethonline の og al
   assert.equal(diff, "");
   const eth = pageMetadata({ title: "payOrRefuse — ETHOnline 2026", description: "d", path: "/ethonline" });
   const images = (eth.openGraph as { images: Array<{ alt?: string }> }).images;
-  assert.equal(images[0].alt, ETHONLINE_OG_IMAGE_ALT);
+  assert.equal(images[0].alt, OG_IMAGE_ALT);
   const faq = pageMetadata({ title: "T", description: "D", path: "/faq" });
   const faqAlt = (faq.openGraph as { images: Array<{ alt?: string }> }).images[0].alt;
   assert.equal(faqAlt, OG_IMAGE_ALT);

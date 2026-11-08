@@ -44,16 +44,35 @@ test("pageMetadata は openGraph.images と twitter.images を既定で継承す
   assert.deepEqual(tw?.images, [`${SITE_URL}/opengraph-image.png`]);
 });
 
-test("og:image:alt は pageMetadata では決まりに合う文で、ファイル規約は凍結面のために残す", () => {
+const APPROVED_OG_ALT =
+  "vet402: Safe payments between AI agents and the APIs they buy from. Check a seller before paying. Check delivery after.";
+const APPROVED_OG_TITLE = "Safe payments between AI agents and the APIs they buy from.";
+
+test("og:image:alt と既定の og:title は、承認済みの共有画像と LP の見出しと同じ文", () => {
   const meta = pageMetadata({ title: "T", description: "D", path: "/faq" });
   const images = (meta.openGraph as { images: Array<{ alt?: string }> }).images;
   const alt = images[0].alt ?? "";
+  assert.equal(alt, APPROVED_OG_ALT);
   assert.equal(alt, read("src/lib/seo.ts").match(/export const OG_IMAGE_ALT =\n  "([^"]+)"/)?.[1]);
   assert.equal(/\b(we|our|us)\b/i.test(alt), false);
   assert.equal(/[;—–]/.test(alt), false);
-  const fileAlt = read("src/app/opengraph-image.alt.txt").trim();
-  assert.notEqual(alt, fileAlt);
-  assert.ok(fileAlt.includes("We buy. We settle."));
+  assert.equal(read("src/app/opengraph-image.alt.txt").trim(), APPROVED_OG_ALT);
+
+  const eth = pageMetadata({ title: "T", description: "D", path: "/ethonline" });
+  const ethAlt = (eth.openGraph as { images: Array<{ alt?: string }> }).images[0].alt;
+  assert.equal(ethAlt, APPROVED_OG_ALT);
+
+  const layout = read("src/app/layout.tsx");
+  const siteTitle = layout.match(/const SITE_TITLE = "([^"]+)"/)?.[1];
+  assert.equal(siteTitle, APPROVED_OG_TITLE);
+  assert.equal(/\b(we|our|us)\b/i.test(siteTitle ?? ""), false);
+  assert.equal(/[;—–]/.test(siteTitle ?? ""), false);
+  assert.match(layout, /openGraph:\s*\{[^}]*title:\s*SITE_TITLE/);
+  assert.match(layout, /twitter:\s*\{[^}]*title:\s*SITE_TITLE/);
+
+  const manifest = read("src/app/manifest.ts");
+  assert.match(manifest, /^ {4}name: "vet402",$/m);
+  assert.equal(manifest.includes("Independent Verification"), false);
 });
 
 // ------------------------------------------------------------------

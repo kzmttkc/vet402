@@ -10,9 +10,9 @@ import { SITE_URL } from "@/lib/site-url";
 // 合流Plausibleサイト(sharoushi-agent.com)へ計装(未計装だった6サイトの1つ)。
 const PLAUSIBLE_DOMAIN = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
 
-// 2026-09-28 SEO 監査: 67 字で検索結果の表題（60 字前後）から切れていた。意味を保って 56 字へ。
-// 頁の H1（src/app/page.tsx）と manifest の name は長い正式名のまま。
-const SITE_TITLE = "vet402 — Independent Verification of x402 Agent Payments";
+// 2026-11-09: オーナーが承認した共有画像に合わせ、既定の title / og:title / twitter:title は
+// LP の H1（src/app/page.tsx）。template は既定には付かない。em ダッシュは使わない。
+const SITE_TITLE = "Safe payments between AI agents and the APIs they buy from.";
 const SITE_DESCRIPTION =
   "vet402 pays x402 APIs itself and publishes which paid requests came back with a non-empty 2xx, so you can check a seller before your agent pays it.";
 
@@ -64,9 +64,9 @@ export const metadata: Metadata = {
   verification: { google: process.env.GOOGLE_SITE_VERIFICATION || "P4SSxlBKJYSC0NYhh7xeStZ4MPg8_TnMm2HNQfZhl28" },
   // 2026-07-24 growth-hacker: OGP/Twitterカードが未設定でX/Slack等での共有時に
   // タイトル・説明文すら出ない状態だったため追加。
-  // 2026-08-13: og:image は src/app/opengraph-image.png（承認済みブランドアセットの
-  // RFC 第1ページ組版）を Next.js のファイル規約が自動で配線する。ここで images を
-  // 書くとその自動配線を上書きしてしまうので書かない。
+  // og:image は src/app/opengraph-image.png（2026-11-09 承認の白黒の共有画像）を
+  // Next.js のファイル規約が自動で配線する。ここで images を書くと
+  // その自動配線を上書きしてしまうので書かない。
   openGraph: {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,

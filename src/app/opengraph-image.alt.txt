@@ -1,1 +1,1 @@
-vet402 — Independent Verification of the x402 Agent-Payment Economy. We buy. We settle. We publish the measurements.
+vet402: Safe payments between AI agents and the APIs they buy from. Check a seller before paying. Check delivery after.

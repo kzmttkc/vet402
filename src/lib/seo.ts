@@ -28,19 +28,16 @@ export const TWITTER_SITE = "@vet402_com";
 
 /**
  * src/app/opengraph-image.png（1200×630）。
- * ファイル規約の opengraph-image.alt.txt は、openGraph を自分で持たない
- * /rwa と /tokyo が受け継ぐ。そのファイルは変えない。
- * /ethonline は pageMetadata を通る凍結面なので、alt は origin/main の文のまま。
+ * 2026-11-09 にオーナーが承認した白黒の共有画像。
+ * alt は画像に書いてある2行。openGraph を自分で持たない経路
+ * （/rwa と /tokyo）は opengraph-image.alt.txt から同じ文を受け継ぐ。
+ * /ethonline も同じ画像なので、同じ文。
  */
 export const OG_IMAGE_PATH = "/opengraph-image.png";
 
-/** /ethonline の og:image:alt。origin/main と同じ文。 */
-export const ETHONLINE_OG_IMAGE_ALT =
-  "vet402 — Independent Verification of the x402 Agent-Payment Economy. We buy. We settle. We publish the measurements.";
-
-/** 凍結面以外の pageMetadata の og:image:alt。we・ダッシュを使わない。 */
+/** 共有画像の alt。LP の見出しと、画像の2行目。em ダッシュも we も使わない。 */
 export const OG_IMAGE_ALT =
-  "vet402. Independent verification of x402 agent payments. Paid is on chain. Delivered is not.";
+  "vet402: Safe payments between AI agents and the APIs they buy from. Check a seller before paying. Check delivery after.";
 
 export const ORG_SAME_AS = [
   "https://x.com/vet402_com",
@@ -81,7 +78,7 @@ type PageMetaInput = {
   description: string;
   /** 先頭スラッシュ付きの絶対パス（例 "/faq"）。ルートは "/"。 */
   path: string;
-  /** この頁の og:image:alt。省くと、/ethonline は凍結の文、それ以外は OG_IMAGE_ALT。 */
+  /** この頁の og:image:alt。省くと OG_IMAGE_ALT（共有画像の文）。 */
   imageAlt?: string;
   /** OpenGraph の type。既定は "website"、記事は "article"。 */
   ogType?: "website" | "article";
@@ -122,7 +119,7 @@ export function pageMetadata({
   imageAlt,
 }: PageMetaInput): Metadata {
   const url = path === "/" ? SITE_URL : `${SITE_URL}${path}`;
-  const alt = imageAlt ?? (path === "/ethonline" ? ETHONLINE_OG_IMAGE_ALT : OG_IMAGE_ALT);
+  const alt = imageAlt ?? OG_IMAGE_ALT;
   return {
     title: path === "/" ? { absolute: title } : title,
     description,

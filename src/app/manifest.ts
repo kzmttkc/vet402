@@ -11,7 +11,7 @@ import type { MetadataRoute } from "next";
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "vet402 — Independent Verification of the x402 Agent-Payment Economy",
+    name: "vet402",
     short_name: "vet402",
     description:
       "vet402 pays x402 APIs itself and publishes which paid requests came back with a non-empty 2xx, so you can check a seller before your agent pays it.",

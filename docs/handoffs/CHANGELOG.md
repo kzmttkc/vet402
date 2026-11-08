@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-08 White and black share image
+
+- **What**: `src/app/opengraph-image.png` is the new white and black card with the front page line, and the alt text, default title, og:title, twitter:title and manifest name follow it.
+- **Why**: The old navy card still carried the earlier tagline. The owner approved the new card on 2026-11-09.
+- **Impact**: Link previews only. No change to pages, APIs or the export.
+
 ## 2026-11-08 Monochrome front page
 
 - **What**: The front page is rebuilt in white, black and grey only. The headline states the product, a real purchase from the public export sits beside it, and the four public counts follow. A five-role audit (web designer, UI/UX, first-time user, security reviewer, judge) across nine axes was applied: the status line moved under the counts and links to /status, the first mobile screen holds the record and the counts, headline leading opened, the seller line no longer double counts, x402 is defined, transaction links accept known explorer hosts only, and the structured data matches the visible page.
