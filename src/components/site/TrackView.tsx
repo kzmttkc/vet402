@@ -4,17 +4,8 @@ import { useEffect, useRef } from "react";
 import { track } from "@/lib/analytics";
 
 // 2026-08-06 growth: mount-once view tracker for server components (the LP,
-// /docs/api and /payee/:address are all RSC pages, so they cannot call
-// window.plausible themselves). Same pattern as Verilot's TrackView.tsx —
-// fire exactly once per page load, never on re-render.
-//
-// Event naming note: no "vouch_" prefix. The whole portfolio shares one
-// Plausible property (data-domain=sharoushi-agent.com) and separates products
-// by the automatic event:hostname property — measured in Verilot (lp_view,
-// scan_start: no prefix) and in growth_ledger.py which queries with
-// `event:hostname==agent-trust-tawny.vercel.app`. Vouch's own pre-existing
-// signup_started/completed/failed are also unprefixed; adding a prefix now
-// would split this product into two naming schemes.
+// /docs/api and /payee/:address are all RSC pages). Fire once per page load,
+// never on re-render. Events go to first-party site_events_daily via track().
 export default function TrackView({
   event,
   props,

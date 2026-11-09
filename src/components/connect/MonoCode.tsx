@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 import styles from "@/app/connect/connect.module.css";
 
 /**
@@ -22,6 +23,7 @@ export default function MonoCode({ code, label }: { code: string; label: string 
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(code);
         setState("copied");
+        track("snippet_copy");
         return;
       }
     } catch {

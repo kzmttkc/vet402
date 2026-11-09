@@ -15,7 +15,7 @@ import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
  * RFC の紙の文法（doc-caption / doc-input / buttonClass）。装飾なし、枠なし。
  * 送信は fetch。成功時は受付番号を残す（人が support へ問い合わせる時の鍵）。
  * 2026-09-28 監査: notify はダブルオプトイン。成功表示は「確認メールを見て」。
- * Plausible: record_subscribe{kind}（送信成功）と dispute_start（異議欄に初めて触れた時・1 回だけ）。
+ * Site events: record_subscribe（送信成功）と dispute_start（異議欄に初めて触れた時・1 回だけ）。
  * email も理由の本文も送らない。
  */
 export default function RecordSubscribe({

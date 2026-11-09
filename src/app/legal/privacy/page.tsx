@@ -37,7 +37,7 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">October 31, 2026</span>
+              Revision: <span className="text-signal">November 9, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -48,7 +48,7 @@ export default async function PrivacyPage() {
         </div>
         <h1 className="doc-title mt-8">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: October 31, 2026</p>
+        <p className="doc-note text-center">Last updated: November 9, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -148,6 +148,17 @@ export default async function PrivacyPage() {
               name an MCP client sends when it connects, and for browsers whether the request came
               from a vet402.com page, only to pick that name. We do not store the User-Agent text, the
               IP address, the URL or query being looked up, or any API key with these counts
+            </li>
+            <li>
+              <strong>Site usage counts</strong> (<code>site_events_daily</code>): when a page on
+              vet402.com is opened, or a link, copy button or sign-up step on it is used, a count per
+              UTC day, event name, page group (for example <code>/docs/api</code> or{" "}
+              <code>/blog/[slug]</code>) and source group (for example <code>google</code>,{" "}
+              <code>github</code>, <code>direct</code> or <code>internal</code>, taken from the hostname
+              of the page that linked here). The browser reports this to vet402.com itself. vet402 reads
+              the User-Agent and origin headers only to skip bots and requests from other sites, and
+              stores no IP address, User-Agent text, full URL, query, cookie or identifier with these
+              counts, so a count cannot be tied to a person
             </li>
             {/* 2026-10-26 Takeshi 承認。レビュー: 公開は持ち主の人数。締まった月だけを、
                 翌月 3 日 00:00 UTC 以降の最初の読み取りで固定する。削除すると鍵 id は新しい
@@ -254,7 +265,7 @@ export default async function PrivacyPage() {
               <a className="doc-link" href="#session-analytics">
                 session analytics
               </a>
-              ). Traffic statistics with Plausible are cookieless and need no consent.
+              ). Site usage counts are kept on vet402.com without cookies or identifiers and need no consent.
             </li>
           </ul>
         </section>
@@ -458,15 +469,6 @@ export default async function PrivacyPage() {
               ); receives the recipient email address and the body of that message. We do not use it
               for marketing email and we send no newsletter.
             </li>
-            <li>
-              <strong>Plausible Analytics</strong> (European Union) — aggregate traffic statistics.
-              Plausible is cookieless and sets no persistent identifier; what your browser sends it
-              is described under{" "}
-              <a className="doc-link" href="#external-transmission">
-                information your browser sends to a third party
-              </a>{" "}
-              below.
-            </li>
             {/* 2026-10-31 オーナー承認: Microsoft Clarity（NEXT_PUBLIC_CLARITY_PROJECT_ID）。中身は #session-analytics。 */}
             <li>
               <strong>Microsoft Clarity</strong> (Microsoft Corporation, United States). Session
@@ -517,14 +519,13 @@ export default async function PrivacyPage() {
               session analytics
             </a>
             . vet402 sets no advertising cookies and tells Clarity that advertising storage is denied.
-            Plausible is cookieless.
           </p>
         </section>
 
         {/* 2026-08-06 (L4 legal review) で「保存先の地域は実測していないので書かない」とした節。
             2026-09-29 監査 4 周目: 実測が揃ったので地域を書く。Neon は aws-us-east-2
             （docs/audits/2026-09-05-cia-availability-audit.md の実測）、Vercel の関数は
-            iad1（本番ログの instance 表記）。Resend・Plausible・GitHub・Stripe は各社の公開情報。
+            iad1（本番ログの instance 表記）。Resend・GitHub・Stripe は各社の公開情報。
             APPI の安全管理措置（外的環境の把握）として国名を示す。 */}
         <section id="where-stored" className="scroll-mt-24 space-y-2">
           <h2 className="sec-head">Where your data is stored</h2>
@@ -538,9 +539,6 @@ export default async function PrivacyPage() {
               region), the application servers (Vercel, Washington, D.C. region; pages are also
               cached on Vercel&apos;s worldwide edge network), email delivery (Resend), billing
               (Stripe), and source code hosting (GitHub).
-            </li>
-            <li>
-              <strong>European Union (Germany)</strong> — traffic statistics (Plausible).
             </li>
             <li>
               <strong>United States and other countries where Microsoft runs Azure</strong>: session
@@ -592,31 +590,20 @@ export default async function PrivacyPage() {
           </ul>
         </section>
 
-        {/* 2026-09-29 監査 4 周目: 電気通信事業法 27 条の 12（外部送信規律）。CSP の connect-src は
-            'self' と plausible.io だけ（src/proxy.ts）なので、ブラウザから第三者へ送る先は Plausible 1 つ。
-            2026-10-31: Clarity の Project ID がある時は *.clarity.ms と c.bing.com が加わる。送る先は 2 つ。 */}
+        {/* 2026-09-29 監査 4 周目: 電気通信事業法 27 条の 12（外部送信規律）。
+            2026-11-09: サイト利用件数は first-party の POST のみ。Clarity は Project ID がある時だけ。 */}
         <section id="external-transmission" className="scroll-mt-24 space-y-2">
           <h2 className="sec-head">Information your browser sends to a third party</h2>
           <p>
-            When you open a page on vet402.com, your browser loads a script from{" "}
-            <code>plausible.io</code> and sends Plausible Analytics (Plausible Insights OÜ) the
-            address of the page you are on (including any campaign parameters in it), the referring
-            page, your screen width, and the names of a few events we define, such as a button
-            click, with non-identifying details about them. Plausible also receives your IP address
-            and browser user-agent with the request. According to Plausible&apos;s published data
-            policy, it uses them only to count unique visitors with a daily-changing hash and to
-            derive the country, browser and device type, and does not store the IP address. We use
-            the result for aggregate traffic statistics only. Plausible sets no cookie.
-          </p>
-          <p>
-            When session analytics runs, your browser also sends information to Microsoft Clarity,
-            as described under{" "}
+            When session analytics runs, your browser sends information to Microsoft Clarity, as
+            described under{" "}
             <a className="doc-link" href="#session-analytics">
               session analytics
             </a>{" "}
-            below. Plausible and Microsoft Clarity are the only third parties vet402&apos;s pages send
-            information to from your browser. Stripe receives your details only on its own checkout
-            and portal pages.
+            below. Site usage counts go to vet402.com itself and are described under{" "}
+            <strong>Site usage counts</strong> above. Microsoft Clarity is the only third party
+            vet402&apos;s pages send information to from your browser, except when you open Stripe&apos;s
+            own checkout or portal pages.
           </p>
         </section>
 

@@ -304,7 +304,7 @@ test("proxy CSP: ID 未設定ならどこにも Clarity を足さない", async 
 
 test("proxy CSP: ID があれば HTML 頁にだけ足す。API・CSV・MCP の CSP は今のまま", async () => {
   const page = await cspFor("/observatory", ID);
-  assert.match(page, /connect-src 'self' https:\/\/plausible\.io https:\/\/\*\.clarity\.ms https:\/\/c\.bing\.com/);
+  assert.match(page, /connect-src 'self' https:\/\/\*\.clarity\.ms https:\/\/c\.bing\.com/);
   assert.match(page, /img-src 'self' data: https:\/\/\*\.clarity\.ms https:\/\/c\.bing\.com/);
   assert.match(page, /script-src [^;]*https:\/\/\*\.clarity\.ms/);
   // Clarity を動かさない頁（トークンを URL に載せる頁・凍結面）も CSP は今のまま。
@@ -325,13 +325,14 @@ test("proxy CSP: ID があれば HTML 頁にだけ足す。API・CSV・MCP の C
   }
 });
 
-test("入口: Clarity は root template の呼び出し 1 か所。layout.tsx（凍結面）は触らず、Plausible は残す", () => {
+test("入口: Clarity は root template の呼び出し 1 か所。layout は PageViewBeacon のみ（Plausible なし）", () => {
   const template = read("src/app/template.tsx");
   assert.equal(template.match(/<ClarityTag\b/g)?.length ?? 0, 1);
   assert.match(template, /\{children\}/);
   const layout = read("src/app/layout.tsx");
   assert.doesNotMatch(layout, /Clarity/);
-  assert.match(layout, /plausible\.io\/js\/script\.js/);
+  assert.doesNotMatch(layout, /plausible/i);
+  assert.match(layout, /PageViewBeacon/);
   let calls = 0;
   for (const rel of tsxFiles("src")) calls += read(rel).match(/<ClarityTag\b/g)?.length ?? 0;
   assert.equal(calls, 1);
@@ -427,8 +428,8 @@ test("privacy: Clarity の節（取るもの・Microsoft・EEA/UK/CH の同意�
   assert.doesNotMatch(section, /—/, "no em dash");
   const prose = section.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
   assert.doesNotMatch(prose, /\b[Ww]e\b|\bour\b|\bus\b/, "first person is I or vet402");
-  assert.match(src, /Revision: <span className="text-signal">October 31, 2026<\/span>/);
-  assert.match(src, /Last updated: October 31, 2026/);
+  assert.match(src, /Revision: <span className="text-signal">November 9, 2026<\/span>/);
+  assert.match(src, /Last updated: November 9, 2026/);
   assert.match(src, /<strong>Microsoft Clarity<\/strong>/, "listed among subprocessors and third parties");
   // 「Plausible だけ」「同意に頼らない」「cookie は 1 つ」の旧文は Clarity と食い違うので残さない。
   assert.doesNotMatch(src, /This is the\s+only third party our pages send information to/);

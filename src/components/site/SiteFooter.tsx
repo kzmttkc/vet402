@@ -19,6 +19,7 @@
  */
 
 import Link from "next/link";
+import OutboundAnchor from "@/components/site/OutboundAnchor";
 import { Wordmark } from "@/components/site/Wordmark";
 import { clarityExcludedPath, clarityProjectId } from "@/lib/clarity";
 
@@ -136,9 +137,18 @@ export function SiteFooter({ pathname = "" }: { pathname?: string }) {
               <ul className="mt-3 space-y-0 text-[0.84375rem] sm:mt-4 sm:space-y-1">
                 {col.links.map((item) => (
                   <li key={item.href}>
-                    <Link href={item.href} className="inline-flex min-h-8 items-center text-brand hover:text-brand-deep">
-                      {item.label}
-                    </Link>
+                    {item.href.startsWith("http") ? (
+                      <OutboundAnchor
+                        href={item.href}
+                        className="inline-flex min-h-8 items-center text-brand hover:text-brand-deep"
+                      >
+                        {item.label}
+                      </OutboundAnchor>
+                    ) : (
+                      <Link href={item.href} className="inline-flex min-h-8 items-center text-brand hover:text-brand-deep">
+                        {item.label}
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

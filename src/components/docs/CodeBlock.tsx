@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 import styles from "./CodeBlock.module.css";
 
 /**
@@ -50,6 +51,7 @@ export default function CodeBlock({
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(code);
         setState("copied");
+        track("snippet_copy");
         return;
       }
     } catch {

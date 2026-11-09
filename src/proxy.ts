@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSellersPath, sellersRateLimitResponse } from "@/lib/sellers/page-limit";
 import { invalidPayeeAddressHtml, isMalformedPayeePath } from "@/lib/payee/invalid-address-page";
-import { clarityCspApplies, clarityCspSources, clarityProjectId, clarityTokenPath } from "@/lib/clarity";
+import { clarityCspApplies, clarityCspSources, clarityProjectId } from "@/lib/clarity";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -59,11 +59,8 @@ export async function proxy(request: NextRequest) {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data:${clarity ? ` ${clarity.img}` : ""}`,
     `font-src 'self' data:`,
-    // https://plausible.io: 2026-07-22 全社日次反応レポート向け計装。script自体は
-    // strict-dynamic下でNextのnonce付きランタイムからの動的挿入として許可されるが、
-    // ビーコン送信(fetch/XHR)は connect-src が別途governs するため明示許可が必須。
-    // 確認・配信停止の頁だけ外す（URL の # にトークンが来る。src/lib/observatory/token-page.ts）。
-    `connect-src 'self'${clarityTokenPath(request.nextUrl.pathname) ? "" : " https://plausible.io"}${clarity ? ` ${clarity.connect}` : ""}${isDev ? " ws: wss:" : ""}`,
+    // connect-src 'self': サイト利用件数は first-party の POST /api/v1/site-events（2026-11-09）。
+    `connect-src 'self'${clarity ? ` ${clarity.connect}` : ""}${isDev ? " ws: wss:" : ""}`,
     `frame-src 'none'`,
     `frame-ancestors 'none'`,
     `form-action 'self'`,

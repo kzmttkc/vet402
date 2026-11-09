@@ -1,15 +1,12 @@
 // ============================================================
 // 確認・配信停止の頁のトークン（URL の #）を解析へ渡さない（2026-11-02 監査 L1）。
-// Plausible の script は location.href を # ごと送るので、「# は解析に乗らない」は誤りだった。
-//   1. 頁の先頭の inline script が、解析の script より前に # を URL から消して手元に移す
-//   2. この 2 頁だけ CSP の connect-src から plausible.io を外す（1 が走らなくても送れない）
+// トークンは first-party site_events に載せない。# は頁先頭の inline script で URL から消す。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { NextRequest } from "next/server";
-import { clarityTokenPath } from "@/lib/clarity";
 import { TOKEN_STASH_SCRIPT, clearLinkHash, readLinkHash } from "@/lib/observatory/token-page";
 
 delete process.env.DATABASE_URL;
@@ -78,22 +75,17 @@ test("2 頁とも <main> より前に script を置き、部品は URL に頼ら
   assert.doesNotMatch(action, /window\.location\.hash/);
 });
 
-test("CSP: トークンの 2 頁だけ connect-src に plausible.io が無い", async () => {
+test("CSP: connect-src に plausible.io が無い", async () => {
   const { proxy } = await import("@/proxy");
   const connectSrc = async (path: string) => {
     const res = await proxy(new NextRequest(`https://vet402.com${path}`));
     const csp = res.headers.get("content-security-policy") ?? "";
     return csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("connect-src")) ?? "";
   };
-  for (const path of ["/observatory/confirm", "/observatory/unsubscribe"]) {
-    assert.equal(clarityTokenPath(path), true);
+  for (const path of ["/observatory/confirm", "/observatory/unsubscribe", "/", "/observatory"]) {
     const c = await connectSrc(path);
-    assert.match(c, /^connect-src 'self'/);
     assert.doesNotMatch(c, /plausible/, path);
-  }
-  for (const path of ["/", "/observatory", "/observatory/confirmed", "/observatory/e/abc"]) {
-    assert.equal(clarityTokenPath(path), false);
-    assert.match(await connectSrc(path), /https:\/\/plausible\.io/, path);
+    assert.match(c, /^connect-src 'self'/);
   }
 });
 

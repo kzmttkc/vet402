@@ -1521,6 +1521,28 @@ export const clientUsageDaily = pgTable(
 );
 
 /**
+ * site_events_daily（2026-11-09）— 公開頁の閲覧とクリック系イベントを、日・イベント・頁グループ・参照元ラベルごとに数える表。
+ * ブラウザは vet402.com 自身へ sendBeacon する（src/lib/analytics.ts）。サーバは src/lib/site-events.ts で集計する。
+ * 第三者計装契約終了後、first-party で同じ用途の日次件数だけを持つ。
+ *
+ * 持つのは (UTC 日, event, path, source, 件数) だけ。IP・UA 文字列・生 URL・クエリ・cookie・識別子は持たない。
+ * path は pathGroup が選んだ有限集合、source は sourceLabel が選んだ参照元ホストのグループ名。
+ * 誰の操作か結び付ける材料が無いので保持期限は置かない。
+ * SQL: scripts/sql/2026-11-09-site-events-daily.sql
+ */
+export const siteEventsDaily = pgTable(
+  "site_events_daily",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    event: text("event").notNull(),
+    path: text("path").notNull(),
+    source: text("source").notNull(),
+    count: bigint("count", { mode: "number" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.event, t.path, t.source] }), index("site_events_daily_day_idx").on(t.day)],
+);
+
+/**
  * decision_usage_daily — 鍵ありの判定 API が 200 で答えた件数。日・鍵・チェーン。
  * api_usage の課金・上限とは別の表（あちらは触らない）。鍵を消しても残るよう外部キーは置かない。
  * 公開するときは鍵 id を出さない。公開値は decision_usage_monthly_published に一度固定する。

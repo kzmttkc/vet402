@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { track } from "@/lib/analytics";
+import { track, trackOutboundFromHref } from "@/lib/analytics";
 
 // 2026-08-06 growth: click-tracked link for server components. The LP and
 // /docs/api are RSC pages, so their CTAs cannot carry an onClick — this thin
@@ -32,6 +32,7 @@ export default function TrackedLink({
 }) {
   const onClick = () => {
     track(event, props);
+    if (/^https?:\/\//.test(href) || href.startsWith("mailto:")) trackOutboundFromHref(href);
     after?.();
   };
   const external = /^https?:\/\//.test(href);

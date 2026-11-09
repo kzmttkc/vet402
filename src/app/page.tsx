@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import { fragmentMono, martianMono } from "./fonts";
 import TrackView from "@/components/site/TrackView";
 import TrackedLink from "@/components/site/TrackedLink";
+import OutboundAnchor from "@/components/site/OutboundAnchor";
 import { HomeLivenessNote } from "@/components/site/StatusBanner";
 import { BILLING_PLANS, isStripeConfigured } from "@/lib/billing/plans";
 import { SITE_URL } from "@/lib/site-url";
@@ -701,9 +702,9 @@ export default async function Home() {
                   {links.map((f) =>
                     f.href.startsWith("http") ? (
                       <li key={f.href}>
-                        <a href={f.href} rel="noopener">
+                        <OutboundAnchor href={f.href} rel="noopener">
                           {f.label}
-                        </a>
+                        </OutboundAnchor>
                       </li>
                     ) : (
                       <li key={f.href}>

@@ -8,7 +8,7 @@ import { TokenStashScript } from "@/components/site/TokenStashScript";
  * /observatory/confirm — メール内リンクの着地頁（2026-09-28 監査）。
  * GET では何も書かない（DB に触れない）。変わるのはボタンの POST だけ。
  * トークンは # の後ろにあり、この頁のサーバ描画には届かない。
- * Plausible の script は location.href を送るので、読み込まれる前に # を URL から消す（token-page.ts）。
+ * 読み込み前に # を URL から消す（token-page.ts）。site_events は path だけを数え、トークンは送らない。
  */
 
 export const metadata: Metadata = pageMetadata({

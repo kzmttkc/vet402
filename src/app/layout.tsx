@@ -1,14 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
-import Script from "next/script";
 import "./globals.css";
 import { fragmentMono, martianMono } from "./fonts";
 import { SiteChrome } from "@/components/site/SiteChrome";
+import PageViewBeacon from "@/components/site/PageViewBeacon";
 import { SITE_URL } from "@/lib/site-url";
-
-// 2026-07-22 CTO実装: 全社日次反応レポート(daily_reaction_report.py)向けに
-// 合流Plausibleサイト(sharoushi-agent.com)へ計装(未計装だった6サイトの1つ)。
-const PLAUSIBLE_DOMAIN = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN;
 
 // 2026-11-09: オーナーが承認した共有画像に合わせ、既定の title / og:title / twitter:title は
 // LP の H1（src/app/page.tsx）。template は既定には付かない。em ダッシュは使わない。
@@ -105,44 +101,16 @@ export default async function RootLayout({
   // automatically applies this same nonce to its own inline hydration
   // script, and a statically-cached page would otherwise ship a stale
   // nonce that no longer matches the fresh one in the response header.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  await headers();
 
   return (
     <html
       lang="en"
       className={`${martianMono.variable} ${fragmentMono.variable} h-full antialiased`}
     >
-      <head>
-        {PLAUSIBLE_DOMAIN ? (
-          <>
-            {/* 公式 queue stub。plausible.io/js/script.js は defer+afterInteractive
-                で遅れて実行されるため、mount 直後に発火するイベント（TrackView の
-                lp_view / payee_view / payee_scored / docs_view / signup_view など、
-                RSC ページの useEffect 即時発火）が本体読み込み前に呼ばれると、
-                これが無ければ window.plausible 未定義で no-op になり取りこぼす。
-                stub が先に window.plausible を配って呼び出しを q に積み、本体が
-                読み込まれたら q を消化する。parse 時に同期実行される素の inline
-                script なので、どの component の mount より前に走る。nonce 必須
-                （CSP: script-src 'self' 'nonce-…' 'strict-dynamic'。nonce 付き
-                inline script は strict-dynamic 下でも実行される）。 */}
-            <script
-              nonce={nonce}
-              dangerouslySetInnerHTML={{
-                __html:
-                  "window.plausible=window.plausible||function(){(window.plausible.q=window.plausible.q||[]).push(arguments)}",
-              }}
-            />
-            <Script
-              defer
-              nonce={nonce}
-              data-domain={PLAUSIBLE_DOMAIN}
-              src="https://plausible.io/js/script.js"
-              strategy="afterInteractive"
-            />
-          </>
-        ) : null}
-      </head>
+      <head />
       <body className="min-h-full flex flex-col bg-ground">
+        <PageViewBeacon />
         {/* Outage strip is a client read of GET /api/health inside SiteChrome —
             it must not import scoring engines into this layout. */}
         <SiteChrome>

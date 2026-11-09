@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-09 First-party site usage counts (Plausible removed)
+
+- **What**: First-party aggregate counters in `site_events_daily` (`scripts/sql/2026-11-09-site-events-daily.sql`, `src/lib/site-events.ts`, `POST /api/v1/site-events`). Client `track()` and `PageViewBeacon` send beacons to vet402.com. Plausible script and CSP entries removed. Privacy policy updated. Operator metrics in `docs/metrics/site-funnel.sql`.
+- **Why**: Plausible API returns 402 after the contract ended on 2026-11-07, so events were lost while the browser still called plausible.io.
+- **Impact**: Apply `scripts/sql/2026-11-09-site-events-daily.sql` to the **vouch** database before or after deploy (writes fail softly until the table exists). No IP or visitor id is stored with site counts.
+
 ## 2026-11-09 Footer x402 guides, sitemap /memo, IndexNow on deploy
 
 - **What**: The home page footer and `SiteFooter` list x402 guide links (`What is x402`, `Check a seller`, `x402 by chain`, `Stablecoin payments`, and on the home footer `State of x402`). `sitemap.ts` sets `/` lastmod to 2026-11-08, adds `/memo`, and tests cover `/memo` and the x402 guide URLs. Pure-ESM `scripts/indexnow-lib.mjs` and `scripts/indexnow-submit.mjs` plus `tests/indexnow-lib.test.ts` submit changed sitemap URLs to IndexNow. `.github/workflows/indexnow.yml` runs after a successful Production deployment (60s CDN wait) or on `workflow_dispatch`. Titles name x402 on three pages: `/observatory/state` (State of x402: delivery rates and payments by chain), `/docs/mcp` (Hosted MCP server for x402 seller checks), `/accuracy` (Measured accuracy of x402 seller verdicts), and the `/accuracy` description no longer uses "we".

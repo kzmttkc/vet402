@@ -96,12 +96,12 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /The controller of the personal data/);
   assert.match(privacy, /id="where-stored"/);
   assert.match(privacy, /United States/);
-  assert.match(privacy, /European Union \(Germany\)/);
   assert.match(privacy, /id="security"/);
   assert.match(privacy, /id="external-transmission"/);
-  assert.match(privacy, /plausible\.io/);
-  assert.match(privacy, /Revision: <span className="text-signal">October 31, 2026/);
-  assert.match(privacy, /Last updated: October 31, 2026/);
+  assert.match(privacy, /site_events_daily/);
+  assert.doesNotMatch(privacy, /plausible/i);
+  assert.match(privacy, /Revision: <span className="text-signal">November 9, 2026/);
+  assert.match(privacy, /Last updated: November 9, 2026/);
   assert.match(privacy, /<strong>Avalanche public C-Chain RPC<\/strong> \(<code>api\.avax\.network<\/code>\)/);
   assert.match(privacy, /bsc-rpc\.publicnode\.com/);
   // 2026-10-20: BNB の照合のレシート読みは BNB Chain の公開 dataseed（BNB_VERIFY_RPC_URL）。

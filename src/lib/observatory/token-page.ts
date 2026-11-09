@@ -1,12 +1,10 @@
 // ============================================================
 // 確認・配信停止の頁のトークン（メールのリンクの # の後ろ）を解析へ渡さない（2026-11-02 監査 L1）。
 //
-// # はサーバには届かないが、Plausible の script は location.href を # ごと送る。layout.tsx は
-// 全頁に script を入れる（tests/seo-audit-1026.test.ts が layout を origin/main と同じに保つので、
-// 頁ごとに外せない）。だから 2 重にする:
-//   1. TOKEN_STASH_SCRIPT: 頁の HTML の中の inline script。Next の afterInteractive で後から入る
-//      解析の script より必ず前に走り、# を URL から消して sessionStorage へ移す
-//   2. src/proxy.ts: この 2 頁だけ connect-src から plausible.io を外す（1 が走らなくても送れない）
+// # はサーバには届かない。2026-11-09 以前は第三者の計装 script が location.href ごと送っていた。
+// 今は first-party の site_events だけ（パスは pathGroup、# は送らない）。トークンを URL に残さないため:
+//   1. TOKEN_STASH_SCRIPT: 頁の HTML の中の inline script。# を URL から消して sessionStorage へ移す
+//   2. Clarity もこの 2 頁では動かさない（src/lib/clarity.ts clarityTokenPath）
 // どの頁かの正典は src/lib/clarity.ts の clarityTokenPath（Clarity も同じ 2 頁で動かない）。
 // ============================================================
 

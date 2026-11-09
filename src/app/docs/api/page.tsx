@@ -743,7 +743,7 @@ export default async function ApiDocsPage() {
       {/* 2026-08-06 growth: docs_view marks a visitor doing developer-grade
           evaluation — for an API product this is the aha-stage event in
           growth_ledger.py (the true value moment, a scored API call, happens
-          server-side and never reaches Plausible). */}
+          server-side; page events are counted first-party on vet402.com). */}
       <TrackView event="docs_view" />
       <script
         type="application/ld+json"

@@ -2009,13 +2009,20 @@ claims:
     check: null
     why_unverifiable: "保存形式の記述で、公開 GET が返す値ではない。record_subscriptions の ip_hash 列（src/lib/db/schema.ts）が根拠"
     verified_at: 2026-09-29
-  - id: legal_r4_privacy_plausible_only_third_party
+  - id: legal_r4_privacy_clarity_third_party_browser
     surface: src/app/legal/privacy/page.tsx
-    quote: "Plausible and Microsoft Clarity are the only third parties vet402&apos;s pages send information to from your browser"
-    means: "ブラウザから第三者へ送る先は Plausible と（Project ID がある時の）Microsoft Clarity だけ（電気通信事業法の外部送信の表示）"
+    quote: "Microsoft Clarity is the only third party vet402&apos;s pages send information to from your browser, except when you open Stripe&apos;s own checkout or portal pages."
+    means: "ブラウザから第三者へ送る先は（Project ID がある時の）Microsoft Clarity と、利用者が開いた Stripe の決済頁だけ（電気通信事業法の外部送信の表示）。サイト利用件数は first-party"
     check: null
-    why_unverifiable: "ブラウザの挙動の記述。根拠は src/proxy.ts の CSP（connect-src 'self' https://plausible.io、NEXT_PUBLIC_CLARITY_PROJECT_ID がある HTML 頁だけ https://*.clarity.ms https://c.bing.com を足す。img-src も同じ 2 つだけ）と tests/clarity-consent.test.ts。第三者の送信先を足すなら CSP とこの文を同時に直す。2026-10-31 Clarity を足して改訂"
-    verified_at: 2026-10-31
+    why_unverifiable: "ブラウザの挙動の記述。根拠は src/proxy.ts の CSP（connect-src 'self'、NEXT_PUBLIC_CLARITY_PROJECT_ID がある HTML 頁だけ https://*.clarity.ms https://c.bing.com を足す）と tests/clarity-consent.test.ts・tests/site-events.test.ts。第三者の送信先を足すなら CSP とこの文を同時に直す。2026-11-09 Plausible 削除"
+    verified_at: 2026-11-09
+  - id: privacy_site_events_no_identifiers
+    surface: src/app/legal/privacy/page.tsx
+    quote: "vet402 reads the User-Agent and origin headers only to skip bots and requests from other sites, and stores no IP address, User-Agent text, full URL, query, cookie or identifier with these counts, so a count cannot be tied to a person"
+    means: "site_events_daily は bot 除去と同サイト判定のために UA と Origin を読むが保存しない。IP・識別子・生 URL は持たない（src/lib/site-events.ts）"
+    check: null
+    why_unverifiable: "実装の記述。根拠は src/lib/site-events.ts の shouldCount と upsert、tests/site-events.test.ts"
+    verified_at: 2026-11-09
   - id: privacy_clarity_inputs_always_masked
     surface: src/app/legal/privacy/page.tsx
     quote: "Clarity always masks what you type into input boxes and dropdowns"
