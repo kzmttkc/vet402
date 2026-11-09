@@ -36,14 +36,20 @@ export function chainBlockTime(value: string | null | undefined): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: number; sinceDays?: number } = {}) {
+export async function ingestL1(
+  options: { onlyPurchaseRowId?: string; limit?: number; sinceDays?: number; now?: Date } = {},
+) {
   const db = getDb();
   if (!db) throw new Error("ingestL1: DATABASE_URL is not configured");
   // 2026-10-19: 窓は生行の保持（RAW_RETENTION_DAYS）の内側に収める。45 日だと、畳んで消した日の行を
   // 毎日入れ直し、rollup の加算（ON CONFLICT … n + excluded.n）でもう一度数える芽になる。
   // 並びは「settlements にまだ無い行」を先に。2,000 件の上限で新しい行だけを毎日なめ直し、
   // 古い行が永久に入らない取りこぼし（10/19 実測: 30 日で 6,393 件のうち 2,000 件）を数日で埋める。
-  const { onlyPurchaseRowId, limit = 2000, sinceDays = Math.max(1, RAW_RETENTION_DAYS - 1) } = options;
+  const { onlyPurchaseRowId, limit = 2000, sinceDays = Math.max(1, RAW_RETENTION_DAYS - 1), now } = options;
+  // 2026-11-10: テストは固定の attempted_at を使う。窓の基準を now() のままにすると時計が進むたびに行が窓の外へ落ちるので、任意の now を差し込める。
+  const retentionSince = now
+    ? sql`${now.toISOString()}::timestamptz - make_interval(days => ${sinceDays})`
+    : sql`now() - make_interval(days => ${sinceDays})`;
   const rows = rowsOf<L1Row>(
     await db.execute(sql`
       SELECT pu.id::text AS id, pu.tx_hash, pu.network, pu.asset, pu.amount_units, pu.payer, pu.pay_to,
@@ -61,7 +67,7 @@ export async function ingestL1(options: { onlyPurchaseRowId?: string; limit?: nu
         ON op.tx_hash = lower(pu.tx_hash)
        AND op.observed_by = 'observatory-l1-verified:' || pu.id::text
       WHERE pu.status = 'settled' AND pu.tx_hash IS NOT NULL AND pu.network IS NOT NULL
-        ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > now() - make_interval(days => ${sinceDays})`}
+        ${onlyPurchaseRowId ? sql`AND pu.id = ${onlyPurchaseRowId}::uuid` : sql`AND pu.attempted_at > ${retentionSince}`}
       -- 並び: まだ settlements に無い行 → 入っているが台帳時刻（chain）になっていない行 → 新しい順。
       -- tx_hash で引く（purchase_id は正規化した表記なので、v1 の base・solana などの表記と合わない）。
       ORDER BY (EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash)))) ASC,

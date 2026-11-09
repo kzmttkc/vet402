@@ -37,6 +37,8 @@ if (!TEST_DB) {
   const NULL_TX = `0x${"33".repeat(32)}`;
   const EVM_ISO = "2026-10-11T02:30:47.000Z";
   const STELLAR_ISO = "2026-10-11T03:04:05.000Z";
+  /** ingestL1 の保持窓用。fixture の 2026-10-11 が RAW_RETENTION 窓の外に落ちないよう、fixture の翌日（2026-10-12）を「今」として固定する（2026-11-10）。 */
+  const INGEST_L1_TEST_NOW = new Date("2026-10-12T00:00:00.000Z");
 
   function rowsOf<T>(raw: unknown): T[] {
     return (Array.isArray(raw) ? raw : ((raw as { rows?: T[] }).rows ?? [])) as T[];
@@ -200,7 +202,7 @@ if (!TEST_DB) {
            ${verifiedIso}::timestamptz, ${JSON.stringify({ blockTimeSource: "settlement_verified_at", kept: "idx" })}::jsonb)
       `);
 
-      const outcome = await ingestL1();
+      const outcome = await ingestL1({ now: INGEST_L1_TEST_NOW });
       assert.equal(outcome.scanned, 3);
       assert.equal(outcome.inserted, 2);
       assert.equal(outcome.updated, 1);
@@ -305,7 +307,7 @@ if (!TEST_DB) {
           (${PAYER}, ${garbageObservedTx}, ${observedIso}::timestamptz, ${"observatory-l1-verified:" + idOf(garbageObservedTx)})
       `);
 
-      const outcome = await ingestL1();
+      const outcome = await ingestL1({ now: INGEST_L1_TEST_NOW });
       assert.equal(outcome.scanned, 3);
 
       const observed = await resolve(observedTx);

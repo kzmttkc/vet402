@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 ingestL1 optional clock for DB-backed tests
+
+- **What**: `ingestL1` accepts optional `now?: Date` so the L1 retention window can anchor on a fixed instant in tests; production callers unchanged. `tests/settlement-block-time.test.ts` pins `INGEST_L1_TEST_NOW` (2026-10-12) on every `ingestL1()` that relies on 2026-10-11 fixture rows. Audited other `test:db` files for fixed calendar dates plus SQL `now()` / `Date.now()` windows; only `settlement-block-time.test.ts` needed a fix before 2026-12-31 (`settlements-ingest.pg.test.ts` and `resolve-lookup.pg.test.ts` use relative or default timestamps; `request-not-sent.pg.test.ts` compares against policy cutoffs not wall-clock retention; late-settlement lane tests only require rows old enough).
+- **Why**: CI `test:db` failed from 2026-11-09 when wall clock moved 2026-10-11 fixture purchases outside `RAW_RETENTION_DAYS - 1`.
+- **Impact**: No cron, export.csv, or runtime ingest behavior change when `now` is omitted.
+
 ## 2026-11-10 SEO pillar page at /x402
 
 - **What**: New pillar page at `src/app/x402/page.tsx` (route `/x402`) explains x402 payment flow, schemes, governance, live L1 figures from `getObservatoryStatsCached`, seller checks, chain links, and FAQ JSON-LD. Removed the `/x402` to `/x402/chains` redirect in `next.config.ts`. Sitemap adds `/x402` (daily, priority 0.9). Footers, `public/llms.txt`, `/memo`, and `/docs/api` point "What is x402" and finality wording at the exact scheme. Blog post `what-is-x402` updated (scheme-aware refunds, link to `/x402`, dashes removed from prose).
