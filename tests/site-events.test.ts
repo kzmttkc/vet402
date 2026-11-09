@@ -50,6 +50,7 @@ test("pathGroup: dynamic patterns", () => {
 test("sourceLabel", () => {
   assert.equal(sourceLabel(""), "direct");
   assert.equal(sourceLabel("internal"), "internal");
+  assert.equal(sourceLabel("direct"), "direct");
   assert.equal(sourceLabel(undefined), "direct");
   assert.equal(sourceLabel("vet402.com"), "internal");
   assert.equal(sourceLabel("www.vet402.com"), "internal");

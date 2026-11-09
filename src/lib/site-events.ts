@@ -159,7 +159,8 @@ function hostSuffix(hostname: string, suffix: string): boolean {
  */
 export function sourceLabel(referrerHost: string | null | undefined): string {
   const h = (referrerHost ?? "").trim().toLowerCase();
-  if (!h) return "direct";
+  // PageViewBeacon は参照元が空のとき "direct" を送る（ホスト名ではない）。other に落とさない（2026-11-09 本番の実測で発見）。
+  if (!h || h === "direct") return "direct";
   // 2026-11-09 確認役の直し: クライアントは頁内の移動とイベントに r="internal" を送る。ホスト名ではないので
   // ここで受けないと other に落ち、来訪（S1）が頁内の移動の数だけ水増しされる。
   if (h === "internal" || h === "vet402.com" || h === "www.vet402.com") return "internal";
