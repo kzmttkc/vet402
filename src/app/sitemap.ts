@@ -21,9 +21,14 @@ const REV_2026_10_26 = "2026-10-26";
 // 2026-10-31 SEO/AEO: / (a dated sentence) and /docs/api (the opening answer, the key-prefix sentence).
 const REV_2026_10_31 = "2026-10-31";
 
+// 2026-11-08: the front page was rewritten (commit cd478c41).
+const REV_2026_11_08 = "2026-11-08";
+
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
-    { url: `${SITE_URL}/`, lastModified: REV_2026_10_31, changeFrequency: "weekly", priority: 1 },
+    { url: `${SITE_URL}/`, lastModified: REV_2026_11_08, changeFrequency: "weekly", priority: 1 },
+    // /memo is the long document the front page used to be, linked from /, indexable with a self canonical.
+    { url: `${SITE_URL}/memo`, lastModified: REV_2026_11_08, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_31, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/docs/mcp`, lastModified: "2026-10-28", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/connect`, lastModified: "2026-11-08", changeFrequency: "monthly", priority: 0.9 },

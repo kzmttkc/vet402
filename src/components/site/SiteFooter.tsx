@@ -30,7 +30,20 @@ import { clarityExcludedPath, clarityProjectId } from "@/lib/clarity";
 // /accuracy は 2026-09-02 時点で 3 表とも 0 件で、奥付から誘導する先ではない）。
 // 足したもの: Impact ledger と Decisions（監査で inbound が LP の 1 本だけと判明。
 // 審査員が見る実購買の証拠ページが索引に無いのは、索引の役目を果たしていない）。
+// 2026-11-09: Google は /x402/chains・/x402/check-a-seller・/x402/stablecoin-payments を
+// 「Discovered - currently not indexed」と報告していた。フッターからの内部リンクが無かったため、
+// x402 ガイド列を足す。
 const COLUMNS: { caption: string; label: string; links: { label: string; href: string }[] }[] = [
+  {
+    caption: "x402",
+    label: "x402 guides",
+    links: [
+      { label: "What is x402", href: "/blog/what-is-x402" },
+      { label: "Check a seller", href: "/x402/check-a-seller" },
+      { label: "x402 by chain", href: "/x402/chains" },
+      { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
+    ],
+  },
   {
     caption: "Measurements",
     label: "Measurement records",
@@ -115,8 +128,8 @@ export function SiteFooter({ pathname = "" }: { pathname?: string }) {
           <span>[Page 1]</span>
         </div>
 
-        {/* 3 列 5/4/4。640px 未満は 1 列に積む（2 列だと 3 列目が孤立して段が崩れる）。 */}
-        <div className="mt-10 grid gap-8 sm:grid-cols-3">
+        {/* 4 列。640px 未満は 1 列に積む（2 列だと末尾が孤立して段が崩れる）。 */}
+        <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
             <nav key={col.caption} aria-label={col.label}>
               <p className="doc-caption">{col.caption}</p>

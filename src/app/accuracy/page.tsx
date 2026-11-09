@@ -44,9 +44,9 @@ import { sloRows, type SloRow } from "@/lib/scoring/l0-accuracy";
  */
 
 export const metadata: Metadata = pageMetadata({
-  title: "Measured accuracy",
+  title: "Measured accuracy of x402 seller verdicts",
   description:
-    "vet402 publishes what happened after its verdicts: the share of ALLOW verdicts that later showed adverse activity, and the share of BLOCK verdicts we got wrong.",
+    "vet402 publishes what happened after its verdicts: the share of ALLOW verdicts that later showed adverse activity, and the share of BLOCK verdicts that turned out wrong.",
   path: "/accuracy",
 });
 

@@ -1,0 +1,47 @@
+# 2026-11-09 IndexNow 提出（本番デプロイ連動）
+#
+# なぜ: Bing など IndexNow 対応エンジンは本番デプロイのたびに更新 URL を学習する。
+# ChatGPT の検索と Copilot は Bing インデックスを読む。
+# 何を送るか: sitemap.xml のうち直近 3 日以内に lastmod がある URL とトップ `/` だけ
+# （workflow_dispatch で all=true のときはサイトマップ上の全 on-host URL）。
+# 鍵ファイル: public/ec4e403cca67243a3da131d92f6412c9.txt
+
+name: indexnow
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      all:
+        description: Submit every on-host URL from the live sitemap
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+      - name: Wait for CDN after production deploy
+        if: github.event_name == 'deployment_status'
+        run: sleep 60
+      - name: Submit to IndexNow
+        env:
+          SUBMIT_ALL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.all == 'true' }}
+        run: |
+          if [ "$SUBMIT_ALL" = "true" ]; then
+            node scripts/indexnow-submit.mjs --all
+          else
+            node scripts/indexnow-submit.mjs
+          fi

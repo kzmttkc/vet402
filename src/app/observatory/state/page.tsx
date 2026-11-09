@@ -35,7 +35,7 @@ import { publicChainLabel } from "@/lib/observatory/chains";
  */
 
 export const metadata: Metadata = pageMetadata({
-  title: "State of x402 payments by chain",
+  title: "State of x402: delivery rates and payments by chain",
   description:
     "Headline numbers for the public x402 catalog: valid 402 answers, delistings, and how much is machine-verifiable, with purchase counts by chain.",
   path: "/observatory/state",

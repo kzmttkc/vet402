@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-09 Footer x402 guides, sitemap /memo, IndexNow on deploy
+
+- **What**: The home page footer and `SiteFooter` list x402 guide links (`What is x402`, `Check a seller`, `x402 by chain`, `Stablecoin payments`, and on the home footer `State of x402`). `sitemap.ts` sets `/` lastmod to 2026-11-08, adds `/memo`, and tests cover `/memo` and the x402 guide URLs. Pure-ESM `scripts/indexnow-lib.mjs` and `scripts/indexnow-submit.mjs` plus `tests/indexnow-lib.test.ts` submit changed sitemap URLs to IndexNow. `.github/workflows/indexnow.yml` runs after a successful Production deployment (60s CDN wait) or on `workflow_dispatch`. Titles name x402 on three pages: `/observatory/state` (State of x402: delivery rates and payments by chain), `/docs/mcp` (Hosted MCP server for x402 seller checks), `/accuracy` (Measured accuracy of x402 seller verdicts), and the `/accuracy` description no longer uses "we".
+- **Why**: Google reported several x402 guide pages as discovered but not indexed with no footer links. The former front page lives at `/memo` and was missing from the sitemap. Bing and other IndexNow engines should learn about recent URL changes on each production deploy.
+- **Impact**: Footer navigation and sitemap only. Production deploys POST recently changed URLs (default last 3 days plus `/`) to `api.indexnow.org` using the existing key file at `public/ec4e403cca67243a3da131d92f6412c9.txt`.
+
 ## 2026-11-09 Liveness note reads the shared store directly
 
 - **What**: The front page liveness note in `src/components/site/StatusBanner.tsx` subscribes through `useSyncExternalStore` instead of copying the value inside an effect.

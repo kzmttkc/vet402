@@ -157,6 +157,14 @@ const FOOT_PRODUCT = [
   { label: "Dashboard", href: "/dashboard" },
 ] as const;
 
+const FOOT_X402 = [
+  { label: "What is x402", href: "/blog/what-is-x402" },
+  { label: "Check a seller", href: "/x402/check-a-seller" },
+  { label: "x402 by chain", href: "/x402/chains" },
+  { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
+  { label: "State of x402", href: "/observatory/state" },
+] as const;
+
 const FOOT_RECORD = [
   { label: "About", href: "/about" },
   { label: "FAQ", href: "/faq" },
@@ -682,6 +690,7 @@ export default async function Home() {
             {(
               [
                 ["Product", FOOT_PRODUCT],
+                ["x402", FOOT_X402],
                 ["Record", FOOT_RECORD],
                 ["Legal", FOOT_LEGAL],
               ] as const

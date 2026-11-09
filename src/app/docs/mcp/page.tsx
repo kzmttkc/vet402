@@ -39,7 +39,7 @@ const MCP_DOCS_BLURB =
   "Streamable HTTP MCP at https://vet402.com/mcp and the delivery feed at /api/v1/delivery/sellers.json. Keyless reads.";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Hosted MCP server",
+  title: "Hosted MCP server for x402 seller checks",
   description: MCP_DOCS_BLURB,
   path: "/docs/mcp",
 });
