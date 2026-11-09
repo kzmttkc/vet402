@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 SEO pillar page at /x402
+
+- **What**: New pillar page at `src/app/x402/page.tsx` (route `/x402`) explains x402 payment flow, schemes, governance, live L1 figures from `getObservatoryStatsCached`, seller checks, chain links, and FAQ JSON-LD. Removed the `/x402` to `/x402/chains` redirect in `next.config.ts`. Sitemap adds `/x402` (daily, priority 0.9). Footers, `public/llms.txt`, `/memo`, and `/docs/api` point "What is x402" and finality wording at the exact scheme. Blog post `what-is-x402` updated (scheme-aware refunds, link to `/x402`, dashes removed from prose).
+- **Why**: `/x402` is the exact search query and should host the canonical explanation with live observatory numbers, without replacing `/x402/chains` or the blog essay.
+- **Impact**: Navigation and copy only. No API or export.csv schema changes. Live section omits numbers when the state read fails.
+
 ## 2026-11-09 First-party site usage counts (Plausible removed)
 
 - **What**: First-party aggregate counters in `site_events_daily` (`scripts/sql/2026-11-09-site-events-daily.sql`, `src/lib/site-events.ts`, `POST /api/v1/site-events`). Client `track()` and `PageViewBeacon` send beacons to vet402.com. Plausible script and CSP entries removed. Privacy policy updated. Operator metrics in `docs/metrics/site-funnel.sql`.

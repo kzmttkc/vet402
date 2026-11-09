@@ -383,7 +383,7 @@ export default async function Memo() {
           <div className="flex gap-4">
             <span className="w-[4ch] shrink-0 text-brand-lift">1.1</span>
             <p className="min-w-0 max-w-[64ch] text-brand">
-              x402 settles payments finally and irreversibly. Proof of payment exists on-chain.{" "}
+              Under x402&apos;s exact scheme, a settled payment is final. Proof of payment exists on-chain.{" "}
               <strong>Proof of delivery does not exist anywhere.</strong>
             </p>
           </div>

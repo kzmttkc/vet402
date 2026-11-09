@@ -14,7 +14,8 @@ test("回答頁とチェーン頁は静的 sitemap に入り、売り手頁は�
     if (q.path.startsWith("/blog/")) continue;
     const hit = urls.find((e) => e.url.endsWith(q.path));
     assert.ok(hit, q.path);
-    assert.equal(String(hit.lastModified).slice(0, 10), REV);
+    // 2026-11-10: /x402 は主柱ページとして別の日付で足した。
+    assert.equal(String(hit.lastModified).slice(0, 10), q.path === "/x402" ? "2026-11-10" : REV);
   }
   for (const chain of GUIDE_CHAINS) {
     const hit = urls.find((e) => e.url.endsWith(`/x402/chains/${chain.slug}`));

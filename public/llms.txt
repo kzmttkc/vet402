@@ -8,6 +8,7 @@
 
 x402 is an HTTP 402 payment protocol for AI agents. A server answers 402 with payment terms, the caller pays on chain, often in USDC, and retries the request with proof of payment.
 
+https://vet402.com/x402
 https://vet402.com/blog/what-is-x402
 
 ### How do AI agents pay with stablecoins over x402?
@@ -38,7 +39,7 @@ https://vet402.com/x402/chains/arbitrum-one
 https://vet402.com/x402/chains/bnb-chain
 https://vet402.com/x402/chains/avalanche-c-chain
 
-x402 settles payments finally and irreversibly, and proof of payment exists on-chain — but proof of delivery does not exist anywhere. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value: it measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
+Under x402's exact scheme a settled payment is final, and proof of payment exists on-chain. A buyer still has no way to see, before paying, what a seller delivered. vet402 answers that with records of real purchases. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value. It measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
 
 Formerly named "Vouch"; renamed to vet402 in August 2026. The production URL is `vet402.com`. The GitHub repository is `kzmttkc/vet402` (the older `kzmttkc/agent-trust` URL still redirects there; cite the new one). Issued API keys and webhook headers keep the `vouch_` / `Vouch-` prefixes for backward compatibility — the old name appearing there is deliberate, not stale documentation.
 

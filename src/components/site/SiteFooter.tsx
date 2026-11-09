@@ -39,7 +39,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
     caption: "x402",
     label: "x402 guides",
     links: [
-      { label: "What is x402", href: "/blog/what-is-x402" },
+      { label: "What is x402", href: "/x402" },
       { label: "Check a seller", href: "/x402/check-a-seller" },
       { label: "x402 by chain", href: "/x402/chains" },
       { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },

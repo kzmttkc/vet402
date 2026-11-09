@@ -26,6 +26,14 @@ test("sitemap includes /memo", () => {
   assert.ok(urls.includes("https://vet402.com/memo"), "missing /memo");
 });
 
+test("sitemap includes the x402 pillar page", () => {
+  const entry = sitemap().find((e) => e.url === "https://vet402.com/x402");
+  assert.ok(entry, "missing /x402");
+  assert.equal(String(entry?.lastModified), "2026-11-10");
+  assert.equal(entry?.changeFrequency, "daily");
+  assert.equal(entry?.priority, 0.9);
+});
+
 test("sitemap includes x402 guide entry points", () => {
   const urls = sitemap().map((entry) => entry.url);
   assert.ok(urls.includes("https://vet402.com/x402/check-a-seller"), "missing /x402/check-a-seller");

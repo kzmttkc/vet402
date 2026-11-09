@@ -1388,8 +1388,8 @@ app.use("/api/paid", createExpressGate({
             <strong>The default is allow-only, and that is the point.</strong>{" "}
             <code>@vet402/sdk</code> and <code>@vet402/middleware</code> deny everything
             that is not <code>ALLOW</code> unless you opt out explicitly. The asymmetry is
-            deliberate: declining a good payee costs a retry, paying a bad one is final and
-            irreversible on x402.
+            deliberate: declining a good payee costs a retry, paying a bad one is final under x402&apos;s exact
+            scheme.
           </li>
           <li>
             <strong>WARN is where your policy lives, not ours.</strong> We publish the band and the

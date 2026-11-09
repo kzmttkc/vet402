@@ -277,8 +277,14 @@ test("noindex の /sellers は WebPage の JSON-LD を出さない", () => {
   assert.match(src, /noindex:\s*true/);
 });
 
-test("/x402 はハブへ 308 で送る", () => {
-  assert.match(read("next.config.ts"), /source: "\/x402", destination: "\/x402\/chains", permanent: true/);
+test("/x402 はピラーページで、/x402/chains へはリダイレクトしない", () => {
+  const cfg = read("next.config.ts");
+  assert.equal(
+    cfg.includes('source: "/x402", destination: "/x402/chains"'),
+    false,
+    "removed redirect: /x402 is the pillar page",
+  );
+  assert.ok(read("src/app/x402/page.tsx").includes('path: "/x402"'));
 });
 
 test("CC BY 4.0 の範囲は l0 export と sellers export と /impact の数字を含む", () => {

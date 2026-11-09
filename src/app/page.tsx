@@ -159,7 +159,7 @@ const FOOT_PRODUCT = [
 ] as const;
 
 const FOOT_X402 = [
-  { label: "What is x402", href: "/blog/what-is-x402" },
+  { label: "What is x402", href: "/x402" },
   { label: "Check a seller", href: "/x402/check-a-seller" },
   { label: "x402 by chain", href: "/x402/chains" },
   { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },

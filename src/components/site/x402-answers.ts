@@ -100,11 +100,11 @@ export const CHAINS_HUB: AnswerPage = {
   ],
 };
 
-/** llms.txt と /llms-full.txt が同じ順で出す問い。What is x402 はブログへ。 */
+/** llms.txt と /llms-full.txt が同じ順で出す問い。What is x402 は 2026-11-10 から主柱ページ /x402 へ（ブログは物語の版として残す）。 */
 export const LLM_QUESTIONS: readonly AnswerPage[] = [
   {
     question: "What is x402?",
-    path: "/blog/what-is-x402",
+    path: "/x402",
     h1: "What is x402?",
     title: "What is x402?",
     description: WHAT_IS_X402_SEO,

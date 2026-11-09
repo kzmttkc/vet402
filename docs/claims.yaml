@@ -114,6 +114,8 @@ allow_phrases:
     why: "0% の読み方を説明する引用（「all were passed」ではない、と否定している側）"
   - phrase: "stated at all"
     why: "節の見出し（なぜこれを明記するか）"
+  - phrase: "never captured"
+    why: "x402 auth-capture scheme wording on /x402, paraphrasing the protocol spec rather than a vet402 measurement"
 
 claims:
   - id: accuracy_benchmark_scans_are_excluded_from
