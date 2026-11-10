@@ -2,14 +2,17 @@
 // S1-1: 決済済みの 400/422 のうち、宣言された入力を送り、売り手の答えが入力の検証エラーと
 // 読める行だけを /sellers で売り手側へ。held_reason（delivery.ts）は変えない。
 // 判定の順と証拠の確認は fix-modes.ts の modeKeyOf が持つ。ここは答えの読み方と宣言の有無だけ。
-// 2026-11-08: 自由文は読まない。JSON でパースでき、検証フレームワークの構造化エラー形だけを採る。
+// 許可リスト: 場所は英数と _ のみ。pydantic は loc が 2 段以上。json_invalid と model_attributes_type を除く。
+// generic は location または in が body か query のときだけ。認証語は auth|secret|password|credential|bearer|jwt|session|key$。
 // ============================================================
 import { requestBodyKindOf } from "@/lib/observatory/request-body";
 import type { SellerRowFacts } from "./fix-modes";
 
-const BAD_SEG = new Set(["header", "headers", "cookie", "cookies"]);
-const BAD_IN_SEG =
-  /payment|x402|signature|authorization|token|api_key|apikey|x-api-key|accepts|validbefore|validafter|nonce/i;
+const BAD_ROOT = new Set(["header", "headers", "cookie", "cookies", "payment", "x402", "signature", "authorization"]);
+const PYDANTIC_SKIP_TYPES = new Set(["json_invalid", "model_attributes_type"]);
+const SEG_OK = /^[A-Za-z0-9_]+$/;
+const AUTH_SEG =
+  /(?:^auth$|secret|password|credential|bearer|jwt|session|key$)/i;
 
 /** 402 が入力（本文かクエリ）を宣言し、vet402 がその宣言どおりの値を送ったと行に記録がある。 */
 export function declaredInputWasSent(r: Pick<SellerRowFacts, "meta">): boolean {
@@ -22,19 +25,19 @@ function bodyHeadOf(meta: unknown): string | null {
   return typeof h === "string" ? h : null;
 }
 
-function segBad(segment: string): boolean {
-  const lower = segment.toLowerCase();
-  if (BAD_SEG.has(lower)) return true;
-  return BAD_IN_SEG.test(lower);
+function segmentOk(seg: string): boolean {
+  if (!SEG_OK.test(seg)) return false;
+  const lower = seg.toLowerCase();
+  if (BAD_ROOT.has(lower)) return false;
+  if (AUTH_SEG.test(lower)) return false;
+  return true;
 }
 
-function segmentsOk(segments: string[], pydanticFirst: boolean): boolean {
-  if (segments.length === 0) return false;
-  if (pydanticFirst) {
-    const first = segments[0].toLowerCase();
-    if (first !== "body" && first !== "query" && first !== "path") return false;
-  }
-  return segments.every((s) => !segBad(s));
+function locOk(segments: string[]): boolean {
+  if (segments.length < 2) return false;
+  const first = segments[0].toLowerCase();
+  if (first !== "body" && first !== "query" && first !== "path") return false;
+  return segments.every(segmentOk);
 }
 
 type ValItem = { kind: "pydantic" | "zod" | "generic"; segments: string[] };
@@ -45,7 +48,9 @@ function zodIssues(arr: unknown[]): ValItem[] | null {
     if (typeof it !== "object" || it === null) return null;
     const z = it as Record<string, unknown>;
     if (!Array.isArray(z.path) || typeof z.code !== "string") return null;
-    items.push({ kind: "zod", segments: z.path.map(String) });
+    const segments = z.path.map(String);
+    if (!locOk(segments)) return null;
+    items.push({ kind: "zod", segments });
   }
   return items.length > 0 ? items : null;
 }
@@ -60,9 +65,12 @@ function extractValidationItems(parsed: unknown): ValItem[] | null {
       if (typeof it !== "object" || it === null) return null;
       const d = it as Record<string, unknown>;
       if (!Array.isArray(d.loc) || typeof d.msg !== "string") return null;
-      items.push({ kind: "pydantic", segments: d.loc.map(String) });
+      if (typeof d.type === "string" && PYDANTIC_SKIP_TYPES.has(d.type)) continue;
+      const segments = d.loc.map(String);
+      if (!locOk(segments)) return null;
+      items.push({ kind: "pydantic", segments });
     }
-    return items;
+    return items.length > 0 ? items : null;
   }
 
   if (Array.isArray(o.issues) && o.issues.length > 0) {
@@ -81,13 +89,21 @@ function extractValidationItems(parsed: unknown): ValItem[] | null {
     for (const it of o.errors) {
       if (typeof it !== "object" || it === null) return null;
       const e = it as Record<string, unknown>;
-      let segs: string[] | null = null;
-      if (Array.isArray(e.path)) segs = e.path.map(String);
-      else if (typeof e.field === "string") segs = [e.field];
-      else if (typeof e.param === "string") segs = [e.param];
-      else if (typeof e.property === "string") segs = [e.property];
-      if (!segs) return null;
-      items.push({ kind: "generic", segments: segs });
+      let scope: string | null = null;
+      if (typeof e.in === "string") scope = e.in.toLowerCase();
+      else if (typeof e.location === "string") scope = e.location.toLowerCase();
+      if (scope !== "body" && scope !== "query") return null;
+
+      let tail: string[] | null = null;
+      if (Array.isArray(e.path)) tail = e.path.map(String);
+      else if (typeof e.field === "string") tail = [e.field];
+      else if (typeof e.param === "string") tail = [e.param];
+      else if (typeof e.property === "string") tail = [e.property];
+      if (!tail) return null;
+
+      const segments = [scope, ...tail];
+      if (!locOk(segments)) return null;
+      items.push({ kind: "generic", segments });
     }
     return items;
   }
@@ -110,5 +126,5 @@ export function paidAnswerNamesInputError(meta: unknown): boolean {
   }
   const items = extractValidationItems(parsed);
   if (!items || items.length === 0) return false;
-  return items.every((it) => segmentsOk(it.segments, it.kind === "pydantic"));
+  return items.every((it) => locOk(it.segments));
 }

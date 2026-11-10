@@ -1984,7 +1984,7 @@ claims:
     verified_at: 2026-11-08
   - id: methodology_seller_fixable_location
     surface: src/app/observatory/methodology/page.tsx
-    quote: ") with every cited location on the request input—not free text. Answers about payment, x402, authentication, headers or cookies stay held. Such a row counts on the seller&apos;s side once the listing has a seller-side failure on 2 different UTC days (any kind). Other held rows stay not sorted."
+    quote: ") with every cited location on the request input, not free text. Answers about payment, x402, authentication, headers or cookies stay held. Such a row counts on the seller&apos;s side once the listing has a seller-side failure on 2 different UTC days (any kind). Other held rows stay not sorted."
     means: "構造化エラーの位置が入力だけを指すこと・自由文は読まない・2 つの UTC 日（種類問わず）で数える・ledger export.csv は変えない（同段落で /api/v1/sellers/export.csv は /sellers に従うと書く）"
     check: null
     why_unverifiable: "seller-fixable-input.ts と tests/s1-1-acceptance.test.ts が固定する"

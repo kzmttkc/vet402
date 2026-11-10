@@ -4728,53 +4728,53 @@ components:
             whose paid request carried every declared input and whose
             bodyHead parses as JSON with a structured input validation error
             (FastAPI/pydantic detail[].loc, zod issues[].path, or
-            errors[].field|path|param—not free text, with every cited
-            location on the request input, not payment, headers, cookies or
-            authentication) is counted on the seller's side once seen on 2
-            different UTC days; in the decision it counts as a seller-side
-            attempt (l1_latest_failed or l1_never_delivered, WARN) but never
-            as l1_paid_not_delivered and never toward a BLOCK.
-            /api/v1/sellers/export.csv follows /sellers; the ledger
-            export.csv does not change. L1: after the last delivery in the
-            30-day window, an attempt that moved money and did not deliver
-            adds l1_paid_not_delivered; it is a BLOCK only when two or more
-            of them are on the seller's side (seen on 2 different UTC days),
-            and a WARN otherwise, including when /sellers leaves them not
-            sorted. A failure where no money moved is at most a WARN
-            (l1_never_delivered when nothing was ever delivered). When no
-            result came back and it is not yet known whether money moved (an
-            empty 2xx with no settlement linked, a receipt still awaiting
-            on-chain verification, or a signed attempt that failed less than
-            90 minutes ago), l1_empty_2xx_settlement_unknown makes it a
-            WARN, never an ALLOW, until it settles. l1_latest_failed
-            (something delivered, but the latest counted attempt did not) is
-            a WARN. ALLOW needs a delivery within 30 days
-            (l1_basis.fresh_days); otherwise l1_stale and a WARN, also the
-            word when the only delivery is older than the window or every
-            signed attempt is (l1_not_attempted means none was ever signed).
-            l1_basis carries the counts, the last attempt, signed attempt
-            and delivery, and the days since each. L0: l0_fail (two measured
-            failures in a row) is a BLOCK. l0_unverified (not probed yet, no
-            probe in the last 30 days, a URL with a path parameter vet402
-            cannot fill, a probe that could not complete, or one failure so
-            far) is a WARN with degraded: true, next to
-            l0_unverified_<cause>; unverified is not a failure. L2:
-            l2_mismatch is a BLOCK when the evidence names missing keys
-            (mismatch_kind missing_keys), otherwise l2_mismatch_unexplained
-            and a WARN. L2 reads the latest delivery at any age, so a
-            mismatch holds until a later delivery replaces it. A listing
-            that declares an output schema but whose latest delivery vet402
-            has not checked against it (no delivery, a body over 256 KiB or
-            cut off) is l2_not_checked, a WARN; l2_undeclared means the
-            listing declares no output schema. verified_terms.amount is in
-            6-decimal ledger units: multiply it by 10^12 on BNB Chain and by
-            10 on Stellar before comparing it with a 402. Every code, its
-            effect and whether the seller can fix it:
-            https://vet402.com/docs/api#reason-codes. Limit of the method:
-            vet402 buys with a fixed, published User-Agent, so a seller
-            could answer vet402 differently from other buyers; other buyers'
-            settlements show that they paid, not that they received, so the
-            decision cannot detect this.
+            errors[].field|path|param with in or location on body or query,
+            not free text, with every cited location on the request input,
+            not payment, headers, cookies or authentication) is counted on
+            the seller's side once seen on 2 different UTC days. in the
+            decision it counts as a seller-side attempt (l1_latest_failed or
+            l1_never_delivered, WARN) but never as l1_paid_not_delivered and
+            never toward a BLOCK. /api/v1/sellers/export.csv follows
+            /sellers; the ledger export.csv does not change. L1: after the
+            last delivery in the 30-day window, an attempt that moved money
+            and did not deliver adds l1_paid_not_delivered; it is a BLOCK
+            only when two or more of them are on the seller's side (seen on
+            2 different UTC days), and a WARN otherwise, including when
+            /sellers leaves them not sorted. A failure where no money moved
+            is at most a WARN (l1_never_delivered when nothing was ever
+            delivered). When no result came back and it is not yet known
+            whether money moved (an empty 2xx with no settlement linked, a
+            receipt still awaiting on-chain verification, or a signed
+            attempt that failed less than 90 minutes ago),
+            l1_empty_2xx_settlement_unknown makes it a WARN, never an ALLOW,
+            until it settles. l1_latest_failed (something delivered, but the
+            latest counted attempt did not) is a WARN. ALLOW needs a
+            delivery within 30 days (l1_basis.fresh_days); otherwise
+            l1_stale and a WARN, also the word when the only delivery is
+            older than the window or every signed attempt is
+            (l1_not_attempted means none was ever signed). l1_basis carries
+            the counts, the last attempt, signed attempt and delivery, and
+            the days since each. L0: l0_fail (two measured failures in a
+            row) is a BLOCK. l0_unverified (not probed yet, no probe in the
+            last 30 days, a URL with a path parameter vet402 cannot fill, a
+            probe that could not complete, or one failure so far) is a WARN
+            with degraded: true, next to l0_unverified_<cause>; unverified
+            is not a failure. L2: l2_mismatch is a BLOCK when the evidence
+            names missing keys (mismatch_kind missing_keys), otherwise
+            l2_mismatch_unexplained and a WARN. L2 reads the latest delivery
+            at any age, so a mismatch holds until a later delivery replaces
+            it. A listing that declares an output schema but whose latest
+            delivery vet402 has not checked against it (no delivery, a body
+            over 256 KiB or cut off) is l2_not_checked, a WARN;
+            l2_undeclared means the listing declares no output schema.
+            verified_terms.amount is in 6-decimal ledger units: multiply it
+            by 10^12 on BNB Chain and by 10 on Stellar before comparing it
+            with a 402. Every code, its effect and whether the seller can
+            fix it: https://vet402.com/docs/api#reason-codes. Limit of the
+            method: vet402 buys with a fixed, published User-Agent, so a
+            seller could answer vet402 differently from other buyers; other
+            buyers' settlements show that they paid, not that they received,
+            so the decision cannot detect this.
         facts:
           description: >-
             L0–L2 measurement records — SellerFacts for role=payer,

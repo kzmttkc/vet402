@@ -52,9 +52,10 @@ function settled(p: Partial<SellerRowFacts> & { bodyHead?: string } = {}): Selle
 const PASS: Array<[string, SellerRowFacts]> = [
   ["400 + FastAPI/pydantic detail[].loc", settled()],
   ["422 + pydantic", settled({ httpStatusPaid: 422 })],
-  ["400 + zod issues[].path", settled({ bodyHead: `{"success":false,"error":"Validation failed","issues":[{"expected":"string","code":"invalid_type","path":["url"],"message":"Required"}]}` })],
-  ["400 + zod nested under error", settled({ bodyHead: `{"error":{"issues":[{"code":"too_small","path":["source"],"message":"String must contain at least 50 character(s)"}]}}` })],
-  ["400 + errors[].field", settled({ bodyHead: `{"errors":[{"field":"offer_id","message":"is required"}]}` })],
+  ["400 + zod issues[].path", settled({ bodyHead: `{"success":false,"error":"Validation failed","issues":[{"expected":"string","code":"invalid_type","path":["body","url"],"message":"Required"}]}` })],
+  ["400 + zod nested under error", settled({ bodyHead: `{"error":{"issues":[{"code":"too_small","path":["body","source"],"message":"String must contain at least 50 character(s)"}]}}` })],
+  ["400 + errors[].field with in body", settled({ bodyHead: `{"errors":[{"in":"body","field":"offer_id","message":"is required"}]}` })],
+  ["400 + errors[].location query", settled({ bodyHead: `{"errors":[{"location":"query","param":"symbol","message":"is required"}]}` })],
 ];
 
 const FAIL: Array<[string, SellerRowFacts]> = [
@@ -110,6 +111,15 @@ const FAIL: Array<[string, SellerRowFacts]> = [
   ["401", settled({ httpStatusPaid: 401 })],
   ["403", settled({ httpStatusPaid: 403 })],
   ["429", settled({ httpStatusPaid: 429 })],
+  ["errors[].field without in or location", settled({ bodyHead: `{"errors":[{"field":"offer_id","message":"is required"}]}` })],
+  ["pydantic loc only one segment", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body"],"msg":"Field required"}]}` })],
+  ["pydantic json_invalid only", settled({ bodyHead: `{"detail":[{"type":"json_invalid","loc":["body",0],"msg":"Invalid JSON"}]}` })],
+  ["pydantic model_attributes_type only", settled({ bodyHead: `{"detail":[{"type":"model_attributes_type","loc":["body"],"msg":"Input should be a valid object"}]}` })],
+  ["pydantic loc cites password", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","password"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites api_key segment", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","api_key"],"msg":"Field required"}]}` })],
+  ["zod path only one segment", settled({ bodyHead: `{"issues":[{"code":"invalid_type","path":["url"],"message":"Required"}]}` })],
+  ["non-Base network same pydantic row", settled({ network: "eip155:42161" })],
+  ["non-Base alias network", settled({ network: "solana:mainnet" })],
 ];
 
 for (const [name, r] of PASS) {
@@ -137,6 +147,11 @@ test("S1-1: the /sellers and decision readers carry the answer head for settled 
   for (const f of ["src/lib/sellers/reader.ts", "src/lib/decision/l1-window-purchases.ts"]) {
     const src = readFileSync(f, "utf8");
     assert.match(src, /bodyHead/, `${f} must carry bodyHead into the row meta`);
+    assert.match(
+      src,
+      /'settled'\s+AND\s+\w*\.?http_status_paid\s+IN\s*\(\s*400\s*,\s*422\s*\)[\s\S]{0,120}left\([^)]*bodyHead[^)]*,\s*500\)/,
+      `${f} must truncate bodyHead at 500 characters for settled 400/422 rows`,
+    );
   }
 });
 
