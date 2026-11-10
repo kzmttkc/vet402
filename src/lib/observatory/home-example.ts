@@ -99,7 +99,9 @@ export function sellerRecordParts(
   const a = fmt(attempts);
   const days = `last ${fmt(windowDays)} days`;
   if (attempts < 20) {
-    return { lead: `Only ${d} of ${a} paid calls in the `, days, tail: " delivered." };
+    // 2026-11-10 オーナー: 全部届いた（N=M）ときに Only を付けると、満点の記録が悪く読める。小さい標本の印は N<M のときだけ。
+    const only = delivered < attempts ? "Only " : "";
+    return { lead: `${only}${d} of ${a} paid calls in the `, days, tail: " delivered." };
   }
   return { lead: `${d} of ${a} paid calls delivered, `, days, tail: "" };
 }

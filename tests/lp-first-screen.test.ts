@@ -93,8 +93,10 @@ test("the first screen stacks text, counts, then the card, and the card meets th
 
 test("a one-call seller row names the sample, and the day phrase does not wrap", () => {
   const small = sellerRecordParts(1, 1, 30);
-  assert.equal(small.lead + small.days + small.tail, "Only 1 of 1 paid calls in the last 30 days delivered.");
+  assert.equal(small.lead + small.days + small.tail, "1 of 1 paid calls in the last 30 days delivered.");
   assert.equal(small.days, "last 30 days");
+  const partial = sellerRecordParts(2, 5, 30);
+  assert.equal(partial.lead + partial.days + partial.tail, "Only 2 of 5 paid calls in the last 30 days delivered.");
   const wide = sellerRecordParts(12, 20, 30);
   assert.equal(wide.lead + wide.days + wide.tail, "12 of 20 paid calls delivered, last 30 days");
   assert.match(css, /\.recordRows div\s*\{[^}]*font-size:\s*0\.9375rem/);
