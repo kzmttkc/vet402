@@ -1,4 +1,5 @@
 import { assertPublicEnglishSurface } from "./public-english";
+import { loadDeliveryHitRateYardstick } from "./delivery-hit-rate-yardstick";
 import {
   F4_TRAINING_SNAPSHOT_SOURCE,
   loadNamedBuyerTrainingRowsUpToSnapshot,
@@ -56,10 +57,14 @@ export function buildNamedBuyerDeliveryForecast(input: {
   const scoped = input.trainingRows.filter((r) => r.resourceKey === input.resourceKey);
   const trainCount = scoped.length;
   const trainDelivered = scoped.filter((r) => r.delivered).length;
-  const deliveryRate = trainCount > 0 ? trainDelivered / trainCount : null;
+  const minSample = loadDeliveryHitRateYardstick().minSample;
+  const deliveryRate =
+    trainCount >= minSample && trainCount > 0 ? trainDelivered / trainCount : null;
   const ratePart =
     deliveryRate === null
-      ? "No settled rows for this endpoint on or before the snapshot date."
+      ? trainCount > 0 && trainCount < minSample
+        ? `Settled row count ${trainCount} is below minSample ${minSample}. No delivery rate point is published yet.`
+        : "No settled rows for this endpoint on or before the snapshot date."
       : `Estimated delivery rate ${(deliveryRate * 100).toFixed(1)}% from ${trainCount} settled row(s) on or before the snapshot date.`;
   const englishTail = `${NAMED_BUYER_SCOPE_PHRASE_EN}, ${ratePart} Snapshot date ${input.snapshotDate}. This is a dated forecast, not a live payer verdict.`;
   assertPublicEnglishSurface(englishTail);

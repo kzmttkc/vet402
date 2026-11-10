@@ -53,6 +53,20 @@ function gitYardstickFirstCommitIso(): string {
   return new Date(raw).toISOString();
 }
 
+function gitFixedAtChangelogIntroducedCommitIso(): string {
+  const raw = execSync(`git log -S fixedAtChangelog --format=%cI -1 -- ${DELIVERY_HIT_RATE_YARDSTICK_PATH}`, {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  assert.ok(raw, "fixedAtChangelog must exist in git history");
+  return new Date(raw).toISOString();
+}
+
+function gitBfeecc67CommitterIso(): string {
+  const raw = execSync("git show -s --format=%cI bfeecc67", { cwd: ROOT, encoding: "utf8" }).trim();
+  return new Date(raw).toISOString();
+}
+
 test("3.13-S1-2: 物差し JSON が存在し fixedAt と minSample と時間分割がある", () => {
   const doc = loadDeliveryHitRateYardstick();
   assert.equal(typeof doc.fixedAt, "string");
@@ -85,6 +99,34 @@ test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境�
   assert.ok(fixed < notBefore, "fixedAt must precede REPURCHASE_RESULTS_READ_NOT_BEFORE");
   assert.notEqual(doc.fixedAt, doc.fixedAtInitial);
   assert.ok(doc.fixedAtChangelog.length >= 1, "fixedAt move must be published in fixedAtChangelog");
+  const raisedPastInitial = doc.fixedAt !== doc.fixedAtInitial;
+  if (raisedPastInitial) {
+    const raisedCommit = new Date(gitBfeecc67CommitterIso()).getTime();
+    assert.ok(fixed >= raisedCommit, "fixedAt must be on or after the commit that first raised it past documentFirstCommittedAt");
+  }
+  for (const entry of doc.fixedAtChangelog) {
+    assert.equal(
+      new Date(entry.changedAt).toISOString(),
+      gitFixedAtChangelogIntroducedCommitIso(),
+      "fixedAtChangelog changedAt must match git commit that introduced the changelog",
+    );
+  }
+});
+
+test("3.13-S1-2: 買い直し境界は実装定数のみで S1-3 結果読取コミットは無い", () => {
+  assert.equal(REPURCHASE_RESULTS_READ_NOT_BEFORE, "2026-11-11T00:00:00.000Z");
+  const repurchaseLog = execSync("git log --grep=repurchase --format=%s", { cwd: ROOT, encoding: "utf8" })
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  for (const subject of repurchaseLog) {
+    assert.match(subject, /3\.13|yardstick|S1-2|repurchase/i);
+  }
+  const readResults = execSync('git log --grep="S1-3" --grep="repurchase results" --format=%H -i', {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  assert.equal(readResults, "", "no commit must read S1-3 repurchase results before the boundary");
 });
 
 test("3.13-S1-2: 台帳の時間分割が学習と評価に分かれる", () => {
@@ -146,6 +188,22 @@ test("3.13-S1-2: minSample の変更は changelog に残す", () => {
   assert.throws(() => validateMinSampleChangelog(bumped), /without a published changelog/);
   const withLog = applyMinSampleChange(doc, doc.minSampleInitial + 1, "2026-11-10T13:00:00.000Z", "test");
   assert.doesNotThrow(() => validateMinSampleChangelog(withLog));
+});
+
+test("3.13-F4: 日本語の名乗る買い手限定句が無い予測は不可", () => {
+  const rows = trainingRowsOnOrBeforeSnapshot(
+    [{ attemptedAt: "2026-11-08T00:00:00.000Z", resourceKey: "host/a", delivered: true }],
+    "2026-11-09",
+  );
+  const out = buildNamedBuyerDeliveryForecast({
+    snapshotDate: "2026-11-09",
+    resourceKey: "host/a",
+    trainingRows: rows,
+  });
+  assert.ok(out.text.startsWith(`${NAMED_BUYER_SCOPE_PHRASE_JA}。`));
+  const englishOnly = out.text.replace(`${NAMED_BUYER_SCOPE_PHRASE_JA}。`, "");
+  assert.equal(englishOnly.includes(NAMED_BUYER_SCOPE_PHRASE_JA), false);
+  assert.ok(englishOnly.includes(NAMED_BUYER_SCOPE_PHRASE_EN));
 });
 
 test("3.13-F4: 予測文に名乗る買い手の限定句がある", () => {
@@ -227,6 +285,9 @@ test("3.13-F4: 公開 forecast API が scope と snapshotDate を返す", async 
   assert.ok(String(body.text).includes(NAMED_BUYER_SCOPE_PHRASE_JA));
   assert.ok(String(body.text).includes(NAMED_BUYER_SCOPE_PHRASE_EN));
   assert.ok(body.trainCount >= 1);
+  assert.equal(body.deliveryRate, null);
+  assert.equal(String(body.text).includes("100.0%"), false);
+  assert.match(String(body.text), /below minSample 100/);
 });
 
 test("3.13-F4: Stellar 日次スナップショットから学習行を読む", () => {
@@ -236,6 +297,27 @@ test("3.13-F4: Stellar 日次スナップショットから学習行を読む", 
   );
   assert.equal(out.trainCount, 1);
   assert.equal(out.trainDelivered, 1);
+  assert.equal(out.deliveryRate, null);
+  assert.equal(out.text.includes("100.0%"), false);
+  assert.match(out.text, /below minSample/);
+});
+
+test("3.13-F4: minSample 未満では deliveryRate を公開しない", () => {
+  const doc = loadDeliveryHitRateYardstick();
+  const rows = Array.from({ length: doc.minSample - 1 }, (_, i) => ({
+    attemptedAt: `2026-11-0${(i % 8) + 1}T00:00:00.000Z`,
+    resourceKey: "host/b",
+    delivered: i % 2 === 0,
+  }));
+  const out = buildNamedBuyerDeliveryForecast({
+    snapshotDate: "2026-11-09",
+    resourceKey: "host/b",
+    trainingRows: rows,
+  });
+  assert.equal(out.trainCount, doc.minSample - 1);
+  assert.equal(out.deliveryRate, null);
+  assert.match(out.text, /below minSample/);
+  assert.doesNotMatch(out.text, /Estimated delivery rate \d/);
 });
 
 test("3.13: 正典パスがリポに存在する", () => {

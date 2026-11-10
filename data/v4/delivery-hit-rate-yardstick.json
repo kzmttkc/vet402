@@ -1,12 +1,12 @@
 {
   "schema": "vet402-delivery-hit-rate-yardstick/v1",
-  "fixedAt": "2026-11-10T12:00:00.000Z",
+  "fixedAt": "2026-11-10T12:29:00.000Z",
   "fixedAtInitial": "2026-11-10T06:00:00.000Z",
   "fixedAtChangelog": [
     {
-      "changedAt": "2026-11-10T11:58:00.000Z",
+      "changedAt": "2026-11-10T12:56:57.000Z",
       "previous": "2026-11-10T06:00:00.000Z",
-      "next": "2026-11-10T12:00:00.000Z",
+      "next": "2026-11-10T12:29:00.000Z",
       "note": "Moved fixedAt to on or after documentFirstCommittedAt while remaining before repurchase results are read."
     }
   ],
