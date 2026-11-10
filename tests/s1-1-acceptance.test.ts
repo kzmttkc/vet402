@@ -7,7 +7,7 @@
 // errors[].field|path|param）として JSON で読める行だけ。自由文のエラーは読まない（2026-11-08 3 回目のレビューで方式を絞った）。
 // どれか 1 つでも欠ければ seller の側に置かない。実装の述語をここで呼ばない（同語反復にしない）。
 //
-// 4 回目の独立レビュー指摘 1〜10（写し。S1NEXT・独立点検 rv1/rv2/rv3）:
+// 4 回目の独立レビュー指摘 1〜10（S1NEXT 本文は無いため rv1/rv2/rv3/rr1 の要約。原文の写しではない）:
 // 1. merge-base は origin/main と一致させ、旧 squash ブランチは merge しない。
 // 2. 許可リスト: 英数と _ のみ・pydantic loc 2 段以上・json_invalid/model_attributes_type 除外。
 // 3. generic は location/in が body か query のときだけ。認証語は auth|secret|password|credential|bearer|jwt|session|key$。
