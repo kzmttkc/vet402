@@ -2795,6 +2795,54 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/v4/delivery-hit-rate-yardstick:
+    get:
+      operationId: getDeliveryHitRateYardstick
+      tags: [Observatory]
+      summary: Pre-registered delivery hit-rate yardstick (S1-2)
+      description: |
+        Delivery hit-rate measurement rules fixed before repurchase results are read.
+        Not Gate2 PMF signup counts. Not a marketing hit-rate figure.
+      security: []
+      responses:
+        "200":
+          description: Yardstick document with minSample and ledger time split
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "429": { description: Rate limited }
+
+  /api/v1/v4/named-buyer-delivery-forecast:
+    get:
+      operationId: getNamedBuyerDeliveryForecast
+      tags: [Observatory]
+      summary: F4 v1 dated delivery forecast for a named buyer
+      description: |
+        Forecast text is limited to buyers that identify themselves. Training rows
+        are fixed to the snapshot date. Not a live payer verdict.
+      security: []
+      parameters:
+        - in: query
+          name: snapshotDate
+          required: true
+          schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+        - in: query
+          name: resourceKey
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Dated forecast
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400": { description: Missing or invalid query }
+        "429": { description: Rate limited }
+
   /api/v1/observatory/history:
     get:
       operationId: getObservatoryHistory
