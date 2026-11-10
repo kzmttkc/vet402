@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 One-time paid check of api.lupapago.com on request
+
+- **What**: `SELLER_RETEST_REQUESTS` gains one Base request for `https://api.lupapago.com/v1/fx/ar` (GET, payTo 0x6fc9…2dbc, 2000 units = 0.002 USDC, expires 2026-12-10), read from the endpoint's unpaid 402 on 2026-11-10.
+- **Why**: The seller asked on X for a small paid test. The route is not in the CDP Bazaar, so the catalog run never reaches it.
+- **Impact**: The existing request lane buys it once on Base after checking network, payee and price against the live 402. No other purchase changes.
+
 ## 2026-11-10 Dated State of x402 report at /x402/report/2026-11
 
 - **What**: Static report page at `src/app/x402/report/2026-11/page.tsx` renders `content/reports/state-of-x402-2026-11.md` through a strict markdown parser (`src/lib/reports/markdown.ts`) with article, breadcrumb, and dataset JSON-LD. Sitemap, `public/llms.txt`, `llms-full.txt`, `/x402`, and `/observatory/state` link the snapshot. Tests pin the report file sha256 and prose coverage.

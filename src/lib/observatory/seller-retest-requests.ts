@@ -168,6 +168,18 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     expiresOn: "2027-04-30",
     amountUnits: "5000",
   },
+  /** Lupa の Dólar AR API（2026-11-10 Marce が X で依頼。CDP Bazaar に未掲載。402 は 11/10 20:3x JST に読んで照合）。 */
+  {
+    id: "lupapago-2026-11-10-fx-ar",
+    requestedOn: "2026-11-10",
+    sellerDomain: "api.lupapago.com",
+    url: "https://api.lupapago.com/v1/fx/ar",
+    method: "GET",
+    network: BASE_CAIP2,
+    payTo: "0x6fc99c8a5334e00f6fce854700959930a3c62dbc",
+    expiresOn: "2026-12-10",
+    amountUnits: "2000",
+  },
 ];
 
 /** テスト専用の短いリスト（本番依頼と同じ規則・模擬ホスト・9 件）。 */
