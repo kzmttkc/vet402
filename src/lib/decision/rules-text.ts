@@ -24,8 +24,8 @@ export const PURCHASE_CLASSIFICATION_TEXT =
   "An attempt counts for or against the seller only when it delivered or is on the seller's side; every other signed attempt is left out with an l1_not_counted_* code " +
   "(l1_not_counted_held counts held rows except seller_fixable_input, plus a receipt awaiting on-chain verification whose held_reason is empty). " +
   "A settled 400 or 422 whose paid request carried every declared input and whose bodyHead parses as JSON with a structured input validation error (FastAPI/pydantic detail[].loc, zod issues[].path, or errors[].field|path|param with in or location on body or query, not free text, with every cited location on the request input, not payment, headers, cookies or authentication) is counted on the seller's side once seen on 2 different UTC days. " +
-  "in the decision it counts as a seller-side attempt (l1_latest_failed or l1_never_delivered, WARN) but never as l1_paid_not_delivered and never toward a BLOCK. " +
-  "/api/v1/sellers/export.csv follows /sellers; the ledger export.csv does not change.";
+  "In the decision it counts as a seller-side attempt (l1_latest_failed or l1_never_delivered, WARN) but never as l1_paid_not_delivered and never toward a BLOCK. " +
+  "/api/v1/sellers/export.csv follows /sellers. The ledger export.csv does not change.";
 
 /** 判定の規則の文（版・BLOCK・WARN・ALLOW の骨組み）。 */
 export const DECISION_RULES_TEXT =

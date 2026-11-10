@@ -10,6 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { classifyRow, BASE_USDC_ADDRESS, type SellerRowFacts } from "@/lib/sellers/fix-modes";
+import { paidAnswerNamesInputError } from "@/lib/sellers/seller-fixable-input";
 import { heldReasonOf } from "@/lib/observatory/delivery";
 import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
 import { readFileSync } from "node:fs";
@@ -120,6 +121,17 @@ const FAIL: Array<[string, SellerRowFacts]> = [
   ["zod path only one segment", settled({ bodyHead: `{"issues":[{"code":"invalid_type","path":["url"],"message":"Required"}]}` })],
   ["non-Base network same pydantic row", settled({ network: "eip155:42161" })],
   ["non-Base alias network", settled({ network: "solana:mainnet" })],
+  ["Base alias network (base)", settled({ network: "base" })],
+  ["pydantic loc cites authentication", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","authentication"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites author", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","author"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites oauth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","oauth"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites secret", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","secret"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites credential", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","credential"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites bearer", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","bearer"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites jwt", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","jwt"],"msg":"Field required"}]}` })],
+  ["query loc cites session", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["query","session"],"msg":"Field required"}]}` })],
+  ["pydantic loc hyphen segment", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","foo-bar"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites passkey (key$)", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","passkey"],"msg":"Field required"}]}` })],
 ];
 
 for (const [name, r] of PASS) {
@@ -153,6 +165,27 @@ test("S1-1: the /sellers and decision readers carry the answer head for settled 
       `${f} must truncate bodyHead at 500 characters for settled 400/422 rows`,
     );
   }
+});
+
+test("S1-1: bodyHead truncated at 500 characters still classifies via the cut string", () => {
+  const prefix = `{"detail":[{"type":"missing","loc":["body","query"],"msg":"`;
+  const suffix = `","input":{}}]}`;
+  const longPad = "x".repeat(500 - prefix.length - suffix.length + 80);
+  const full = prefix + longPad + suffix;
+  assert.ok(full.length > 500, "fixture must exceed 500 characters before truncation");
+  const head = (prefix + longPad.slice(0, 500 - prefix.length - suffix.length) + suffix).slice(0, 500);
+  assert.equal(head.length, 500);
+  JSON.parse(head);
+  const meta = {
+    requestBody: "declared",
+    requestBodySha256: "a".repeat(64),
+    requestQuery: "empty",
+    bodyHead: head,
+  };
+  assert.equal(paidAnswerNamesInputError(meta), true, "classifier must parse the truncated JSON head");
+  const c = classifyRow(settled({ meta }));
+  assert.equal(c.mode?.key, "seller_fixable_input");
+  assert.equal(c.bucket, "seller");
 });
 
 test("S1-1: export.csv and the state API do not read the /sellers classification", () => {

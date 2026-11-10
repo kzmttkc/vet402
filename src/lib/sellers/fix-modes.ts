@@ -845,7 +845,7 @@ const REJECTED_INPUT_HTTP = new Set([400, 404, 415, 422]);
 
 /** held_reason settled_4xx のうち、売り手側に置く前の証拠 (a)〜(e) と 400/422・入力検証の応答を全部満たす行（S1-1・Base のみ）。 */
 function isSettledSellerFixableInput(r: SellerRowFacts, ev: SellerSideEvidence): boolean {
-  if (!isBaseNetwork(r.network)) return false;
+  if (r.network !== "eip155:8453") return false;
   const code = r.httpStatusPaid;
   if (code !== 400 && code !== 422) return false;
   if (!ev.signed || !ev.terms || ev.funds !== "funded" || ev.inputs !== "sent" || ev.wait === "cut_short") return false;

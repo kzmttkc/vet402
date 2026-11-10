@@ -416,7 +416,7 @@ export default async function ObservatoryMethodologyPage() {
           every cited location on the request input, not free text. Answers about payment, x402, authentication,
           headers or cookies stay held. Such a row counts on the seller&apos;s side once the listing has a
           seller-side failure on 2 different UTC days (any kind). Other held rows stay not sorted.{" "}
-          <code>/api/v1/sellers/export.csv</code> follows <code>/sellers</code>; the ledger{" "}
+          <code>/api/v1/sellers/export.csv</code> follows <code>/sellers</code>. The ledger{" "}
           <code>export.csv</code> does not change. The export&apos;s <code>held_reason</code> and{" "}
           <code>status</code> columns are unchanged. A <code>5xx</code> is never held: a server fault is not something the paid
           request shape explains. Before 2026-09-05 every 4xx was published as settled-and-not-delivered,

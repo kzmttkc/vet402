@@ -4731,11 +4731,11 @@ components:
             errors[].field|path|param with in or location on body or query,
             not free text, with every cited location on the request input,
             not payment, headers, cookies or authentication) is counted on
-            the seller's side once seen on 2 different UTC days. in the
+            the seller's side once seen on 2 different UTC days. In the
             decision it counts as a seller-side attempt (l1_latest_failed or
             l1_never_delivered, WARN) but never as l1_paid_not_delivered and
             never toward a BLOCK. /api/v1/sellers/export.csv follows
-            /sellers; the ledger export.csv does not change. L1: after the
+            /sellers. The ledger export.csv does not change. L1: after the
             last delivery in the 30-day window, an attempt that moved money
             and did not deliver adds l1_paid_not_delivered; it is a BLOCK
             only when two or more of them are on the seller's side (seen on
