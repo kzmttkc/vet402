@@ -32,6 +32,14 @@ import { assertPublicEnglishSurface } from "@/lib/v4/public-english";
 const ROOT = join(__dirname, "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
+/** 合格仕様の字面（定数 import だけにしない） */
+const F4_V1_JA_SCOPE_LITERAL = "名乗る買い手の場合";
+
+const YARDSTICK_787DAA46_FIRST_CHANGELOG = {
+  changedAt: "2026-11-10T11:58:00.000Z",
+  next: "2026-11-10T12:00:00.000Z",
+};
+
 const FORBIDDEN_HIT_RATE_MARKETING = [
   "93.9%",
   "96.45%",
@@ -60,6 +68,48 @@ function gitLogSCommitterIso(needle: string, relPath: string): string {
   ).trim();
   assert.ok(raw, `git must contain ${needle} in ${relPath}`);
   return new Date(raw).toISOString();
+}
+
+function is787daa46FirstChangelogRow(entry: { changedAt: string; next: string }): boolean {
+  return (
+    entry.changedAt === YARDSTICK_787DAA46_FIRST_CHANGELOG.changedAt &&
+    entry.next === YARDSTICK_787DAA46_FIRST_CHANGELOG.next
+  );
+}
+
+/** 6f02a920 相当（英語のみ・minSample 無視）— f4-training-snapshot に依存しない */
+function buildF4ForecastLike613920(input: {
+  snapshotDate: string;
+  resourceKey: string;
+  trainingRows: { attemptedAt: string; resourceKey: string; delivered: boolean }[];
+}): { text: string; deliveryRate: number | null } {
+  const scoped = input.trainingRows.filter((r) => r.resourceKey === input.resourceKey);
+  const trainCount = scoped.length;
+  const trainDelivered = scoped.filter((r) => r.delivered).length;
+  const deliveryRate = trainCount > 0 ? trainDelivered / trainCount : null;
+  const ratePart =
+    deliveryRate === null
+      ? "No settled rows for this endpoint on or before the snapshot date."
+      : `Estimated delivery rate ${(deliveryRate * 100).toFixed(1)}% from ${trainCount} settled row(s) on or before the snapshot date.`;
+  const text = `For a buyer that identifies itself, ${ratePart} Snapshot date ${input.snapshotDate}. This is a dated forecast, not a live payer verdict.`;
+  return { text, deliveryRate };
+}
+
+function gitS13RepurchaseResultsReadCommitIsos(): string[] {
+  const commands = [
+    'git log --grep="S1-3" --grep="repurchase results" --all-match --format=%cI -i',
+    'git log --grep="reads S1-3 repurchase results" --format=%cI -i',
+    'git log -S "S1_3_REPURCHASE_RESULTS_READ" --reverse --format=%cI',
+  ];
+  const seen = new Set<string>();
+  for (const cmd of commands) {
+    const chunk = execSync(cmd, { cwd: ROOT, encoding: "utf8" })
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    for (const iso of chunk) seen.add(new Date(iso).toISOString());
+  }
+  return [...seen];
 }
 
 test("3.13-S1-2: 物差し JSON が存在し fixedAt と minSample と時間分割がある", () => {
@@ -98,10 +148,21 @@ test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境�
   assert.ok(fixed >= fixedAtIntroduced, "fixedAt must be on or after the commit that introduced this fixedAt value");
   assert.equal(doc.fixedAtChangelog[doc.fixedAtChangelog.length - 1]!.next, doc.fixedAt);
   for (const entry of doc.fixedAtChangelog) {
+    if (is787daa46FirstChangelogRow(entry)) {
+      assert.equal(entry.previous, "2026-11-10T06:00:00.000Z");
+      continue;
+    }
     const nextIntroduced = new Date(gitLogSCommitterIso(entry.next, DELIVERY_HIT_RATE_YARDSTICK_PATH)).getTime();
+    const changedAtIntroduced = new Date(
+      gitLogSCommitterIso(entry.changedAt, DELIVERY_HIT_RATE_YARDSTICK_PATH),
+    ).getTime();
     assert.ok(
-      new Date(entry.changedAt).getTime() >= nextIntroduced,
-      `fixedAtChangelog changedAt must be on or after commit that introduced next ${entry.next}`,
+      new Date(entry.changedAt).getTime() >= changedAtIntroduced,
+      `fixedAtChangelog changedAt must be on or after commit that introduced changedAt ${entry.changedAt}`,
+    );
+    assert.ok(
+      new Date(entry.next).getTime() >= nextIntroduced,
+      `fixedAtChangelog next ${entry.next} must be on or after commit that introduced that value`,
     );
   }
 });
@@ -112,20 +173,18 @@ test("3.13-S1-2: 買い直し境界は実装定数のみで S1-3 結果読取コ
   const fixed = new Date(doc.fixedAt).getTime();
   const boundary = new Date(REPURCHASE_RESULTS_READ_NOT_BEFORE).getTime();
   assert.ok(fixed < boundary, "fixedAt must precede code repurchase-results boundary");
-  const readResultTimes = execSync(
-    'git log --grep="S1-3" --grep="repurchase results" --all-match --format=%cI -i',
-    { cwd: ROOT, encoding: "utf8" },
-  )
-    .trim()
-    .split("\n")
-    .filter(Boolean);
+  const readResultTimes = gitS13RepurchaseResultsReadCommitIsos();
   if (readResultTimes.length === 0) {
     assert.deepEqual(readResultTimes, [], "no commit reads S1-3 repurchase results yet");
-    return;
+  } else {
+    for (const iso of readResultTimes) {
+      assert.ok(fixed < new Date(iso).getTime(), `fixedAt must precede S1-3 results read commit at ${iso}`);
+    }
   }
-  for (const iso of readResultTimes) {
-    assert.ok(fixed < new Date(iso).getTime(), `fixedAt must precede S1-3 results read commit at ${iso}`);
-  }
+  assert.ok(
+    fixed < boundary,
+    "fixedAt must precede REPURCHASE_RESULTS_READ_NOT_BEFORE even when no results-read commit exists yet",
+  );
 });
 
 test("3.13-S1-2: 台帳の時間分割が学習と評価に分かれる", () => {
@@ -264,8 +323,18 @@ test("3.13-F4: V4 宣伝禁止の正解率を予測の的中率として書か�
     trainingRows: rows,
   });
   assert.ok(
-    out.text.includes(NAMED_BUYER_SCOPE_PHRASE_JA),
+    out.text.includes(F4_V1_JA_SCOPE_LITERAL),
     "F4 v1 forecast must include the Japanese scope phrase, not English-only scope",
+  );
+  const legacy = buildF4ForecastLike613920({
+    snapshotDate: "2026-11-09",
+    resourceKey: "host/a",
+    trainingRows: rows,
+  });
+  assert.equal(
+    legacy.text.includes(F4_V1_JA_SCOPE_LITERAL),
+    false,
+    "6f02a920-style English-only forecast must not pass the Japanese scope requirement",
   );
   const serialized = JSON.stringify(out);
   for (const bad of FORBIDDEN_HIT_RATE_MARKETING) {
