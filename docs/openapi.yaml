@@ -2799,10 +2799,10 @@ paths:
     get:
       operationId: getDeliveryHitRateYardstick
       tags: [Observatory]
-      summary: Pre-registered delivery hit-rate yardstick (S1-2)
+      summary: Pre-registered delivery hit rate yardstick (S1-2)
       description: |
-        Delivery hit-rate measurement rules fixed before repurchase results are read.
-        Not Gate2 PMF signup counts. Not a marketing hit-rate figure.
+        Delivery hit rate measurement rules fixed before repurchase results are read.
+        Not Gate2 PMF signup counts. Not a marketing hit rate figure.
       security: []
       responses:
         "200":

@@ -18,8 +18,8 @@ const RL_WINDOW_MS = 60_000;
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/v1/v4/delivery-hit-rate-yardstick — S1-2 delivery hit-rate yardstick (pre-registered).
- * Not the Gate2 PMF signup table. Not a marketing hit-rate read.
+ * GET /api/v1/v4/delivery-hit-rate-yardstick — S1-2 delivery hit rate yardstick (pre-registered).
+ * Not the Gate2 PMF signup table. Not a marketing hit rate read.
  */
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
       retrievedAt,
       license: "CC-BY-4.0",
       licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
-      cite: `KIZUNA Creation. vet402 delivery hit-rate yardstick, retrieved ${retrievedAt}. https://vet402.com/api/v1/v4/delivery-hit-rate-yardstick`,
+      cite: `KIZUNA Creation. vet402 delivery hit rate yardstick, retrieved ${retrievedAt}. https://vet402.com/api/v1/v4/delivery-hit-rate-yardstick`,
     },
     { headers: shared },
   );

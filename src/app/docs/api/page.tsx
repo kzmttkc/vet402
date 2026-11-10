@@ -583,7 +583,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/v4/delivery-hit-rate-yardstick",
-    note: "Pre-registered delivery hit-rate yardstick: minSample, ledger train or eval dates, fixedAt. Not Gate2 PMF counts. Key-less. 60 requests per minute per IP.",
+    note: "Pre-registered delivery hit rate yardstick: minSample, ledger train or eval dates, fixedAt. Not Gate2 PMF counts. Key-less. 60 requests per minute per IP.",
     response: `HTTP 200. fixedAt, minSample, timeSplit, license, cite.`,
   },
   {

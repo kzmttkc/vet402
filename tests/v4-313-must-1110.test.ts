@@ -9,12 +9,16 @@ import { NextRequest } from "next/server";
 import { buildGate2Report } from "@/lib/gate2/report";
 import {
   DELIVERY_HIT_RATE_YARDSTICK_PATH,
+  REPURCHASE_RESULTS_READ_NOT_BEFORE,
   applyMinSampleChange,
   loadDeliveryHitRateYardstick,
   validateMinSampleChangelog,
   validateYardstickAgainstRepurchaseBoundary,
 } from "@/lib/v4/delivery-hit-rate-yardstick";
-import { F4_TRAINING_SNAPSHOT_SOURCE } from "@/lib/v4/f4-training-snapshot";
+import {
+  F4_TRAINING_SNAPSHOT_SOURCE,
+  loadNamedBuyerTrainingRowsUpToSnapshot,
+} from "@/lib/v4/f4-training-snapshot";
 import { partitionLedgerByTimeSplit, type LedgerTimeSplitRow } from "@/lib/v4/ledger-time-split";
 import {
   NAMED_BUYER_SCOPE_PHRASE_EN,
@@ -66,6 +70,8 @@ test("3.13-S1-2: 物差し JSON が存在し fixedAt と minSample と時間分�
 
 test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境界より前", () => {
   const doc = loadDeliveryHitRateYardstick();
+  const raw = JSON.parse(read(DELIVERY_HIT_RATE_YARDSTICK_PATH)) as Record<string, unknown>;
+  assert.equal("repurchaseResultsReadNotBefore" in raw, false);
   const gitFirst = gitYardstickFirstCommitIso();
   assert.equal(
     new Date(doc.documentFirstCommittedAt).toISOString(),
@@ -74,13 +80,17 @@ test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境�
   );
   const fixed = new Date(doc.fixedAt).getTime();
   const committed = new Date(doc.documentFirstCommittedAt).getTime();
-  const notBefore = new Date(doc.repurchaseResultsReadNotBefore).getTime();
+  const notBefore = new Date(REPURCHASE_RESULTS_READ_NOT_BEFORE).getTime();
   assert.ok(fixed >= committed, "fixedAt must not precede document first commit");
-  assert.ok(fixed < notBefore, "fixedAt must precede repurchaseResultsReadNotBefore");
+  assert.ok(fixed < notBefore, "fixedAt must precede REPURCHASE_RESULTS_READ_NOT_BEFORE");
+  assert.notEqual(doc.fixedAt, doc.fixedAtInitial);
+  assert.ok(doc.fixedAtChangelog.length >= 1, "fixedAt move must be published in fixedAtChangelog");
 });
 
 test("3.13-S1-2: 台帳の時間分割が学習と評価に分かれる", () => {
   const doc = loadDeliveryHitRateYardstick();
+  assert.equal(typeof doc.minSampleInitial, "number");
+  assert.equal(doc.minSample, doc.minSampleInitial);
   const rows: LedgerTimeSplitRow[] = [
     { attemptedAt: "2026-10-07T23:59:59.000Z", delivered: true },
     { attemptedAt: "2026-10-08T12:00:00.000Z", delivered: true },
@@ -97,9 +107,12 @@ test("3.13-S1-2: 台帳の時間分割が学習と評価に分かれる", () => 
 test("3.13-S1-2: buildGate2Report の judgementA/C を的中率欄に混ぜない（gate2 は PMF）", () => {
   const yardstickSrc = read("src/lib/v4/delivery-hit-rate-yardstick.ts");
   const gate2Src = read("src/lib/gate2/report.ts");
+  assert.match(yardstickSrc, /validateMinSampleChangelog/);
+  assert.match(yardstickSrc, /validateFixedAtChangelog/);
   assert.doesNotMatch(yardstickSrc, /buildGate2Report/);
   assert.doesNotMatch(gate2Src, /delivery-hit-rate-yardstick/);
   assert.doesNotMatch(gate2Src, /judgementA.*hitRate|hitRate.*judgementA/);
+  assert.doesNotMatch(gate2Src, /judgementC[\s\S]*deliveryRate/);
 });
 
 test("3.13-S1-2: gate2 judgementB に purpose だけ足して PMF 週次表を完了にしない", () => {
@@ -170,6 +183,11 @@ test("3.13-F4: スナップショット日より後の行を学習に混ぜな�
       }),
     /after snapshot/i,
   );
+  const routeSrc = read("src/app/api/v1/v4/named-buyer-delivery-forecast/route.ts");
+  assert.doesNotMatch(routeSrc, /buildNamedBuyerDeliveryForecastFromFixture|f4-named-buyer-training-fixture/);
+  const pinned = loadNamedBuyerTrainingRowsUpToSnapshot("2026-10-19");
+  assert.ok(pinned.length >= 1);
+  assert.ok(pinned.every((r) => r.attemptedAt.slice(0, 10) <= "2026-10-19"));
 });
 
 test("3.13-F4: decidePayer の別名にしない", () => {
@@ -222,9 +240,32 @@ test("3.13-F4: Stellar 日次スナップショットから学習行を読む", 
 
 test("3.13: 正典パスがリポに存在する", () => {
   read(DELIVERY_HIT_RATE_YARDSTICK_PATH);
+  read("src/lib/v4/f4-training-snapshot.ts");
+  const forecastSrc = read("src/lib/v4/named-buyer-delivery-forecast.ts");
+  assert.match(forecastSrc, /buildNamedBuyerDeliveryForecastFromPinnedSnapshot/);
+  assert.match(forecastSrc, /f4-training-snapshot/);
   assert.ok(read("content/drafts/v4-methodology-rewrite-1116.md").includes("approval"));
 });
 
 test("3.13: buildGate2Report の形は維持する", async () => {
   assert.equal(typeof buildGate2Report, "function");
+  const gate2Src = read("src/lib/gate2/report.ts");
+  assert.match(gate2Src, /judgementA:\s*\{[\s\S]*externalSignups/);
+  assert.doesNotMatch(gate2Src, /judgementB:[\s\S]*purpose:/);
+});
+
+test("3.13-S1-2: 新規公開英語に hit-rate 複合語を置かない", () => {
+  const openapi = read("docs/openapi.yaml");
+  const apiPage = read("src/app/docs/api/page.tsx");
+  const doc = loadDeliveryHitRateYardstick();
+  const yardstickSlice = openapi.slice(
+    openapi.indexOf("summary: Pre-registered delivery hit"),
+    openapi.indexOf("/api/v1/v4/named-buyer-delivery-forecast"),
+  );
+  const noteMatch = apiPage.match(/note: "(Pre-registered delivery hit[^"]+)"/);
+  assert.ok(noteMatch, "api docs page must describe yardstick note");
+  for (const chunk of [yardstickSlice, noteMatch![1]!, doc.minSampleRationale]) {
+    assert.equal(/\bhit-rate\b/i.test(chunk), false, "public copy must use hit rate not hit-rate");
+    assertPublicEnglishSurface(chunk);
+  }
 });
