@@ -223,7 +223,7 @@ export async function ingestEvmLaneRobinhood(
           payeeId: pid,
         },
       })
-      .returning({ id: x402Endpoints.id });
+      .returning();
 
     const endpointId = ep[0]?.id;
     if (!endpointId) throw new Error("evm-lane-ingest: endpoint insert returned no id");

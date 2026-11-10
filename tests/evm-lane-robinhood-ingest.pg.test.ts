@@ -7,7 +7,10 @@
 import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
+import { deliveredPredicate } from "@/lib/observatory/delivery";
+import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -49,7 +52,7 @@ if (!TEST_DB) {
     const counts = await db.execute(sql`
       SELECT count(*)::int AS attempts,
              count(*) FILTER (WHERE status = 'settled')::int AS settled,
-             count(*) FILTER (WHERE status = 'settled' AND http_status_paid BETWEEN 200 AND 299 AND payload_non_empty)::int AS delivered
+             count(*) FILTER (WHERE ${sql.raw(deliveredPredicate())})::int AS delivered
       FROM x402_l1_purchases WHERE network = ${ROBINHOOD_CAIP2}
     `);
     const row = (Array.isArray(counts) ? counts[0] : (counts as { rows: Record<string, number>[] }).rows[0]) as {
@@ -68,5 +71,27 @@ if (!TEST_DB) {
     assert.equal(rh!.settled, expect.settled);
     assert.equal(rh!.delivered, expect.delivered);
     assert.equal(rh!.attempts, expect.published);
+
+    const savedProxy = process.env.PROXY_HEADER_SOURCE;
+    process.env.PROXY_HEADER_SOURCE = "generic";
+    try {
+      const { GET } = await import("@/app/api/v1/observatory/export.csv/route");
+      const res = await GET(
+        new NextRequest(`https://vet402.com/api/v1/observatory/export.csv?days=366`, {
+          headers: { "x-forwarded-for": "203.0.113.120" },
+        }),
+      );
+      assert.equal(res.status, 200);
+      const lines = (await res.text()).split("\n").filter((l) => l.length > 0);
+      assert.equal(lines[0], EXPORT_CSV_COLUMNS.join(","), "export header unchanged");
+      const data = lines.slice(1);
+      const rhRows = data.filter((row) => row.includes(ROBINHOOD_CAIP2));
+      assert.equal(rhRows.length, expect.published, "export.csv includes every Robinhood attempt");
+      const settledInExport = rhRows.filter((row) => /,settled,/.test(row) || row.includes(",\"settled\",")).length;
+      assert.equal(settledInExport, expect.settled);
+    } finally {
+      if (savedProxy === undefined) delete process.env.PROXY_HEADER_SOURCE;
+      else process.env.PROXY_HEADER_SOURCE = savedProxy;
+    }
   });
 }
