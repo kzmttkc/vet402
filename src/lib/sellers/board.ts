@@ -604,6 +604,12 @@ export type SellerPageData =
  *   3. どちらでもない → 404
  * 2 の集合はキャッシュ済みの 1 本（cached.ts）なので、でたらめな host は従来どおり host ごとの問い合わせを走らせない。
  */
+/** /sellers/[host] と host バッジの共通関門（Base 一覧か、購入行のある host）。 */
+export function sellerHostIsListed(host: string, board: SellerBoard, purchasedHosts: readonly string[]): boolean {
+  if (board.sellers.some((s) => s.host === host)) return true;
+  return purchasedHosts.includes(host);
+}
+
 export async function resolveSellerPage(
   host: string,
   load: {

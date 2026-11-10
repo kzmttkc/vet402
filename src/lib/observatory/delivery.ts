@@ -186,6 +186,15 @@ export function deliveredPredicate(alias = ""): string {
   );
 }
 
+/** Host badge / export 照合用: settled かつ有料 HTTP が 2xx（202 除く）。本文の有無は問わない。 */
+export function answeredHttpPredicate(alias = ""): string {
+  const p = assertAlias("answeredHttpPredicate", alias);
+  return (
+    `coalesce((${p}status = 'settled' AND ${p}http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}` +
+    ` AND ${p}http_status_paid <> ${ACCEPTED_NOT_DONE_HTTP}), false)`
+  );
+}
+
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 function sqlStringList(values: readonly string[]): string {
   for (const v of values) {

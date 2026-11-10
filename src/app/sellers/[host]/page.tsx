@@ -25,6 +25,7 @@ import {
   UNDER_RECHECK,
 } from "@/components/site/sellers/SellersViews";
 import TrackView from "@/components/site/TrackView";
+import SellerHostBadgeSection from "@/components/site/sellers/SellerHostBadgeSection";
 
 /**
  * /sellers/[host] — one seller's Base listings, each with its latest purchase, what vet402 saw,
@@ -168,7 +169,13 @@ export default async function SellerPage({ params, searchParams }: Props) {
           .
         </p>
       )}
-      <SellerDetailView detail={detail} page={page} now={Date.parse(detail.fetchedAt)} revalidateSec={PUBLIC_READ_REVALIDATE} />
+      <SellerDetailView
+        detail={detail}
+        page={page}
+        now={Date.parse(detail.fetchedAt)}
+        revalidateSec={PUBLIC_READ_REVALIDATE}
+        afterSummary={<SellerHostBadgeSection host={detail.host} />}
+      />
       <TrackView event="seller_page_view" props={{ host }} />
     </main>
   );

@@ -15,6 +15,7 @@ const ROUTES = [
   "src/app/api/badge/[address]/route.ts",
   "src/app/api/badge/agent/[agentId]/route.ts",
   "src/app/api/badge/endpoint/[id]/route.ts",
+  "src/app/api/badge/host/[host]/route.ts",
 ];
 
 for (const rel of ROUTES) {

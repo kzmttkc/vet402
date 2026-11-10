@@ -37,7 +37,7 @@ import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
-import { deliveredPredicate } from "@/lib/observatory/delivery";
+import { answeredHttpPredicate, deliveredPredicate } from "@/lib/observatory/delivery";
 import {
   MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
   NONSETTLED_PAID_ATTEMPT_STATUSES,
@@ -584,4 +584,24 @@ export async function readSellerOtherChains(db: Db, host: string): Promise<Selle
     facts: toRowFacts(r),
   }));
   return buildSellerOtherChains(host, rows, fetchedAt);
+}
+
+/** Host badge と export.csv?days=30 の settled 件数を同じ窓・同じホスト規則で数える。 */
+export const HOST_BADGE_WINDOW_DAYS = 30;
+
+export type HostBadgeStats = { settled: number; answered: number };
+
+export async function readHostBadgeStats(db: Db, host: string): Promise<HostBadgeStats> {
+  const raw = await db.execute(sql`
+    SELECT count(*) FILTER (WHERE pu.status = 'settled')::int AS settled,
+           count(*) FILTER (WHERE ${sql.raw(answeredHttpPredicate("pu"))})::int AS answered
+    FROM x402_l1_purchases pu
+    JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${HOST_SQL} = ${host}
+      AND pu.attempted_at >= now() - make_interval(days => ${HOST_BADGE_WINDOW_DAYS}::int)`);
+  const row = rowsOf(raw)[0];
+  return {
+    settled: Number(row?.settled ?? 0),
+    answered: Number(row?.answered ?? 0),
+  };
 }

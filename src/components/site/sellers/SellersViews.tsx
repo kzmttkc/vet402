@@ -1217,11 +1217,14 @@ export function SellerDetailView({
   page,
   now,
   revalidateSec,
+  afterSummary,
 }: {
   detail: SellerDetail;
   page: number;
   now: number;
   revalidateSec: number;
+  /** Shown right after the summary block (e.g. host badge embed on the seller page). */
+  afterSummary?: ReactNode;
 }) {
   const s = detail.summary;
   const { page: p, totalPages, listings: shown } = sellerListingsOnPage(detail, page);
@@ -1242,6 +1245,7 @@ export function SellerDetailView({
       <h1 className="doc-title mt-8 break-words [overflow-wrap:anywhere]">{sellerHeading(detail.host, head.at, head.chain)}</h1>
       <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
       <SellerSummaryLines d={detail} revalidateSec={revalidateSec} />
+      {afterSummary}
       {(detail.withdrawnRoutes ?? []).length > 0 && (
         <>
           <h2 className="sec-head">

@@ -3993,6 +3993,37 @@ paths:
         "429":
           $ref: "#/components/responses/RateLimited"
 
+  /api/badge/host/{host}.svg:
+    get:
+      operationId: getHostSellerBadge
+      tags: [Badges]
+      summary: Embeddable SVG receipt badge for one seller host
+      description: |
+        States how many of vet402's settled paid calls to this host in the last 30
+        days returned HTTP 2xx other than 202, grouped across all of the host's
+        listings. Facts only: no trust judgment. Only hosts listed on /sellers
+        return 200; others return 404. A listed host with zero settled purchases in
+        the window renders "no paid calls in 30 days". The `.svg` suffix is part
+        of the path. 60 requests per minute per IP; CDN-cached like other badges.
+      security: []
+      parameters:
+        - name: host
+          in: path
+          required: true
+          description: Seller hostname (same normalization as /sellers/{host}).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SVG badge
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        "404":
+          description: Invalid hostname or host not on /sellers
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
   /api/transparency/operator-overrides:
     get:
       operationId: getOperatorOverrides

@@ -662,6 +662,12 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   },
   {
     method: "GET",
+    path: "/api/badge/host/:host.svg",
+    note: "SVG receipt badge for one seller host. Counts settled paid calls in the last 30 days and how many returned HTTP 2xx other than 202, grouped across listings on that host. Hosts on /sellers return HTTP 200; others return 404. Zero settled rows in the window still return 200 with a no-calls line. The .svg suffix is part of the path. Key-less. 60 requests per minute per IP.",
+    response: `image/svg+xml`,
+  },
+  {
+    method: "GET",
     path: "/api/transparency/operator-overrides",
     note: "Public log of global operator blacklist actions. Each row has wallet, action, reason, and created_at. Customer-scoped lists are not in this response. Key-less.",
     response: `{ "overrides": [], "count": "<count>", "note": "…" }`,

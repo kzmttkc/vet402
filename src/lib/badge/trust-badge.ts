@@ -62,12 +62,11 @@ export type BadgeState = {
   aria: string;
 };
 
-// Green is reserved: it is the ONLY colour that reads as "vet402 vouches for
-// this". The others are deliberately not green so a human cannot misread them.
-const GREEN = "#059669"; // emerald-600 — verified (signed + clean ALLOW)
-const AMBER = "#b45309"; // amber-700  — caution (trust not established)
-const RED = "#b91c1c"; // red-700    — flagged (BLOCK verdict)
-const GREY = "#71717a"; // zinc-500   — unverified (no signed claim)
+// R=G=B greys only (2026-11-11). Labels distinguish states; hue does not signal trust.
+const VERIFIED_GREY = "#666666";
+const CAUTION_GREY = "#777777";
+const FLAGGED_GREY = "#444444";
+const UNVERIFIED_GREY = "#555555";
 
 /**
  * The one place that decides what an embeddable vet402 badge is allowed to
@@ -82,7 +81,7 @@ export function resolveBadgeState(input: BadgeStateInput): BadgeState {
     return {
       state: "unverified",
       label: "Unverified",
-      color: GREY,
+      color: UNVERIFIED_GREY,
       aria: `vet402: Unverified — this ${noun} has not signed a vet402 ownership attestation. Not a trust guarantee.`,
     };
   }
@@ -95,7 +94,7 @@ export function resolveBadgeState(input: BadgeStateInput): BadgeState {
     return {
       state: "flagged",
       label: "Flagged",
-      color: RED,
+      color: FLAGGED_GREY,
       aria: `vet402: Flagged — ownership is signed but the live vet402 score for this ${noun} is BLOCK. Do not treat as safe.`,
     };
   }
@@ -105,7 +104,7 @@ export function resolveBadgeState(input: BadgeStateInput): BadgeState {
     return {
       state: "verified",
       label,
-      color: GREEN,
+      color: VERIFIED_GREY,
       aria: `vet402: ${label} — wallet ownership is signed AND the live vet402 trust score is ALLOW.`,
     };
   }
@@ -115,7 +114,7 @@ export function resolveBadgeState(input: BadgeStateInput): BadgeState {
   return {
     state: "caution",
     label: "Caution",
-    color: AMBER,
+    color: CAUTION_GREY,
     aria: `vet402: Caution — ownership is signed but trust is not established (the live vet402 score is not a clean ALLOW). Ownership only; not a trust guarantee.`,
   };
 }
@@ -209,7 +208,7 @@ export function renderBadgeSvg(state: BadgeState): string {
   const label = xmlEscape(state.label);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="156" height="24" role="img" aria-label="${aria}">
   <title>${aria}</title>
-  <rect width="58" height="24" rx="4" fill="#18181b"/>
+  <rect width="58" height="24" rx="4" fill="#111111"/>
   <rect x="58" width="98" height="24" rx="4" fill="${state.color}"/>
   <rect x="58" width="6" height="24" fill="${state.color}"/>
   <text x="29" y="16" text-anchor="middle" font-family="Verdana,sans-serif" font-size="11" fill="#ffffff">vet402</text>

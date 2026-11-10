@@ -24,43 +24,43 @@ import { __setDbForTests } from "@/lib/db/client";
 import { GET as agentBadgeGET } from "@/app/api/badge/agent/[agentId]/route";
 import { GET as payeeBadgeGET } from "@/app/api/badge/[address]/route";
 
-const GREEN = "#059669";
-const RED = "#b91c1c";
-const AMBER = "#b45309";
+const VERIFIED_GREY = "#666666";
+const FLAGGED_GREY = "#444444";
+const CAUTION_GREY = "#777777";
 
 test("unsigned wallet is Unverified regardless of a good score", () => {
   const s = resolveBadgeState({ signed: false, recommendation: "ALLOW", subject: "payee" });
   assert.equal(s.state, "unverified");
   assert.equal(s.label, "Unverified");
-  assert.notEqual(s.color, GREEN);
+  assert.notEqual(s.color, VERIFIED_GREY);
 });
 
 test("signed + clean ALLOW is the only path to green Verified payee", () => {
   const s = resolveBadgeState({ signed: true, recommendation: "ALLOW", subject: "payee" });
   assert.equal(s.state, "verified");
   assert.equal(s.label, "Verified payee");
-  assert.equal(s.color, GREEN);
+  assert.equal(s.color, VERIFIED_GREY);
 });
 
 test("signed agent + clean ALLOW reads Verified agent", () => {
   const s = resolveBadgeState({ signed: true, recommendation: "ALLOW", subject: "agent" });
   assert.equal(s.state, "verified");
   assert.equal(s.label, "Verified agent");
-  assert.equal(s.color, GREEN);
+  assert.equal(s.color, VERIFIED_GREY);
 });
 
 test("H-5 revocation: a signed wallet that turns BLOCK shows Flagged, never green", () => {
   const s = resolveBadgeState({ signed: true, recommendation: "BLOCK", subject: "payee" });
   assert.equal(s.state, "flagged");
   assert.equal(s.label, "Flagged");
-  assert.notEqual(s.color, GREEN);
+  assert.notEqual(s.color, VERIFIED_GREY);
 });
 
 test("H-1 attack: BLOCK wallet cannot mint a green badge by signing", () => {
   // The exact exploit: self-attest, then embed. The signature is real, the
   // trust is not — the badge must not be green.
   const signed = resolveBadgeState({ signed: true, recommendation: "BLOCK", subject: "payee" });
-  assert.notEqual(signed.color, GREEN);
+  assert.notEqual(signed.color, VERIFIED_GREY);
   assert.notEqual(signed.state, "verified");
 });
 
@@ -68,13 +68,13 @@ test("signed + WARN is Caution, not green (BLOCK/WARN never green)", () => {
   const s = resolveBadgeState({ signed: true, recommendation: "WARN", subject: "payee" });
   assert.equal(s.state, "caution");
   assert.equal(s.label, "Caution");
-  assert.notEqual(s.color, GREEN);
+  assert.notEqual(s.color, VERIFIED_GREY);
 });
 
 test("fail-closed: a signed wallet whose score lookup failed is never green", () => {
   const s = resolveBadgeState({ signed: true, recommendation: null, subject: "payee" });
   assert.equal(s.state, "caution");
-  assert.notEqual(s.color, GREEN);
+  assert.notEqual(s.color, VERIFIED_GREY);
 });
 
 test("fail-closed: a degraded read cannot produce green even on an ALLOW band", () => {
@@ -86,27 +86,43 @@ test("fail-closed: a degraded read cannot produce green even on an ALLOW band", 
     degraded: true,
     subject: "payee",
   });
-  assert.notEqual(s.color, GREEN);
+  assert.notEqual(s.color, VERIFIED_GREY);
   assert.equal(s.state, "caution");
 });
 
-test("rendered SVG uses green fill only for a verified state", () => {
-  const green = renderBadgeSvg(
+test("rendered SVG uses a distinct grey fill for verified state", () => {
+  const verified = renderBadgeSvg(
     resolveBadgeState({ signed: true, recommendation: "ALLOW", subject: "payee" }),
   );
-  assert.match(green, new RegExp(GREEN));
-  assert.match(green, /Verified payee/);
+  assert.match(verified, new RegExp(VERIFIED_GREY));
+  assert.match(verified, /Verified payee/);
 
   const flagged = renderBadgeSvg(
     resolveBadgeState({ signed: true, recommendation: "BLOCK", subject: "payee" }),
   );
-  assert.doesNotMatch(flagged, new RegExp(GREEN));
+  assert.doesNotMatch(flagged, new RegExp(VERIFIED_GREY));
   assert.match(flagged, /Flagged/);
 
   const caution = renderBadgeSvg(
     resolveBadgeState({ signed: true, recommendation: "WARN", subject: "payee" }),
   );
-  assert.doesNotMatch(caution, new RegExp(GREEN));
+  assert.doesNotMatch(caution, new RegExp(VERIFIED_GREY));
+});
+
+test("trust badge SVG fill colours are R=G=B only", () => {
+  for (const s of [
+    resolveBadgeState({ signed: false, recommendation: null, subject: "payee" }),
+    resolveBadgeState({ signed: true, recommendation: "ALLOW", subject: "payee" }),
+    resolveBadgeState({ signed: true, recommendation: "BLOCK", subject: "payee" }),
+    resolveBadgeState({ signed: true, recommendation: "WARN", subject: "payee" }),
+  ]) {
+    const svg = renderBadgeSvg(s);
+    for (const m of svg.matchAll(/fill="(#[0-9a-fA-F]{6})"/g)) {
+      const hex = m[1];
+      assert.equal(hex.slice(1, 3), hex.slice(3, 5), hex);
+      assert.equal(hex.slice(3, 5), hex.slice(5, 7), hex);
+    }
+  }
 });
 
 test("rendered SVG is well-formed and stays 156px wide", () => {
@@ -135,8 +151,8 @@ test("agentBadgeState: a degraded BLOCK (unavailable reads) is amber Caution, NO
     signals: { sybil: { flags: ["sybil_checks_unavailable"] } },
   });
   assert.equal(s.state, "caution", "a read we could not complete is 'we don't know', not 'flagged'");
-  assert.equal(s.color, AMBER);
-  assert.notEqual(s.color, RED);
+  assert.equal(s.color, CAUTION_GREY);
+  assert.notEqual(s.color, FLAGGED_GREY);
 });
 
 test("agentBadgeState: a GENUINE BLOCK (no unavailable flags) still reads Flagged", () => {
@@ -145,17 +161,17 @@ test("agentBadgeState: a GENUINE BLOCK (no unavailable flags) still reads Flagge
     signals: { sybil: { flags: ["funding_cluster", "multi_agent_owner"] } },
   });
   assert.equal(s.state, "flagged", "a measured BLOCK is a real revocation, not merely unknown");
-  assert.equal(s.color, RED);
+  assert.equal(s.color, FLAGGED_GREY);
 });
 
 test("agentBadgeState: a clean ALLOW is green; a null score (lookup failed) is amber", () => {
   const green = agentBadgeState(true, { recommendation: "ALLOW", signals: { sybil: { flags: [] } } });
   assert.equal(green.state, "verified");
-  assert.equal(green.color, GREEN);
+  assert.equal(green.color, VERIFIED_GREY);
 
   const failed = agentBadgeState(true, null);
   assert.equal(failed.state, "caution");
-  assert.notEqual(failed.color, GREEN);
+  assert.notEqual(failed.color, VERIFIED_GREY);
 });
 
 test("agent vs payee are SYMMETRIC on a degraded read — both amber, neither red", () => {
@@ -180,7 +196,7 @@ test("payeeBadgeState: degraded via unavailable flags alone (no explicit flag) s
     signals: { flags: ["reputation_summary_unavailable"] },
   });
   assert.equal(s.state, "caution");
-  assert.notEqual(s.color, RED);
+  assert.notEqual(s.color, FLAGGED_GREY);
 });
 
 test("payeeBadgeState: a genuine measured BLOCK is Flagged; clean ALLOW is green", () => {
@@ -188,7 +204,7 @@ test("payeeBadgeState: a genuine measured BLOCK is Flagged; clean ALLOW is green
   assert.equal(flagged.state, "flagged");
   const green = payeeBadgeState(true, { recommendation: "ALLOW", degraded: false, signals: { flags: [] } });
   assert.equal(green.state, "verified");
-  assert.equal(green.color, GREEN);
+  assert.equal(green.color, VERIFIED_GREY);
 });
 
 // ---- real route handlers: the unsigned path drives the actual GET ----------
@@ -239,7 +255,7 @@ test("ROUTE /api/badge/agent/[agentId]: an unsigned agent renders Unverified SVG
   assert.equal(res.headers.get("Content-Type"), "image/svg+xml");
   const svg = await res.text();
   assert.match(svg, /Unverified/);
-  assert.doesNotMatch(svg, new RegExp(GREEN));
+  assert.doesNotMatch(svg, /#059669|#b45309|#b91c1c/);
 });
 
 test("ROUTE /api/badge/[address]: an unsigned payee renders Unverified SVG", async () => {
@@ -251,7 +267,7 @@ test("ROUTE /api/badge/[address]: an unsigned payee renders Unverified SVG", asy
   assert.equal(res.headers.get("Content-Type"), "image/svg+xml");
   const svg = await res.text();
   assert.match(svg, /Unverified/);
-  assert.doesNotMatch(svg, new RegExp(GREEN));
+  assert.doesNotMatch(svg, /#059669|#b45309|#b91c1c/);
 });
 
 test("every state carries an aria description that says what green means", () => {

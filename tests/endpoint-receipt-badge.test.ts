@@ -209,6 +209,19 @@ test("第二行も XML エスケープされる（焼き込みが注入口にな
   assert.ok(!svg.includes("<script>"), "第二行から生タグが出た");
 });
 
+test("receipt badge SVG uses only R=G=B fill colours", () => {
+  const b = endpointReceiptBadge({ attemptCount: 3, settledCount: 2, deliveredCount: 2, subject: "host.example" });
+  const svg = renderReceiptBadgeSvg(b);
+  for (const m of svg.matchAll(/fill="(#[0-9a-fA-F]{6})"/g)) {
+    const hex = m[1];
+    const r = hex.slice(1, 3);
+    const g = hex.slice(3, 5);
+    const b2 = hex.slice(5, 7);
+    assert.equal(r, g, hex);
+    assert.equal(g, b2, hex);
+  }
+});
+
 test("第二行が長くてもバッジの幅に収まる", () => {
   const b = endpointReceiptBadge({
     attemptCount: 3,

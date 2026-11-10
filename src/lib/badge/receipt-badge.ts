@@ -66,11 +66,9 @@ export type ReceiptBadge = {
   aria: string;
 };
 
-// One navy for every measured state (facts, not a signal). Matches the RFC
-// world's ink (#233456) so an embed reads as a vet402 measurement, not a
-// green-light. Grey for the not-yet-measured state.
-const NAVY = "#233456";
-const GREY = "#71717a";
+// Neutral greys only (2026-11-11 host-badge alignment). The number carries meaning, not hue.
+const MEASURED = "#555555";
+const GREY = "#555555";
 
 /** 第二行。**主体と日付が両方欠けたときだけ空**（作らない）。 */
 function provenanceLine(subject?: string | null, measuredOn?: string | null): string {
@@ -165,7 +163,7 @@ export function endpointReceiptBadge(input: ReceiptBadgeInput): ReceiptBadge {
     ` A measurement of what happened when vet402 paid this endpoint, not a recommendation.` +
     (sublabel ? ` (${sublabel})` : "");
 
-  return { label, sublabel, color: NAVY, aria };
+  return { label, sublabel, color: MEASURED, aria };
 }
 
 function xmlEscape(value: string): string {
@@ -224,11 +222,11 @@ export function renderReceiptBadgeSvg(badge: ReceiptBadge): string {
   const cx = MARK_W + rightW / 2;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${total}" height="${h}" role="img" aria-label="${aria}">
   <title>${aria}</title>
-  <rect width="${MARK_W}" height="${h}" rx="4" fill="#18181b"/>
+  <rect width="${MARK_W}" height="${h}" rx="4" fill="#111111"/>
   <rect x="${MARK_W}" width="${rightW}" height="${h}" rx="4" fill="${badge.color}"/>
   <rect x="${MARK_W}" width="6" height="${h}" fill="${badge.color}"/>
   <text x="29" y="23" text-anchor="middle" font-family="Verdana,sans-serif" font-size="11" fill="#ffffff">vet402</text>
   <text x="${cx}" y="16" text-anchor="middle" font-family="Verdana,sans-serif" font-size="10" fill="#ffffff">${label}</text>
-  <text x="${cx}" y="30" text-anchor="middle" font-family="Verdana,sans-serif" font-size="9" fill="#ffffff" fill-opacity="0.82">${sub}</text>
+  <text x="${cx}" y="30" text-anchor="middle" font-family="Verdana,sans-serif" font-size="9" fill="#eeeeee">${sub}</text>
 </svg>`;
 }
