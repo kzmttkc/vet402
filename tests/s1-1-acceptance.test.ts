@@ -147,6 +147,11 @@ const FAIL: Array<[string, SellerRowFacts]> = [
   ["pydantic loc cites xauth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","xauth"],"msg":"Field required"}]}` })],
   ["pydantic loc cites reauth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","reauth"],"msg":"Field required"}]}` })],
   ["pydantic loc cites my_auth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","my_auth"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites unauthorized", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","unauthorized"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites reauthenticate", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","reauthenticate"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites xxauthxx", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","xxauthxx"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites preauthentication", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","preauthentication"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites myauthn", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","myauthn"],"msg":"Field required"}]}` })],
   ["errors[].property with in body", settled({ bodyHead: `{"errors":[{"in":"body","property":"title","message":"is required"}]}` })],
 ];
 

@@ -637,7 +637,7 @@ export default async function ObservatoryStatePage() {
                     保留に入る。理由別に出し、settled の分だけを下の差し引きに使う。 */}
                 <tr>
                   <td className="text-brand">
-                    Inconclusive: held, not counted against the seller on this page&apos;s delivery rates — the paid
+                    Inconclusive: held, not counted against the seller on this page&apos;s delivery rates. The paid
                     request answered <code>4xx</code>, or it ran while vet402&apos;s payer wallet was unfunded.
                     &ldquo;Held&rdquo; here means rows with a ledger <code>held_reason</code>; attempts awaiting on-chain
                     verification are the row above. The decision API counts <code>seller_fixable_input</code> on the

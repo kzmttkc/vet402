@@ -10,4 +10,4 @@
 
 | measured_at (UTC) | count | note |
 |---|---:|---|
-| （未実施） | — | 試験は `tests/s1-1-acceptance.test.ts` の 500 字 truncate 行で分類だけ固定 |
+| 2026-11-10 | — | この worktree に `DATABASE_URL` が無く本番 DB へは接続できなかった。載せる前に同 SQL を読み取り専用で実行して件数を埋める |
