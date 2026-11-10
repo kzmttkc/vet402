@@ -68,13 +68,18 @@ test("l0OrderBy: c1 は旧規則の公開 fail（ホストごとの上限つき�
   const c1 = render("c1");
   assert.match(c1, /^CASE WHEN EXISTS \( SELECT 1 FROM x402_l0_probes p WHERE p\.endpoint_id = e\.id AND p\.probed_at > now\(\) - interval '7 days' \) THEN 1 ELSE 0 END, CASE WHEN lp\.rule_change_reprobe AND row_number\(\) OVER \(PARTITION BY lower\(split_part\(split_part\(e\.resource_url, ':\/\/', 2\), '\/', 1\)\), lp\.rule_change_reprobe ORDER BY lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC\) <= \$1 THEN 0 /);
   assert.match(c1, /WHEN lp\.probe_count = 1 AND lp\.last_verdict = 'fail' THEN 1 WHEN lp\.last_probed_at IS NULL THEN 2 ELSE 3 END/);
-  assert.match(c1, /END, lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/, "同じ組の中は古い順");
+  assert.match(
+    c1,
+    /END, row_number\(\) OVER \(PARTITION BY lower\(split_part\(split_part\(e\.resource_url, ':\/\/', 2\), '\/', 1\)\) ORDER BY lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC\), lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/,
+    "ホストを混ぜつつ同じ組の中は古い順",
+  );
   const capped = new PgDialect().sqlToQuery(l0OrderBy("c1", 7)).sql.replace(/\s+/g, " ");
   assert.match(capped, /e\.source = 'circle_discovery' AND row_number\(\) OVER \(PARTITION BY \(e\.source = 'circle_discovery' AND lp\.last_probed_at IS NULL\) ORDER BY e\.first_seen_at ASC NULLS LAST, e\.id ASC\) > \$2 THEN 5 WHEN lp\.last_probed_at IS NULL AND e\.source = 'circle_discovery' THEN 2 WHEN lp\.last_probed_at IS NULL THEN 3 ELSE 4 END/);
   assert.doesNotMatch(c1, /circle_discovery/, "上限を渡さない並びは CDP だけの式のまま");
   for (const tier of ["c2", "all"] as const) {
     const r = render(tier);
     assert.match(r, /^CASE WHEN EXISTS/);
+    assert.match(r, /row_number\(\) OVER \(PARTITION BY lower\(split_part/);
     assert.match(r, /lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/);
   }
 });

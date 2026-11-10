@@ -20,19 +20,21 @@ import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { L0_NORMAL_DOMAIN_INTERVAL_MS } from "./l0-coverage7d";
+import { L0_NORMAL_DOMAIN_INTERVAL_MS, L0_PROBE_BATCH_BUDGET_MS } from "./l0-coverage7d";
 import {
   PRIORITY_DOMAIN_INTERVAL_MS,
   PRIORITY_LEASE_NAME,
   PRIORITY_LEASE_TTL_SECONDS,
   REPROBE_PRIORITY_LIMIT,
   interleaveByDomain,
+  interleaveByHost,
   PRIORITY_MIN_PROBE_AGE_MINUTES,
   ENDPOINT_LEASE_TTL_SECONDS,
   PRIORITY_REQUEST_TOTAL_MS,
   TOTAL_LIMIT_EXCEEDED,
   endpointLeaseName,
   makeRequestGuard,
+  probeResourceHost,
   resourceRegisteredDomain,
   withTotalLimit,
   runWithDomainInterval,
@@ -84,6 +86,8 @@ export async function runL0ProbeBatch(
     tier?: "c1" | "c2" | "all";
     /** 優先の段の 1 件あたりの合計の上限（ミリ秒）。既定は PRIORITY_REQUEST_TOTAL_MS。テストが短くする。 */
     priorityRequestLimitMs?: number;
+    /** この実行全体の壁時計上限（ms）。既定は L0_PROBE_BATCH_BUDGET_MS（route maxDuration より短い）。 */
+    batchBudgetMs?: number;
   } = {},
 ): Promise<ProbeBatchSummary> {
   const {
@@ -93,7 +97,9 @@ export async function runL0ProbeBatch(
     timeoutMs,
     tier = "all",
     priorityRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
+    batchBudgetMs = L0_PROBE_BATCH_BUDGET_MS,
   } = options;
+  const batchDeadlineAt = Date.now() + batchBudgetMs;
   const where = (daily: boolean) =>
     tier === "all"
       ? sql`e.status = 'active' AND ${notSellerRetestRequestSourceSql()}`
@@ -353,6 +359,7 @@ export async function runL0ProbeBatch(
     await runWithDomainInterval(orderedPriority, {
       concurrency,
       intervalMs: PRIORITY_DOMAIN_INTERVAL_MS,
+      deadlineAt: batchDeadlineAt,
       domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
       run: (c) => probeOne(c, "priority"),
     });
@@ -360,10 +367,14 @@ export async function runL0ProbeBatch(
     await releasePriority();
   }
 
-  const orderedCandidates = interleaveByDomain(candidates, (c) => resourceRegisteredDomain(c.resourceUrl));
+  const orderedCandidates = interleaveByDomain(
+    interleaveByHost(candidates, (c) => probeResourceHost(c.resourceUrl)),
+    (c) => resourceRegisteredDomain(c.resourceUrl),
+  );
   await runWithDomainInterval(orderedCandidates, {
     concurrency,
     intervalMs: L0_NORMAL_DOMAIN_INTERVAL_MS,
+    deadlineAt: batchDeadlineAt,
     domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
     run: (c) => probeOne(c, "normal"),
   });

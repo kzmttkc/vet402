@@ -4,9 +4,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { PgDialect } from "drizzle-orm/pg-core";
 import {
+  COVERAGE7D_MEASURED_COUNT_TARGET,
   L0_COVERAGE7D_WINDOW_DAYS,
+  L0_PROBE_BATCH_BUDGET_MS,
   l0Coverage7dQueueClassSql,
   l0ProbedWithinCoverage7dSql,
+  l0ProbeStartsPerRunBounds,
 } from "@/lib/observatory/l0-coverage7d";
 import { PRIORITY_DOMAIN_INTERVAL_MS } from "@/lib/observatory/reprobe-priority";
 import { REPROBE_MIN_INTERVAL_MS } from "@/lib/observatory/l0-rule-change-reprobe";
@@ -35,19 +38,24 @@ test("l0OrderBy: 全 tier で 7 日窓に無い行が先（queue class 0）、�
   for (const tier of ["c1", "c2", "all"] as const) {
     const sql = render(tier);
     assert.match(sql, new RegExp(`^${qClass.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},`), `${tier} は窓外優先が先頭`);
+    assert.match(sql, /row_number\(\) OVER \(PARTITION BY lower\(split_part/, `${tier} はホストを混ぜる hostSpread を含む`);
   }
   const c1 = render("c1");
   assert.match(c1, /WHEN lp\.rule_change_reprobe AND row_number\(\)/);
   assert.match(c1, /WHEN lp\.probe_count = 1 AND lp\.last_verdict = 'fail' THEN/);
 });
 
-test("probe-runner: 普通の列も登録ドメイン間隔（優先と同じ下限）で流す", () => {
+test("probe-runner: 普通の列も登録ドメイン間隔で流し、ホストを混ぜ、maxDuration 内の期限を渡す", () => {
   const body = read("src/lib/observatory/probe-runner.ts");
+  assert.match(body, /interleaveByHost\(candidates/);
   assert.match(body, /runWithDomainInterval\(orderedCandidates/);
   assert.match(body, /intervalMs: L0_NORMAL_DOMAIN_INTERVAL_MS/);
+  assert.match(body, /deadlineAt: batchDeadlineAt/);
+  assert.match(body, /batchBudgetMs = L0_PROBE_BATCH_BUDGET_MS/);
   assert.doesNotMatch(body, /Array\.from\(\{ length: Math\.min\(concurrency, candidates\.length \}/);
   assert.equal(PRIORITY_DOMAIN_INTERVAL_MS, REPROBE_MIN_INTERVAL_MS);
   assert.equal(L0_NORMAL_DOMAIN_INTERVAL_MS, REPROBE_MIN_INTERVAL_MS);
+  assert.ok(L0_PROBE_BATCH_BUDGET_MS < 300_000, "Vercel maxDuration 300s より短いバジェット");
 });
 
 test("cron: C1 の既定件数が上がり、vercel に l0-probe が 2 本（maxDuration 300 内）", async () => {
@@ -61,13 +69,28 @@ test("cron: C1 の既定件数が上がり、vercel に l0-probe が 2 本（max
   assert.ok(L0_CRON_C1_DEFAULT_LIMIT >= 4000, "C1 の 1 回あたり既定を 4000 以上に");
 });
 
-test("7 日後見込み: 窓外優先で 1 日あたりの有効新規が増えれば pct1 は 22.4 を超えうる（算術・要確認）", async () => {
+test("同一ドメイン上限: 1 ホストに偏ると 300 秒で ~300 件、混在時は concurrency×300 件まで", () => {
+  const bounds = l0ProbeStartsPerRunBounds({
+    cronL0RunsPerDay: 2,
+    limitPerRun: 4500,
+    priorityCap: 50,
+    maxDurationSec: 300,
+    concurrency: 40,
+    domainIntervalMs: REPROBE_MIN_INTERVAL_MS,
+  });
+  assert.equal(bounds.slotsPerLane, 300);
+  assert.equal(bounds.singleDomainStarts, 300, "1 登録ドメインだけでは 300 秒で 300 開始が上限");
+  assert.equal(bounds.diverseHostStarts, 4450, "40 レーン・ホスト混在なら scheduled 4,450 まで詰められる");
+  assert.ok(bounds.diverseHostStarts > bounds.singleDomainStarts * 10);
+});
+
+test("7 日後見込み: 窓外優先＋窓の落ちを差し引いても分子 29,633・pct1>22.4（算術・要確認）", async () => {
   const {
     l0ProbeEffectiveDailyCapacity,
     projectCoverage7dMeasured,
     COVERAGE7D_BASELINE_2026_11_09,
+    L0_CRON_C1_DEFAULT_LIMIT,
   } = await import("@/lib/observatory/l0-coverage7d");
-  const { L0_CRON_C1_DEFAULT_LIMIT } = await import("@/lib/observatory/l0-coverage7d");
   const runs = l0ProbeEffectiveDailyCapacity({
     cronL0RunsPerDay: 2,
     limitPerRun: L0_CRON_C1_DEFAULT_LIMIT,
@@ -76,12 +99,14 @@ test("7 日後見込み: 窓外優先で 1 日あたりの有効新規が増え�
     concurrency: 40,
     domainIntervalMs: REPROBE_MIN_INTERVAL_MS,
   });
-  assert.ok(runs.effectivePerDay > 3000, "2 本 cron と件数増で 3000/日を上回る想定");
+  assert.ok(runs.effectivePerDay > 8000, "2 本 cron・ホスト混在で 8000/日超の開始枠");
   const day7 = projectCoverage7dMeasured(
     COVERAGE7D_BASELINE_2026_11_09,
     runs.effectivePerDay,
     7,
+    { deferInWindowReprobe: true },
   );
+  assert.ok(day7.measured >= COVERAGE7D_MEASURED_COUNT_TARGET, `7 日後分子 ${day7.measured}`);
   const pct = pct1(day7.measured, COVERAGE7D_BASELINE_2026_11_09.activeEndpoints);
-  assert.ok(pct !== null && pct > 22.4, `7 日後の見込み ${pct}% が 22.4 を上回る（線形・窓のちらつきは未モデル）`);
+  assert.ok(pct !== null && pct > 22.4, `7 日後の見込み ${pct}% が 22.4 を上回る`);
 });

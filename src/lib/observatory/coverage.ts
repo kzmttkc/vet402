@@ -183,14 +183,16 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
 export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number): SQL {
   const coverage7dFirst = l0Coverage7dQueueClassSql();
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
-  if (tier !== "c1") return sql`${coverage7dFirst}, ${oldestFirst}`;
   const host = sql`lower(split_part(split_part(e.resource_url, '://', 2), '/', 1))`;
+  /** 1 ホストに偏らないよう、ホストごとの順位で交互に並べる（rule-change 以外も）。 */
+  const hostSpread = sql`row_number() OVER (PARTITION BY ${host} ORDER BY ${oldestFirst})`;
+  if (tier !== "c1") return sql`${coverage7dFirst}, ${hostSpread}, ${oldestFirst}`;
   const hostRank = sql`row_number() OVER (PARTITION BY ${host}, lp.rule_change_reprobe ORDER BY ${oldestFirst})`;
   const circleRank = sql`row_number() OVER (PARTITION BY (e.source = 'circle_discovery' AND lp.last_probed_at IS NULL) ORDER BY e.first_seen_at ASC NULLS LAST, e.id ASC)`;
   if (circleUnprobedCap === undefined) {
-    return sql`${coverage7dFirst}, CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
+    return sql`${coverage7dFirst}, CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL THEN 2 ELSE 3 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${hostSpread}, ${oldestFirst}`;
   }
-  return sql`${coverage7dFirst}, CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' AND ${circleRank} > ${circleUnprobedCap} THEN 5 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' THEN 2 WHEN lp.last_probed_at IS NULL THEN 3 ELSE 4 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${oldestFirst}`;
+  return sql`${coverage7dFirst}, CASE WHEN lp.rule_change_reprobe AND ${hostRank} <= ${RULE_CHANGE_PRIORITY_PER_HOST} THEN 0 WHEN lp.probe_count = 1 AND lp.last_verdict = 'fail' THEN 1 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' AND ${circleRank} > ${circleUnprobedCap} THEN 5 WHEN lp.last_probed_at IS NULL AND e.source = 'circle_discovery' THEN 2 WHEN lp.last_probed_at IS NULL THEN 3 ELSE 4 END, CASE WHEN lp.rule_change_reprobe THEN ${hostRank} ELSE 0 END, ${hostSpread}, ${oldestFirst}`;
 }
 
 /**

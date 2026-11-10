@@ -90,6 +90,15 @@ export function resourceRegisteredDomain(resourceUrl: string): string {
   }
 }
 
+/** 出品 URL のホスト（l0OrderBy の host 分割と同じ粒度）。 */
+export function probeResourceHost(resourceUrl: string): string {
+  try {
+    return new URL(resourceUrl).hostname.toLowerCase();
+  } catch {
+    return resourceUrl.toLowerCase();
+  }
+}
+
 /**
  * 最新プローブが比べた宣言と、今のカタログが違うか。
  * declared が無い行は価格・資産・受取先・網を推測しない（method 列だけ見る）。
@@ -365,6 +374,35 @@ export async function fillPriorityByDomain<T>(
   return out;
 }
 
+/** 同じホストが並ばないよう、ホスト内の順は保って交互に出す（SQL の hostSpread の補助）。 */
+export function interleaveByHost<T>(items: readonly T[], hostOf: (item: T) => string): T[] {
+  const groups = new Map<string, T[]>();
+  const order: string[] = [];
+  for (const item of items) {
+    const host = hostOf(item);
+    const group = groups.get(host);
+    if (group) group.push(item);
+    else {
+      groups.set(host, [item]);
+      order.push(host);
+    }
+  }
+  const out: T[] = [];
+  let progressed = true;
+  while (progressed) {
+    progressed = false;
+    for (const host of order) {
+      const group = groups.get(host);
+      const next = group?.shift();
+      if (next !== undefined) {
+        out.push(next);
+        progressed = true;
+      }
+    }
+  }
+  return out;
+}
+
 /** 同じ登録ドメインが並ばないよう、ドメインの中の順は保って交互に出す。 */
 export function interleaveByDomain<T>(items: readonly T[], domainOf: (item: T) => string): T[] {
   const groups = new Map<string, T[]>();
@@ -405,6 +443,8 @@ export async function runWithDomainInterval<T>(
     intervalMs: number;
     domainOf: (item: T) => string;
     run: (item: T) => Promise<void>;
+    /** この時刻（ms epoch）以降は新規開始を打ち切る。走りうる分は finally で終える。 */
+    deadlineAt?: number;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
   },
@@ -438,6 +478,11 @@ export async function runWithDomainInterval<T>(
     for (;;) {
       if (pending.length === 0 && active === 0) return null;
       const n = now();
+      if (opts.deadlineAt !== undefined && n >= opts.deadlineAt) {
+        if (active === 0) return null;
+        await waitForWake(wakeGen);
+        continue;
+      }
       let earliest = Number.POSITIVE_INFINITY;
       for (let i = 0; i < pending.length; i++) {
         const domain = opts.domainOf(pending[i] as T);
