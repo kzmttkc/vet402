@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 Front page: three entries by what the user wants to do
+
+- **What**: `src/app/page.tsx` keeps the hero, the live counts (with the delivered definition), the latest purchase card and the footer, and replaces the middle sections with three entries: Before you pay (`/x402/check-a-seller`), While you pay (`/docs/api#packages`, the spend guard) and After you pay (`/observatory`). Entry clicks count as `entry_before_pay`, `entry_while_pay` and `entry_after_pay`. The seller row on the latest purchase card drops "Only" when every paid call delivered.
+- **Why**: Owner request (2026-11-10): reflect upgrades regularly without crowding the front page, so users grasp each capability at a glance. Details live on the entry pages.
+- **Guard**: `tests/home-density.test.ts` caps sections, entries and words on the front page. The rules for adding an upgrade item are in `docs/handoffs/HOME_ENTRY_RULES.md`.
+
 ## 2026-11-10 One-time paid check of api.lupapago.com on request
 
 - **What**: `SELLER_RETEST_REQUESTS` gains one Base request for `https://api.lupapago.com/v1/fx/ar` (GET, payTo 0x6fc9…2dbc, 2000 units = 0.002 USDC, expires 2026-12-10), read from the endpoint's unpaid 402 on 2026-11-10.
