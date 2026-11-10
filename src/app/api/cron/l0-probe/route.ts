@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
+import { L0_CRON_C1_DEFAULT_LIMIT } from "@/lib/observatory/l0-coverage7d";
 import { runL0ProbeBatch } from "@/lib/observatory/probe-runner";
 import { drainVerificationRequests } from "@/lib/observatory/requests";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -24,7 +25,11 @@ export async function GET(request: NextRequest) {
   const tier: "c1" | "c2" = tierParam === "c2" ? "c2" : "c1";
   const limitParam = Number(request.nextUrl.searchParams.get("limit"));
   const limit =
-    Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 5000) : tier === "c2" ? 1500 : 3000;
+    Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(limitParam, 5000)
+      : tier === "c2"
+        ? 1500
+        : L0_CRON_C1_DEFAULT_LIMIT;
 
   try {
     // 公開キュー（C9）を先に消化——リクエストは順番を早めるだけで、

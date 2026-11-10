@@ -20,6 +20,7 @@ import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { L0_NORMAL_DOMAIN_INTERVAL_MS } from "./l0-coverage7d";
 import {
   PRIORITY_DOMAIN_INTERVAL_MS,
   PRIORITY_LEASE_NAME,
@@ -359,20 +360,12 @@ export async function runL0ProbeBatch(
     await releasePriority();
   }
 
-  let cursor = 0;
-  // Small worker pool — polite to targets, bounded for the function's clock.
-  async function worker() {
-    for (;;) {
-      const index = cursor++;
-      if (index >= candidates.length) return;
-      await probeOne(candidates[index], "normal");
-    }
-  }
-
-  if (candidates.length > 0) {
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, candidates.length) }, worker),
-    );
-  }
+  const orderedCandidates = interleaveByDomain(candidates, (c) => resourceRegisteredDomain(c.resourceUrl));
+  await runWithDomainInterval(orderedCandidates, {
+    concurrency,
+    intervalMs: L0_NORMAL_DOMAIN_INTERVAL_MS,
+    domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
+    run: (c) => probeOne(c, "normal"),
+  });
   return summary;
 }

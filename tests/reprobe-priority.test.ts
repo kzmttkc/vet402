@@ -276,7 +276,7 @@ test("probe-runner は優先の段を、fail-closed のリースの下で、普�
   const recent = body.indexOf("${recentlyProbed}");
   const runPriority = body.indexOf("await runWithDomainInterval(orderedPriority, {");
   const release = body.indexOf("await releasePriority();", runPriority);
-  const runRest = body.indexOf("await Promise.all(", runPriority);
+  const runRest = body.indexOf("await runWithDomainInterval(orderedCandidates,", runPriority);
   for (const [name, at] of Object.entries({ select, lease, rest, exclude, recent, runPriority, release, runRest })) {
     assert.ok(at > 0, `${name} が runL0ProbeBatch に無い`);
   }

@@ -121,6 +121,10 @@
       "schedule": "30 10 * * *"
     },
     {
+      "path": "/api/cron/l0-probe",
+      "schedule": "30 22 * * *"
+    },
+    {
       "path": "/api/cron/l1-purchase",
       "schedule": "0 12 * * *"
     },
