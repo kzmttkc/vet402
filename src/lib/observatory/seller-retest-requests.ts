@@ -5,6 +5,7 @@
 // seller-retest.ts と l1-runner.ts が行う。ここは版管理された依頼の正典だけ。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
+import { EVM_LANE_ENDPOINT_SOURCE } from "./evm-lane-ingest";
 import { BASE_CAIP2, BASE_USDC } from "./x402-payer";
 
 /** x402_endpoints.source — 目録同期（cdp_bazaar / circle_discovery）の diff・reconcile 対象外。 */
@@ -20,9 +21,12 @@ export const SELLER_RETEST_USDC_PLACEHOLDER = "__BASE_USDC__";
 /** Base head に近い固定値（2026-10-30 時点の head ≈ 53,279,184）。 */
 export const SELLER_RETEST_BASE_BLOCK_NUMBER = "53279000";
 
-/** L0 候補・L1 候補（依頼レーン以外）から seller_retest_request 行を外す共通条件（x402_endpoints e）。 */
+/**
+ * L0 候補・L1 候補・公開掲載数から外す endpoint source（x402_endpoints e）。
+ * seller_retest_request（依頼レーン）と vet402_evm_lane（公開 EVM 購入記録の写し）の両方。
+ */
 export function notSellerRetestRequestSourceSql(): SQL {
-  return sql`e.source <> ${SELLER_RETEST_REQUEST_SOURCE}`;
+  return sql`e.source <> ${SELLER_RETEST_REQUEST_SOURCE} AND e.source <> ${EVM_LANE_ENDPOINT_SOURCE}`;
 }
 
 /**

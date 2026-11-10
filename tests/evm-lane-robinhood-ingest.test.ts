@@ -65,6 +65,13 @@ test("ingest module is importable (implementation present)", () => {
   assert.equal(readFileSync(FIXTURE, "utf8").includes("vet402-evm-purchase"), true);
 });
 
+test("ingest implementation keeps auth_nonce null and marks chain-check tx as vet402_index", () => {
+  const ingestSrc = readFileSync(join(process.cwd(), "src/lib/observatory/evm-lane-ingest.ts"), "utf8");
+  assert.doesNotMatch(ingestSrc, /authNonce:\s*rec\.salt/, "leaf salt must not be copied into auth_nonce");
+  assert.match(ingestSrc, /authNonce:\s*null/);
+  assert.match(ingestSrc, /lateSettlement/);
+});
+
 test("fixture salt is Merkle leaf noise, not EIP-3009 nonce (must not become auth_nonce)", () => {
   const roots = loadEvmLaneRootsJson(FIXTURE);
   const withSalt = evmLanePurchaseRecords(roots).filter((r) => typeof r.salt === "string" && r.salt.length > 0);

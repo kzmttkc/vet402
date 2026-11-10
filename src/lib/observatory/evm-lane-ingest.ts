@@ -21,7 +21,7 @@ import { chainLabel, toCaip2 } from "./chains";
 /** vet402-delivery の data/evm/roots/robinhood.json と同じ kind。 */
 export const EVM_LANE_ROOTS_KIND = "vet402-evm-roots";
 
-/** x402_endpoints.source — カタログ同期の対象外（seller_retest_request と同型）。 */
+/** x402_endpoints.source — カタログ同期・L0/L1 候補・公開掲載数の対象外（seller_retest_request と同型）。 */
 export const EVM_LANE_ENDPOINT_SOURCE = "vet402_evm_lane";
 
 export const ROBINHOOD_CAIP2 = "eip155:4663";
@@ -231,6 +231,11 @@ export async function ingestEvmLaneRobinhood(
     const { http, payload } = deliveredFlags(status, rec.httpStatus);
     const spent = status === "settled" ? rec.amountAtomic : "0";
     const tx = rec.settlementTx;
+    /** chain check で見つけた tx。売り手レシートではないので lateSettlement で vet402_index にする。 */
+    const lateSettlement =
+      tx && rec.chainCheck
+        ? { source: "chain_read" as const, txHash: tx, linkedAt: rec.at, matchedBy: "evm_lane_public_record" as const }
+        : undefined;
     const dedupeKey =
       tx ??
       createHash("sha256")
@@ -266,7 +271,7 @@ export async function ingestEvmLaneRobinhood(
       spentUnits: spent,
       payer: rec.payer.toLowerCase(),
       txHash: tx,
-      authNonce: rec.salt ?? null,
+      authNonce: null,
       httpStatusPaid: http,
       latencyMs: null,
       payloadNonEmpty: payload,
@@ -278,6 +283,7 @@ export async function ingestEvmLaneRobinhood(
         verdictStatus: verdict?.status ?? null,
         chainCheck: rec.chainCheck ?? null,
         dedupeKey,
+        ...(lateSettlement ? { lateSettlement } : {}),
       },
       settlementVerified: status === "settled" && rec.chainCheck === "transfer_found" ? true : status === "settled" ? true : null,
       settlementVerifiedAt: status === "settled" ? new Date(rec.at) : null,
