@@ -13,6 +13,13 @@ export function l0ProbeCronSchedules(
     .map((row) => row.schedule as string);
 }
 
+/** vercel.json の l0-probe 本数（capacity7d の 1 日回数見込み）。 */
+export function l0ProbeCronRunsPerDay(
+  crons: readonly CronRow[] = (vercelConfig as { crons?: CronRow[] }).crons ?? [],
+): number {
+  return l0ProbeCronSchedules(crons).length;
+}
+
 /** 日次の cron（分 時 * * *）を "HH:MM UTC" にする。日次でない式はそのまま返す。 */
 export function formatDailyUtcCron(schedule: string): string {
   const parts = schedule.trim().split(/\s+/);

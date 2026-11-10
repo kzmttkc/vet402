@@ -20,11 +20,7 @@ import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import {
-  capCandidatesByRegisteredDomain,
-  L0_NORMAL_DOMAIN_INTERVAL_MS,
-  L0_PROBE_BATCH_BUDGET_MS,
-} from "./l0-coverage7d";
+import { L0_NORMAL_DOMAIN_INTERVAL_MS, L0_PROBE_BATCH_BUDGET_MS } from "./l0-coverage7d";
 import {
   PRIORITY_DOMAIN_INTERVAL_MS,
   PRIORITY_LEASE_NAME,
@@ -37,6 +33,7 @@ import {
   PRIORITY_REQUEST_TOTAL_MS,
   TOTAL_LIMIT_EXCEEDED,
   endpointLeaseName,
+  fillPriorityByDomain,
   makeRequestGuard,
   probeResourceHost,
   resourceRegisteredDomain,
@@ -172,7 +169,7 @@ export async function runL0ProbeBatch(
     } else {
     // 候補 SQL は settlement_daily を読む（30 日窓が生行の保持期間へ縮まないため）。
     // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
-    const candidatesSql = (daily: boolean) => sql`
+    const candidatesSql = (daily: boolean, pageSize: number, offset: number) => sql`
       SELECT e.id, e.resource_url, e.method, e.pay_to, e.network,
              e.price_amount, e.price_asset, e.source, lp.rule_change_reprobe
       FROM x402_endpoints e
@@ -189,14 +186,9 @@ export async function runL0ProbeBatch(
       ${recentlyProbed}
       ${excludePriority}
       ORDER BY ${l0OrderBy(tier, tier === "c1" ? Math.floor(restLimit / 3) : undefined)}
-      LIMIT ${restLimit}
+      LIMIT ${pageSize} OFFSET ${offset}
     `;
-    const rows = await withDailyFallback(
-      async () => await db.execute(candidatesSql(true)),
-      async () => await db.execute(candidatesSql(false)),
-    );
-    const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
-    candidates = (list as Record<string, unknown>[]).map((r) => ({
+    const mapRow = (r: Record<string, unknown>): Candidate => ({
       id: String(r.id),
       resourceUrl: String(r.resource_url),
       method: (r.method as string | null) ?? null,
@@ -206,13 +198,23 @@ export async function runL0ProbeBatch(
       priceAsset: (r.price_asset as string | null) ?? null,
       source: (r.source as string | null) ?? null,
       ruleChangeReprobe: r.rule_change_reprobe === true,
-    }));
-    candidates = capCandidatesByRegisteredDomain(
-      candidates,
-      restLimit,
-      concurrency,
-      (c) => resourceRegisteredDomain(c.resourceUrl),
-    );
+    });
+    const fetchCandidatePage = async (offset: number, pageSize: number): Promise<Candidate[]> => {
+      const rows = await withDailyFallback(
+        async () => await db.execute(candidatesSql(true, pageSize, offset)),
+        async () => await db.execute(candidatesSql(false, pageSize, offset)),
+      );
+      const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+      return (list as Record<string, unknown>[]).map(mapRow);
+    };
+    const perDomain = Math.max(1, Math.ceil(restLimit / Math.max(1, concurrency)));
+    candidates = await fillPriorityByDomain(fetchCandidatePage, {
+      perDomain,
+      limit: restLimit,
+      pageSize: Math.min(500, restLimit * 2),
+      maxPages: 40,
+      domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
+    });
     }
   } catch (error) {
     await releasePriority();
@@ -312,6 +314,7 @@ export async function runL0ProbeBatch(
         if (limited === TOTAL_LIMIT_EXCEEDED) {
           request.catch(() => {});
           summary.priorityAbandoned++;
+          keepLease = true;
           return;
         }
         result = limited;

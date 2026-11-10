@@ -271,7 +271,7 @@ test("probe-runner は優先の段を、fail-closed のリースの下で、普�
   const body = src.slice(src.indexOf("export async function runL0ProbeBatch"));
   const select = body.indexOf("await selectReprobePriority(db, priorityCap, true)");
   const lease = body.indexOf("await acquireLeaseFailClosed(PRIORITY_LEASE_NAME, PRIORITY_LEASE_TTL_SECONDS)");
-  const rest = body.indexOf("LIMIT ${restLimit}");
+  const rest = body.indexOf("fillPriorityByDomain(fetchCandidatePage");
   const exclude = body.indexOf("${excludePriority}");
   const recent = body.indexOf("${recentlyProbed}");
   const runPriority = body.indexOf("await runWithDomainInterval(orderedPriority, {");

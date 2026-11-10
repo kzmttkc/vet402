@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
-import { L0_CRON_C1_DEFAULT_LIMIT } from "@/lib/observatory/l0-coverage7d";
+import { L0_CRON_C1_DEFAULT_LIMIT, L0_PROBE_BATCH_BUDGET_MS } from "@/lib/observatory/l0-coverage7d";
 import { runL0ProbeBatch } from "@/lib/observatory/probe-runner";
 import { drainVerificationRequests } from "@/lib/observatory/requests";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -35,7 +35,12 @@ export async function GET(request: NextRequest) {
     // 公開キュー（C9）を先に消化——リクエストは順番を早めるだけで、
     // 判定ゲートは通常プローブと同一（requests.ts 冒頭）。
     const requests = await drainVerificationRequests(50);
-    const summary = await runL0ProbeBatch({ tier, limit, concurrency: 40 });
+    const summary = await runL0ProbeBatch({
+      tier,
+      limit,
+      concurrency: 40,
+      batchBudgetMs: L0_PROBE_BATCH_BUDGET_MS,
+    });
     return NextResponse.json({ ok: true, tier, limit, requests, ...summary });
   } catch (error) {
     logServerErrorSafe("cron.l0-probe", error);
