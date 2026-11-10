@@ -13,11 +13,28 @@ export function l0ProbeCronSchedules(
     .map((row) => row.schedule as string);
 }
 
-/** vercel.json の l0-probe 本数（capacity7d の 1 日回数見込み）。 */
-export function l0ProbeCronRunsPerDay(
+/**
+ * coverage の回（窓の外を先に測る L0・drain と優先の段は無い・2026-11-10）。
+ * 申し立ての測り直しの時刻（l0ProbeScheduleLabel）には入れない（優先の段があるのは l0-probe の回だけ）。
+ */
+export const L0_COVERAGE_CRON_PATH = "/api/cron/l0-coverage";
+
+export function l0CoverageCronSchedules(
   crons: readonly CronRow[] = (vercelConfig as { crons?: CronRow[] }).crons ?? [],
-): number {
-  return l0ProbeCronSchedules(crons).length;
+): string[] {
+  return crons
+    .filter((row) => row.path === L0_COVERAGE_CRON_PATH && typeof row.schedule === "string" && row.schedule !== "")
+    .map((row) => row.schedule as string);
+}
+
+/** 1 日の L0 の回の種類（coverage7d の見込み）。l0-probe は full、l0-coverage は coverage。 */
+export function l0CronRunModesPerDay(
+  crons: readonly CronRow[] = (vercelConfig as { crons?: CronRow[] }).crons ?? [],
+): ("full" | "coverage")[] {
+  return [
+    ...l0ProbeCronSchedules(crons).map(() => "full" as const),
+    ...l0CoverageCronSchedules(crons).map(() => "coverage" as const),
+  ];
 }
 
 /** 日次の cron（分 時 * * *）を "HH:MM UTC" にする。日次でない式はそのまま返す。 */

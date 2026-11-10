@@ -433,8 +433,42 @@ export function interleaveByDomain<T>(items: readonly T[], domainOf: (item: T) =
 }
 
 /**
+ * 登録ドメインの保持（同時 1 件・次の開始時刻）。優先の段と普通の列で同じものを渡すと、前の段で
+ * 置き去りにした要求が終わるまで、次の段も同じドメインへ出さない（c36.rr3）。
+ */
+export type DomainHolds = {
+  inFlight: Set<string>;
+  nextAt: Map<string, number>;
+  /** ドメインを離したときに呼ぶ（待っている列を起こす）。 */
+  listeners: Set<() => void>;
+};
+
+export function createDomainHolds(): DomainHolds {
+  return { inFlight: new Set(), nextAt: new Map(), listeners: new Set() };
+}
+
+/** run の返り値。上限超過で結果を捨てた要求など、run が返ったあともドメインを離さない間の約束。 */
+export type DomainHoldResult = { holdDomainUntil: Promise<unknown> };
+
+function holdOf(value: unknown): Promise<unknown> | null {
+  if (value && typeof value === "object" && "holdDomainUntil" in value) {
+    const p = (value as DomainHoldResult).holdDomainUntil;
+    if (p && typeof (p as Promise<unknown>).then === "function") return p;
+  }
+  return null;
+}
+
+/**
  * 同じ登録ドメインは同時 1 件。開始間隔は intervalMs 以上。
  * 別ドメインは concurrency まで同時に出す。
+ *
+ * レーン（concurrency の 1 枠）とドメインの保持は別に数える（c36.rr3）:
+ *   - レーンは run が返るか laneHoldMaxMs が過ぎたら空く（DB の書き込みが詰まっても列は止まらない）。
+ *   - ドメインは run が返り、かつ run が返した holdDomainUntil が終わるまで離さない
+ *     （上限超過で捨てた要求が走っている間に、同じドメインへ次の要求を出さない）。
+ * deadlineAt 以降は新しく始めない。保持中のドメインだけが残ったときも、期限で返る（ランナーは必ず期限を渡す）。
+ * preferLongestDomainQueue: 始められる中で、残りの件数が多いドメインを先に取る。全件が同じ時間を占める
+ * 最悪の場合に、期限までの開始数が min(レーン × 回数, Σ min(ドメインの件数, 回数)) になる（l0-coverage7d.ts）。
  */
 export async function runWithDomainInterval<T>(
   items: readonly T[],
@@ -442,21 +476,39 @@ export async function runWithDomainInterval<T>(
     concurrency: number;
     intervalMs: number;
     domainOf: (item: T) => string;
-    run: (item: T) => Promise<void>;
-    /** この時刻（ms epoch）以降は新規開始を打ち切る。走りうる分は finally で終える。 */
+    run: (item: T) => Promise<void | DomainHoldResult>;
+    /** この時刻（ms epoch）以降は新規開始を打ち切る。 */
     deadlineAt?: number;
+    /** 1 件がレーンを占める上限（ms）。過ぎたらレーンだけ空ける（ドメインは run が返るまで持つ）。 */
+    laneHoldMaxMs?: number;
+    /** 段をまたいで共有するドメインの保持。省略時はこの呼び出しだけのもの。 */
+    holds?: DomainHolds;
+    preferLongestDomainQueue?: boolean;
     now?: () => number;
     sleep?: (ms: number) => Promise<void>;
   },
 ): Promise<void> {
   if (items.length === 0) return;
   const now = opts.now ?? Date.now;
-  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // 待ちの時計。既定は解除できるタイマー（待ち終えたら消す・期限まで何本も残さない）。テストは仮想の sleep を渡す。
+  const timedWait = (ms: number, unref = false): { done: Promise<void>; cancel: () => void } => {
+    if (opts.sleep) return { done: opts.sleep(ms), cancel: () => {} };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const done = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, Math.max(0, ms));
+      if (unref) (timer as { unref?: () => void }).unref?.();
+    });
+    return { done, cancel: () => clearTimeout(timer) };
+  };
   const concurrency = Math.max(1, Math.trunc(opts.concurrency) || 1);
   const intervalMs = Math.max(0, opts.intervalMs);
+  const holds = opts.holds ?? createDomainHolds();
   const pending = items.slice();
-  const inFlight = new Set<string>();
-  const nextAt = new Map<string, number>();
+  const remaining = new Map<string, number>();
+  for (const it of pending) {
+    const d = opts.domainOf(it);
+    remaining.set(d, (remaining.get(d) ?? 0) + 1);
+  }
   let active = 0;
   let wakeGen = 0;
   const pendingWaits: (() => void)[] = [];
@@ -473,53 +525,109 @@ export async function runWithDomainInterval<T>(
       }
       pendingWaits.push(resolve);
     });
+  holds.listeners.add(wake);
+  const releaseDomain = (domain: string) => {
+    holds.inFlight.delete(domain);
+    for (const listener of [...holds.listeners]) listener();
+  };
 
   const claim = async (): Promise<{ item: T; domain: string } | null> => {
     for (;;) {
-      if (pending.length === 0 && active === 0) return null;
+      if (pending.length === 0) return null;
       const n = now();
-      if (opts.deadlineAt !== undefined && n >= opts.deadlineAt) {
-        if (active === 0) return null;
-        await waitForWake(wakeGen);
-        continue;
-      }
+      if (opts.deadlineAt !== undefined && n >= opts.deadlineAt) return null;
       let earliest = Number.POSITIVE_INFINITY;
+      let pick = -1;
+      let pickRemaining = -1;
       for (let i = 0; i < pending.length; i++) {
         const domain = opts.domainOf(pending[i] as T);
-        if (inFlight.has(domain)) continue;
-        const at = nextAt.get(domain) ?? 0;
+        if (holds.inFlight.has(domain)) continue;
+        const at = holds.nextAt.get(domain) ?? 0;
         if (n >= at) {
-          const item = pending.splice(i, 1)[0] as T;
-          inFlight.add(domain);
-          nextAt.set(domain, n + intervalMs);
-          active++;
-          return { item, domain };
+          if (!opts.preferLongestDomainQueue) {
+            pick = i;
+            break;
+          }
+          const r = remaining.get(domain) ?? 0;
+          if (r > pickRemaining) {
+            pick = i;
+            pickRemaining = r;
+          }
+          continue;
         }
         if (at < earliest) earliest = at;
       }
-      const seen = wakeGen;
-      if (pending.length === 0 || earliest === Number.POSITIVE_INFINITY) {
-        await waitForWake(seen);
-        continue;
+      if (pick >= 0) {
+        const item = pending.splice(pick, 1)[0] as T;
+        const domain = opts.domainOf(item);
+        remaining.set(domain, (remaining.get(domain) ?? 1) - 1);
+        holds.inFlight.add(domain);
+        holds.nextAt.set(domain, n + intervalMs);
+        active++;
+        return { item, domain };
       }
-      await Promise.race([sleep(Math.max(0, earliest - now())), waitForWake(seen)]);
+      // 始められるものが無い。保持が離れるか、間隔が明けるか、期限が来るまで待つ。
+      const seen = wakeGen;
+      const timers: { done: Promise<void>; cancel: () => void }[] = [];
+      if (earliest !== Number.POSITIVE_INFINITY) timers.push(timedWait(earliest - now()));
+      if (opts.deadlineAt !== undefined) timers.push(timedWait(opts.deadlineAt - now()));
+      try {
+        await Promise.race([waitForWake(seen), ...timers.map((w) => w.done)]);
+      } finally {
+        for (const w of timers) w.cancel();
+      }
     }
   };
 
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    for (;;) {
-      const claimed = await claim();
-      if (!claimed) return;
-      try {
-        await opts.run(claimed.item);
-      } finally {
-        inFlight.delete(claimed.domain);
+  const startOne = (claimed: { item: T; domain: string }): Promise<void> =>
+    new Promise<void>((laneFree) => {
+      let laneFreed = false;
+      const freeLane = () => {
+        if (laneFreed) return;
+        laneFreed = true;
         active--;
+        laneFree();
         wake();
+      };
+      let runPromise: Promise<void | DomainHoldResult>;
+      try {
+        runPromise = Promise.resolve(opts.run(claimed.item));
+      } catch (error) {
+        runPromise = Promise.reject(error);
       }
-    }
-  });
-  await Promise.all(workers);
+      let laneTimer: { done: Promise<void>; cancel: () => void } | null = null;
+      if (opts.laneHoldMaxMs !== undefined) {
+        laneTimer = timedWait(opts.laneHoldMaxMs, true);
+        void laneTimer.done.then(freeLane);
+      }
+      runPromise.then(
+        (value) => {
+          laneTimer?.cancel();
+          freeLane();
+          const hold = holdOf(value);
+          if (hold) hold.then(() => releaseDomain(claimed.domain), () => releaseDomain(claimed.domain));
+          else releaseDomain(claimed.domain);
+        },
+        () => {
+          laneTimer?.cancel();
+          freeLane();
+          releaseDomain(claimed.domain);
+        },
+      );
+    });
+
+  try {
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      for (;;) {
+        const claimed = await claim();
+        if (!claimed) return;
+        await startOne(claimed);
+      }
+    });
+    await Promise.all(workers);
+  } finally {
+    holds.listeners.delete(wake);
+  }
 }
 
 /** 出品ごとのリースの名前（job_leases.name）。 */

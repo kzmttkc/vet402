@@ -131,7 +131,7 @@ test("ルートとランナー: 期限はルートの開始から・各段に上
   assert.match(covRoute, /runDeadlineAt: l0RunDeadlineAt\(routeStartedAt\)/);
   assert.doesNotMatch(covRoute, /drainVerificationRequests/, "coverage の回は drain しない（drain と優先は l0-probe と c2 の回）");
   const runner = read("src/lib/observatory/probe-runner.ts");
-  assert.match(runner, /withTotalLimit\(selectPriority\(\), L0_PROBE_PRIORITY_SELECT_CAP_MS\)/);
+  assert.match(runner, /withTotalLimit\(selecting, L0_PROBE_PRIORITY_SELECT_CAP_MS\)/);
   assert.match(runner, /L0_PROBE_CANDIDATE_SELECT_CAP_MS/);
   assert.match(runner, /Math\.min\(now\(\) \+ L0_PROBE_PRIORITY_STAGE_MS, laneEndAt\)/);
   assert.match(runner, /laneHoldMaxMs: laneHoldMs/);

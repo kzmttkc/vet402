@@ -158,8 +158,9 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
  * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict /
  * rule_change_reprobe）。
  *
- * 2026-11-10 coverage7d: 窓の落ちかけ→窓外→窓内後回しの 3 段（l0-coverage7d.ts）。
- *   起点の分子が窓から落ちないよう落ちかけを先に再測定し、残りで窓外を増やす。式は reader.ts のまま。
+ * 2026-11-10 coverage7d（c1 と coverage）: 窓の内の更新（1 回 L0_COVERAGE7D_IN_WINDOW_PER_RUN 件まで）→ 窓の外 →
+ *   窓の内の残り の 3 段が先頭（l0-coverage7d.ts）。式は reader.ts のまま。c2 は 6 時間の測り直しが役目なので
+ *   窓の外を先にしない（ホストを混ぜて古い順）。
  *
  * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
  * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
@@ -180,13 +181,14 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
  * 後ろに並んだ。Gateway でしか払えない Circle の 1,902 件は L0 が一度も走らず、購入候補（L0 pass が条件）が
  * 0 件のままだった。上限の内側は CDP より先に測る。
  */
-export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number): SQL {
+export function l0OrderBy(tier: "c1" | "c2" | "all" | "coverage", circleUnprobedCap?: number): SQL {
   const coverage7dFirst = l0Coverage7dQueueClassSql();
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
   const host = sql`lower(split_part(split_part(e.resource_url, '://', 2), '/', 1))`;
   /** 1 ホストに偏らないよう、ホストごとの順位で交互に並べる（rule-change 以外も）。 */
   const hostSpread = sql`row_number() OVER (PARTITION BY ${host} ORDER BY ${oldestFirst})`;
-  if (tier !== "c1") return sql`${coverage7dFirst}, ${hostSpread}, ${oldestFirst}`;
+  if (tier === "coverage") return sql`${coverage7dFirst}, ${hostSpread}, ${oldestFirst}`;
+  if (tier !== "c1") return sql`${hostSpread}, ${oldestFirst}`;
   const hostRank = sql`row_number() OVER (PARTITION BY ${host}, lp.rule_change_reprobe ORDER BY ${oldestFirst})`;
   const circleRank = sql`row_number() OVER (PARTITION BY (e.source = 'circle_discovery' AND lp.last_probed_at IS NULL) ORDER BY e.first_seen_at ASC NULLS LAST, e.id ASC)`;
   if (circleUnprobedCap === undefined) {

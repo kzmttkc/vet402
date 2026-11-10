@@ -339,7 +339,7 @@ test("withTotalLimit: 上限を超えた要求は打ち切りの印を返し、�
   assert.ok(PRIORITY_REQUEST_TOTAL_MS <= 10_500, "優先の 1 件は本文まで含めて 10 秒台");
   const body = read("src/lib/observatory/probe-runner.ts");
   assert.match(body, /if \(stage === "priority"\) \{[\s\S]*?await withTotalLimit\(request, priorityRequestLimitMs\)/);
-  assert.match(body, /run: \(c\) => probeOne\(c, "priority"\)/);
+  assert.match(body, /run: \(c\) => track\(probeOne\(c, "priority"\)\)/);
 });
 
 test("優先は組をまたいで 1 登録ドメイン 5 件・全体 50 件まで。落ちた分は次の頁で埋める", async () => {
