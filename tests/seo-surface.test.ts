@@ -41,6 +41,7 @@ test("every public indexable route is in the sitemap", () => {
     "/blog",
     "/x402/stablecoin-payments",
     "/x402/check-a-seller",
+    "/x402/report/2026-11",
     "/x402/chains",
     "/x402/chains/base",
     "/x402/chains/solana",

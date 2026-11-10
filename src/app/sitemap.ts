@@ -73,6 +73,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/rwa`, lastModified: "2026-09-28", changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/faq`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/x402`, lastModified: REV_2026_11_10, changeFrequency: "daily", priority: 0.9 },
+    {
+      url: `${SITE_URL}/x402/report/2026-11`,
+      lastModified: REV_2026_11_10,
+      changeFrequency: "yearly",
+      priority: 0.7,
+    },
     { url: `${SITE_URL}/x402/stablecoin-payments`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/check-a-seller`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },

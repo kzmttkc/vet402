@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 Dated State of x402 report at /x402/report/2026-11
+
+- **What**: Static report page at `src/app/x402/report/2026-11/page.tsx` renders `content/reports/state-of-x402-2026-11.md` through a strict markdown parser (`src/lib/reports/markdown.ts`) with article, breadcrumb, and dataset JSON-LD. Sitemap, `public/llms.txt`, `llms-full.txt`, `/x402`, and `/observatory/state` link the snapshot. Tests pin the report file sha256 and prose coverage.
+- **Why**: Publish a dated, citable snapshot of delivery rates and chain tables without replacing live `/observatory/state` or changing export.csv.
+- **Impact**: New indexable route only. Report markdown is owned elsewhere and must not be edited in deploy repos. Live numbers stay on `/x402` and the state API.
+
 ## 2026-11-10 ingestL1 optional clock for DB-backed tests
 
 - **What**: `ingestL1` accepts optional `now?: Date` so the L1 retention window can anchor on a fixed instant in tests; production callers unchanged. `tests/settlement-block-time.test.ts` pins `INGEST_L1_TEST_NOW` (2026-10-12) on every `ingestL1()` that relies on 2026-10-11 fixture rows. Audited other `test:db` files for fixed calendar dates plus SQL `now()` / `Date.now()` windows; only `settlement-block-time.test.ts` needed a fix before 2026-12-31 (`settlements-ingest.pg.test.ts` and `resolve-lookup.pg.test.ts` use relative or default timestamps; `request-not-sent.pg.test.ts` compares against policy cutoffs not wall-clock retention; late-settlement lane tests only require rows old enough).

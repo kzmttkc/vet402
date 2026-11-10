@@ -48,6 +48,7 @@ The production URL is ${SITE_URL}. Formerly named "Vouch"; renamed to vet402 in 
 ${LLM_QUESTIONS.map((q) => `### ${q.question}\n\n${q.lead.join(" ")}\n\n${SITE_URL}${q.path}`).join("\n\n")}
 
 ${GUIDE_CHAINS.map((c) => `${SITE_URL}/x402/chains/${c.slug}`).join("\n")}
+${SITE_URL}/x402/report/2026-11
 
 ## Verification levels (published methodology)
 

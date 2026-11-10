@@ -299,6 +299,10 @@ export default async function X402PillarPage() {
               <Link href="/api/v1/observatory/export.csv" className="doc-link">
                 Purchases as CSV
               </Link>
+              ,{" "}
+              <Link href="/x402/report/2026-11" className="doc-link">
+                State of x402: November 2026
+              </Link>
               .{" "}
               <Link href={DATA_LICENSE_URL} className="doc-link">
                 Data under CC BY 4.0.

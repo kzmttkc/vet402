@@ -291,7 +291,11 @@ export default async function ObservatoryStatePage() {
           <Link href="/api/v1/observatory/l0/export.csv" className="doc-link">
             /api/v1/observatory/l0/export.csv
           </Link>{" "}
-          (CC BY 4.0).
+          (CC BY 4.0). Dated snapshot report:{" "}
+          <Link href="/x402/report/2026-11" className="doc-link">
+            State of x402: November 2026
+          </Link>
+          .
         </p>
         <p className="doc-p mt-6">
           {`KIZUNA Creation. vet402 observatory. Dataset, retrieved ${stats.readAt}. ${SITE_URL}/api/v1/observatory/state`}

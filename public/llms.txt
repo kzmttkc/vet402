@@ -76,6 +76,7 @@ What the API returns today is a different, older thing: a 0–100 trust or payee
 - https://vet402.com/x402/stablecoin-payments: how an AI agent pays an x402 API with a stablecoin, often USDC.
 - https://vet402.com/x402/check-a-seller: how to check an x402 seller before paying.
 - https://vet402.com/x402/chains: purchase results by chain, from the same ledger as the observatory.
+- [State of x402: November 2026](https://vet402.com/x402/report/2026-11): delivery after payment across vet402's purchases, by chain, as of 2026-11-09 (UTC).
 - https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
 - https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification
 - https://vet402.com/blog/rss.xml — the same posts as RSS
