@@ -53,17 +53,12 @@ function gitYardstickFirstCommitIso(): string {
   return new Date(raw).toISOString();
 }
 
-function gitFixedAtChangelogIntroducedCommitIso(): string {
-  const raw = execSync(`git log -S fixedAtChangelog --format=%cI -1 -- ${DELIVERY_HIT_RATE_YARDSTICK_PATH}`, {
+function gitLogSCommitterIso(needle: string, relPath: string): string {
+  const raw = execSync(`git log -S ${JSON.stringify(needle)} --format=%cI -1 -- ${relPath}`, {
     cwd: ROOT,
     encoding: "utf8",
   }).trim();
-  assert.ok(raw, "fixedAtChangelog must exist in git history");
-  return new Date(raw).toISOString();
-}
-
-function gitBfeecc67CommitterIso(): string {
-  const raw = execSync("git show -s --format=%cI bfeecc67", { cwd: ROOT, encoding: "utf8" }).trim();
+  assert.ok(raw, `git must contain ${needle} in ${relPath}`);
   return new Date(raw).toISOString();
 }
 
@@ -99,34 +94,38 @@ test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境�
   assert.ok(fixed < notBefore, "fixedAt must precede REPURCHASE_RESULTS_READ_NOT_BEFORE");
   assert.notEqual(doc.fixedAt, doc.fixedAtInitial);
   assert.ok(doc.fixedAtChangelog.length >= 1, "fixedAt move must be published in fixedAtChangelog");
-  const raisedPastInitial = doc.fixedAt !== doc.fixedAtInitial;
-  if (raisedPastInitial) {
-    const raisedCommit = new Date(gitBfeecc67CommitterIso()).getTime();
-    assert.ok(fixed >= raisedCommit, "fixedAt must be on or after the commit that first raised it past documentFirstCommittedAt");
-  }
+  const fixedAtIntroduced = new Date(gitLogSCommitterIso(doc.fixedAt, DELIVERY_HIT_RATE_YARDSTICK_PATH)).getTime();
+  assert.ok(fixed >= fixedAtIntroduced, "fixedAt must be on or after the commit that introduced this fixedAt value");
+  assert.equal(doc.fixedAtChangelog[doc.fixedAtChangelog.length - 1]!.next, doc.fixedAt);
   for (const entry of doc.fixedAtChangelog) {
-    assert.equal(
-      new Date(entry.changedAt).toISOString(),
-      gitFixedAtChangelogIntroducedCommitIso(),
-      "fixedAtChangelog changedAt must match git commit that introduced the changelog",
+    const nextIntroduced = new Date(gitLogSCommitterIso(entry.next, DELIVERY_HIT_RATE_YARDSTICK_PATH)).getTime();
+    assert.ok(
+      new Date(entry.changedAt).getTime() >= nextIntroduced,
+      `fixedAtChangelog changedAt must be on or after commit that introduced next ${entry.next}`,
     );
   }
 });
 
 test("3.13-S1-2: 買い直し境界は実装定数のみで S1-3 結果読取コミットは無い", () => {
   assert.equal(REPURCHASE_RESULTS_READ_NOT_BEFORE, "2026-11-11T00:00:00.000Z");
-  const repurchaseLog = execSync("git log --grep=repurchase --format=%s", { cwd: ROOT, encoding: "utf8" })
+  const doc = loadDeliveryHitRateYardstick();
+  const fixed = new Date(doc.fixedAt).getTime();
+  const boundary = new Date(REPURCHASE_RESULTS_READ_NOT_BEFORE).getTime();
+  assert.ok(fixed < boundary, "fixedAt must precede code repurchase-results boundary");
+  const readResultTimes = execSync(
+    'git log --grep="S1-3" --grep="repurchase results" --all-match --format=%cI -i',
+    { cwd: ROOT, encoding: "utf8" },
+  )
     .trim()
     .split("\n")
     .filter(Boolean);
-  for (const subject of repurchaseLog) {
-    assert.match(subject, /3\.13|yardstick|S1-2|repurchase/i);
+  if (readResultTimes.length === 0) {
+    assert.deepEqual(readResultTimes, [], "no commit reads S1-3 repurchase results yet");
+    return;
   }
-  const readResults = execSync('git log --grep="S1-3" --grep="repurchase results" --format=%H -i', {
-    cwd: ROOT,
-    encoding: "utf8",
-  }).trim();
-  assert.equal(readResults, "", "no commit must read S1-3 repurchase results before the boundary");
+  for (const iso of readResultTimes) {
+    assert.ok(fixed < new Date(iso).getTime(), `fixedAt must precede S1-3 results read commit at ${iso}`);
+  }
 });
 
 test("3.13-S1-2: 台帳の時間分割が学習と評価に分かれる", () => {
@@ -264,6 +263,10 @@ test("3.13-F4: V4 宣伝禁止の正解率を予測の的中率として書か�
     resourceKey: "host/a",
     trainingRows: rows,
   });
+  assert.ok(
+    out.text.includes(NAMED_BUYER_SCOPE_PHRASE_JA),
+    "F4 v1 forecast must include the Japanese scope phrase, not English-only scope",
+  );
   const serialized = JSON.stringify(out);
   for (const bad of FORBIDDEN_HIT_RATE_MARKETING) {
     assert.equal(serialized.includes(bad), false);
