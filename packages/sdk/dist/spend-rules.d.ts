@@ -6,7 +6,8 @@
  * The order is fixed (the first hit wins):
  *   invalid_rules → rules_expired → deny_pay_to → max_per_tx → require_allow →
  *   min_delivery_rate → payee_max_per_day → payee_max_count_per_hour →
- *   max_per_day → max_count_per_hour.
+ *   host_max_per_day → host_max_count_per_hour → resource_max_per_day →
+ *   resource_max_count_per_hour → max_per_day → max_count_per_hour.
  *
  * A field that is absent is not applied. A day is the last 24 hours and an
  * hour is the last 60 minutes, both measured back from `nowMs`. A total that
@@ -14,7 +15,7 @@
  * without regard to case. Money is compared in micro-dollars so a value that
  * is exact in decimal is exact here too.
  */
-export declare const SPEND_RULE_REFUSALS: readonly ["invalid_rules", "rules_expired", "deny_pay_to", "max_per_tx", "require_allow", "min_delivery_rate", "payee_max_per_day", "payee_max_count_per_hour", "max_per_day", "max_count_per_hour"];
+export declare const SPEND_RULE_REFUSALS: readonly ["invalid_rules", "rules_expired", "deny_pay_to", "max_per_tx", "require_allow", "min_delivery_rate", "payee_max_per_day", "payee_max_count_per_hour", "host_max_per_day", "host_max_count_per_hour", "resource_max_per_day", "resource_max_count_per_hour", "max_per_day", "max_count_per_hour"];
 export type SpendRuleRefusal = (typeof SPEND_RULE_REFUSALS)[number];
 /** Limits the caller wrote down. Every field is optional; an absent field is not applied. */
 export type SpendRules = {
@@ -26,6 +27,16 @@ export type SpendRules = {
     maxCountPerHour?: number;
     /** Same two caps, counted only for the payee whose address matches the key (any case). */
     perPayee?: Record<string, {
+        maxPerDayUsd?: number;
+        maxCountPerHour?: number;
+    }>;
+    /** Same two caps, counted only for matching `intent.host` (hostname, any case). */
+    perHost?: Record<string, {
+        maxPerDayUsd?: number;
+        maxCountPerHour?: number;
+    }>;
+    /** Same two caps, counted only for matching `intent.resourceId` (exact string). */
+    perResourceId?: Record<string, {
         maxPerDayUsd?: number;
         maxCountPerHour?: number;
     }>;

@@ -34,7 +34,7 @@ export type PayCheckedInput = {
     account?: undefined;
 });
 /** Why `payChecked` did not pay, when the reason is not a spend rule. */
-export type PayCheckedStop = "store_unreadable" | "payment_pending" | "payee_unknown";
+export type PayCheckedStop = "store_unreadable" | "payment_pending" | "payee_unknown" | "decision_unavailable";
 export type PayCheckedResult = {
     /** True only when `payOrRefuse` returned `status: "paid"`. */
     paid: boolean;

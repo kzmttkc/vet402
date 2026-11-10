@@ -44,6 +44,10 @@ const REFUSE = [
   ["delivery rate under the floor", "min_delivery_rate", RULES, intent({ deliveryRate: 0.5 }), []],
   ["no delivery rate when a floor is set", "min_delivery_rate", { ...RULES, requireAllow: false }, intent({ deliveryRate: null }), []],
   ["the rules have expired", "rules_expired", { ...RULES, expiresAt: "2026-11-01T00:00:00.000Z" }, intent(), []],
+  ["this host's day would pass its limit", "host_max_per_day", { maxPerTxUsd: 1, perHost: { "api.example.org": { maxPerDayUsd: 0.2 } } }, intent(), [paid({ amountUsd: 0.16 })]],
+  ["this host's hourly count is used up", "host_max_count_per_hour", { maxPerTxUsd: 1, perHost: { "api.example.org": { maxCountPerHour: 2 } } }, intent(), [paid(), paid({ at: NOW - 120_000 })]],
+  ["this resource's day would pass its limit", "resource_max_per_day", { maxPerTxUsd: 1, perResourceId: { "r-1": { maxPerDayUsd: 0.15 } } }, intent(), [paid({ amountUsd: 0.11 })]],
+  ["this resource's hourly count is used up", "resource_max_count_per_hour", { maxPerTxUsd: 1, perResourceId: { "r-1": { maxCountPerHour: 1 } } }, intent(), [paid()]],
 ];
 
 for (const [name, reason, rules, it, history] of REFUSE) {

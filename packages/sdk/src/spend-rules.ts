@@ -6,7 +6,8 @@
  * The order is fixed (the first hit wins):
  *   invalid_rules → rules_expired → deny_pay_to → max_per_tx → require_allow →
  *   min_delivery_rate → payee_max_per_day → payee_max_count_per_hour →
- *   max_per_day → max_count_per_hour.
+ *   host_max_per_day → host_max_count_per_hour → resource_max_per_day →
+ *   resource_max_count_per_hour → max_per_day → max_count_per_hour.
  *
  * A field that is absent is not applied. A day is the last 24 hours and an
  * hour is the last 60 minutes, both measured back from `nowMs`. A total that
@@ -24,6 +25,10 @@ export const SPEND_RULE_REFUSALS = [
   "min_delivery_rate",
   "payee_max_per_day",
   "payee_max_count_per_hour",
+  "host_max_per_day",
+  "host_max_count_per_hour",
+  "resource_max_per_day",
+  "resource_max_count_per_hour",
   "max_per_day",
   "max_count_per_hour",
 ] as const;
@@ -40,6 +45,10 @@ export type SpendRules = {
   maxCountPerHour?: number;
   /** Same two caps, counted only for the payee whose address matches the key (any case). */
   perPayee?: Record<string, { maxPerDayUsd?: number; maxCountPerHour?: number }>;
+  /** Same two caps, counted only for matching `intent.host` (hostname, any case). */
+  perHost?: Record<string, { maxPerDayUsd?: number; maxCountPerHour?: number }>;
+  /** Same two caps, counted only for matching `intent.resourceId` (exact string). */
+  perResourceId?: Record<string, { maxPerDayUsd?: number; maxCountPerHour?: number }>;
   /** Payees that are never paid. Compared without regard to case. */
   denyPayTo?: string[];
   /** When true, the payment needs vet402's recommendation to be exactly `ALLOW`. */
@@ -91,6 +100,8 @@ type NormalizedRules = {
   expiresAtMs: number | null;
   denyPayTo: string[];
   perPayee: Record<string, PayeeCaps>;
+  perHost: Record<string, PayeeCaps>;
+  perResourceId: Record<string, PayeeCaps>;
 };
 
 function refuse(refusedBy: SpendRuleRefusal): SpendRuleDecision {
@@ -142,19 +153,39 @@ function normalizeRules(rules: unknown): NormalizedRules | null {
     if (!Array.isArray(rules.denyPayTo) || rules.denyPayTo.some((item) => typeof item !== "string")) return null;
   }
 
-  const perPayee: Record<string, PayeeCaps> = {};
-  if (rules.perPayee !== undefined) {
-    if (!isPlainObject(rules.perPayee)) return null;
-    for (const [key, raw] of Object.entries(rules.perPayee)) {
-      if (typeof key !== "string" || !isPlainObject(raw)) return null;
-      const day = optionalCap(raw.maxPerDayUsd);
-      const hour = optionalCap(raw.maxCountPerHour);
+  const parseCapsMap = (raw: unknown): Record<string, PayeeCaps> | null => {
+    if (!isPlainObject(raw)) return null;
+    const out: Record<string, PayeeCaps> = {};
+    for (const [key, row] of Object.entries(raw)) {
+      if (typeof key !== "string" || !isPlainObject(row)) return null;
+      const day = optionalCap(row.maxPerDayUsd);
+      const hour = optionalCap(row.maxCountPerHour);
       if (!day.ok || !hour.ok) return null;
-      perPayee[key] = {
+      out[key] = {
         ...(day.value !== undefined ? { maxPerDayUsd: day.value } : {}),
         ...(hour.value !== undefined ? { maxCountPerHour: hour.value } : {}),
       };
     }
+    return out;
+  };
+
+  let perPayee: Record<string, PayeeCaps> = {};
+  if (rules.perPayee !== undefined) {
+    const parsed = parseCapsMap(rules.perPayee);
+    if (parsed === null) return null;
+    perPayee = parsed;
+  }
+  let perHost: Record<string, PayeeCaps> = {};
+  if (rules.perHost !== undefined) {
+    const parsed = parseCapsMap(rules.perHost);
+    if (parsed === null) return null;
+    perHost = parsed;
+  }
+  let perResourceId: Record<string, PayeeCaps> = {};
+  if (rules.perResourceId !== undefined) {
+    const parsed = parseCapsMap(rules.perResourceId);
+    if (parsed === null) return null;
+    perResourceId = parsed;
   }
 
   return {
@@ -166,6 +197,8 @@ function normalizeRules(rules: unknown): NormalizedRules | null {
     expiresAtMs,
     denyPayTo: Array.isArray(rules.denyPayTo) ? rules.denyPayTo.filter((item): item is string => typeof item === "string") : [],
     perPayee,
+    perHost,
+    perResourceId,
   };
 }
 
@@ -191,11 +224,24 @@ function inWindow(row: SpendRecord, nowMs: number, windowMs: number): boolean {
   return typeof row.at === "number" && Number.isFinite(row.at) && row.at >= nowMs - windowMs;
 }
 
-function rowsFor(history: SpendRecord[], nowMs: number, windowMs: number, payTo?: string): SpendRecord[] {
+function rowsFor(
+  history: SpendRecord[],
+  nowMs: number,
+  windowMs: number,
+  match?: { payTo?: string; host?: string; resourceId?: string },
+): SpendRecord[] {
   return history.filter((row) => {
     if (!inWindow(row, nowMs, windowMs)) return false;
-    if (payTo === undefined) return true;
-    return typeof row.payTo === "string" && samePayee(row.payTo, payTo);
+    if (match?.payTo !== undefined) {
+      return typeof row.payTo === "string" && samePayee(row.payTo, match.payTo);
+    }
+    if (match?.host !== undefined) {
+      return typeof row.host === "string" && row.host.toLowerCase() === match.host.toLowerCase();
+    }
+    if (match?.resourceId !== undefined) {
+      return typeof row.resourceId === "string" && row.resourceId === match.resourceId;
+    }
+    return true;
   });
 }
 
@@ -210,10 +256,11 @@ function totalWouldExceed(rows: SpendRecord[], amountUsd: number, limitUsd: numb
   return total > toMicros(limitUsd, "down");
 }
 
-function payeeCaps(rules: NormalizedRules, payTo: string): PayeeCaps | undefined {
-  const needle = payTo.toLowerCase();
-  for (const [key, caps] of Object.entries(rules.perPayee)) {
-    if (key.toLowerCase() === needle) return caps;
+function capsForKey(map: Record<string, PayeeCaps>, key: string, caseInsensitive: boolean): PayeeCaps | undefined {
+  const needle = caseInsensitive ? key.toLowerCase() : key;
+  for (const [entry, caps] of Object.entries(map)) {
+    const hay = caseInsensitive ? entry.toLowerCase() : entry;
+    if (hay === needle) return caps;
   }
   return undefined;
 }
@@ -251,14 +298,36 @@ export function evaluateSpendRules(
     }
   }
 
-  const caps = payTo !== "" ? payeeCaps(normalized, payTo) : undefined;
-  if (caps?.maxPerDayUsd !== undefined) {
-    const rows = rowsFor(history, nowMs, DAY_MS, payTo);
-    if (totalWouldExceed(rows, intent?.amountUsd, caps.maxPerDayUsd)) return refuse("payee_max_per_day");
+  const payeeCap = payTo !== "" ? capsForKey(normalized.perPayee, payTo, true) : undefined;
+  if (payeeCap?.maxPerDayUsd !== undefined) {
+    const rows = rowsFor(history, nowMs, DAY_MS, { payTo });
+    if (totalWouldExceed(rows, intent?.amountUsd, payeeCap.maxPerDayUsd)) return refuse("payee_max_per_day");
   }
-  if (caps?.maxCountPerHour !== undefined) {
-    const rows = rowsFor(history, nowMs, HOUR_MS, payTo);
-    if (rows.length + 1 > caps.maxCountPerHour) return refuse("payee_max_count_per_hour");
+  if (payeeCap?.maxCountPerHour !== undefined) {
+    const rows = rowsFor(history, nowMs, HOUR_MS, { payTo });
+    if (rows.length + 1 > payeeCap.maxCountPerHour) return refuse("payee_max_count_per_hour");
+  }
+
+  const host = typeof intent?.host === "string" ? intent.host : "";
+  const hostCap = host !== "" ? capsForKey(normalized.perHost, host, true) : undefined;
+  if (hostCap?.maxPerDayUsd !== undefined) {
+    const rows = rowsFor(history, nowMs, DAY_MS, { host });
+    if (totalWouldExceed(rows, intent?.amountUsd, hostCap.maxPerDayUsd)) return refuse("host_max_per_day");
+  }
+  if (hostCap?.maxCountPerHour !== undefined) {
+    const rows = rowsFor(history, nowMs, HOUR_MS, { host });
+    if (rows.length + 1 > hostCap.maxCountPerHour) return refuse("host_max_count_per_hour");
+  }
+
+  const resourceId = typeof intent?.resourceId === "string" ? intent.resourceId : "";
+  const resourceCap = resourceId !== "" ? capsForKey(normalized.perResourceId, resourceId, false) : undefined;
+  if (resourceCap?.maxPerDayUsd !== undefined) {
+    const rows = rowsFor(history, nowMs, DAY_MS, { resourceId });
+    if (totalWouldExceed(rows, intent?.amountUsd, resourceCap.maxPerDayUsd)) return refuse("resource_max_per_day");
+  }
+  if (resourceCap?.maxCountPerHour !== undefined) {
+    const rows = rowsFor(history, nowMs, HOUR_MS, { resourceId });
+    if (rows.length + 1 > resourceCap.maxCountPerHour) return refuse("resource_max_count_per_hour");
   }
 
   if (normalized.maxPerDayUsd !== undefined) {

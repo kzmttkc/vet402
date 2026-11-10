@@ -175,7 +175,12 @@ async function readJson(response) {
         return null;
     }
 }
-const PAY_CHECKED_STOPS = ["store_unreadable", "payment_pending", "payee_unknown"];
+const PAY_CHECKED_STOPS = [
+    "store_unreadable",
+    "payment_pending",
+    "payee_unknown",
+    "decision_unavailable",
+];
 const LOCK_LIMIT_MS = 10_000;
 const LOCK_RETRY_MS = 20;
 class StoreLockError extends Error {
@@ -589,6 +594,28 @@ async function prepare(input) {
     }
     const spentAt = Date.now();
     const resourceId = input.resourceId ?? "";
+    if (resourceId !== "" && input.decision === null && input.rules?.requireAllow !== true) {
+        const result = unpaid("decision_unavailable", input.evidenceUrl);
+        await appendRow(input.store, decisionRow({
+            recommendation: "REFUSE",
+            reasonCodes: ["decision_unavailable"],
+            atMs: spentAt,
+            status: "refused",
+            url: input.url,
+            txHash: null,
+            nonce: null,
+            checked: {
+                state: "failed",
+                idempotencyKey: input.key,
+                rulesJson: input.rulesJson,
+                amountUsd: input.amountUsd,
+                url: input.url,
+                spend: null,
+                result,
+            },
+        }));
+        return { kind: "result", result };
+    }
     const verdict = evaluateSpendRules(input.rules, intentFromDecision(input.decision, input.payTo ?? "", input.host, resourceId, input.amountUsd), historyOf(read.lines), spentAt);
     if (!verdict.allow) {
         const result = unpaid(verdict.refusedBy, input.evidenceUrl);

@@ -9,7 +9,7 @@
 // ============================================================
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -105,16 +105,49 @@ function tempStore() {
 
 const OPEN_RULES = { maxPerTxUsd: 1, requireAllow: true, minDeliveryRate: 0.9 };
 
-function harness(sellerOpts = {}) {
+function harness(sellerOpts = {}, fetchOpts = {}) {
   const w = watchedAccount();
   const s = seller(okAccept, sellerOpts);
+  const decision = fetchOpts.decision ?? (() => ({ status: 200, body: decisionBody() }));
   const f = allowlistFetch(["/resolve", "/decision", "kronos", "payments/x402"], {
     "/resolve": { status: 200, body: resolveBody() },
-    "/decision": { status: 200, body: decisionBody() },
+    "/decision": typeof decision === "function" ? decision : decision,
     kronos: s.stub,
     "payments/x402": { status: 200, body: { ok: true } },
   });
   return { w, s, f, store: tempStore() };
+}
+
+const HOST = new URL(base.resource).host;
+
+function seedSettledSpend(store, spend, atMs = Date.now() - 30_000) {
+  const row = {
+    recommendation: "ALLOW",
+    reason_codes: [],
+    verdict_source: "local_policy",
+    evidence: [],
+    decision: null,
+    payeeScore: null,
+    policy_override: null,
+    source: "pay-checked",
+    at: new Date(atMs).toISOString(),
+    status: "paid",
+    resource: base.resource,
+    txHash: "0xseed",
+    nonce: "0x1",
+    payChecked: {
+      state: "settled",
+      idempotencyKey: `seed-${atMs}`,
+      rulesJson: "{}",
+      amountUsd: spend.amountUsd,
+      url: base.resource,
+      payTo: spend.payTo,
+      at: atMs,
+      spend: { ...spend, at: atMs },
+      result: { paid: true, delivered: true, refusedBy: null, receipt: null, evidenceUrl: null },
+    },
+  };
+  appendFileSync(store, `${JSON.stringify(row)}\n`);
 }
 
 function call(h, over = {}) {
@@ -203,6 +236,85 @@ test("同じ呼び出しを冪等の鍵つきで 2 回しても、払うのは 1
   assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
   assert.equal(h.s.paid.length, 1, "売り手への支払い再送は 1 回");
   assert.equal(readFileSync(h.store, "utf8").trim().split("\n").length, 2, "記録は保留と確定の 2 行のまま（2 回目は足さない）");
+});
+
+for (const [name, rules, expectedRefused, seed] of [
+  ["期限切れ", { maxPerTxUsd: 1, expiresAt: "2020-01-01T00:00:00.000Z" }, "rules_expired", null],
+  ["拒否一覧", { maxPerTxUsd: 1, denyPayTo: [base.payee] }, "deny_pay_to", null],
+  ["WARN", { maxPerTxUsd: 1, requireAllow: true }, "require_allow", { decision: () => ({ status: 200, body: { ...decisionBody(), recommendation: "WARN" } }) }],
+  ["配達率の床", { maxPerTxUsd: 1, minDeliveryRate: 0.9 }, "min_delivery_rate", { decision: () => ({ status: 200, body: { ...decisionBody(), facts: { ...decisionBody().facts, l1: { n_delivered: 1, n_attempts: 10, n_inconclusive: 0 } } } }) }],
+]) {
+  test(`決まり拒否（${name}）では signTypedData に触れず売り手にも出ない`, async () => {
+    const h = harness({}, seed ?? {});
+    const r = await call(h, { rules });
+    assert.equal(r.paid, false);
+    assert.equal(r.refusedBy, expectedRefused);
+    assert.deepEqual(h.w.signAccesses(), []);
+    assert.equal(h.s.paid.length, 0);
+  });
+}
+
+test("相手の回数上限では signTypedData に触れない", async () => {
+  const h = harness();
+  const cap = { maxPerTxUsd: 1, perPayee: { [base.payee]: { maxCountPerHour: 2 } } };
+  for (let i = 0; i < 2; i++) {
+    seedSettledSpend(h.store, { payTo: base.payee, host: HOST, resourceId: RESOURCE_ID, amountUsd: 0.01 }, Date.now() - 60_000 - i * 1000);
+  }
+  const r = await call(h, { rules: cap });
+  assert.equal(r.refusedBy, "payee_max_count_per_hour");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("相手の日次上限では signTypedData に触れない", async () => {
+  const h = harness();
+  const cap = { maxPerTxUsd: 1, perPayee: { [base.payee]: { maxPerDayUsd: 0.05 } } };
+  seedSettledSpend(h.store, { payTo: base.payee, host: HOST, resourceId: RESOURCE_ID, amountUsd: 0.04 });
+  const r = await call(h, { rules: cap });
+  assert.equal(r.refusedBy, "payee_max_per_day");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("vet402 の decision が届かない（requireAllow あり）とき signTypedData に触れない", async () => {
+  const h = harness({}, { decision: () => ({ status: 503, body: {} }) });
+  const r = await call(h, { rules: { maxPerTxUsd: 1, requireAllow: true } });
+  assert.equal(r.refusedBy, "require_allow");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("vet402 の decision が届かない（requireAllow なし）とき signTypedData に触れない", async () => {
+  const h = harness({}, { decision: () => ({ status: 503, body: {} }) });
+  const r = await call(h, { rules: { maxPerTxUsd: 1 } });
+  assert.equal(r.refusedBy, "decision_unavailable");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("ホスト上限では signTypedData に触れない", async () => {
+  const h = harness();
+  seedSettledSpend(h.store, { payTo: base.payee, host: HOST, resourceId: RESOURCE_ID, amountUsd: 0.04 });
+  const r = await call(h, { rules: { maxPerTxUsd: 1, perHost: { [HOST]: { maxPerDayUsd: 0.05 } } } });
+  assert.equal(r.refusedBy, "host_max_per_day");
+  assert.deepEqual(h.w.signAccesses(), []);
+});
+
+test("resourceId 上限では signTypedData に触れない", async () => {
+  const h = harness();
+  seedSettledSpend(h.store, { payTo: base.payee, host: HOST, resourceId: RESOURCE_ID, amountUsd: 0.04 });
+  const r = await call(h, { rules: { maxPerTxUsd: 1, perResourceId: { [RESOURCE_ID]: { maxPerDayUsd: 0.05 } } } });
+  assert.equal(r.refusedBy, "resource_max_per_day");
+  assert.deepEqual(h.w.signAccesses(), []);
+});
+
+test("決済後の 5xx でも同じ鍵の 2 回目は払い直さない", async () => {
+  const h = harness({ paidStatus: 500 });
+  const first = await call(h, { idempotencyKey: "after-5xx", rules: OPEN_RULES });
+  const second = await call(h, { idempotencyKey: "after-5xx", rules: OPEN_RULES });
+  assert.equal(second.paid, first.paid);
+  assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
+  assert.equal(h.s.paid.length, 1);
 });
 
 test("記録した支払いは次の呼び出しの時間窓に入る", async () => {
