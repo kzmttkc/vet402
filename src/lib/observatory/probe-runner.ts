@@ -20,7 +20,11 @@ import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { L0_NORMAL_DOMAIN_INTERVAL_MS, L0_PROBE_BATCH_BUDGET_MS } from "./l0-coverage7d";
+import {
+  capCandidatesByRegisteredDomain,
+  L0_NORMAL_DOMAIN_INTERVAL_MS,
+  L0_PROBE_BATCH_BUDGET_MS,
+} from "./l0-coverage7d";
 import {
   PRIORITY_DOMAIN_INTERVAL_MS,
   PRIORITY_LEASE_NAME,
@@ -88,6 +92,8 @@ export async function runL0ProbeBatch(
     priorityRequestLimitMs?: number;
     /** この実行全体の壁時計上限（ms）。既定は L0_PROBE_BATCH_BUDGET_MS（route maxDuration より短い）。 */
     batchBudgetMs?: number;
+    /** 普通の列の 1 件あたりの合計の上限（ミリ秒）。既定は PRIORITY_REQUEST_TOTAL_MS。 */
+    normalRequestLimitMs?: number;
   } = {},
 ): Promise<ProbeBatchSummary> {
   const {
@@ -98,6 +104,7 @@ export async function runL0ProbeBatch(
     tier = "all",
     priorityRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
     batchBudgetMs = L0_PROBE_BATCH_BUDGET_MS,
+    normalRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
   } = options;
   const batchDeadlineAt = Date.now() + batchBudgetMs;
   const where = (daily: boolean) =>
@@ -200,6 +207,12 @@ export async function runL0ProbeBatch(
       source: (r.source as string | null) ?? null,
       ruleChangeReprobe: r.rule_change_reprobe === true,
     }));
+    candidates = capCandidatesByRegisteredDomain(
+      candidates,
+      restLimit,
+      concurrency,
+      (c) => resourceRegisteredDomain(c.resourceUrl),
+    );
     }
   } catch (error) {
     await releasePriority();
@@ -295,7 +308,13 @@ export async function runL0ProbeBatch(
         }
         result = limited;
       } else {
-        result = await request;
+        const limited = await withTotalLimit(request, normalRequestLimitMs);
+        if (limited === TOTAL_LIMIT_EXCEEDED) {
+          request.catch(() => {});
+          summary.priorityAbandoned++;
+          return;
+        }
+        result = limited;
       }
       // 書く直前の新しい行を読み直す（選定から時間が経っている・並行する c2 が書いたかもしれない）。
       // その間に今の規則の行で片付いていれば、通常の行として書く（訂正ログの対象にしない）。

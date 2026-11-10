@@ -158,8 +158,8 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
  * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict /
  * rule_change_reprobe）。
  *
- * 2026-11-10 coverage7d: 直近 7 日に L0 行が無い active を全 tier で先に（l0-coverage7d.ts）。
- *   coverage7d の分子を増やすため、窓内の再プローブより窓外を先に並べる。式は reader.ts のまま。
+ * 2026-11-10 coverage7d: 窓の落ちかけ→窓外→窓内後回しの 3 段（l0-coverage7d.ts）。
+ *   起点の分子が窓から落ちないよう落ちかけを先に再測定し、残りで窓外を増やす。式は reader.ts のまま。
  *
  * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
  * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
