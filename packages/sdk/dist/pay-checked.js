@@ -734,7 +734,7 @@ export async function payChecked(input) {
         const parsed = new URL(input.url);
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
             throw new Error("bad protocol");
-        host = parsed.host;
+        host = parsed.hostname;
         if (host === "")
             throw new Error("no host");
     }

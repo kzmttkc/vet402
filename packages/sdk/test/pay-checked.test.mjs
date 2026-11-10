@@ -9,7 +9,7 @@
 // ============================================================
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -69,6 +69,13 @@ function seller(accept, opts = {}) {
     if (!raw) return wall(accept, version);
     paid.push({ url, method: init?.method, header: payHeader, decoded: JSON.parse(atob(raw)) });
     if (opts.noReceipt) return { status: 200, body: { success: true, transaction: "0xfrom_body" }, headers: {} };
+    if (opts.omitReceiptHeader) {
+      return {
+        status: opts.paidStatus ?? 500,
+        body: opts.paidBody ?? { success: true, transaction: "0xtx" },
+        headers: {},
+      };
+    }
     return {
       status: opts.paidStatus ?? 200,
       body: opts.paidBody ?? { data: "ok" },
@@ -298,6 +305,7 @@ test("ホスト上限では signTypedData に触れない", async () => {
   const r = await call(h, { rules: { maxPerTxUsd: 1, perHost: { [HOST]: { maxPerDayUsd: 0.05 } } } });
   assert.equal(r.refusedBy, "host_max_per_day");
   assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
 });
 
 test("resourceId 上限では signTypedData に触れない", async () => {
@@ -306,12 +314,84 @@ test("resourceId 上限では signTypedData に触れない", async () => {
   const r = await call(h, { rules: { maxPerTxUsd: 1, perResourceId: { [RESOURCE_ID]: { maxPerDayUsd: 0.05 } } } });
   assert.equal(r.refusedBy, "resource_max_per_day");
   assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("壊れた決まりでは signTypedData に触れない", async () => {
+  const h = harness();
+  const r = await call(h, { rules: { maxPerTxUsd: -1, requireAllow: true } });
+  assert.equal(r.refusedBy, "invalid_rules");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("全体の日次上限では signTypedData に触れない", async () => {
+  const h = harness();
+  for (let i = 0; i < 10; i++) {
+    seedSettledSpend(
+      h.store,
+      { payTo: `0x${String(i).padStart(40, "a")}`, host: `host-${i}.example`, resourceId: RESOURCE_ID, amountUsd: 0.099 },
+      Date.now() - 60_000 - i * 1000,
+    );
+  }
+  const r = await call(h, { rules: { maxPerTxUsd: 1, maxPerDayUsd: 1, requireAllow: true }, amountUsd: 0.02 });
+  assert.equal(r.refusedBy, "max_per_day");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("ホストの回数上限では signTypedData に触れない", async () => {
+  const h = harness();
+  const hostname = new URL(base.resource).hostname;
+  for (let i = 0; i < 2; i++) {
+    seedSettledSpend(h.store, { payTo: base.payee, host: hostname, resourceId: RESOURCE_ID, amountUsd: 0.01 }, Date.now() - 60_000 - i * 1000);
+  }
+  const r = await call(h, { rules: { maxPerTxUsd: 1, perHost: { [hostname]: { maxCountPerHour: 2 } }, requireAllow: true } });
+  assert.equal(r.refusedBy, "host_max_count_per_hour");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("resourceId の回数上限では signTypedData に触れない", async () => {
+  const h = harness();
+  seedSettledSpend(h.store, { payTo: base.payee, host: HOST, resourceId: RESOURCE_ID, amountUsd: 0.01 });
+  const r = await call(h, { rules: { maxPerTxUsd: 1, perResourceId: { [RESOURCE_ID]: { maxCountPerHour: 1 } }, requireAllow: true } });
+  assert.equal(r.refusedBy, "resource_max_count_per_hour");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
+});
+
+test("非標準ポートの URL でも hostname のホスト上限を抜けない", async () => {
+  const portUrl = "https://api.example.org:8443/v1/quote";
+  const hostname = "api.example.org";
+  const h = harness();
+  seedSettledSpend(h.store, { payTo: base.payee, host: hostname, resourceId: RESOURCE_ID, amountUsd: 0.5 });
+  const r = await payChecked({
+    url: portUrl,
+    rules: { maxPerTxUsd: 1, requireAllow: true, perHost: { [hostname]: { maxPerDayUsd: 0.01 } } },
+    amountUsd: base.amountUsd,
+    account: h.w.account,
+    fetch: h.f.fetch,
+    store: h.store,
+  });
+  assert.equal(r.refusedBy, "host_max_per_day");
+  assert.deepEqual(h.w.signAccesses(), []);
+  assert.equal(h.s.paid.length, 0);
 });
 
 test("決済後の 5xx でも同じ鍵の 2 回目は払い直さない", async () => {
   const h = harness({ paidStatus: 500 });
   const first = await call(h, { idempotencyKey: "after-5xx", rules: OPEN_RULES });
   const second = await call(h, { idempotencyKey: "after-5xx", rules: OPEN_RULES });
+  assert.equal(second.paid, first.paid);
+  assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
+  assert.equal(h.s.paid.length, 1);
+});
+
+test("決済後の 500（レシートヘッダ無し）でも同じ鍵の 2 回目は払い直さない", async () => {
+  const h = harness({ paidStatus: 500, omitReceiptHeader: true });
+  const first = await call(h, { idempotencyKey: "after-5xx-noreceipt", rules: OPEN_RULES });
+  const second = await call(h, { idempotencyKey: "after-5xx-noreceipt", rules: OPEN_RULES });
   assert.equal(second.paid, first.paid);
   assert.deepEqual(h.w.signAccesses(), ["signTypedData"]);
   assert.equal(h.s.paid.length, 1);

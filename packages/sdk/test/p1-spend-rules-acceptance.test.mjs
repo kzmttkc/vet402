@@ -59,6 +59,67 @@ for (const [name, reason, rules, it, history] of REFUSE) {
   });
 }
 
+test("P1 pass: spend on another host does not count toward this host's cap", () => {
+  const rules = { maxPerTxUsd: 1, perHost: { "api.example.org": { maxPerDayUsd: 0.2 } } };
+  const d = evaluateSpendRules(
+    rules,
+    intent(),
+    [paid({ host: "other.example.org", amountUsd: 0.19 })],
+    NOW,
+  );
+  assert.equal(d.allow, true);
+});
+
+test("P1 pass: spend on another resourceId does not count toward this resource's cap", () => {
+  const rules = { maxPerTxUsd: 1, perResourceId: { "r-1": { maxPerDayUsd: 0.15 } } };
+  const d = evaluateSpendRules(
+    rules,
+    intent(),
+    [paid({ resourceId: "r-2", amountUsd: 0.14 })],
+    NOW,
+  );
+  assert.equal(d.allow, true);
+});
+
+test("P1 pass: a total exactly on the host daily limit passes", () => {
+  const rules = { maxPerTxUsd: 1, perHost: { "api.example.org": { maxPerDayUsd: 0.2 } } };
+  const d = evaluateSpendRules(rules, intent({ amountUsd: 0.05 }), [paid({ amountUsd: 0.15 })], NOW);
+  assert.equal(d.allow, true);
+});
+
+test("P1 pass: host cap keys match without case", () => {
+  const rules = { maxPerTxUsd: 1, perHost: { "API.EXAMPLE.ORG": { maxPerDayUsd: 0.2 } } };
+  const d = evaluateSpendRules(rules, intent({ host: "Api.Example.Org", amountUsd: 0.06 }), [paid({ amountUsd: 0.16 })], NOW);
+  assert.equal(d.allow, false);
+  assert.equal(d.refusedBy, "host_max_per_day");
+});
+
+test("P1 pass: resourceId cap keys match exactly (case-sensitive)", () => {
+  const rules = { maxPerTxUsd: 1, perResourceId: { "r-1": { maxPerDayUsd: 0.15 } } };
+  assert.equal(
+    evaluateSpendRules(rules, intent({ resourceId: "R-1", amountUsd: 0.05 }), [paid({ resourceId: "r-1", amountUsd: 0.14 })], NOW).allow,
+    true,
+    "R-1 payment does not count toward r-1 cap",
+  );
+  assert.equal(
+    evaluateSpendRules(rules, intent(), [paid({ resourceId: "R-1", amountUsd: 0.14 })], NOW).allow,
+    true,
+    "history on R-1 does not count toward r-1 intent",
+  );
+});
+
+test("P1 pass: non-default port shares the hostname cap", () => {
+  const rules = { maxPerTxUsd: 1, perHost: { "api.example.org": { maxPerDayUsd: 0.01 } } };
+  const d = evaluateSpendRules(
+    rules,
+    intent({ host: "api.example.org:8443", amountUsd: 0.02 }),
+    [paid({ host: "api.example.org", amountUsd: 0.5 })],
+    NOW,
+  );
+  assert.equal(d.allow, false);
+  assert.equal(d.refusedBy, "host_max_per_day");
+});
+
 test("P1: payments older than the window do not count", () => {
   const old = [paid({ amountUsd: 0.19, at: NOW - 25 * 3_600_000 })];
   assert.equal(evaluateSpendRules(RULES, intent({ amountUsd: 0.05 }), old, NOW).allow, true, "yesterday's payment is outside the 24 h day");

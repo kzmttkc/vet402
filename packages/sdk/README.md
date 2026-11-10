@@ -304,7 +304,11 @@ try {
 `evaluateSpendRules` answers from the rules you wrote, the one payment, your own
 record of payments, and the clock. A rule you leave out is not applied. The day
 is the last 24 hours and the hour is the last 60 minutes. A total that lands on
-the limit passes.
+the limit passes. Checks run in a fixed order: invalid rules, expiry, denied
+payee, per-payment cap, ALLOW requirement, delivery-rate floor, payee caps,
+`perHost` caps, `perResourceId` caps, then overall daily and hourly caps. Host
+caps use the URL hostname (a non-default port does not open a separate bucket)
+and match without case. `perResourceId` keys match the resource id exactly.
 
 ```ts
 evaluateSpendRules({ maxPerTxUsd: 0.1, requireAllow: true, minDeliveryRate: 0.9 }, { payTo: "0x" + "11".repeat(20), host: "api.example.org", resourceId: "r-1", amountUsd: 0.05, recommendation: "ALLOW", deliveryRate: 0.98 }, [], Date.now())
@@ -319,7 +323,7 @@ the body is not empty.
 await payChecked({ url: "https://api.example.org/v1/quote", rules: { maxPerTxUsd: 0.1, requireAllow: true }, amountUsd: 0.05, account, fetch })
 ```
 
-`refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, or `payee_unknown` when neither resolve nor the decision names a payee. A key left pending after a crash stays `payment_pending` and is not paid, so check on chain whether it was paid before calling again with a different idempotency key. Only records written by `payChecked` count toward the limit, and a payment made by calling `payOrRefuse` directly is not counted.
+`refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, `payee_unknown` when neither resolve nor the decision names a payee, or `decision_unavailable` when `requireAllow` is not set and vet402's payer decision could not be read after resolve (the call refuses and does not sign). When `requireAllow` is set and the decision is unreadable, `refusedBy` is `require_allow`. Spend-rule refusals use the `refusedBy` names from `evaluateSpendRules` (for example `host_max_per_day`, `resource_max_per_day`). A key left pending after a crash stays `payment_pending` and is not paid, so check on chain whether it was paid before calling again with a different idempotency key. The same idempotency key returns the saved result after a seller 5xx (with or without a payment-response header) and does not sign again. Only records written by `payChecked` count toward the limit, and a payment made by calling `payOrRefuse` directly is not counted.
 
 ## SpendGuard — pre-payment policy for agents
 

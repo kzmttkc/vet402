@@ -154,6 +154,17 @@ function exceeds(amountUsd, limitUsd) {
 function samePayee(a, b) {
     return a.toLowerCase() === b.toLowerCase();
 }
+/** Hostname for per-host caps: drops a trailing `:port` when the suffix is numeric. */
+function hostKey(host) {
+    const trimmed = host.trim();
+    if (trimmed === "")
+        return "";
+    const lower = trimmed.toLowerCase();
+    const colon = lower.lastIndexOf(":");
+    if (colon > 0 && /^\d+$/.test(lower.slice(colon + 1)))
+        return lower.slice(0, colon);
+    return lower;
+}
 function inWindow(row, nowMs, windowMs) {
     return typeof row.at === "number" && Number.isFinite(row.at) && row.at >= nowMs - windowMs;
 }
@@ -165,7 +176,7 @@ function rowsFor(history, nowMs, windowMs, match) {
             return typeof row.payTo === "string" && samePayee(row.payTo, match.payTo);
         }
         if (match?.host !== undefined) {
-            return typeof row.host === "string" && row.host.toLowerCase() === match.host.toLowerCase();
+            return typeof row.host === "string" && hostKey(row.host) === hostKey(match.host);
         }
         if (match?.resourceId !== undefined) {
             return typeof row.resourceId === "string" && row.resourceId === match.resourceId;
@@ -230,7 +241,7 @@ export function evaluateSpendRules(rules, intent, history, nowMs) {
         if (rows.length + 1 > payeeCap.maxCountPerHour)
             return refuse("payee_max_count_per_hour");
     }
-    const host = typeof intent?.host === "string" ? intent.host : "";
+    const host = typeof intent?.host === "string" ? hostKey(intent.host) : "";
     const hostCap = host !== "" ? capsForKey(normalized.perHost, host, true) : undefined;
     if (hostCap?.maxPerDayUsd !== undefined) {
         const rows = rowsFor(history, nowMs, DAY_MS, { host });
