@@ -1,6 +1,6 @@
 {
   "schema": "vet402-delivery-hit-rate-yardstick/v1",
-  "fixedAt": "2026-11-10T23:58:00.000Z",
+  "fixedAt": "2026-11-10T21:44:58.000Z",
   "fixedAtInitial": "2026-11-10T06:00:00.000Z",
   "fixedAtChangelog": [
     {
@@ -10,10 +10,10 @@
       "note": "Moved fixedAt to on or after documentFirstCommittedAt while remaining before repurchase results are read."
     },
     {
-      "changedAt": "2026-11-10T23:58:00.000Z",
+      "changedAt": "2026-11-10T21:44:58.000Z",
       "previous": "2026-11-10T12:00:00.000Z",
-      "next": "2026-11-10T23:58:00.000Z",
-      "note": "Raised fixedAt to on or after the commit that published this value, still before repurchase results are read."
+      "next": "2026-11-10T21:44:58.000Z",
+      "note": "Set fixedAt to the time of the commit that publishes it, still before any S1-3 results are read. Values between these two rows were only on an unpublished branch."
     }
   ],
   "documentFirstCommittedAt": "2026-11-10T11:57:07.000Z",

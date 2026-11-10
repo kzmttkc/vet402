@@ -9,7 +9,7 @@ import { withNoindex } from "@/lib/api/public-read-robots";
 import {
   loadDeliveryHitRateYardstick,
   publicDeliveryHitRateYardstick,
-  validateYardstickAgainstRepurchaseBoundary,
+  validateDeliveryHitRateYardstick,
 } from "@/lib/v4/delivery-hit-rate-yardstick";
 
 const RL_LIMIT = 60;
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   }
 
   const doc = loadDeliveryHitRateYardstick();
-  validateYardstickAgainstRepurchaseBoundary(doc);
+  validateDeliveryHitRateYardstick(doc);
   const retrievedAt = new Date().toISOString();
   return NextResponse.json(
     {

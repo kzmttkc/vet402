@@ -3,8 +3,12 @@ import { join } from "node:path";
 
 export const DELIVERY_HIT_RATE_YARDSTICK_PATH = "data/v4/delivery-hit-rate-yardstick.json";
 
-/** S1-3 boundary for reading repurchase results (code constant, not self-declared in yardstick JSON). */
-export const REPURCHASE_RESULTS_READ_NOT_BEFORE = "2026-11-11T00:00:00.000Z";
+/*
+ * There is no hard-coded "results are read after" clock here. A constant would be a boundary the
+ * yardstick declares for itself. The boundary is the first commit in git history whose code reads
+ * the S1-3 results, and tests/v4-313-must-1110.test.ts finds it in the history and compares it with
+ * fixedAt. A deployment has no .git, so this module only checks the document's own structure.
+ */
 
 export type MinSampleChangelogEntry = {
   changedAt: string;
@@ -44,65 +48,68 @@ export function loadDeliveryHitRateYardstick(): DeliveryHitRateYardstick {
   return JSON.parse(raw) as DeliveryHitRateYardstick;
 }
 
-export function validateFixedAtChangelog(doc: DeliveryHitRateYardstick): void {
-  if (doc.fixedAt === doc.fixedAtInitial) {
-    if (doc.fixedAtChangelog.length > 0) {
-      const last = doc.fixedAtChangelog[doc.fixedAtChangelog.length - 1]!;
-      if (last.next !== doc.fixedAt) {
-        throw new Error("fixedAtChangelog last next must match current fixedAt");
-      }
+function assertChain<T>(
+  label: string,
+  initial: T,
+  current: T,
+  rows: { previous: T; next: T }[],
+): void {
+  let at = initial;
+  rows.forEach((row, i) => {
+    if (row.previous !== at) {
+      throw new Error(`${label}Changelog[${i}].previous must equal the value before it`);
     }
-    return;
-  }
-  if (doc.fixedAtChangelog.length === 0) {
-    throw new Error("fixedAt changed from fixedAtInitial without a published changelog entry");
-  }
-  const last = doc.fixedAtChangelog[doc.fixedAtChangelog.length - 1]!;
-  if (last.next !== doc.fixedAt) {
-    throw new Error("fixedAtChangelog last next must match current fixedAt");
+    if (row.next === row.previous) {
+      throw new Error(`${label}Changelog[${i}] must change the value`);
+    }
+    at = row.next;
+  });
+  if (at !== current) {
+    if (rows.length === 0) {
+      throw new Error(`${label} changed from ${label}Initial without a published changelog entry`);
+    }
+    throw new Error(`${label}Changelog last next must match current ${label}`);
   }
 }
 
-export function validateYardstickAgainstRepurchaseBoundary(doc: DeliveryHitRateYardstick): void {
-  if ("repurchaseResultsReadNotBefore" in (doc as Record<string, unknown>)) {
+export function validateFixedAtChangelog(doc: DeliveryHitRateYardstick): void {
+  assertChain("fixedAt", doc.fixedAtInitial, doc.fixedAt, doc.fixedAtChangelog);
+  for (const [i, row] of doc.fixedAtChangelog.entries()) {
+    if (Number.isNaN(new Date(row.changedAt).getTime()) || Number.isNaN(new Date(row.next).getTime())) {
+      throw new Error(`fixedAtChangelog[${i}] must hold ISO times`);
+    }
+  }
+}
+
+export function validateMinSampleChangelog(doc: DeliveryHitRateYardstick): void {
+  assertChain("minSample", doc.minSampleInitial, doc.minSample, doc.minSampleChangelog);
+}
+
+/** Structure of the published yardstick. Runs in the route on every read. */
+export function validateDeliveryHitRateYardstick(doc: DeliveryHitRateYardstick): void {
+  const raw = doc as Record<string, unknown>;
+  if ("repurchaseResultsReadNotBefore" in raw) {
     throw new Error("yardstick JSON must not self-declare repurchaseResultsReadNotBefore");
   }
-  if ("instrumentation" in (doc as Record<string, unknown>)) {
+  if ("instrumentation" in raw) {
     throw new Error("yardstick JSON must not include V4 marketing instrumentation fields");
   }
   const fixed = new Date(doc.fixedAt).getTime();
   const committed = new Date(doc.documentFirstCommittedAt).getTime();
-  const notBefore = new Date(REPURCHASE_RESULTS_READ_NOT_BEFORE).getTime();
+  if (Number.isNaN(fixed) || Number.isNaN(committed)) {
+    throw new Error("yardstick fixedAt and documentFirstCommittedAt must be ISO times");
+  }
   if (!(fixed >= committed)) {
     throw new Error("yardstick fixedAt must be on or after documentFirstCommittedAt");
   }
-  if (!(fixed < notBefore)) {
-    throw new Error("yardstick fixedAt must be before REPURCHASE_RESULTS_READ_NOT_BEFORE");
+  if (!(Number.isInteger(doc.minSample) && doc.minSample > 0)) {
+    throw new Error("yardstick minSample must be a positive integer");
   }
   if (doc.timeSplit.evalStartUtcDate <= doc.timeSplit.trainEndUtcDate) {
     throw new Error("evalStartUtcDate must be after trainEndUtcDate");
   }
   validateFixedAtChangelog(doc);
   validateMinSampleChangelog(doc);
-}
-
-export function validateMinSampleChangelog(doc: DeliveryHitRateYardstick): void {
-  if (doc.minSample === doc.minSampleInitial) {
-    if (doc.minSampleChangelog.length > 0) {
-      const last = doc.minSampleChangelog[doc.minSampleChangelog.length - 1]!;
-      if (last.next !== doc.minSample) {
-        throw new Error("minSampleChangelog last next must match current minSample");
-      }
-    }
-    return;
-  }
-  if (doc.minSampleChangelog.length === 0) {
-    throw new Error("minSample changed from minSampleInitial without a published changelog entry");
-  }
-  const last = doc.minSampleChangelog[doc.minSampleChangelog.length - 1]!;
-  if (last.next !== doc.minSample) {
-    throw new Error("minSampleChangelog last next must match current minSample");
-  }
 }
 
 export type PublicDeliveryHitRateYardstick = Omit<
