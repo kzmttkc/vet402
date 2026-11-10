@@ -54,10 +54,10 @@ function gitYardstickFirstCommitIso(): string {
 }
 
 function gitLogSCommitterIso(needle: string, relPath: string): string {
-  const raw = execSync(`git log -S ${JSON.stringify(needle)} --format=%cI -1 -- ${relPath}`, {
-    cwd: ROOT,
-    encoding: "utf8",
-  }).trim();
+  const raw = execSync(
+    `git log -S ${JSON.stringify(needle)} --reverse --format=%cI -- ${relPath} | head -1`,
+    { cwd: ROOT, encoding: "utf8" },
+  ).trim();
   assert.ok(raw, `git must contain ${needle} in ${relPath}`);
   return new Date(raw).toISOString();
 }
