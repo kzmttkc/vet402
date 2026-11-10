@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-10 ERC-8004 index for Ethereum and BNB Chain (requirement 3.10)
+
+- **What**: `/api/v1/observatory/state` `erc8004.byChain["eip155:1"]` and `["eip155:56"]` are now `scanned` (scannedAgents, matchedAgents, indexBlock) or `unavailable` (reason, no counts), never `not_indexed`. New table `erc8004_chain_agents` (schema.ts), writer `src/lib/db/erc8004-chain-index.ts`, and job `src/lib/indexer/erc8004-chain-indexer.ts` (ERC-721 Transfer and WalletSet from the same registry address, exact lowercase owner and agentWallet, 64 confirmations, own checkpoint `identity_registry:<caip2>`), run inside `runIdentityIndexes` beside the Base indexes. The state read stays DB-only. Top-level counts stay Base. `ERC8004_ABOUT` moved to `erc8004-match.ts`. OpenAPI and methodology updated. Acceptance rows fixed in `tests/erc8004-unindexed-chains-acceptance-1110.test.ts` and `tests/erc8004-unindexed-chains.pg.test.ts`.
+- **Why**: Ethereum and BNB Chain sat at `not_indexed` while Base was scanned. Not a purchase lane, no new contract, no money moves.
+- **Impact**: Needs `npm run db:push` for `erc8004_chain_agents` before the job can write (until then both chains say `unavailable` / `query_failed`). The job reads only when `ETHEREUM_RPC_URL` / `BNB_RPC_URL` are set (unset means `skipped`, state says `index_not_started`). Start blocks are estimates (Ethereum 20,000,000, BNB 50,000,000), not measured deploy blocks. Override with `ERC8004_ETHEREUM_FROM_BLOCK` / `ERC8004_BNB_FROM_BLOCK` before the first run. The cron body gains `chainIndexes`. Base `ok`, `caughtUp` and status are unchanged. export.csv untouched.
 ## 2026-11-10 Front page: three entries by what the user wants to do
 
 - **What**: `src/app/page.tsx` keeps the hero, the live counts (with the delivered definition), the latest purchase card and the footer, and replaces the middle sections with three entries: Before you pay (`/x402/check-a-seller`), While you pay (`/docs/api#packages`, the spend guard) and After you pay (`/observatory`). Entry clicks count as `entry_before_pay`, `entry_while_pay` and `entry_after_pay`. The seller row on the latest purchase card drops "Only" when every paid call delivered.

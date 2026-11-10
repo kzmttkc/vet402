@@ -10,7 +10,7 @@ import { readStateAggregates } from "@/lib/observatory/state-reads";
 import { readAdoption, type Adoption } from "@/lib/observatory/adoption";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
-import { getErc8004MatchCached } from "@/lib/observatory/erc8004-match";
+import { ERC8004_ABOUT, getErc8004MatchCached } from "@/lib/observatory/erc8004-match";
 import { withNoindex } from "@/lib/api/public-read-robots";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
@@ -35,8 +35,7 @@ const ADOPTION_BUDGET_MS = 1_500;
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
 export const dynamic = "force-dynamic";
 
-const ERC8004_ABOUT =
-  "Exact lowercase address equality between the payTo of vet402 purchase rows and the owner of an agent in the Base ERC-8004 Identity Registry index (and its agentWallet once that index holds rows). Each purchase row counts once even when its payTo owns several agents. readAt is when these counts were read from the database, cached up to 5 minutes.";
+// erc8004.about の文は src/lib/observatory/erc8004-match.ts の ERC8004_ABOUT（2026-11-10・要件 3.10 で移した）。
 
 export async function GET(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";

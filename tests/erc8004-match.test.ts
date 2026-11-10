@@ -60,6 +60,10 @@ function fakeDb(opts: { checkpoint: bigint | null; matchRows?: MatchRow[]; walle
       if (text.includes("scanned_agents") && text.includes("owner_agents oa")) {
         return { rows: [sqlRow(opts.matchRows ?? [], opts.walletRows ?? 0, opts.totals)] };
       }
+      // 2026-11-10（要件 3.10）: Ethereum・BNB Chain の索引。ここでは一度も走っていない形（到達点なし）。
+      if (text.includes("erc8004_chain_agents")) {
+        return { rows: [{ ...sqlRow([], 0), index_block: null, scanned_agents: "0" }] };
+      }
       throw new Error(`unexpected query ${text.slice(0, 80)}`);
     },
   };
@@ -167,8 +171,8 @@ test("cached reader: ok gets readAt, a failure is not stored and the next read r
     matchedPurchases: 0, matchedSettled: 0,
     byChain: {
       "eip155:8453": { status: "scanned", scannedAgents: 1, matchedAgents: 0, indexBlock: "1" },
-      "eip155:1": { status: "not_indexed" },
-      "eip155:56": { status: "not_indexed" },
+      "eip155:1": { status: "unavailable", reason: "index_not_started" },
+      "eip155:56": { status: "unavailable", reason: "index_not_started" },
     },
     matches: [], notes: [],
   };
@@ -275,6 +279,6 @@ test("state API publishes the ok shape with readAt and about when the read succe
   assert.equal(body.erc8004.readAt, summary.readAt);
   assert.equal(body.erc8004.matchedPurchases, 552);
   assert.equal(body.erc8004.byChain["eip155:8453"].indexBlock, "54462269");
-  assert.equal(body.erc8004.byChain["eip155:1"].status, "not_indexed");
+  assert.deepEqual(body.erc8004.byChain["eip155:1"], { status: "unavailable", reason: "index_not_started" });
   assert.match(body.erc8004.about, /counts once/);
 });

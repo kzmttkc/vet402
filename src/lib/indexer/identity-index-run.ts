@@ -1,6 +1,7 @@
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { indexAgentWallets, type AgentWalletIndexResult } from "./agent-wallet-indexer";
 import { indexOwnerAgents, type OwnerIndexResult } from "./owner-indexer";
+import { indexErc8004Chains, type Erc8004ChainIndexResult } from "./erc8004-chain-indexer";
 
 /**
  * `/api/cron/index-owners` の中身（2026-10-31）。所有者索引と WalletSet 索引を、同じ時計・同じ
@@ -18,6 +19,11 @@ import { indexOwnerAgents, type OwnerIndexResult } from "./owner-indexer";
  * 先の方に残るので、その巻き戻りは二度と直らない。l1-purchase・index-settlements と同じ job_leases の
  * 1 文の lease（acquireLeaseFailClosed）を取り、取れなければ何も読まず書かずに lease_held を返す。
  * lease の期限 330 秒は maxDuration（300 秒）より長い。殺された回の lease は期限で切れる。
+ *
+ * 2026-11-10（要件 3.10）: Ethereum・BNB Chain の ERC-8004 索引（erc8004-chain-indexer.ts）も同じ
+ * 時計・同じ lease で並べて回す。鎖の RPC が無ければ skipped。こちらの失敗は chainIndexes に
+ * 書くだけで、Base の ok・caughtUp・応答の status は動かさない（catch-up スクリプトは Base の
+ * caughtUp でループを止めるので、その意味を変えない）。
  */
 export const IDENTITY_INDEX_LEASE = "index-owners";
 export const IDENTITY_INDEX_LEASE_TTL_SECONDS = 330;
@@ -35,6 +41,8 @@ export type IdentityIndexRunBody = {
   /** この回に checkpoint が進んだブロック数。 */
   blocksAdvanced: { owner: number; wallet: number };
   walletIndex: AgentWalletIndexResult | { error: string };
+  /** Ethereum・BNB Chain の ERC-8004 索引。鎖ごとに ok・skipped・error。 */
+  chainIndexes: Erc8004ChainIndexResult[];
 } & Omit<Partial<OwnerIndexResult>, "blocksAdvanced" | "caughtUp">;
 
 const BUDGET_STOPS = new Set(["time_budget", "hard_stop", "write_deadline"]);
@@ -85,7 +93,11 @@ async function runHoldingLease(input: {
     deps: { now },
   };
 
-  const [owner, wallet] = await Promise.allSettled([indexOwnerAgents(shared), indexAgentWallets(shared)]);
+  const [owner, wallet, chains] = await Promise.allSettled([
+    indexOwnerAgents(shared),
+    indexAgentWallets(shared),
+    indexErc8004Chains(shared),
+  ]);
 
   const ownerResult = owner.status === "fulfilled" ? owner.value : null;
   const walletResult = wallet.status === "fulfilled" ? wallet.value : null;
@@ -103,11 +115,13 @@ async function runHoldingLease(input: {
     stoppedByBudget: [ownerResult?.stoppedBy, walletResult?.stoppedBy].some((s) => s !== undefined && BUDGET_STOPS.has(s)),
     blocksAdvanced: { owner: ownerResult?.blocksAdvanced ?? 0, wallet: walletResult?.blocksAdvanced ?? 0 },
     walletIndex: walletResult ?? { error: message(wallet.status === "rejected" ? wallet.reason : "unknown") },
+    // indexErc8004Chains は鎖ごとの失敗を中で結果に変えるので、ここで rejected になるのは想定外の時だけ。
+    chainIndexes: chains.status === "fulfilled" ? chains.value : [],
   };
 
   return {
     status: errors.length === 0 ? 200 : 500,
     body,
-    failures: [owner, wallet].flatMap((r) => (r.status === "rejected" ? [r.reason] : [])),
+    failures: [owner, wallet, chains].flatMap((r) => (r.status === "rejected" ? [r.reason] : [])),
   };
 }

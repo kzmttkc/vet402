@@ -2929,11 +2929,14 @@ paths:
                     description: >-
                       Exact address matches between the payTo of vet402's purchase
                       rows and the owner (or agentWallet) of an ERC-8004 agent in
-                      the Base Identity Registry index. Lowercase address equality
+                      vet402's Identity Registry index. Lowercase address equality
                       only, no name or fuzzy matching. Read from vet402's own index,
                       cached for 5 minutes, with its own readAt. status unavailable
-                      carries no counts. A chain vet402 does not index says
-                      not_indexed, never 0. Since 2026-11-08.
+                      carries no counts. The top-level counts are Base. byChain
+                      gives Base, Ethereum and BNB Chain each on its own. A chain
+                      whose index cannot be read says unavailable with a reason,
+                      never 0. Since 2026-11-08. Ethereum and BNB Chain since
+                      2026-11-10.
                     required: [status, checkedAt, readAt]
                     properties:
                       status: { type: string, enum: [ok, unavailable] }
@@ -2948,17 +2951,19 @@ paths:
                       matchedSettled: { type: integer, description: The part of matchedPurchases with status settled. }
                       byChain:
                         type: object
-                        description: '"eip155:8453" is scanned with indexBlock. "eip155:1" and "eip155:56" are not_indexed.'
+                        description: '"eip155:8453", "eip155:1" and "eip155:56". Each is scanned (with scannedAgents, matchedAgents and indexBlock) or unavailable (with reason and no counts). agentId is numbered per chain.'
                         additionalProperties:
                           type: object
+                          required: [status]
                           properties:
-                            status: { type: string, enum: [scanned, not_indexed] }
-                            scannedAgents: { type: integer }
-                            matchedAgents: { type: integer }
-                            indexBlock: { type: string }
+                            status: { type: string, enum: [scanned, unavailable] }
+                            scannedAgents: { type: integer, description: Agents with an owner in this chain's index. Present only when scanned. }
+                            matchedAgents: { type: integer, description: Present only when scanned. }
+                            indexBlock: { type: string, description: The last block this chain's index has read and written. Present only when scanned. }
+                            reason: { type: string, description: Present only when unavailable. index_not_started when the index has not read this chain yet. }
                       matches:
                         type: array
-                        description: Up to 200, largest purchases first.
+                        description: Up to 200 across the chains, largest purchases first. chainId names the chain of agentId.
                         items:
                           type: object
                           properties:

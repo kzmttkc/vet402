@@ -1,7 +1,9 @@
 // ============================================================
 // ERC-8004 段階 A の合格の表（2026-11-08・Claude が先に固定。実装はこの表を緑にする）。
 // 数えるのは、購入の payTo と Base の ERC-8004 agent の持ち主（または agentWallet）の
-// アドレスの完全一致だけ。読めなかった時は 0 を出さない。索引の無いチェーンは not_indexed。
+// アドレスの完全一致だけ。読めなかった時は 0 を出さない。
+// 2026-11-10（要件 3.10）: Ethereum・BNB Chain は not_indexed をやめ、scanned か unavailable
+// （tests/erc8004-unindexed-chains-acceptance-1110.test.ts）。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -32,9 +34,10 @@ test("ERC-8004 A: counts distinct agents and payTo, sums purchases and settled",
   assert.equal(s.scannedAgents, 1_123_563);
   assert.equal(s.checkedAt, "2026-11-08T00:00:00.000Z");
   assert.equal(s.byChain["eip155:8453"].status, "scanned");
-  assert.equal(s.byChain["eip155:1"].status, "not_indexed");
-  assert.equal(s.byChain["eip155:56"].status, "not_indexed");
-  assert.equal("matchedAgents" in s.byChain["eip155:1"], false, "a chain that is not indexed carries no count");
+  // 鎖の読みを渡していないので unavailable（3.10 より前は not_indexed）。
+  assert.equal(s.byChain["eip155:1"].status, "unavailable");
+  assert.equal(s.byChain["eip155:56"].status, "unavailable");
+  assert.equal("matchedAgents" in s.byChain["eip155:1"], false, "a chain that cannot be read carries no count");
   for (const m of s.matches) {
     assert.equal(m.payTo, m.payTo.toLowerCase());
     assert.equal(m.chainId, "eip155:8453");

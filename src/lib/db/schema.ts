@@ -286,6 +286,32 @@ export const ownerAgents = pgTable(
 );
 
 /**
+ * ERC-8004 Identity Registry index for the chains other than Base (2026-11-10, requirement 3.10).
+ * Ethereum (chain_id 1) and BNB Chain (chain_id 56). Written only by the trusted index job
+ * (src/lib/indexer/erc8004-chain-indexer.ts), read by the state API's erc8004 block.
+ *
+ * One row per (chain, agent). owner is the `to` of the agent's last ERC-721 Transfer, wallet is
+ * the last WalletSet (null when unset or cleared). A burned agent has no row. Both are stored
+ * lowercase so the exact-equality join against purchase payTo uses the index without lower().
+ * owner_agents stays Base-only and is not touched.
+ */
+export const erc8004ChainAgents = pgTable(
+  "erc8004_chain_agents",
+  {
+    chainId: integer("chain_id").notNull(),
+    agentId: bigint("agent_id", { mode: "bigint" }).notNull(),
+    owner: text("owner"),
+    wallet: text("wallet"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.chainId, t.agentId] }),
+    index("erc8004_chain_agents_owner_idx").on(t.chainId, t.owner),
+    index("erc8004_chain_agents_wallet_idx").on(t.chainId, t.wallet),
+  ],
+);
+
+/**
  * ERC-8004 NewFeedback events (2026-08-12). Written only by the trusted
  * indexer (src/lib/indexer/feedback-indexer.ts); read by
  * fetchRecentFeedbackStats to answer "how much feedback, from how many

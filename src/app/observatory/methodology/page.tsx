@@ -1175,12 +1175,14 @@ export default async function ObservatoryMethodologyPage() {
             state API
           </Link>{" "}
           counts exact address equality between the payTo of a vet402 purchase row and the owner
-          of an agent in vet402&apos;s index of the ERC-8004 Identity Registry on Base (or the
+          of an agent in vet402&apos;s index of the ERC-8004 Identity Registry (or the
           agent&apos;s agentWallet, once that index holds rows). Addresses are compared in
-          lowercase and nothing else is compared. It does not cover other chains (Ethereum and
-          BNB Chain say <code>not_indexed</code>, never 0), similar names, or the endpoints in an
-          agent&apos;s registration file. A read that fails says{" "}
-          <code>unavailable</code> and carries no counts.
+          lowercase and nothing else is compared. The top-level counts are Base.{" "}
+          <code>byChain</code> gives Base, Ethereum and BNB Chain each on its own, with the agents
+          scanned, the agents matched and the block that chain&apos;s index has read to. A chain
+          whose index cannot be read yet says <code>unavailable</code> with a reason and no counts. It
+          does not cover similar names or the endpoints in an agent&apos;s registration file. A
+          read that fails says <code>unavailable</code> and carries no counts.
         </p>
 
         <h2 className="sec-head">
