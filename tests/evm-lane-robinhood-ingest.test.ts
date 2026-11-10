@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  EVM_LANE_ENDPOINT_SOURCE,
   EVM_LANE_ROOTS_KIND,
   evmLanePublicCountsFromRoots,
   evmLanePurchaseRecords,
@@ -20,6 +21,9 @@ import {
   ingestEvmLaneRobinhood,
 } from "@/lib/observatory/evm-lane-ingest";
 import { chainIdentity, publicChainLabel } from "@/lib/observatory/chains";
+import { notSellerRetestRequestSourceSql, SELLER_RETEST_REQUEST_SOURCE } from "@/lib/observatory/seller-retest-requests";
+import { settlementSourceOf } from "@/lib/observatory/settlement-source";
+import { settledTier } from "@/lib/observatory/settled-tier";
 
 const FIXTURE = join(__dirname, "fixtures/evm-lane/robinhood-roots.json");
 
@@ -59,4 +63,35 @@ test("byChain identity: Robinhood Chain / eip155:4663", () => {
 test("ingest module is importable (implementation present)", () => {
   assert.equal(typeof ingestEvmLaneRobinhood, "function");
   assert.equal(readFileSync(FIXTURE, "utf8").includes("vet402-evm-purchase"), true);
+});
+
+test("fixture salt is Merkle leaf noise, not EIP-3009 nonce (must not become auth_nonce)", () => {
+  const roots = loadEvmLaneRootsJson(FIXTURE);
+  const withSalt = evmLanePurchaseRecords(roots).filter((r) => typeof r.salt === "string" && r.salt.length > 0);
+  assert.ok(withSalt.length > 0, "fixture carries salt on delivered rows");
+  const settled = mapEvmLaneIngestRows(roots).filter((r) => r.status === "settled" && r.record.settlementTx);
+  assert.equal(settled.length, 13);
+  for (const row of settled) {
+    const late =
+      row.record.settlementTx && row.record.chainCheck
+        ? { source: "chain_read", txHash: row.record.settlementTx, linkedAt: row.record.at }
+        : null;
+    assert.equal(
+      settlementSourceOf({ txHash: row.record.settlementTx, lateSettlement: late }),
+      "vet402_index",
+      "chain-check tx is not a seller receipt",
+    );
+    assert.equal(
+      settledTier({ status: "settled", authNonce: null, settlementVerified: true, network: row.record.chain }),
+      "amount_payee_only",
+      "salt must not be written as auth_nonce",
+    );
+  }
+});
+
+test("L0/L1 listing exclusion covers vet402_evm_lane alongside seller_retest_request", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/observatory/seller-retest-requests.ts"), "utf8");
+  assert.match(src, new RegExp(EVM_LANE_ENDPOINT_SOURCE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.notEqual(SELLER_RETEST_REQUEST_SOURCE, EVM_LANE_ENDPOINT_SOURCE);
+  assert.equal(typeof notSellerRetestRequestSourceSql, "function");
 });

@@ -11,6 +11,9 @@ import { NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
 import { deliveredPredicate } from "@/lib/observatory/delivery";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
+import { notSellerRetestRequestSourceSql } from "@/lib/observatory/seller-retest-requests";
+import { settlementSourceOf } from "@/lib/observatory/settlement-source";
+import { settledTier } from "@/lib/observatory/settled-tier";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
@@ -25,6 +28,7 @@ if (!TEST_DB) {
   test("ingest: rows match public roots; byChain gains Robinhood Chain with settled 13", async (t) => {
     const { getDb } = await import("@/lib/db/client");
     const {
+      EVM_LANE_ENDPOINT_SOURCE,
       evmLanePublicCountsFromRoots,
       ingestEvmLaneRobinhood,
       loadEvmLaneRootsJson,
@@ -39,6 +43,8 @@ if (!TEST_DB) {
     await t.test("reset L1 purchases for Robinhood network", async () => {
       await db.execute(sql`DELETE FROM x402_l1_purchases WHERE network = ${ROBINHOOD_CAIP2}`);
     });
+
+    const statsBeforeIngest = await getObservatoryStats();
 
     const first = await ingestEvmLaneRobinhood(db, roots);
     assert.equal(first.scanned, expect.published);
@@ -71,6 +77,49 @@ if (!TEST_DB) {
     assert.equal(rh!.settled, expect.settled);
     assert.equal(rh!.delivered, expect.delivered);
     assert.equal(rh!.attempts, expect.published);
+
+    const statsAfterIngest = await getObservatoryStats();
+    assert.equal(statsAfterIngest.activeEndpoints, statsBeforeIngest.activeEndpoints, "vet402_evm_lane must not inflate L0 active count");
+    assert.equal(statsAfterIngest.totalEndpoints, statsBeforeIngest.totalEndpoints, "vet402_evm_lane must not inflate listed total");
+
+    await t.test("rows: auth_nonce null, amount_payee_only tier, vet402_index settlement source", async () => {
+      const purchases = await db.execute(sql`
+        SELECT status, auth_nonce, tx_hash, settlement_verified, network,
+               raw_response_meta->'lateSettlement' AS late_settlement
+        FROM x402_l1_purchases WHERE network = ${ROBINHOOD_CAIP2}
+      `);
+      const rows = (Array.isArray(purchases) ? purchases : (purchases as { rows: Record<string, unknown>[] }).rows) as {
+        status: string;
+        auth_nonce: string | null;
+        tx_hash: string | null;
+        settlement_verified: boolean | null;
+        network: string;
+        late_settlement: unknown;
+      }[];
+      assert.equal(rows.filter((r) => r.auth_nonce).length, 0, "leaf salt must not be stored as auth_nonce");
+      for (const r of rows) {
+        if (r.status !== "settled" || !r.tx_hash) continue;
+        assert.equal(
+          settledTier({
+            status: r.status,
+            authNonce: r.auth_nonce,
+            settlementVerified: r.settlement_verified,
+            network: r.network,
+          }),
+          "amount_payee_only",
+        );
+        assert.equal(settlementSourceOf({ txHash: r.tx_hash, lateSettlement: r.late_settlement }), "vet402_index");
+      }
+    });
+
+    await t.test("vet402_evm_lane endpoints fail listing exclusion predicate (not L1 candidates)", async () => {
+      const hit = await db.execute(sql`
+        SELECT count(*)::int AS n FROM x402_endpoints e
+        WHERE e.source = ${EVM_LANE_ENDPOINT_SOURCE} AND ${notSellerRetestRequestSourceSql()}
+      `);
+      const hitRow = (Array.isArray(hit) ? hit[0] : (hit as { rows: Record<string, unknown>[] }).rows[0]) as { n: number };
+      assert.equal(hitRow.n, 0);
+    });
 
     const savedProxy = process.env.PROXY_HEADER_SOURCE;
     process.env.PROXY_HEADER_SOURCE = "generic";
