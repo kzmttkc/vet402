@@ -17,10 +17,13 @@ if (!TEST_DB) {
   assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
-  async function seedFixableRow(at: string, tx: string) {
+  async function seedFixableRow(at: string, tx: string, bodyHead: string = PYDANTIC) {
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
+    const { sql } = await import("drizzle-orm");
     const db = getDb()!;
+    // 再実行できるように、各テストの最初に台帳を空にする（ガードはこのファイルの先頭で通っている）。
+    await db.execute(sql`TRUNCATE x402_endpoints, x402_l0_probes, x402_l1_purchases`);
 
     const BODY_SCHEMA = { properties: { input: { properties: { body: { type: "object" } } } } };
     const [ep] = await db
@@ -48,7 +51,7 @@ if (!TEST_DB) {
         requestBody: "declared",
         requestBodySha256: "d".repeat(64),
         requestQuery: "empty",
-        bodyHead: PYDANTIC,
+        bodyHead,
       },
       spentUnits: "10000",
       amountUnits: "10000",
@@ -122,5 +125,25 @@ if (!TEST_DB) {
     assert.equal(row2.mode?.key, "seller_fixable_input");
     assert.equal(row2.bucket, "seller");
     assert.equal(row2.confirmedSeller, true);
+  });
+
+  test("seller_fixable_input: the reader cuts bodyHead at 500 characters, so a longer stored answer stays held", async () => {
+    const { readRecordSides } = await import("@/lib/sellers/reader");
+    const { recordRowKey } = await import("@/lib/sellers/board");
+
+    const items = Array.from({ length: 12 }, (_, i) => `{"type":"missing","loc":["body","field_${i}"],"msg":"Field required","input":{}}`);
+    const long = `{"detail":[${items.join(",")}]}`;
+    assert.ok(long.length > 500);
+    JSON.parse(long);
+    const at = "2026-09-22T12:00:00Z";
+    const tx = `0x${"f3".repeat(32)}`;
+    const { db, epId } = await seedFixableRow(at, tx, long);
+
+    const sides = await readRecordSides(db, epId);
+    const shown = sides.rows.get(recordRowKey(at, "settled", tx));
+    assert.ok(shown, "reader must return the purchase row");
+    assert.equal(shown.mode?.key, "settled_then_rejected");
+    assert.notEqual(shown.bucket, "seller");
+    assert.equal(shown.held, "settled_4xx");
   });
 }

@@ -94,7 +94,9 @@ function extractValidationItems(parsed: unknown): ValItem[] | null {
       if (scope !== "body" && scope !== "query") return null;
 
       let tail: string[] | null = null;
+      // errors[].field|path|param（path は配列でも文字列でも。文字列は express-validator v7 の形）
       if (Array.isArray(e.path)) tail = e.path.map(String);
+      else if (typeof e.path === "string") tail = [e.path];
       else if (typeof e.field === "string") tail = [e.field];
       else if (typeof e.param === "string") tail = [e.param];
       if (!tail) return null;

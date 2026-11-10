@@ -68,6 +68,8 @@ const PASS: Array<[string, SellerRowFacts]> = [
   ["400 + zod nested under error", settled({ bodyHead: `{"error":{"issues":[{"code":"too_small","path":["body","source"],"message":"String must contain at least 50 character(s)"}]}}` })],
   ["400 + errors[].field with in body", settled({ bodyHead: `{"errors":[{"in":"body","field":"offer_id","message":"is required"}]}` })],
   ["400 + errors[].location query", settled({ bodyHead: `{"errors":[{"location":"query","param":"symbol","message":"is required"}]}` })],
+  // 2026-11-11: errors[].path は配列でも文字列でも場所（express-validator v7 の形）
+  ["400 + errors[].path string with location body", settled({ bodyHead: `{"errors":[{"type":"field","value":"","msg":"Invalid value","path":"email","location":"body"}]}` })],
 ];
 
 const FAIL: Array<[string, SellerRowFacts]> = [
@@ -153,6 +155,9 @@ const FAIL: Array<[string, SellerRowFacts]> = [
   ["pydantic loc cites preauthentication", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","preauthentication"],"msg":"Field required"}]}` })],
   ["pydantic loc cites myauthn", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","myauthn"],"msg":"Field required"}]}` })],
   ["errors[].property with in body", settled({ bodyHead: `{"errors":[{"in":"body","property":"title","message":"is required"}]}` })],
+  ["errors[].path string cites api_key", settled({ bodyHead: `{"errors":[{"type":"field","msg":"Invalid value","path":"api_key","location":"body"}]}` })],
+  ["errors[].path string dotted", settled({ bodyHead: `{"errors":[{"type":"field","msg":"Invalid value","path":"address.city","location":"body"}]}` })],
+  ["errors[].path string with location headers", settled({ bodyHead: `{"errors":[{"type":"field","msg":"Invalid value","path":"x_request_id","location":"headers"}]}` })],
 ];
 
 for (const [name, r] of PASS) {
@@ -209,6 +214,20 @@ test("S1-1: bodyHead truncated at 500 characters still classifies via the cut st
   );
   assert.equal(c.mode?.key, "seller_fixable_input");
   assert.equal(c.bucket, "seller");
+});
+
+test("S1-1: a validation answer longer than 500 characters, cut at 500 like the readers, stays held", () => {
+  const items = Array.from({ length: 12 }, (_, i) => `{"type":"missing","loc":["body","field_${i}"],"msg":"Field required","input":{}}`);
+  const full = `{"detail":[${items.join(",")}]}`;
+  assert.ok(full.length > 500, "fixture must exceed 500 characters");
+  JSON.parse(full);
+  const head = full.slice(0, 500);
+  assert.throws(() => JSON.parse(head), "the cut head is not JSON");
+  const r = settled({ meta: { requestBody: "declared", requestBodySha256: "a".repeat(64), requestQuery: "empty", bodyHead: head } });
+  assert.equal(heldReasonOf(r), "settled_4xx");
+  const c = classifyRow(r);
+  assert.equal(c.mode?.key, "settled_then_rejected");
+  assert.notEqual(c.bucket, "seller");
 });
 
 test("S1-1: export.csv and the state API do not read the /sellers classification", () => {
