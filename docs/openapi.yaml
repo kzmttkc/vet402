@@ -2821,7 +2821,8 @@ paths:
       summary: F4 v1 dated delivery forecast for a named buyer
       description: |
         Forecast text is limited to buyers that identify themselves. Training rows
-        are fixed to the snapshot date. Not a live payer verdict.
+        are read from Stellar roots day snapshots (contracts/stellar-roots/days) on or
+        before snapshotDate. Not a live payer verdict.
       security: []
       parameters:
         - in: query

@@ -8,6 +8,7 @@ import {
 import { withNoindex } from "@/lib/api/public-read-robots";
 import {
   loadDeliveryHitRateYardstick,
+  publicDeliveryHitRateYardstick,
   validateYardstickAgainstRepurchaseBoundary,
 } from "@/lib/v4/delivery-hit-rate-yardstick";
 
@@ -34,8 +35,7 @@ export async function GET(request: NextRequest) {
   const retrievedAt = new Date().toISOString();
   return NextResponse.json(
     {
-      ...doc,
-      gate2IsNotHitRate: true,
+      ...publicDeliveryHitRateYardstick(doc),
       retrievedAt,
       license: "CC-BY-4.0",
       licenseUrl: "https://creativecommons.org/licenses/by/4.0/",

@@ -589,7 +589,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/v4/named-buyer-delivery-forecast?snapshotDate=YYYY-MM-DD&resourceKey=…",
-    note: "F4 v1 dated delivery forecast for a buyer that identifies itself. Training rows end at snapshotDate. Key-less. 60 requests per minute per IP.",
+    note: "F4 v1 dated delivery forecast (名乗る買い手の場合). Training rows come from Stellar roots day snapshots on or before snapshotDate. Key-less. 60 requests per minute per IP.",
     response: `HTTP 200. snapshotDate, resourceKey, text, trainCount, deliveryRate.`,
   },
   {

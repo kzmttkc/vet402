@@ -6,7 +6,7 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { withNoindex } from "@/lib/api/public-read-robots";
-import { buildNamedBuyerDeliveryForecastFromFixture } from "@/lib/v4/named-buyer-delivery-forecast";
+import { buildNamedBuyerDeliveryForecastFromPinnedSnapshot } from "@/lib/v4/named-buyer-delivery-forecast";
 
 const RL_LIMIT = 60;
 const RL_WINDOW_MS = 60_000;
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "resourceKey required." }, { status: 400, headers: perCaller });
   }
 
-  const body = buildNamedBuyerDeliveryForecastFromFixture(snapshotDate, resourceKey);
+  const body = buildNamedBuyerDeliveryForecastFromPinnedSnapshot(snapshotDate, resourceKey);
   const retrievedAt = new Date().toISOString();
   return NextResponse.json(
     {

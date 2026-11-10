@@ -59,7 +59,6 @@ export type Gate2Report = {
     accounts: { email: string; createdAt: Date | null; lastApiUse: Date | null }[];
   };
   judgementB: {
-    purpose: "pmf_weekly_external_api_usage";
     rows: { period: string; apiKeyId: string; email: string; count: number }[];
   };
   judgementC: {
@@ -268,7 +267,7 @@ export async function buildGate2Report(): Promise<Gate2Report> {
       pass: judgementA.length >= 5,
       accounts: judgementA,
     },
-    judgementB: { purpose: "pmf_weekly_external_api_usage", rows: judgementB },
+    judgementB: { rows: judgementB },
     judgementC: {
       continuousUsage: judgementCi,
       settlementWriteback: judgementCii,

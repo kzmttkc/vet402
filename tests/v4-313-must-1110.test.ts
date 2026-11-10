@@ -3,18 +3,24 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { execSync } from "node:child_process";
 import { NextRequest } from "next/server";
 
 import { buildGate2Report } from "@/lib/gate2/report";
 import {
   DELIVERY_HIT_RATE_YARDSTICK_PATH,
+  applyMinSampleChange,
   loadDeliveryHitRateYardstick,
+  validateMinSampleChangelog,
   validateYardstickAgainstRepurchaseBoundary,
 } from "@/lib/v4/delivery-hit-rate-yardstick";
+import { F4_TRAINING_SNAPSHOT_SOURCE } from "@/lib/v4/f4-training-snapshot";
 import { partitionLedgerByTimeSplit, type LedgerTimeSplitRow } from "@/lib/v4/ledger-time-split";
 import {
-  NAMED_BUYER_SCOPE_PHRASE,
+  NAMED_BUYER_SCOPE_PHRASE_EN,
+  NAMED_BUYER_SCOPE_PHRASE_JA,
   buildNamedBuyerDeliveryForecast,
+  buildNamedBuyerDeliveryForecastFromPinnedSnapshot,
   trainingRowsOnOrBeforeSnapshot,
 } from "@/lib/v4/named-buyer-delivery-forecast";
 import { assertPublicEnglishSurface } from "@/lib/v4/public-english";
@@ -22,24 +28,54 @@ import { assertPublicEnglishSurface } from "@/lib/v4/public-english";
 const ROOT = join(__dirname, "..");
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
-const FORBIDDEN_HIT_RATE_MARKETING = ["93.9%", "96.45%", "93.9", "96.45"];
+const FORBIDDEN_HIT_RATE_MARKETING = [
+  "93.9%",
+  "96.45%",
+  "93.9",
+  "96.45",
+  "0.0597",
+  "0.0355",
+  "0.0348",
+  "5300",
+  "5,300",
+];
+
+function gitYardstickFirstCommitIso(): string {
+  const raw = execSync(`git log --diff-filter=A --format=%cI -1 -- ${DELIVERY_HIT_RATE_YARDSTICK_PATH}`, {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  assert.ok(raw, "yardstick file must exist in git history");
+  return new Date(raw).toISOString();
+}
 
 test("3.13-S1-2: 物差し JSON が存在し fixedAt と minSample と時間分割がある", () => {
   const doc = loadDeliveryHitRateYardstick();
   assert.equal(typeof doc.fixedAt, "string");
   assert.ok(doc.fixedAt.endsWith("Z"));
+  assert.equal(typeof doc.documentFirstCommittedAt, "string");
   assert.equal(typeof doc.minSample, "number");
+  assert.equal(doc.minSample, doc.minSampleInitial);
   assert.ok(doc.minSample > 0);
+  assert.match(doc.minSampleRationale, /S1-2/);
   assert.equal(typeof doc.timeSplit.trainEndUtcDate, "string");
   assert.equal(typeof doc.timeSplit.evalStartUtcDate, "string");
   assert.ok(doc.timeSplit.evalStartUtcDate > doc.timeSplit.trainEndUtcDate);
   validateYardstickAgainstRepurchaseBoundary(doc);
 });
 
-test("3.13-S1-2: 物差しの fixedAt は買い直し結果を読む境界より前", () => {
+test("3.13-S1-2: fixedAt は git 初出コミット以降かつ買い直し境界より前", () => {
   const doc = loadDeliveryHitRateYardstick();
+  const gitFirst = gitYardstickFirstCommitIso();
+  assert.equal(
+    new Date(doc.documentFirstCommittedAt).toISOString(),
+    gitFirst,
+    "documentFirstCommittedAt must match git first commit",
+  );
   const fixed = new Date(doc.fixedAt).getTime();
+  const committed = new Date(doc.documentFirstCommittedAt).getTime();
   const notBefore = new Date(doc.repurchaseResultsReadNotBefore).getTime();
+  assert.ok(fixed >= committed, "fixedAt must not precede document first commit");
   assert.ok(fixed < notBefore, "fixedAt must precede repurchaseResultsReadNotBefore");
 });
 
@@ -66,29 +102,37 @@ test("3.13-S1-2: buildGate2Report の judgementA/C を的中率欄に混ぜな�
   assert.doesNotMatch(gate2Src, /judgementA.*hitRate|hitRate.*judgementA/);
 });
 
-test("3.13-S1-2: gate2 の週次表 judgementB は PMF 用途と名指しされる", () => {
+test("3.13-S1-2: gate2 judgementB に purpose だけ足して PMF 週次表を完了にしない", () => {
   const gate2Src = read("src/lib/gate2/report.ts");
-  assert.match(gate2Src, /judgementB:\s*\{[^}]*purpose:\s*"pmf_weekly_external_api_usage"/s);
+  assert.doesNotMatch(gate2Src, /pmf_weekly_external_api_usage/);
+  assert.match(gate2Src, /judgementB:\s*\{\s*rows:/);
 });
 
-test("3.13-S1-2: 公開 API の物差しに宣伝禁止の正解率を載せない", async () => {
+test("3.13-S1-2: 公開 API の物差しに V4 宣伝禁止数を載せない", async () => {
   const { GET } = await import("@/app/api/v1/v4/delivery-hit-rate-yardstick/route");
   const res = await GET(new NextRequest("http://localhost/api/v1/v4/delivery-hit-rate-yardstick"));
   assert.equal(res.status, 200);
   const body = JSON.stringify(await res.json());
   for (const bad of FORBIDDEN_HIT_RATE_MARKETING) {
-    assert.equal(body.includes(bad), false, `yardstick API must not include marketing hit rate ${bad}`);
+    assert.equal(body.includes(bad), false, `yardstick API must not include marketing figure ${bad}`);
   }
+  assert.equal(body.includes("evalRowCountLowerBoundConfirmOnly"), false);
+  assert.equal(body.includes("instrumentation"), false);
 });
 
 test("3.13-S1-2: minSample の変更は changelog に残す", () => {
   const doc = loadDeliveryHitRateYardstick();
+  validateMinSampleChangelog(doc);
   for (const entry of doc.minSampleChangelog) {
     assert.equal(typeof entry.changedAt, "string");
     assert.equal(typeof entry.previous, "number");
     assert.equal(typeof entry.next, "number");
     assert.notEqual(entry.previous, entry.next);
   }
+  const bumped = { ...doc, minSample: doc.minSampleInitial + 1, minSampleChangelog: [] as typeof doc.minSampleChangelog };
+  assert.throws(() => validateMinSampleChangelog(bumped), /without a published changelog/);
+  const withLog = applyMinSampleChange(doc, doc.minSampleInitial + 1, "2026-11-10T13:00:00.000Z", "test");
+  assert.doesNotThrow(() => validateMinSampleChangelog(withLog));
 });
 
 test("3.13-F4: 予測文に名乗る買い手の限定句がある", () => {
@@ -105,9 +149,11 @@ test("3.13-F4: 予測文に名乗る買い手の限定句がある", () => {
     resourceKey: "host/a",
     trainingRows: rows,
   });
-  assert.ok(out.text.includes(NAMED_BUYER_SCOPE_PHRASE));
+  assert.ok(out.text.includes(NAMED_BUYER_SCOPE_PHRASE_JA), "forecast must include Japanese scope phrase");
+  assert.ok(out.text.includes(NAMED_BUYER_SCOPE_PHRASE_EN));
   assert.equal(out.snapshotDate, "2026-11-09");
-  assertPublicEnglishSurface(out.text);
+  assert.equal(out.trainingSnapshotSource, F4_TRAINING_SNAPSHOT_SOURCE);
+  assertPublicEnglishSurface(out.text.replace(`${NAMED_BUYER_SCOPE_PHRASE_JA}。`, ""));
 });
 
 test("3.13-F4: スナップショット日より後の行を学習に混ぜない", () => {
@@ -129,6 +175,7 @@ test("3.13-F4: スナップショット日より後の行を学習に混ぜな�
 test("3.13-F4: decidePayer の別名にしない", () => {
   const src = read("src/lib/v4/named-buyer-delivery-forecast.ts");
   assert.doesNotMatch(src, /decidePayer|buildDecision/);
+  assert.doesNotMatch(src, /f4-named-buyer-training-fixture/);
 });
 
 test("3.13-F4: V4 宣伝禁止の正解率を予測の的中率として書かない", () => {
@@ -149,16 +196,28 @@ test("3.13-F4: V4 宣伝禁止の正解率を予測の的中率として書か�
 
 test("3.13-F4: 公開 forecast API が scope と snapshotDate を返す", async () => {
   const { GET } = await import("@/app/api/v1/v4/named-buyer-delivery-forecast/route");
+  const resourceKey = "agent402.tools/api/skill/domain-intel";
   const res = await GET(
     new NextRequest(
-      "http://localhost/api/v1/v4/named-buyer-delivery-forecast?snapshotDate=2026-11-09&resourceKey=example.test%2Fhost-a",
+      `http://localhost/api/v1/v4/named-buyer-delivery-forecast?snapshotDate=2026-10-19&resourceKey=${encodeURIComponent(resourceKey)}`,
     ),
   );
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.snapshotDate, "2026-11-09");
-  assert.ok(String(body.text).includes(NAMED_BUYER_SCOPE_PHRASE));
-  assertPublicEnglishSurface(String(body.text));
+  assert.equal(body.snapshotDate, "2026-10-19");
+  assert.equal(body.trainingSnapshotSource, F4_TRAINING_SNAPSHOT_SOURCE);
+  assert.ok(String(body.text).includes(NAMED_BUYER_SCOPE_PHRASE_JA));
+  assert.ok(String(body.text).includes(NAMED_BUYER_SCOPE_PHRASE_EN));
+  assert.ok(body.trainCount >= 1);
+});
+
+test("3.13-F4: Stellar 日次スナップショットから学習行を読む", () => {
+  const out = buildNamedBuyerDeliveryForecastFromPinnedSnapshot(
+    "2026-10-19",
+    "agent402.tools/api/skill/domain-intel",
+  );
+  assert.equal(out.trainCount, 1);
+  assert.equal(out.trainDelivered, 1);
 });
 
 test("3.13: 正典パスがリポに存在する", () => {
@@ -166,6 +225,6 @@ test("3.13: 正典パスがリポに存在する", () => {
   assert.ok(read("content/drafts/v4-methodology-rewrite-1116.md").includes("approval"));
 });
 
-test("3.13: buildGate2Report の形は変えず judgementB に purpose だけ足す", async () => {
+test("3.13: buildGate2Report の形は維持する", async () => {
   assert.equal(typeof buildGate2Report, "function");
 });

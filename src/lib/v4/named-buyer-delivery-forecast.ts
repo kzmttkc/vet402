@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { assertPublicEnglishSurface } from "./public-english";
+import {
+  F4_TRAINING_SNAPSHOT_SOURCE,
+  loadNamedBuyerTrainingRowsUpToSnapshot,
+} from "./f4-training-snapshot";
 
 /** Published scope line for F4 v1 (V4: 名乗る買い手の場合). */
-export const NAMED_BUYER_SCOPE_PHRASE = "For a buyer that identifies itself";
+export const NAMED_BUYER_SCOPE_PHRASE_JA = "名乗る買い手の場合";
+export const NAMED_BUYER_SCOPE_PHRASE_EN = "For a buyer that identifies itself";
 
 export type NamedBuyerTrainingRow = {
   attemptedAt: string;
@@ -14,6 +16,7 @@ export type NamedBuyerTrainingRow = {
 
 export type NamedBuyerDeliveryForecast = {
   schema: "vet402-named-buyer-delivery-forecast/v1";
+  trainingSnapshotSource: typeof F4_TRAINING_SNAPSHOT_SOURCE;
   snapshotDate: string;
   resourceKey: string;
   text: string;
@@ -21,8 +24,6 @@ export type NamedBuyerDeliveryForecast = {
   trainDelivered: number;
   deliveryRate: number | null;
 };
-
-const FIXTURE_PATH = "data/v4/f4-named-buyer-training-fixture.json";
 
 function utcDateOf(iso: string): string {
   return iso.slice(0, 10);
@@ -60,10 +61,12 @@ export function buildNamedBuyerDeliveryForecast(input: {
     deliveryRate === null
       ? "No settled rows for this endpoint on or before the snapshot date."
       : `Estimated delivery rate ${(deliveryRate * 100).toFixed(1)}% from ${trainCount} settled row(s) on or before the snapshot date.`;
-  const text = `${NAMED_BUYER_SCOPE_PHRASE}, ${ratePart} Snapshot date ${input.snapshotDate}. This is a dated forecast, not a live payer verdict.`;
-  assertPublicEnglishSurface(text);
+  const englishTail = `${NAMED_BUYER_SCOPE_PHRASE_EN}, ${ratePart} Snapshot date ${input.snapshotDate}. This is a dated forecast, not a live payer verdict.`;
+  assertPublicEnglishSurface(englishTail);
+  const text = `${NAMED_BUYER_SCOPE_PHRASE_JA}。${englishTail}`;
   return {
     schema: "vet402-named-buyer-delivery-forecast/v1",
+    trainingSnapshotSource: F4_TRAINING_SNAPSHOT_SOURCE,
     snapshotDate: input.snapshotDate,
     resourceKey: input.resourceKey,
     text,
@@ -73,16 +76,10 @@ export function buildNamedBuyerDeliveryForecast(input: {
   };
 }
 
-export function loadF4TrainingFixture(): { snapshotDate: string; rows: NamedBuyerTrainingRow[] } {
-  const raw = readFileSync(join(process.cwd(), FIXTURE_PATH), "utf8");
-  return JSON.parse(raw) as { snapshotDate: string; rows: NamedBuyerTrainingRow[] };
-}
-
-export function buildNamedBuyerDeliveryForecastFromFixture(
+export function buildNamedBuyerDeliveryForecastFromPinnedSnapshot(
   snapshotDate: string,
   resourceKey: string,
 ): NamedBuyerDeliveryForecast {
-  const fixture = loadF4TrainingFixture();
-  const rows = trainingRowsOnOrBeforeSnapshot(fixture.rows, snapshotDate);
+  const rows = loadNamedBuyerTrainingRowsUpToSnapshot(snapshotDate);
   return buildNamedBuyerDeliveryForecast({ snapshotDate, resourceKey, trainingRows: rows });
 }

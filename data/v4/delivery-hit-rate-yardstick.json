@@ -1,16 +1,15 @@
 {
   "schema": "vet402-delivery-hit-rate-yardstick/v1",
-  "fixedAt": "2026-11-10T06:00:00.000Z",
+  "fixedAt": "2026-11-10T12:00:00.000Z",
+  "documentFirstCommittedAt": "2026-11-10T11:57:07.000Z",
   "repurchaseResultsReadNotBefore": "2026-11-11T00:00:00.000Z",
+  "minSampleInitial": 100,
   "minSample": 100,
+  "minSampleRationale": "Minimum settled rows per resource endpoint before a delivery hit-rate point may be published for that endpoint under S1-2. Operational floor for pre-registered measurement, not V4 section 6.C accuracy marketing figures.",
   "minSampleChangelog": [],
   "timeSplit": {
     "trainEndUtcDate": "2026-10-08",
     "evalStartUtcDate": "2026-10-09",
     "note": "Train on ledger rows whose attempted_at UTC date is on or before trainEndUtcDate. Evaluate on rows on or after evalStartUtcDate. V4 section 6.C used 2026-10-09 as the eval boundary."
-  },
-  "instrumentation": {
-    "evalRowCountLowerBoundConfirmOnly": 5300,
-    "note": "The 5,300 eval rows figure is a lower-bound confirmation from V4 section 6.C. It is not a published hit rate."
   }
 }
