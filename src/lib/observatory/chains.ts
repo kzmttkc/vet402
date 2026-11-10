@@ -172,6 +172,8 @@ const PUBLIC_CHAIN_LABELS: Record<string, string> = {
   "eip155:43114": "Avalanche C-Chain",
   avalanche: "Avalanche C-Chain",
   "Avalanche C-Chain": "Avalanche C-Chain",
+  "Robinhood Chain": "Robinhood Chain",
+  "eip155:4663": "Robinhood Chain",
 };
 
 /** Canonical CAIP-2 for each public name. One id per chain, not the alias that happened to arrive first. */
@@ -186,6 +188,7 @@ const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
   "BNB Chain": "eip155:56",
   "Arbitrum One": "eip155:42161",
   "Avalanche C-Chain": "eip155:43114",
+  "Robinhood Chain": "eip155:4663",
 };
 
 /** Public name. Accepts a CAIP-2 id, a legacy slug, or a `chainLabel()` key such as `BSC`. */
