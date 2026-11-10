@@ -72,6 +72,7 @@ import {
   utcSecondsLabel,
 } from "@/lib/observatory/request-query";
 import { requestBodyKindOf } from "@/lib/observatory/request-body";
+import { declaredInputWasSent, paidAnswerNamesInputError } from "@/lib/sellers/seller-fixable-input";
 import { L1_REQUEST_TIMEOUT_MS } from "@/lib/observatory/l1-timing";
 import { PAYER_FUNDS_GATE_SINCE, payerFundsAtSigning, type FundsAtSigning } from "@/lib/observatory/payer-balance-history";
 import { GATEWAY_NOT_CHARGED_EXPIRED } from "@/lib/observatory/arc-gateway-words";
@@ -194,6 +195,14 @@ const BASE_FIX_MODES: readonly FixMode[] = [
     fix: "Let paid requests through the rate limiter.",
     side: "seller",
     effort: 2,
+  },
+  {
+    key: "seller_fixable_input",
+    title: "vet402 sent the input the listing declares, and the seller rejected it as invalid",
+    what: "The payment settled on-chain. vet402 signed the payment, sent every input the listing's 402 declares (body, query, headers, and path as recorded on the row), and waited through the paid request. The seller answered 400 or 422 and bodyHead parses as JSON with a structured input validation error (pydantic detail[].loc, zod issues[].path, or errors[].field|path|param), with every cited location on the request input—not payment, headers, cookies or authentication. Free-text error messages do not qualify. This page counts the row on the seller's side once the listing has a seller-side failure on 2 different UTC days (any kind); the ledger export still carries held_reason settled_4xx.",
+    fix: "Fix the input declaration in the 402 so vet402 can send a value your route accepts, or accept the declared input on the paid request.",
+    side: "seller",
+    effort: 1,
   },
   {
     key: "no_receipt",
@@ -834,6 +843,16 @@ function paidMode(code: number | null, settled: boolean): string {
 
 const REJECTED_INPUT_HTTP = new Set([400, 404, 415, 422]);
 
+/** held_reason settled_4xx のうち、売り手側に置く前の証拠 (a)〜(e) と 400/422・入力検証の応答を全部満たす行（S1-1・Base のみ）。 */
+function isSettledSellerFixableInput(r: SellerRowFacts, ev: SellerSideEvidence): boolean {
+  if (!isBaseNetwork(r.network)) return false;
+  const code = r.httpStatusPaid;
+  if (code !== 400 && code !== 422) return false;
+  if (!ev.signed || !ev.terms || ev.funds !== "funded" || ev.inputs !== "sent" || ev.wait === "cut_short") return false;
+  if (!declaredInputWasSent(r)) return false;
+  return paidAnswerNamesInputError(r.meta);
+}
+
 /**
  * 判定の順（2026-09-29）: vet402 の側 → 判定保留（held）→ 課金なし → 売り手の側。
  * 保留と課金なしは seller の側に置かない（件数にも入れない）。
@@ -847,8 +866,11 @@ function modeKeyOf(r: SellerRowFacts, held: HeldReason | null): string {
   if (isQueryNotSent(r)) return "query_not_sent";
   if (VET402_LIMIT_STATUSES.has(r.status)) return "vet402_limit";
   if (VET402_ERROR_STATUSES.has(r.status)) return "vet402_error";
-  // 判定保留・課金なし（従来どおり）
-  if (held === "settled_4xx") return REJECTED_INPUT_HTTP.has(r.httpStatusPaid ?? -1) ? "settled_then_rejected" : "settled_then_refused";
+  // 判定保留・課金なし（S1-1: settled_4xx だけ、証拠 (a)〜(e) を満たす入力検証 400/422 が seller 側）
+  if (held === "settled_4xx") {
+    if (isSettledSellerFixableInput(r, ev)) return "seller_fixable_input";
+    return REJECTED_INPUT_HTTP.has(r.httpStatusPaid ?? -1) ? "settled_then_rejected" : "settled_then_refused";
+  }
   if (held === "unsettled_4xx") return "refused_no_charge";
   if (isAnsweredWithoutCharge(r)) return "answered_no_charge";
   // 決済済みの 2xx で届いた形でない（202 Accepted・空の本文）: お金は動いたが結果は届いていない（2026-09-29 監査 7 周目）。

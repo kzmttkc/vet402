@@ -1901,10 +1901,10 @@ claims:
   - id: sellers_settled_then_rejected
     surface: src/lib/sellers/fix-modes.ts
     quote: "vet402 holds this row (held_reason settled_4xx): its own request may have been the problem, so this page does not count the row as the seller's fault"
-    means: "決済済み（settled）で有料の要求が 4xx の行は判定保留（held_reason settled_4xx）で、売り手の側に数えない（not sorted (held)）。2026-09-29 敵対的監査: 以前は「Took the payment, then refused the input」として売り手の側に置き、頁の「保留の行は売り手に不利に数えない」と食い違っていた。本文・クエリをこちらが送っていなかった行は vet402 の側が先に当たる"
+    means: "決済済み（settled）で有料の要求が 4xx の行は判定保留（held_reason settled_4xx）のまま。2026-09-29 から多くは not sorted (held)。2026-11-08 から、宣言どおりの入力を送り 400/422 で bodyHead が JSON の構造化入力検証エラー（pydantic detail[].loc・zod issues[].path・errors[].field|path|param）として読める行だけ seller_fixable_input で売り手の側に置く（自由文・支払い・認証・ヘッダ・クッキーは除外）。export の held_reason は settled_4xx のまま。/api/v1/sellers/export.csv は /sellers に従い、台帳 export.csv は変えない"
     check: null
-    why_unverifiable: "行ごとの事実は export.csv の status（settled）と http_status_paid・held_reason（settled_4xx）で確かめられる。分類は fix-modes.ts の modeKeyOf で、tests/sellers-fix-modes.test.ts と tests/seller-attribution.test.ts（held の行が seller の側にならない全組み合わせ）が固定する"
-    verified_at: 2026-09-29
+    why_unverifiable: "行ごとの事実は export.csv の status（settled）と http_status_paid・held_reason（settled_4xx）で確かめられる。分類は fix-modes.ts の modeKeyOf で、tests/sellers-fix-modes.test.ts・tests/seller-attribution.test.ts・tests/s1-1-acceptance.test.ts が固定する"
+    verified_at: 2026-11-08
   - id: sellers_settled_then_rejected_our_empty_body
     surface: src/lib/sellers/fix-modes.ts
     quote: "The seller refused it with 400, 415 or 422, and the payment did not settle"
@@ -1971,10 +1971,31 @@ claims:
   - id: sellers_held_rows_not_counted
     surface: src/components/site/sellers/SellersViews.tsx
     quote: "and so is a <strong>held</strong> row"
-    means: "held_reason の付いた行（settled_4xx / unsettled_4xx / payer_unfunded）は、delivered の分母に売り手の不履行として入らず、「どちらの側か」でも seller の側にしない（2026-09-29。第2巡で文面を「not sorted に置く」へ書き換え）"
+    means: "held_reason の付いた行は、delivered の分母に売り手の不履行として入らない（delivery.ts）。2026-09-29 から「どちらの側か」では多くを not sorted に置く。2026-11-08 から、宣言どおりの入力を送り 400/422 で bodyHead が構造化入力検証エラーとして読める held 行だけ seller_fixable_input で売り手の側に置く（自由文・支払い層は除外）。l1_not_counted_held は seller_fixable_input を除く。export の held_reason は settled_4xx / unsettled_4xx のまま"
     check: null
-    why_unverifiable: "件数は 30 日窓で動く。規則は delivery.ts の heldReasonOf / heldReasonSql で、tests/l1-held-rows.pg.test.ts が JS と SQL と公開面の一致を固定する"
-    verified_at: 2026-09-28
+    why_unverifiable: "件数は 30 日窓で動く。held_reason は delivery.ts の heldReasonOf / heldReasonSql（tests/l1-held-rows.pg.test.ts）。seller_fixable_input は fix-modes.ts と tests/s1-1-acceptance.test.ts が固定する"
+    verified_at: 2026-11-08
+  - id: methodology_seller_fixable_structured
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "vet402 sent every declared input, and the paid request got 400 or 422 with a JSON answer whose"
+    means: "2026-11-08 /sellers の seller_fixable_input と同じ条件（宣言入力を全部送った決済済み 400/422 で bodyHead が構造化入力検証エラー）。methodology は rules-text と tests/s1-1-acceptance.test.ts と一致させる"
+    check: null
+    why_unverifiable: "分類は fix-modes.ts と tests/s1-1-acceptance.test.ts が固定する"
+    verified_at: 2026-11-08
+  - id: methodology_seller_fixable_location
+    surface: src/app/observatory/methodology/page.tsx
+    quote: ") with every cited location on the request input—not free text. Answers about payment, x402, authentication, headers or cookies stay held. Such a row counts on the seller&apos;s side once the listing has a seller-side failure on 2 different UTC days (any kind). Other held rows stay not sorted."
+    means: "構造化エラーの位置が入力だけを指すこと・自由文は読まない・2 つの UTC 日（種類問わず）で数える・ledger export.csv は変えない（同段落で /api/v1/sellers/export.csv は /sellers に従うと書く）"
+    check: null
+    why_unverifiable: "seller-fixable-input.ts と tests/s1-1-acceptance.test.ts が固定する"
+    verified_at: 2026-11-08
+  - id: sellers_fixable_held_input
+    surface: src/lib/sellers/fix-modes.ts
+    quote: "bodyHead parses as JSON with a structured input validation error"
+    means: "決済済み held_reason settled_4xx の 400/422 のみ。署名・条件・残高・宣言入力を全部送った記録・待ち切り（modeKeyOf の seller 側ゲートと同じ）を満たし、bodyHead が JSON の構造化入力検証エラー（pydantic detail[].loc・zod issues[].path・errors[].field|path|param）で入力の位置だけを指す行だけ seller_fixable_input。Base（eip155:8453）のみ。2 つの UTC 日に見えたとき数える。判定では売り手側の試行として数えるが l1_paid_not_delivered にはならず BLOCK にもならない。ledger export の held_reason は settled_4xx のまま"
+    check: null
+    why_unverifiable: "tests/s1-1-acceptance.test.ts が合格表 25 件で固定する"
+    verified_at: 2026-11-08
   - id: sellers_delivered_definition
     surface: src/components/site/sellers/SellersViews.tsx
     quote: "means vet402 re-read the transfer on-chain in that chain&apos;s pinned settlement asset and the paid request counted as delivered"

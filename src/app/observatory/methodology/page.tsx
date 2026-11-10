@@ -404,8 +404,21 @@ export default async function ObservatoryMethodologyPage() {
           is short or cannot be read. The rows are not deleted, not hidden and not corrected away
           — the status and the HTTP code stay on the endpoint&apos;s page, the count is published as{" "}
           <code>l1.inconclusive</code> with the split in <code>l1.inconclusiveByReason</code>, and
-          the ledger export carries the reason in its <code>held_reason</code> column. A{" "}
-          <code>5xx</code> is not treated this way: a server fault is not something our request
+          the ledger export carries the reason in its <code>held_reason</code> column. Since
+          2026-11-08,{" "}
+          <Link href="/sellers" className="underline">
+            /sellers
+          </Link>{" "}
+          also puts a <em>settled</em> held row on the <em>seller&apos;s side</em> when the listing&apos;s 402
+          declares an input, vet402 sent every declared input, and the paid request got 400 or 422 with a JSON
+          answer whose <code>bodyHead</code> parses as a structured input validation error (FastAPI/pydantic{" "}
+          <code>detail[].loc</code>, zod <code>issues[].path</code>, or <code>errors[].field|path|param</code>) with
+          every cited location on the request input—not free text. Answers about payment, x402, authentication,
+          headers or cookies stay held. Such a row counts on the seller&apos;s side once the listing has a
+          seller-side failure on 2 different UTC days (any kind). Other held rows stay not sorted.{" "}
+          <code>/api/v1/sellers/export.csv</code> follows <code>/sellers</code>; the ledger{" "}
+          <code>export.csv</code> does not change. The export&apos;s <code>held_reason</code> and{" "}
+          <code>status</code> columns are unchanged. A <code>5xx</code> is never held: a server fault is not something our request
           shape explains. Before 2026-09-05 every 4xx was published as settled-and-not-delivered,
           which reads as &ldquo;this named company took the money and did not deliver&rdquo; — see{" "}
           <Link href="/corrections" className="underline">

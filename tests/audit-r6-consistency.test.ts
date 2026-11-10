@@ -123,12 +123,12 @@ test("3. llms.txt と llms-full.txt は同じ Freshness の行を載せ、「15 
 test("4. held（vet402 の保留）と awaiting on-chain verification（照合待ち）を分けて書く", () => {
   const llms = read("public/llms.txt");
   assert.ok(llms.includes("`l1_not_counted_held`"), "llms.txt が l1_not_counted_held の中身を説明していない");
-  assert.match(llms, /`l1_not_counted_held`[^.]*counts both kinds together/);
+  assert.match(llms, /`l1_not_counted_held`[^.]*counts held rows except seller_fixable_input/);
   assert.ok(llms.includes("it is empty on a row awaiting on-chain verification (`settle_claimed`)"));
   const state = read("src/app/observatory/state/page.tsx");
   assert.ok(state.includes("Awaiting on-chain verification"));
   assert.ok(state.includes("vet402&apos;s hold"));
-  assert.ok(state.includes("<code>l1_not_counted_held</code> covers both"));
+  assert.ok(state.includes("<code>l1_not_counted_held</code> counts held rows except seller_fixable_input"));
 });
 
 test("5. /impact と /state は「final outcome」を別の名前で呼ぶ", () => {

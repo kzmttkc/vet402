@@ -4659,7 +4659,7 @@ components:
     DecisionReasonCode:
       type: string
       description: >-
-        Since 2026-11-02.3. The reason codes of `DecisionResult.reason_codes`:
+        Since 2026-11-08.1. The reason codes of `DecisionResult.reason_codes`:
         the fixed words in `enum`, plus the families in `x-vet402-patterns`
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
@@ -4697,7 +4697,7 @@ components:
             Machine-readable reasons. Every code, with its meaning, what it
             means for the payer and whether the seller can fix it, is in
             `DecisionReasonCode` and in the table at /docs/api#reason-codes.
-            Rules 2026-11-02.3 (rules_version). Each paid attempt (one L1
+            Rules 2026-11-08.1 (rules_version). Each paid attempt (one L1
             purchase row) is sorted by one function, the same one /sellers,
             /api/v1/sellers/export.csv and this decision read: whether money
             moved, whether it delivered, and whose side a failure is on.
@@ -4722,21 +4722,31 @@ components:
             sign a payment, so it is not a purchase result). An attempt
             counts for or against the seller only when it delivered or is on
             the seller's side; every other signed attempt is left out with
-            an l1_not_counted_* code (l1_not_counted_held counts both kinds
-            together: held, a row with a held_reason in the ledger export,
-            and a receipt awaiting on-chain verification that brought a
-            result, whose held_reason is empty). L1: after the last delivery
-            in the 30-day window, an attempt that moved money and did not
-            deliver adds l1_paid_not_delivered; it is a BLOCK only when two
-            or more of them are on the seller's side (seen on 2 different
-            UTC days), and a WARN otherwise, including when /sellers leaves
-            them not sorted. A failure where no money moved is at most a
-            WARN (l1_never_delivered when nothing was ever delivered). When
-            no result came back and it is not yet known whether money moved
-            (an empty 2xx with no settlement linked, a receipt still
-            awaiting on-chain verification, or a signed attempt that failed
-            less than 90 minutes ago), l1_empty_2xx_settlement_unknown makes
-            it a WARN, never an ALLOW, until it settles. l1_latest_failed
+            an l1_not_counted_* code (l1_not_counted_held counts held rows
+            except seller_fixable_input, plus a receipt awaiting on-chain
+            verification whose held_reason is empty). A settled 400 or 422
+            whose paid request carried every declared input and whose
+            bodyHead parses as JSON with a structured input validation error
+            (FastAPI/pydantic detail[].loc, zod issues[].path, or
+            errors[].field|path|param—not free text, with every cited
+            location on the request input, not payment, headers, cookies or
+            authentication) is counted on the seller's side once seen on 2
+            different UTC days; in the decision it counts as a seller-side
+            attempt (l1_latest_failed or l1_never_delivered, WARN) but never
+            as l1_paid_not_delivered and never toward a BLOCK.
+            /api/v1/sellers/export.csv follows /sellers; the ledger
+            export.csv does not change. L1: after the last delivery in the
+            30-day window, an attempt that moved money and did not deliver
+            adds l1_paid_not_delivered; it is a BLOCK only when two or more
+            of them are on the seller's side (seen on 2 different UTC days),
+            and a WARN otherwise, including when /sellers leaves them not
+            sorted. A failure where no money moved is at most a WARN
+            (l1_never_delivered when nothing was ever delivered). When no
+            result came back and it is not yet known whether money moved (an
+            empty 2xx with no settlement linked, a receipt still awaiting
+            on-chain verification, or a signed attempt that failed less than
+            90 minutes ago), l1_empty_2xx_settlement_unknown makes it a
+            WARN, never an ALLOW, until it settles. l1_latest_failed
             (something delivered, but the latest counted attempt did not) is
             a WARN. ALLOW needs a delivery within 30 days
             (l1_basis.fresh_days); otherwise l1_stale and a WARN, also the

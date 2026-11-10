@@ -130,6 +130,21 @@ export type NotCountedReason = "vet402_side" | "held" | "no_charge" | "unproven"
 
 const NO_CHARGE_MODES: ReadonlySet<string> = new Set(["refused_no_charge", "answered_no_charge"]);
 
+type PurchaseDecl = { method: string | null; declaredSchema: unknown; declaredInput?: unknown };
+
+/** held_reason があり facts.l1.n_inconclusive に入る行。S1-1 seller_fixable_input で売り手の側に数える行は除く。 */
+function purchaseHeldAsInconclusive(p: PurchaseInput, decl: PurchaseDecl, now: number = Date.now()): boolean {
+  const view = p.sellerView ?? rowViewOf(p, decl, now);
+  if (view.bucket === "seller") return false;
+  return isInconclusive({
+    status: p.status,
+    httpStatusPaid: p.httpStatusPaid,
+    txHash: p.txHash,
+    attemptedAt: p.attemptedAt,
+    network: p.network,
+  });
+}
+
 /** 行の分類。sellerView（/sellers と同じ 1 本から読んだ分類）が無ければ同じ関数を行の事実だけで当てる。 */
 export function rowViewOf(
   p: PurchaseInput,
@@ -524,11 +539,17 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
   // 4xx（402 以外）で断られた settle_failed と、我々の資金切れ期間の 402・5xx も保留に入る
   // （delivery.ts の heldReasonOf が正典）。n_inconclusive は署名した試行全体から数え、
   // n_settled に入るのはそのうち settled のものだけ。
+  const decl: PurchaseDecl = {
+    method: input.method ?? null,
+    declaredSchema: input.declaredSchema,
+    declaredInput: input.declaredInput ?? null,
+  };
+  const now = Date.now();
   const signed = purchases.filter((p) => SIGNED_STATUSES.has(p.status));
   const settled = signed.filter((p) => p.status === "settled");
-  const inconclusive = signed.filter((p) => isInconclusive(p));
+  const inconclusive = signed.filter((p) => purchaseHeldAsInconclusive(p, decl, now));
 
-  const conclusiveSettled = settled.filter((p) => !isInconclusive(p));
+  const conclusiveSettled = settled.filter((p) => !purchaseHeldAsInconclusive(p, decl, now));
   // 配達の述語は delivery.ts isDelivered の 1 つ（settled・2xx（202 を除く）・本文が空でない）。/sellers と同じ。
   const delivered = conclusiveSettled.filter((p) => isDelivered(p));
   const l1Counts = opts?.l1Timeline

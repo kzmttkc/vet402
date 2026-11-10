@@ -3,7 +3,7 @@
 //
 // 監査は名指しされた売り手の立場で無作為 15 社を一次証拠で検証し、「seller's side」とされた失敗のうち
 // 次が誤りか疑わしいと指摘した。ここではその 5 つの規則と、判定 API への波及を固定する。
-//   1. 判定保留（held_reason がある）・照合待ちの行は seller の側に数えない
+//   1. 判定保留（held_reason がある）・照合待ちの行は seller の側に数えない（S1-1 の seller_fixable_input を除く）
 //   2. 宣言クエリの有無は、送る規則と同じ情報源（402 / 掲載の `bazaar.info.input` の見本値）で見る
 //   3. 本文を送る前の 415 も vet402 の側
 //   4. （recover-late の nonce での結びつけ: tests/late-settlement-nonce.pg.test.ts）
@@ -25,6 +25,7 @@ import type { SellerFacts } from "@/lib/decision/types";
 import { AUTHORIZATION_USED_TOPIC, readAuthorizationNonces, type EvmVerifyClient } from "@/lib/observatory/settlement-verify";
 
 const TX = `0x${"ab".repeat(32)}`;
+const PYDANTIC_FIXABLE = `{"detail":[{"type":"missing","loc":["body","query"],"msg":"Field required","input":{}}]}`;
 let seq = 0;
 function row(p: Partial<SellerRowFacts>): SellerRowFacts {
   seq++;
@@ -64,7 +65,28 @@ function proven(p: Partial<SellerRowFacts>): SellerRowFacts {
 
 // ---------- 1. 判定保留は seller の側に数えない ----------
 
-test("1: held_reason のある行は、どの status・HTTP でも seller の側にならない（受け入れ: seller の件数 = held_reason 空欄の売り手側の型）", () => {
+/** S1-1 合格表と同じ例外（述語を import せず、条件をここに書く）。 */
+function s1_1HeldOnSellerSide(r: SellerRowFacts): boolean {
+  if (r.network !== "eip155:8453") return false;
+  if (r.status !== "settled" || r.txHash === null || r.txHash === "") return false;
+  if (r.httpStatusPaid !== 400 && r.httpStatusPaid !== 422) return false;
+  if (r.meta?.requestBody !== "declared") return false;
+  if (r.declaresHeaders === true || r.pathTemplate === true) return false;
+  if (!/^[0-9]+$/.test(r.amountUnits ?? "") || !r.payTo || !r.asset) return false;
+  const head = typeof r.meta?.bodyHead === "string" ? r.meta.bodyHead : "";
+  if (head !== PYDANTIC_FIXABLE) return false;
+  return (
+    heldReasonOf({
+      status: r.status,
+      httpStatusPaid: r.httpStatusPaid,
+      txHash: r.txHash,
+      attemptedAt: r.attemptedAt,
+      network: r.network,
+    }) === "settled_4xx"
+  );
+}
+
+test("1: held_reason のある行は seller の側に数えない（seller_fixable_input を除く）", () => {
   const statuses = ["settled", "settle_failed", "delivered_no_receipt", "settle_claimed", "settle_claim_refuted", "settle_claimed_unverifiable", "no_402"];
   const codes = [null, 200, 201, 301, 400, 401, 402, 403, 404, 405, 408, 409, 415, 422, 429, 500, 502, 503];
   const times = ["2026-09-10T00:00:00Z", "2026-09-14T00:00:00Z", "2026-09-22T00:00:00Z", "2026-09-28T00:00:00Z"];
@@ -80,14 +102,41 @@ test("1: held_reason のある行は、どの status・HTTP でも seller の側
             const c = classifyRow(r);
             if (h !== null) {
               held++;
-              assert.notEqual(c.bucket, "seller", `${status} ${http} ${at} ${tx ? "tx" : "no tx"} held as ${h}`);
+              if (s1_1HeldOnSellerSide(r)) {
+                assert.equal(c.bucket, "seller", `${status} ${http} ${at} fixable held`);
+                assert.equal(c.mode?.key, "seller_fixable_input");
+              } else {
+                assert.notEqual(c.bucket, "seller", `${status} ${http} ${at} ${tx ? "tx" : "no tx"} held as ${h}`);
+              }
             }
             if (c.bucket === "seller") {
               seller++;
-              assert.equal(h, null, "every seller-side row has an empty held_reason");
+              if (h === null) continue;
+              assert.ok(s1_1HeldOnSellerSide(r), "seller-side row with held_reason is S1-1 settled held only");
             }
           }
   assert.ok(held > 50 && seller > 50, `${held} held, ${seller} seller`);
+  const fixable = proven({
+    status: "settled",
+    txHash: TX,
+    httpStatusPaid: 422,
+    meta: { requestBody: "declared", requestBodySha256: "a".repeat(64), requestQuery: "empty", bodyHead: PYDANTIC_FIXABLE },
+    schema: { properties: { input: { properties: { body: { type: "object" } } } } },
+    declaredInput: { query: "empty", body: "declared" },
+  });
+  const fc = classifyRow(fixable);
+  assert.equal(fc.mode?.key, "seller_fixable_input");
+  assert.equal(fc.bucket, "seller");
+  assert.equal(
+    heldReasonOf({
+      status: fixable.status,
+      httpStatusPaid: fixable.httpStatusPaid,
+      txHash: fixable.txHash,
+      attemptedAt: fixable.attemptedAt,
+      network: fixable.network,
+    }),
+    "settled_4xx",
+  );
 });
 
 test("1: 保留の行は「not sorted (held)」、課金なしは「not sorted: no charge」と書く", () => {

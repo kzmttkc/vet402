@@ -66,7 +66,8 @@ const PURCHASE_INPUT_COLUMNS = sql`
            CASE WHEN jsonb_typeof(raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
              'requestBody', CASE WHEN raw_response_meta ? 'requestBody' THEN
                CASE WHEN jsonb_typeof(raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
-             'requestQuery', raw_response_meta->'requestQuery')) END AS request_meta,
+             'requestQuery', raw_response_meta->'requestQuery',
+             'bodyHead', CASE WHEN status = 'settled' AND http_status_paid IN (400, 422) THEN left(raw_response_meta->>'bodyHead', 500) END)) END AS request_meta,
            amount_units, payer, left(auth_nonce, 80) AS auth_nonce,
            CASE WHEN status = 'settle_failed' AND tx_hash IS NOT NULL THEN
              (settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (p.tx_hash, lower(p.tx_hash))))
@@ -114,7 +115,8 @@ export function l1WindowPurchasesFeedJoinSql(activeEpSubquery: SQL): SQL {
            CASE WHEN jsonb_typeof(w.raw_response_meta) = 'object' THEN jsonb_strip_nulls(jsonb_build_object(
              'requestBody', CASE WHEN w.raw_response_meta ? 'requestBody' THEN
                CASE WHEN jsonb_typeof(w.raw_response_meta->'requestBody') = 'string' THEN to_jsonb(left(w.raw_response_meta->>'requestBody', 16)) ELSE 'true'::jsonb END END,
-             'requestQuery', w.raw_response_meta->'requestQuery')) END AS request_meta,
+             'requestQuery', w.raw_response_meta->'requestQuery',
+             'bodyHead', CASE WHEN w.status = 'settled' AND w.http_status_paid IN (400, 422) THEN left(w.raw_response_meta->>'bodyHead', 500) END)) END AS request_meta,
            w.amount_units, w.payer, w.pay_to, w.asset,
            (w.auth_nonce IS NOT NULL AND w.auth_nonce <> '') AS has_nonce,
            CASE WHEN w.status = 'settle_failed' AND w.tx_hash IS NOT NULL THEN

@@ -160,7 +160,7 @@ export const REASON_CODES: readonly ReasonCodeDoc[] = [
     code: "l1_not_counted_held",
     role: "payer",
     effect: "none",
-    meaning: "Attempts left out while held: a 4xx vet402 attributes to its own request shape, or a receipt awaiting on-chain verification.",
+    meaning: "Attempts left out while held (held rows except seller_fixable_input), or a receipt awaiting on-chain verification.",
     forPayer: "Not counted until the hold is resolved.",
     sellerCanFix: "no",
   },

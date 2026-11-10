@@ -82,7 +82,7 @@ function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-11-02.3", () => assert.equal(DECISION_RULES_VERSION, "2026-11-02.3"));
+test("版: 2026-11-08.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-08.1"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗

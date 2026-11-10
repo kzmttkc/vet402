@@ -87,6 +87,9 @@
 //     (3) role=payee の retry_burst_rate は窓の全行で数える（buyer-facts.ts。古い方の 2,000 行で切っていた）。
 //     (4) role=payee の <input>_unavailable は BLOCK のまま（fail-closed）。直したのは読めない原因（vercel.json の index-owners）。
 //   2026-11-02.3（role=payee の retry_burst をやめた）: 規則が変わるので版を上げた。
+//   2026-11-08.1（S1-1 seller_fixable_input）: held_reason settled_4xx のうち、宣言入力を全部送った
+//     決済済み 400/422 で応答が入力検証エラーと読める行は、2 つの UTC 日に見えたとき売り手の側に数える。
+//     l1_not_counted_held から外れる（ledger の held_reason は settled_4xx のまま）。
 //     settlements の行は決済済みの送金で、断られて署名し直した試行は行にならない。同じ resource への 60 秒以内の間隔は、毎分同じ API を
 //     使う買い手でも高く出る（読み取り 2026-11-02T09:01Z: 間隔が測れる 11,819 payer のうち 9,455 が 0.3 超）。測れないものを理由に BLOCK に
 //     しない。数は facts.short_interval_payment_rate に残す（retry_burst_rate は同じ値の deprecated）。語 retry_burst は出さず、古い応答を
@@ -146,7 +149,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-11-02.3";
+export const DECISION_RULES_VERSION = "2026-11-08.1";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;

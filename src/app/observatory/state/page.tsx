@@ -641,7 +641,8 @@ export default async function ObservatoryStatePage() {
                     <code>4xx</code>, or it ran while our own payer wallet was unfunded. &ldquo;Held&rdquo; on this
                     page means vet402&apos;s hold (the rows with a ledger <code>held_reason</code>); attempts awaiting
                     on-chain verification are the row above. The decision API&apos;s reason code{" "}
-                    <code>l1_not_counted_held</code> covers both
+                    <code>l1_not_counted_held</code> counts held rows except seller_fixable_input, plus rows awaiting
+                    on-chain verification
                   </td>
                   <td className="num">{stats.l1.inconclusive.toLocaleString()}</td>
                   <td className="num">{pct(stats.l1.inconclusive, stats.l1.attempts)} of attempts</td>
