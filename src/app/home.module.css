@@ -705,6 +705,15 @@
   font-size: 1rem;
   color: var(--lp-ink-3);
 }
+.linkCta {
+  color: var(--lp-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--lp-ink-4);
+  text-underline-offset: 3px;
+}
+.links a:hover .linkCta {
+  text-decoration-color: currentColor;
+}
 
 /* Close and footer. */
 .close {

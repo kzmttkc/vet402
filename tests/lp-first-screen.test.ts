@@ -115,7 +115,7 @@ test("the first screen defines x402 and does not say 2xx or lookups", () => {
   assert.equal(cardDeliveredLabel({ held: false, delivered: true, httpStatus: 200 }), "Yes");
   assert.equal(cardDeliveredLabel({ held: false, delivered: false, httpStatus: 500 }), "No");
   assert.equal(cardDeliveredLabel({ held: true, delivered: false, httpStatus: 400 }), "held, inconclusive");
-  const card = page.slice(page.indexOf("lp-record"), page.indexOf("lp-problem"));
+  const card = page.slice(page.indexOf("lp-record"), page.indexOf("lp-entries"));
   assert.match(card, /cardDeliveredLabel\(receipt\)/);
   assert.doesNotMatch(card, /yes, 2xx|lookups a month/);
   const lede = page.slice(page.indexOf("s.lede"), page.indexOf("s.actions"));
@@ -152,7 +152,7 @@ test("a transaction link is https on a known explorer host", () => {
   assert.equal(isPublicExplorerTxUrl(`https://basescan.org.evil.example/tx/${evm}`), false);
   assert.equal(isPublicExplorerTxUrl("javascript:alert(1)"), false);
   assert.equal(isPublicExplorerTxUrl(null), false);
-  assert.equal((page.match(/isPublicExplorerTxUrl\(/g) ?? []).length, 2);
+  assert.equal((page.match(/isPublicExplorerTxUrl\(/g) ?? []).length, 1);
 });
 
 test("the machine-readable description matches the page metadata, and paid prices are visible when offered", () => {
@@ -163,13 +163,6 @@ test("the machine-readable description matches the page metadata, and paid price
   );
   assert.match(page, /Pro is \$\{BILLING_PLANS\.pro\.monthlyUsd\} a month\. Scale is \$\{BILLING_PLANS\.scale\.monthlyUsd\} a month\./);
   assert.match(page, /isStripeConfigured\(\) \?/);
-});
-
-test("the settled count says what delivered means, including a 4xx", () => {
-  assert.match(page, /Delivered means a non-empty 2xx\. Other answers, including 4xx, stay in/);
-  assert.match(page, /A 4xx is inconclusive, because it can come from the shape of vet402&apos;s own request\./);
-  assert.match(page, /The weakest chain is next\./);
-  assert.doesNotMatch(page, /did not come back with a real answer/);
 });
 
 test("a missing purchase card leaves one text column", () => {
@@ -185,9 +178,9 @@ test("the purchase card does not fade in from off-screen", () => {
   assert.doesNotMatch(css, /translateY/);
 });
 
-test("CC BY links to the license, and the sellers line names Base", () => {
+test("CC BY links to the license, and sellers stay in the footer", () => {
   assert.match(page, /href="https:\/\/creativecommons.org\/licenses\/by\/4.0\/"/);
-  assert.match(page, /What vet402 bought from each host on Base\. Other chains are in the export\./);
+  assert.match(page, /label: "Sellers", href: "\/sellers"/);
 });
 
 test("footer type, link underlines, and the quiet button border stay grey", () => {
@@ -215,10 +208,15 @@ test("the home page sets Martian and Fragment next to Inter", () => {
   assert.match(layout, /fragmentMono\.variable/);
 });
 
-test("stage rows use a class and sections open with less padding", () => {
+test("entry cards use the links grid and sections open with less padding", () => {
   assert.doesNotMatch(page, /style=\{\{ margin:/);
-  assert.match(page, /className=\{s\.stageItem\}/);
+  assert.match(page, /const ENTRY_CARDS/);
+  assert.match(page, /entry_before_pay/);
   assert.match(css, /\.section\s*\{[^}]*padding:\s*80px 0 0/);
-  assert.match(css, /\.stageItem\s*\{[^}]*margin:\s*0 0 6px/);
+  assert.match(css, /\.links\s*\{[^}]*grid-template-columns:\s*repeat\(3/);
   assert.match(css, /@media \(max-width: 640px\) \{\s*\.section \{\s*padding-top:\s*56px;/);
+});
+
+test("the live counts still say what delivered means (2026-11-10, kept when the middle became three entries)", () => {
+  assert.match(page, /Delivered means a non-empty 2xx\. A 4xx is inconclusive, because it can come from the shape of/);
 });

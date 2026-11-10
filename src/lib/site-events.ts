@@ -54,6 +54,9 @@ export const SITE_EVENTS = [
   "connect_view",
   "passport_view",
   "follow_click",
+  "entry_before_pay",
+  "entry_while_pay",
+  "entry_after_pay",
 ] as const;
 
 export type SiteEventName = (typeof SITE_EVENTS)[number];

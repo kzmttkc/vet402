@@ -13,7 +13,7 @@ import { organizationJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { homeLedgerOf } from "@/components/site/HomeLedger";
-import { getHomeExampleCached, cardDeliveredLabel, deliveredLine, fmt, sellerRecordParts, utc, type HomeReceipt } from "@/lib/observatory/home-example";
+import { getHomeExampleCached, cardDeliveredLabel, fmt, sellerRecordParts, utc } from "@/lib/observatory/home-example";
 import s from "./home.module.css";
 
 export const metadata = pageMetadata({
@@ -54,102 +54,30 @@ function daysBetween(fromIso: string, toIso: string): number | null {
   return Math.floor((b - a) / 86_400_000);
 }
 
-/** The newest purchase in the window whose paid request did not count as delivered, for the events list. */
-function latestMiss(rows: HomeReceipt[]): HomeReceipt | null {
-  return rows.find((r) => !r.delivered && !r.held) ?? null;
-}
-
-const STAGES: {
-  stage: string;
-  buyer: { text: string; live: boolean }[];
-  seller: { text: string; live: boolean }[];
-}[] = [
+const ENTRY_CARDS = [
   {
-    stage: "Before paying",
-    buyer: [
-      {
-        text: "Check a seller: its delivery record, then one answer, ALLOW, WARN or BLOCK.",
-        live: true,
-      },
-    ],
-    seller: [
-      {
-        text: "Score the wallet that wants to pay you before you serve it.",
-        live: true,
-      },
-    ],
+    title: "Before you pay",
+    sentence: "Check what a seller delivered before an agent signs.",
+    href: "/x402/check-a-seller",
+    event: "entry_before_pay" as const,
+    linkLabel: "Check a seller",
   },
   {
-    stage: "While paying",
-    buyer: [
-      {
-        text: "A spending cap per payment and per day that runs in your own process.",
-        live: true,
-      },
-    ],
-    seller: [
-      {
-        text: "Middleware for Express, Next.js and Hono that gates the payment before it settles.",
-        live: true,
-      },
-    ],
+    title: "While you pay",
+    sentence: "The spend guard in @vet402/sdk caps each payment and refuses when a rule fails.",
+    // 2026-11-10: #quickstart は判定 API の curl の手順で、spend guard の説明は #packages にある。
+    href: "/docs/api#packages",
+    event: "entry_while_pay" as const,
+    linkLabel: "Spend guard in the SDK",
   },
   {
-    stage: "After paying",
-    buyer: [
-      {
-        text: "The purchases vet402 makes, published with their transactions and what came back.",
-        live: true,
-      },
-      { text: "Settle only once the answer has arrived.", live: false },
-    ],
-    seller: [
-      {
-        text: "Report a settled payment so your record counts it.",
-        live: true,
-      },
-      {
-        text: "One shared desk for both sides when a delivery is disputed.",
-        live: false,
-      },
-    ],
-  },
-];
-
-const OPEN_DATA = [
-  {
-    name: "Observatory",
-    tag: "Listed x402 endpoints and their latest results",
+    title: "After you pay",
+    sentence: "Public records list each purchase with its transaction and what came back.",
     href: "/observatory",
+    event: "entry_after_pay" as const,
+    linkLabel: "Observatory",
   },
-  {
-    name: "Sellers",
-    tag: "What vet402 bought from each host on Base. Other chains are in the export.",
-    href: "/sellers",
-  },
-  {
-    name: "State API",
-    tag: "The counts on this page, as JSON",
-    href: "/api/v1/observatory/state",
-    raw: true,
-  },
-  {
-    name: "Export",
-    tag: "Purchase rows as CSV, last day",
-    href: "/api/v1/observatory/export.csv?days=1",
-    raw: true,
-  },
-  {
-    name: "Methodology",
-    tag: "What each level and word means",
-    href: "/observatory/methodology",
-  },
-  {
-    name: "The memo",
-    tag: "The full document this page used to be",
-    href: "/memo",
-  },
-];
+] as const;
 
 const FOOT_PRODUCT = [
   { label: "Docs", href: "/docs/api" },
@@ -161,9 +89,12 @@ const FOOT_PRODUCT = [
 const FOOT_X402 = [
   { label: "What is x402", href: "/x402" },
   { label: "Check a seller", href: "/x402/check-a-seller" },
+  { label: "Observatory", href: "/observatory" },
+  { label: "Sellers", href: "/sellers" },
   { label: "x402 by chain", href: "/x402/chains" },
   { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
   { label: "State of x402", href: "/observatory/state" },
+  { label: "Methodology", href: "/observatory/methodology" },
 ] as const;
 
 const FOOT_RECORD = [
@@ -172,6 +103,7 @@ const FOOT_RECORD = [
   { label: "Blog", href: "/blog" },
   { label: "Status", href: "/status" },
   { label: "Corrections", href: "/corrections" },
+  { label: "The memo", href: "/memo" },
   { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
   { label: "X", href: "https://x.com/vet402_com" },
 ] as const;
@@ -181,8 +113,6 @@ const FOOT_LEGAL = [
   { label: "Privacy", href: "/legal/privacy" },
   { label: "Legal notice", href: "/legal/notice" },
 ] as const;
-
-const EVENT_WORDS = ["zero", "one", "two", "three"];
 
 export default async function Home() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
@@ -199,14 +129,6 @@ export default async function Home() {
   const sellerLine = decision
     ? sellerRecordParts(decision.l1.delivered, decision.l1.attempts, decision.l1.windowDays)
     : null;
-  const miss = example ? latestMiss(example.latest) : null;
-  const chains = ledger ? [...ledger.chains].sort((a, b) => b.settled - a.settled) : [];
-  const weakest = chains
-    .filter((c) => c.settled >= 100)
-    .map((c) => ({ ...c, share: c.delivered / c.settled }))
-    .sort((a, b) => a.share - b.share)[0];
-  const eventCount = 1 + (weakest ? 1 : 0) + (miss ? 1 : 0);
-
   const organization = organizationJsonLd(
     "Independent verification of the x402 agent-payment economy. vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results. The records cover x402 payments for AI agents, including USDC where that is the pinned asset.",
   );
@@ -384,7 +306,8 @@ export default async function Home() {
                 <time dateTime={readAt}>
                   {ledger.readDate} {ledger.readTime} UTC
                 </time>
-                .
+                . Delivered means a non-empty 2xx. A 4xx is inconclusive, because it can come from the shape of
+                vet402&apos;s own request.
                 <HomeLivenessNote linkClassName={s.statusLink} />{" "}
                 <a
                   href="https://creativecommons.org/licenses/by/4.0/"
@@ -468,220 +391,23 @@ export default async function Home() {
           ) : null}
         </section>
 
-        {ledger && readAt ? (
-          <section aria-labelledby="lp-problem" className={s.section}>
-            <h2 id="lp-problem" className={s.h2}>
-              A payment on chain says an agent paid. It does not say the API answered.
-            </h2>
-            <p className={s.body}>
-              Since <b>{FIRST_SETTLED_AT.slice(0, 10)}</b>, vet402 has made <b>{fmt(ledger.attempts)}</b> paid attempts
-              on <b>{fmt(chains.length)}</b> chains. <b>{fmt(ledger.settled)}</b> of them settled on chain, and the
-              results are published. Here {eventCount === 1 ? "is one thing" : `are ${EVENT_WORDS[eventCount]} things`}{" "}
-              that record shows.
-            </p>
-            <ol className={s.events}>
-              <li>
-                <span className={s.eventWhen}>Whole ledger</span>
-                <div>
-                  <p className={s.eventLine}>
-                    {fmt(notDelivered)} of {fmt(ledger.settled)} settled purchases did not count as delivered.
-                  </p>
-                  <p className={s.eventNote}>
-                    The money moved on chain. Delivered means a non-empty 2xx. Other answers, including 4xx, stay in
-                    this count. A 4xx is inconclusive, because it can come from the shape of vet402&apos;s own request.
-                    {weakest ? " The weakest chain is next." : null}
-                  </p>
-                </div>
-              </li>
-              {weakest ? (
-                <li>
-                  <span className={s.eventWhen}>{weakest.label}</span>
-                  <div>
-                    <p className={s.eventLine}>
-                      On {weakest.label}, {fmt(weakest.settled - weakest.delivered)} of {fmt(weakest.settled)} settled
-                      purchases did not count as delivered.
-                    </p>
-                    <p className={s.eventNote}>
-                      {fmt(weakest.inconclusiveSettled)} of them answered 4xx and are held as inconclusive, because a
-                      4xx can come from the shape of vet402&apos;s own request.
-                    </p>
-                  </div>
-                </li>
-              ) : null}
-              {miss ? (
-                <li>
-                  <span className={s.eventWhen}>
-                    <time dateTime={miss.attemptedAt}>{utc(miss.attemptedAt, false)} UTC</time>
-                  </span>
-                  <div>
-                    <p className={s.eventLine}>
-                      vet402 paid {miss.amount} {miss.asset} to <span className={s.mono}>{miss.host}</span> on{" "}
-                      {miss.chain}. The answer: {deliveredLine(miss).text}.
-                    </p>
-                    <p className={s.eventNote}>
-                      Transaction{" "}
-                      {isPublicExplorerTxUrl(miss.txUrl) ? (
-                        <a href={miss.txUrl} className={`${s.inlineLink} ${s.mono}`} rel="noopener" target="_blank">
-                          {miss.txShort}
-                        </a>
-                      ) : (
-                        <span className={s.mono}>{miss.txShort}</span>
-                      )}
-                    </p>
-                  </div>
-                </li>
-              ) : null}
-            </ol>
-            <p className={s.body}>
-              So your agent can ask vet402 before it pays, and stop. The answer comes from those purchases, not from
-              what a seller says about itself.
-            </p>
-          </section>
-        ) : null}
-
-        <section aria-labelledby="lp-fit" className={s.section}>
-          <h2 id="lp-fit" className={s.h2}>
-            Where vet402 sits
+        <section aria-labelledby="lp-entries" className={s.section}>
+          <h2 id="lp-entries" className="sr-only">
+            What vet402 helps you do
           </h2>
-          <p className={s.body}>
-            One package for the side that pays, one for the side that is paid. Both read the same record.
-          </p>
-          <ol className={s.flow}>
-            <li className={s.part}>
-              <p className={s.partName}>Your agent</p>
-              <p className={s.partTag}>Holds its own wallet and signs its own payments.</p>
-            </li>
-            <li className={`${s.part} ${s.partVetSolid}`}>
-              <p className={s.partName}>vet402 check</p>
-              <p className={s.partTag}>ALLOW, WARN or BLOCK from real purchases, and your spending cap.</p>
-            </li>
-            <li className={s.part}>
-              <p className={s.partName}>x402 payment</p>
-              <p className={s.partTag}>Settles on chain in USDC or the asset the seller names.</p>
-            </li>
-            <li className={`${s.part} ${s.partVet}`}>
-              <p className={s.partName}>Seller API with vet402</p>
-              <p className={s.partTag}>Scores the paying wallet, then serves the answer vet402 records.</p>
-            </li>
-          </ol>
-
-          <table className={s.stages}>
-            <caption className="sr-only">What vet402 does for each side, and what is live today</caption>
-            <thead>
-              <tr>
-                <th scope="col">Stage</th>
-                <th scope="col">For the agent that pays</th>
-                <th scope="col">For the API that is paid</th>
-              </tr>
-            </thead>
-            <tbody>
-              {STAGES.map((row) => (
-                <tr key={row.stage}>
-                  <th scope="row">{row.stage}</th>
-                  {(["buyer", "seller"] as const).map((side) => (
-                    <td
-                      key={side}
-                      data-side={side === "buyer" ? "For the agent that pays" : "For the API that is paid"}
-                    >
-                      {row[side].map((item) => (
-                        <p key={item.text} className={s.stageItem}>
-                          {item.text}
-                          <span className={`${s.state} ${item.live ? s.stateLive : ""}`}>
-                            {item.live ? "Live" : "Coming"}
-                          </span>
-                        </p>
-                      ))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-
-        {ledger ? (
-          <section aria-labelledby="chains" className={s.section}>
-            <h2 id="chains" className={s.h2}>
-              Where purchases settled
-            </h2>
-            <p className={s.body}>
-              Read at {ledger.readDate} {ledger.readTime} UTC. Each row is a chain vet402 has paid on.
-            </p>
-            <div className={s.tableWrap} tabIndex={0} role="region" aria-label="Settled purchases by chain">
-              <table className={s.chains}>
-                <thead>
-                  <tr>
-                    <th scope="col">Chain</th>
-                    <th scope="col">Asset</th>
-                    <th scope="col" className={s.num}>
-                      Settled
-                    </th>
-                    <th scope="col" className={s.num}>
-                      Delivered
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {chains.map((c) => (
-                    <tr key={c.chain}>
-                      <th scope="row">{c.label}</th>
-                      <td>{c.asset}</td>
-                      <td className={`${s.num} ${s.mono}`}>{fmt(c.settled)}</td>
-                      <td className={`${s.num} ${s.mono}`}>{fmt(c.delivered)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        ) : null}
-
-        <section aria-labelledby="lp-open" className={s.section}>
-          <h2 id="lp-open" className={s.h2}>
-            Everything behind these numbers is open
-          </h2>
-          <p className={s.body}>The data, the method and the old memo are linked below.</p>
           <ul className={s.links}>
-            {OPEN_DATA.map((l) => (
-              <li key={l.href}>
-                {l.raw ? (
-                  <a href={l.href}>
-                    <span className={s.linkName}>{l.name}</span>
-                    <span className={s.linkTag}>{l.tag}</span>
-                  </a>
-                ) : (
-                  <Link href={l.href}>
-                    <span className={s.linkName}>{l.name}</span>
-                    <span className={s.linkTag}>{l.tag}</span>
-                  </Link>
-                )}
+            {ENTRY_CARDS.map((card) => (
+              <li key={card.href}>
+                <TrackedLink href={card.href} event={card.event}>
+                  <span className={s.linkName}>{card.title}</span>
+                  <span className={s.linkTag}>{card.sentence}</span>
+                  <span className={`${s.linkTag} ${s.linkCta}`}>
+                    {card.linkLabel} →
+                  </span>
+                </TrackedLink>
               </li>
             ))}
           </ul>
-        </section>
-
-        <section aria-labelledby="lp-close" className={s.close}>
-          <h2 id="lp-close" className={s.closeLine}>
-            Give your agent a record to check before it pays.
-          </h2>
-          <div className={s.actions}>
-            <TrackedLink
-              href="/docs/api#quickstart"
-              event="lp_cta_click"
-              props={{ position: "close_buyer" }}
-              className={s.btn}
-            >
-              Add to an agent that pays
-            </TrackedLink>
-            <TrackedLink
-              href="/docs/api#packages"
-              event="lp_cta_click"
-              props={{ position: "close_seller" }}
-              className={s.btnQuiet}
-            >
-              Add to an API you sell
-            </TrackedLink>
-          </div>
         </section>
       </main>
 
