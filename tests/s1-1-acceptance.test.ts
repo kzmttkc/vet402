@@ -6,11 +6,22 @@
 // 400/422 の答えの先頭が検証の枠組みの構造化エラー（FastAPI/pydantic の detail[].loc、zod の issues[].path、
 // errors[].field|path|param）として JSON で読める行だけ。自由文のエラーは読まない（2026-11-08 3 回目のレビューで方式を絞った）。
 // どれか 1 つでも欠ければ seller の側に置かない。実装の述語をここで呼ばない（同語反復にしない）。
+//
+// 4 回目の独立レビュー指摘 1〜10（写し。S1NEXT・独立点検 rv1/rv2/rv3）:
+// 1. merge-base は origin/main と一致させ、旧 squash ブランチは merge しない。
+// 2. 許可リスト: 英数と _ のみ・pydantic loc 2 段以上・json_invalid/model_attributes_type 除外。
+// 3. generic は location/in が body か query のときだけ。認証語は auth|secret|password|credential|bearer|jwt|session|key$。
+// 4. S1-1 は Base（eip155:8453）のみ。termsRecorded は触らない。
+// 5. bodyHead は SQL left(..., 500)。件数測定は tests/s1-1-bodyhead-500-measurement.md。
+// 6. 英文公開面に em dash・セミコロン・our を置かない（rules-text 同期）。
+// 7. export.csv / delivery の held_reason は sellers 分類を読まない。
+// 8. decision と /sellers が同じ固定行で逆にならない。BLOCK なし。
+// 9. 配達なし 2 UTC 日で n_counted と l1_basis が一致。
+// 10. ERC-8004 の NOT_INDEXED 2 鎖と Base scanned を差分で消さない。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { classifyRow, BASE_USDC_ADDRESS, type SellerRowFacts } from "@/lib/sellers/fix-modes";
-import { paidAnswerNamesInputError } from "@/lib/sellers/seller-fixable-input";
 import { heldReasonOf } from "@/lib/observatory/delivery";
 import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
 import { readFileSync } from "node:fs";
@@ -132,6 +143,11 @@ const FAIL: Array<[string, SellerRowFacts]> = [
   ["query loc cites session", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["query","session"],"msg":"Field required"}]}` })],
   ["pydantic loc hyphen segment", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","foo-bar"],"msg":"Field required"}]}` })],
   ["pydantic loc cites passkey (key$)", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","passkey"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites token_auth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","token_auth"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites xauth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","xauth"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites reauth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","reauth"],"msg":"Field required"}]}` })],
+  ["pydantic loc cites my_auth", settled({ bodyHead: `{"detail":[{"type":"missing","loc":["body","my_auth"],"msg":"Field required"}]}` })],
+  ["errors[].property with in body", settled({ bodyHead: `{"errors":[{"in":"body","property":"title","message":"is required"}]}` })],
 ];
 
 for (const [name, r] of PASS) {
@@ -176,14 +192,16 @@ test("S1-1: bodyHead truncated at 500 characters still classifies via the cut st
   const head = (prefix + longPad.slice(0, 500 - prefix.length - suffix.length) + suffix).slice(0, 500);
   assert.equal(head.length, 500);
   JSON.parse(head);
-  const meta = {
-    requestBody: "declared",
-    requestBodySha256: "a".repeat(64),
-    requestQuery: "empty",
-    bodyHead: head,
-  };
-  assert.equal(paidAnswerNamesInputError(meta), true, "classifier must parse the truncated JSON head");
-  const c = classifyRow(settled({ meta }));
+  const c = classifyRow(
+    settled({
+      meta: {
+        requestBody: "declared",
+        requestBodySha256: "a".repeat(64),
+        requestQuery: "empty",
+        bodyHead: head,
+      },
+    }),
+  );
   assert.equal(c.mode?.key, "seller_fixable_input");
   assert.equal(c.bucket, "seller");
 });

@@ -1994,7 +1994,7 @@ claims:
     quote: "bodyHead parses as JSON with a structured input validation error"
     means: "決済済み held_reason settled_4xx の 400/422 のみ。署名・条件・残高・宣言入力を全部送った記録・待ち切り（modeKeyOf の seller 側ゲートと同じ）を満たし、bodyHead が JSON の構造化入力検証エラー（pydantic detail[].loc・zod issues[].path・errors[].field|path|param）で入力の位置だけを指す行だけ seller_fixable_input。Base（eip155:8453）のみ。2 つの UTC 日に見えたとき数える。判定では売り手側の試行として数えるが l1_paid_not_delivered にはならず BLOCK にもならない。ledger export の held_reason は settled_4xx のまま"
     check: null
-    why_unverifiable: "tests/s1-1-acceptance.test.ts が合格表 25 件で固定する"
+    why_unverifiable: "tests/s1-1-acceptance.test.ts の PASS/FAIL 行が固定する"
     verified_at: 2026-11-08
   - id: sellers_delivered_definition
     surface: src/components/site/sellers/SellersViews.tsx

@@ -12,7 +12,7 @@ const BAD_ROOT = new Set(["header", "headers", "cookie", "cookies", "payment", "
 const PYDANTIC_SKIP_TYPES = new Set(["json_invalid", "model_attributes_type"]);
 const SEG_OK = /^[A-Za-z0-9_]+$/;
 const AUTH_SEG =
-  /(?:^auth|oauth|secret|password|credential|bearer|jwt|session|key$)/i;
+  /(?:^auth|auth$|(?:^|_)auth(?:$|_)|oauth|secret|password|credential|bearer|jwt|session|key$)/i;
 
 /** 402 が入力（本文かクエリ）を宣言し、vet402 がその宣言どおりの値を送ったと行に記録がある。 */
 export function declaredInputWasSent(r: Pick<SellerRowFacts, "meta">): boolean {
@@ -98,7 +98,6 @@ function extractValidationItems(parsed: unknown): ValItem[] | null {
       if (Array.isArray(e.path)) tail = e.path.map(String);
       else if (typeof e.field === "string") tail = [e.field];
       else if (typeof e.param === "string") tail = [e.param];
-      else if (typeof e.property === "string") tail = [e.property];
       if (!tail) return null;
 
       const segments = [scope, ...tail];
