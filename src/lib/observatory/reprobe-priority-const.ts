@@ -19,9 +19,8 @@ export const PRIORITY_LEASE_TTL_SECONDS = 330;
 export const PRIORITY_CLASS = { declarationDrift: 0, ruleChange: 1, dispute: 2 } as const;
 
 /**
- * 優先は 1 登録ドメインこの件数まで（組をまたいで数える）。同じドメインは直列・1 秒間隔。
- * 優先の段の長さはランナーが L0_PROBE_PRIORITY_STAGE_MS（55 秒）で打ち切る（最後の開始はその線 − 1 件の
- * レーン保持 12 秒 = 要求の上限 10.5 秒＋行の DB 1.5 秒）。全部が上限まで掛かる日は、5 件目は次の回へ回る。
+ * 優先は 1 登録ドメインこの件数まで（組をまたいで数える）。同じドメインは直列・1 秒間隔なので、
+ * 全部 10 秒でタイムアウトしても優先の段は約 55 秒で終わる（cron の maxDuration は 300 秒）。
  */
 export const PRIORITY_PER_DOMAIN = 5;
 

@@ -66,21 +66,14 @@ test("l0OrderBy: c1 は旧規則の公開 fail（ホストごとの上限つき�
   const { PgDialect } = await import("drizzle-orm/pg-core");
   const render = (tier: "c1" | "c2" | "all") => new PgDialect().sqlToQuery(l0OrderBy(tier)).sql.replace(/\s+/g, " ");
   const c1 = render("c1");
-  // 先頭は coverage7d の 3 段（窓の内の更新 → 窓の外 → 窓の内の残り・l0-coverage7d.ts）。その後ろが従来の c1 の組。
-  assert.match(c1, /^CASE WHEN COALESCE\(lp\.last_probed_at > now\(\) - interval '7 days', false\) AND row_number\(\) OVER \(PARTITION BY COALESCE\(lp\.last_probed_at > now\(\) - interval '7 days', false\) ORDER BY [^)]*\) DESC NULLS LAST, lp\.last_probed_at ASC NULLS FIRST, e\.id ASC\) <= \$1 THEN 0 WHEN NOT COALESCE\(lp\.last_probed_at > now\(\) - interval '7 days', false\) THEN 1 ELSE 2 END, CASE WHEN lp\.rule_change_reprobe AND row_number\(\) OVER \(PARTITION BY lower\(split_part\(split_part\(e\.resource_url, ':\/\/', 2\), '\/', 1\)\), lp\.rule_change_reprobe ORDER BY lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC\) <= \$2 THEN 0 /);
+  assert.match(c1, /^CASE WHEN lp\.rule_change_reprobe AND row_number\(\) OVER \(PARTITION BY lower\(split_part\(split_part\(e\.resource_url, ':\/\/', 2\), '\/', 1\)\), lp\.rule_change_reprobe ORDER BY lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC\) <= \$1 THEN 0 /);
   assert.match(c1, /WHEN lp\.probe_count = 1 AND lp\.last_verdict = 'fail' THEN 1 WHEN lp\.last_probed_at IS NULL THEN 2 ELSE 3 END/);
-  assert.match(
-    c1,
-    /END, row_number\(\) OVER \(PARTITION BY lower\(split_part\(split_part\(e\.resource_url, ':\/\/', 2\), '\/', 1\)\) ORDER BY lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC\), lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/,
-    "ホストを混ぜつつ同じ組の中は古い順",
-  );
+  assert.match(c1, /END, lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/, "同じ組の中は古い順");
   const capped = new PgDialect().sqlToQuery(l0OrderBy("c1", 7)).sql.replace(/\s+/g, " ");
-  assert.match(capped, /e\.source = 'circle_discovery' AND row_number\(\) OVER \(PARTITION BY \(e\.source = 'circle_discovery' AND lp\.last_probed_at IS NULL\) ORDER BY e\.first_seen_at ASC NULLS LAST, e\.id ASC\) > \$3 THEN 5 WHEN lp\.last_probed_at IS NULL AND e\.source = 'circle_discovery' THEN 2 WHEN lp\.last_probed_at IS NULL THEN 3 ELSE 4 END/);
+  assert.match(capped, /e\.source = 'circle_discovery' AND row_number\(\) OVER \(PARTITION BY \(e\.source = 'circle_discovery' AND lp\.last_probed_at IS NULL\) ORDER BY e\.first_seen_at ASC NULLS LAST, e\.id ASC\) > \$2 THEN 5 WHEN lp\.last_probed_at IS NULL AND e\.source = 'circle_discovery' THEN 2 WHEN lp\.last_probed_at IS NULL THEN 3 ELSE 4 END/);
   assert.doesNotMatch(c1, /circle_discovery/, "上限を渡さない並びは CDP だけの式のまま");
   for (const tier of ["c2", "all"] as const) {
     const r = render(tier);
-    // c2 / all は窓の外を先にしない（c2 は 6 時間の測り直しが役目）。ホストを混ぜて古い順。
-    assert.match(r, /^row_number\(\) OVER \(PARTITION BY lower\(split_part/);
     assert.doesNotMatch(r, /CASE/);
     assert.match(r, /lp\.last_probed_at ASC NULLS FIRST, e\.first_seen_at ASC$/);
   }

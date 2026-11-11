@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-11 Revert the 3.6 L0 coverage change (af1afe95..f60f5982)
+
+- **What**: Reverts the eight 3.6 commits (bounded L0 runs, the coverage cron route and the new candidate order).
+- **Why**: The DB-backed CI job failed on them (cron C1 priority per host, lane widening for Avalanche and Celo, tier c1 order). Local runs had skipped those tests without a test database.
+- **Impact**: L0 probing goes back to the previous order and routes until the change is redone with the DB tests passing.
+
 ## 2026-11-11 Per-host seller badge (SVG) and neutral-grey embed badges
 
 - **What**: Adds `GET /api/badge/host/{host}.svg` counting settled L1 purchases in the last 30 days per seller host (same host rule and window as the public ledger export). Answered means HTTP 2xx other than 202. Lists embed snippets on `/sellers/{host}`. Receipt and trust badge SVGs move to R=G=B greys (`#111111` / `#555555` family).
