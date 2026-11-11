@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-11 Unit tests cannot reach a real database through DATABASE_URL
+
+- What: root `npm test` runs the unit suites with `env -u DATABASE_URL`, and `tests/spending-halt-route.test.ts` deletes `DATABASE_URL` before it calls the route.
+- Why: that suite's POST calls the real `setSpendingHalt`. Run from a shell that had the production `DATABASE_URL`, it wrote the production halt row (2026-11-10 21:31Z, reason "stop the money") and purchases stopped on every chain until 2026-11-11 14:44Z, when the halt was lifted through the admin route.
+- Impact: DB-backed suites still use `TEST_DATABASE_URL` through `npm run test:db`, unchanged.
+
 ## 2026-11-11 E4 follow-up: root build resolves the auth-capture client, mutation anchor is unique
 
 - What: `@x402/evm` 2.30.0 (same exact version as the SDK) is a root devDependency, so the app build type-checks `packages/sdk/src/auth-capture-pay.ts` through the tests that import SDK source. Mutation M49 now anchors on the exact-path line with its comment, since the auth-capture path keeps the authorization the same way.

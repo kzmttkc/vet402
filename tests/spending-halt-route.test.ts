@@ -17,6 +17,10 @@ import { NextRequest } from "next/server";
 import { consumeIpRateLimit } from "@/lib/api/ip-rate-limit";
 import { GET, POST } from "@/app/api/admin/spending-halt/route";
 
+// この suite の POST は本物の setSpendingHalt を呼ぶ。DATABASE_URL が入った環境で走ると、本番の停止の行を書く
+// （2026-11-10 21:31Z に本番の購入が "stop the money" で止まった）。読み取りは呼び出しの時なので、ここで消せば届かない。
+delete process.env.DATABASE_URL;
+
 const SECRET = "test-admin-secret-spending-halt-0905";
 const URL_ = "http://localhost/api/admin/spending-halt";
 
