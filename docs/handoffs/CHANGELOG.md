@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-11 coverage7d (3.6) re-land: the coverage7d order stays in the coverage runs
+
+- **What**: Re-lands the 3.6 change reverted in `e6cf3b01`, with one fix. The coverage7d ordering (in-window refresh, then out-of-window, then the rest), host interleaving, the per-domain cap (`fillPriorityByDomain`), longest-queue-first and the 1 s domain interval now apply only to `tier: "coverage"` (`/api/cron/l0-coverage`). c1, c2 and all go back to the pre-3.6 `l0OrderBy` and one `LIMIT` select, and run in SQL order (one request per domain at a time, no interval). Every tier keeps the 300 s envelope: the deadline counted from route start, the 10.5 s request cap, the 12 s lane hold, shared domain holds, and the capped select and priority stages. New `tests/l0-coverage-tier.pg.test.ts` runs the coverage tier against a real DB. It checks the cap of ceil(limit / lanes) per registered domain, that freed slots go to other domains, and that the legacy path has no cap.
+- **Why**: Five DB-backed tests failed in CI. Local runs had no `TEST_DATABASE_URL`, so they skipped. Putting the coverage7d classes in front of c1 moved in-window listings ahead of never-probed ones (the tier c1 order tests). It also let rule-change rows past the per-host cap of 25 sort before the unprobed listing (cron C1, 26 vs 25). The per-domain cap on tier all left the fat Avalanche/Arc and Celo/Arc hosts unprobed (48/108 and 46/106 passing). The coverage7d projection already counts coverage runs only (`countFullRuns: false`). The formula, the denominator and the 32,760 lower bound (pct1 24.8) stay the same.
+- **Impact**: In the 2026-11-10 entry below, "Order for c1 and coverage" and "c2 … with hosts interleaved" no longer hold. Only coverage runs use that order. The 35,420 figure "with the 10:30 run" is a reference value only, because c1 does not cap or prefer long domain queues. `tests/coverage-tiers.test.ts` keeps its pre-3.6 assertions. export.csv is untouched.
+
 ## 2026-11-11 Revert the 3.6 L0 coverage change (af1afe95..f60f5982)
 
 - **What**: Reverts the eight 3.6 commits (bounded L0 runs, the coverage cron route and the new candidate order).

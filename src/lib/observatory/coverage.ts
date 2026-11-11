@@ -19,6 +19,7 @@ import { SETTLEMENT_DAY, UTC_TODAY, withDailyFallback } from "@/lib/settlements/
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { RULE_CHANGE_PRIORITY_PER_HOST } from "./l0-rule-change";
+import { l0Coverage7dQueueClassSql } from "./l0-coverage7d";
 import { KEYED_CALLER_HASH_PREFIX } from "@/lib/decision/lookup-caller";
 
 export type CoverageTier = "C0" | "C1" | "C2" | "C3" | "C4";
@@ -157,6 +158,11 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
  * L0 候補の並び（x402_endpoints e + LATERAL lp: last_probed_at / probe_count / last_verdict /
  * rule_change_reprobe）。
  *
+ * 2026-11-10 coverage7d（coverage の回だけ）: 窓の内の更新（1 回 L0_COVERAGE7D_IN_WINDOW_PER_RUN 件まで）→ 窓の外 →
+ *   窓の内の残り の 3 段が先頭、その中はホストを混ぜて古い順（l0-coverage7d.ts）。式は reader.ts のまま。
+ *   c1・c2・all の並びは変えない（c1 は単発 fail → 未測定 → 古い順で、古い順が窓の外を先に取る。c2 は 6 時間の
+ *   測り直しが役目）。c1 の組の順と旧規則のホスト上限は DB 試験が固定している（2026-11-11 CI で前置が壊した）。
+ *
  * c1（2026-09-02 是正 B）: 「プローブ 1 回で最新が fail」→ 未測定 → 最終プローブが古い順。
  * 本番実測（9/2 19:05 JST）: 最新が fail の 9,769 件のうち 9,713 件はプローブが 1 回だけで、
  * 公開判定（2 回連続 fail・publishedVerdict）が出せなかった。日次枠（3,000）は変えず、
@@ -176,10 +182,14 @@ export function l0ProbeTierWhere(tier: "c1" | "c2", daily = true): SQL {
  * 後ろに並んだ。Gateway でしか払えない Circle の 1,902 件は L0 が一度も走らず、購入候補（L0 pass が条件）が
  * 0 件のままだった。上限の内側は CDP より先に測る。
  */
-export function l0OrderBy(tier: "c1" | "c2" | "all", circleUnprobedCap?: number): SQL {
+export function l0OrderBy(tier: "c1" | "c2" | "all" | "coverage", circleUnprobedCap?: number): SQL {
+  const coverage7dFirst = l0Coverage7dQueueClassSql();
   const oldestFirst = sql`lp.last_probed_at ASC NULLS FIRST, e.first_seen_at ASC`;
-  if (tier !== "c1") return oldestFirst;
   const host = sql`lower(split_part(split_part(e.resource_url, '://', 2), '/', 1))`;
+  /** 1 ホストに偏らないよう、ホストごとの順位で交互に並べる（rule-change 以外も）。 */
+  const hostSpread = sql`row_number() OVER (PARTITION BY ${host} ORDER BY ${oldestFirst})`;
+  if (tier === "coverage") return sql`${coverage7dFirst}, ${hostSpread}, ${oldestFirst}`;
+  if (tier !== "c1") return oldestFirst;
   const hostRank = sql`row_number() OVER (PARTITION BY ${host}, lp.rule_change_reprobe ORDER BY ${oldestFirst})`;
   const circleRank = sql`row_number() OVER (PARTITION BY (e.source = 'circle_discovery' AND lp.last_probed_at IS NULL) ORDER BY e.first_seen_at ASC NULLS LAST, e.id ASC)`;
   if (circleUnprobedCap === undefined) {

@@ -20,18 +20,33 @@ import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { insertRuleChangeReprobe, needsRuleChangeReprobe, needsRuleChangeReprobeSql, readNewestProbeRows } from "./l0-rule-change";
 import { acquireLeaseFailClosed } from "@/lib/cron/lease-fail-closed";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import { notPathTemplateSql } from "./path-template";
 import {
+  L0_NORMAL_DOMAIN_INTERVAL_MS,
+  L0_PROBE_BATCH_BUDGET_MS,
+  L0_PROBE_CANDIDATE_SELECT_CAP_MS,
+  L0_PROBE_LANE_HOLD_MS,
+  L0_PROBE_PRIORITY_SELECT_CAP_MS,
+  L0_PROBE_PRIORITY_STAGE_MS,
+  L0_PROBE_SETTLE_TAIL_MS,
+} from "./l0-coverage7d";
+import {
+  createDomainHolds,
+  type DomainHoldResult,
   PRIORITY_DOMAIN_INTERVAL_MS,
   PRIORITY_LEASE_NAME,
   PRIORITY_LEASE_TTL_SECONDS,
   REPROBE_PRIORITY_LIMIT,
   interleaveByDomain,
+  interleaveByHost,
   PRIORITY_MIN_PROBE_AGE_MINUTES,
   ENDPOINT_LEASE_TTL_SECONDS,
   PRIORITY_REQUEST_TOTAL_MS,
   TOTAL_LIMIT_EXCEEDED,
   endpointLeaseName,
+  fillPriorityByDomain,
   makeRequestGuard,
+  probeResourceHost,
   resourceRegisteredDomain,
   withTotalLimit,
   runWithDomainInterval,
@@ -54,6 +69,10 @@ export type ProbeBatchSummary = {
   priorityAbandoned: number;
   /** 1 件の中の例外（直近行の SELECT・要求・書き込み）で、その件だけ飛ばした件数。ログに残す。 */
   itemErrors: number;
+  /** 普通の列で、本文まで含めた合計の上限を超えて結果を書かずに打ち切った件数（分子に入らない）。 */
+  normalAbandoned: number;
+  /** 上限で打ち切った段（priority_select・candidate_select）。この回は残りの時間で走った。 */
+  capped: string[];
 };
 
 type Candidate = {
@@ -79,10 +98,22 @@ export async function runL0ProbeBatch(
      * §7.4 カバレッジ階層（2026-09-02）。c1 = 30 日以内に listed/決済のある active、
      * c2 = 決済帰属あり ∨ 問い合わせ多（6 時間周期・5 時間以内に測った行は飛ばす）。
      * all = 従来どおり active 全件（テスト・手動用）。
+     * coverage = coverage7d の分母のうちテンプレートでない active（2026-11-10・l0-coverage の回）。
+     *   窓の外を先に、窓の内の更新は 1 回 L0_COVERAGE7D_IN_WINDOW_PER_RUN 件まで（l0OrderBy）。
      */
-    tier?: "c1" | "c2" | "all";
+    tier?: "c1" | "c2" | "all" | "coverage";
     /** 優先の段の 1 件あたりの合計の上限（ミリ秒）。既定は PRIORITY_REQUEST_TOTAL_MS。テストが短くする。 */
     priorityRequestLimitMs?: number;
+    /** runDeadlineAt が無いときの、この実行全体の上限（ms）。既定は L0_PROBE_BATCH_BUDGET_MS。 */
+    batchBudgetMs?: number;
+    /** この時刻（ms epoch）までに返す。cron のルートは自分の開始時刻から渡す（l0RunDeadlineAt）。 */
+    runDeadlineAt?: number;
+    /** 普通の列の 1 件あたりの合計の上限（ミリ秒）。既定は PRIORITY_REQUEST_TOTAL_MS。 */
+    normalRequestLimitMs?: number;
+    /** 1 件がレーンを占める上限（ms）。既定は L0_PROBE_LANE_HOLD_MS（要求の上限＋行の DB）。 */
+    laneHoldMs?: number;
+    /** 優先の段を流さない（coverage の回。優先と drain は l0-probe と c2 の回が持つ）。 */
+    skipPriority?: boolean;
   } = {},
 ): Promise<ProbeBatchSummary> {
   const {
@@ -92,11 +123,35 @@ export async function runL0ProbeBatch(
     timeoutMs,
     tier = "all",
     priorityRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
+    batchBudgetMs = L0_PROBE_BATCH_BUDGET_MS,
+    normalRequestLimitMs = PRIORITY_REQUEST_TOTAL_MS,
+    laneHoldMs = L0_PROBE_LANE_HOLD_MS,
+    skipPriority = false,
   } = options;
+  // 時間（c36.rr3）: 期限は呼び手（ルート）の開始から。各段は上限で打ち切り、普通の列のレーンは
+  // laneEndAt までに空く（最後の開始は laneEndAt − 保持）。レーンの上限を越えた行の書き込みは
+  // L0_PROBE_SETTLE_TAIL_MS の間だけ待って返す。
+  const now = () => Date.now();
+  const runDeadlineAt = options.runDeadlineAt ?? now() + batchBudgetMs;
+  const laneEndAt = runDeadlineAt - L0_PROBE_SETTLE_TAIL_MS;
+  const capped = new Set<string>();
+  const holds = createDomainHolds();
+  const outstanding = new Set<Promise<unknown>>();
+  const track = <R>(p: Promise<R>): Promise<R> => {
+    outstanding.add(p);
+    const done = () => {
+      outstanding.delete(p);
+    };
+    p.then(done, done);
+    return p;
+  };
+  const coverageTier = tier === "coverage";
   const where = (daily: boolean) =>
     tier === "all"
       ? sql`e.status = 'active' AND ${notSellerRetestRequestSourceSql()}`
-      : l0ProbeTierWhere(tier, daily);
+      : tier === "coverage"
+        ? sql`e.status = 'active' AND ${notPathTemplateSql()} AND ${notSellerRetestRequestSourceSql()}`
+        : l0ProbeTierWhere(tier, daily);
   const freshness = tier === "c2" ? sql`AND (lp.last_probed_at IS NULL OR lp.last_probed_at < now() - interval '5 hours')` : sql``;
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not configured");
@@ -109,26 +164,36 @@ export async function runL0ProbeBatch(
   // 優先分は飛ばして普通の列だけ流す。
   let priority: Candidate[] = [];
   const priorityCap = Math.min(REPROBE_PRIORITY_LIMIT, limit);
-  const priorityLease = priorityCap > 0 ? await acquireLeaseFailClosed(PRIORITY_LEASE_NAME, PRIORITY_LEASE_TTL_SECONDS) : null;
+  const priorityLease =
+    priorityCap > 0 && !skipPriority ? await acquireLeaseFailClosed(PRIORITY_LEASE_NAME, PRIORITY_LEASE_TTL_SECONDS) : null;
   let releasePriority: () => Promise<void> = async () => {};
   if (priorityLease?.acquired) {
     releasePriority = priorityLease.release;
-    try {
-      priority = await selectReprobePriority(db, priorityCap, true);
-    } catch (error) {
-      if (!isMissingSchemaError(error)) {
-        await releasePriority();
-        throw error;
-      }
+    const selectPriority = async (): Promise<Candidate[]> => {
       try {
-        priority = await selectReprobePriority(db, priorityCap, false);
-      } catch (error2) {
-        if (!isMissingSchemaError(error2)) {
-          await releasePriority();
-          throw error2;
+        return await selectReprobePriority(db, priorityCap, true);
+      } catch (error) {
+        if (!isMissingSchemaError(error)) throw error;
+        try {
+          return await selectReprobePriority(db, priorityCap, false);
+        } catch (error2) {
+          if (!isMissingSchemaError(error2)) throw error2;
+          return [];
         }
       }
+    };
+    // 選定は L0_PROBE_PRIORITY_SELECT_CAP_MS で打ち切る。超えたらこの回の優先の段は飛ばす（次の回で選び直す）。
+    let selected: Candidate[] | typeof TOTAL_LIMIT_EXCEEDED;
+    const selecting = selectPriority();
+    selecting.catch(() => {}); // 打ち切ったあとの例外を未処理にしない（上限の内の例外は下の await が受ける）
+    try {
+      selected = await withTotalLimit(selecting, L0_PROBE_PRIORITY_SELECT_CAP_MS);
+    } catch (error) {
+      await releasePriority();
+      throw error;
     }
+    if (selected === TOTAL_LIMIT_EXCEEDED) capped.add("priority_select");
+    else priority = selected;
   }
   const restLimit = Math.max(0, limit - priority.length);
   // 直近 PRIORITY_MIN_PROBE_AGE_MINUTES 分に測った出品は、普通の列でも次の回へ回す（優先の選定と同じ線）。
@@ -158,7 +223,7 @@ export async function runL0ProbeBatch(
     } else {
     // 候補 SQL は settlement_daily を読む（30 日窓が生行の保持期間へ縮まないため）。
     // 表がまだ無い環境では生行だけの式へ落とす（withDailyFallback）。
-    const candidatesSql = (daily: boolean) => sql`
+    const candidatesSql = (daily: boolean, pageSize: number, offset: number) => sql`
       SELECT e.id, e.resource_url, e.method, e.pay_to, e.network,
              e.price_amount, e.price_asset, e.source, lp.rule_change_reprobe
       FROM x402_endpoints e
@@ -175,14 +240,9 @@ export async function runL0ProbeBatch(
       ${recentlyProbed}
       ${excludePriority}
       ORDER BY ${l0OrderBy(tier, tier === "c1" ? Math.floor(restLimit / 3) : undefined)}
-      LIMIT ${restLimit}
+      LIMIT ${pageSize} OFFSET ${offset}
     `;
-    const rows = await withDailyFallback(
-      async () => await db.execute(candidatesSql(true)),
-      async () => await db.execute(candidatesSql(false)),
-    );
-    const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
-    candidates = (list as Record<string, unknown>[]).map((r) => ({
+    const mapRow = (r: Record<string, unknown>): Candidate => ({
       id: String(r.id),
       resourceUrl: String(r.resource_url),
       method: (r.method as string | null) ?? null,
@@ -192,12 +252,48 @@ export async function runL0ProbeBatch(
       priceAsset: (r.price_asset as string | null) ?? null,
       source: (r.source as string | null) ?? null,
       ruleChangeReprobe: r.rule_change_reprobe === true,
-    }));
+    });
+    // 候補 SELECT は L0_PROBE_CANDIDATE_SELECT_CAP_MS で打ち切る（頁の間でも見る）。超えたらそこまでの候補で走る。
+    const selectDeadlineAt = now() + L0_PROBE_CANDIDATE_SELECT_CAP_MS;
+    const fetchCandidatePage = async (offset: number, pageSize: number): Promise<Candidate[]> => {
+      const left = selectDeadlineAt - now();
+      if (left <= 0) {
+        capped.add("candidate_select");
+        return [];
+      }
+      const page = withDailyFallback(
+        async () => await db.execute(candidatesSql(true, pageSize, offset)),
+        async () => await db.execute(candidatesSql(false, pageSize, offset)),
+      );
+      const rows = await withTotalLimit(page, left);
+      if (rows === TOTAL_LIMIT_EXCEEDED) {
+        page.catch(() => {});
+        capped.add("candidate_select");
+        return [];
+      }
+      const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] }).rows ?? [];
+      return (list as Record<string, unknown>[]).map(mapRow);
+    };
+    if (coverageTier) {
+      // coverage の回だけ: 1 登録ドメイン ceil(残り / レーン) 件まで（l0PerDomainCap）。並びはホストごとの順位で
+      // 交互なので、1 頁目で多くのドメインが入る。頭打ちで落ちた分は次の頁で埋める（見込みの式の前提）。
+      const perDomain = Math.max(1, Math.ceil(restLimit / Math.max(1, concurrency)));
+      candidates = await fillPriorityByDomain(fetchCandidatePage, {
+        perDomain,
+        limit: restLimit,
+        pageSize: Math.max(1, Math.min(5000, restLimit)),
+        maxPages: 4,
+        domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
+      });
+    } else {
+      // c1・c2・all は従来の 1 回の LIMIT（並びと選び方は l0OrderBy のまま・頭打ちしない）。
+      candidates = await fetchCandidatePage(0, restLimit);
+    }
     }
   } catch (error) {
     await releasePriority();
     if (isMissingSchemaError(error)) {
-      return { probed: 0, pass: 0, fail: 0, unverified: 0, ruleChangeReprobed: 0, ruleChangeCorrected: 0, skippedRecent: 0, skippedBusy: 0, priorityAbandoned: 0, itemErrors: 0 };
+      return { probed: 0, pass: 0, fail: 0, unverified: 0, ruleChangeReprobed: 0, ruleChangeCorrected: 0, skippedRecent: 0, skippedBusy: 0, priorityAbandoned: 0, itemErrors: 0, normalAbandoned: 0, capped: [...capped] };
     }
     throw error;
   }
@@ -214,6 +310,8 @@ export async function runL0ProbeBatch(
     skippedBusy: 0,
     priorityAbandoned: 0,
     itemErrors: 0,
+    normalAbandoned: 0,
+    capped: [],
   };
 
   // 要求を出す直前の関門（優先と普通の列の両方）。順に見る:
@@ -239,7 +337,7 @@ export async function runL0ProbeBatch(
     return list.length > 0;
   };
 
-  async function probeOne(c: Candidate, stage: "priority" | "normal"): Promise<void> {
+  async function probeOne(c: Candidate, stage: "priority" | "normal"): Promise<void | DomainHoldResult> {
     let gate: Awaited<ReturnType<typeof claimBeforeRequest>>;
     try {
       gate = await claimBeforeRequest(c.id);
@@ -279,16 +377,25 @@ export async function runL0ProbeBatch(
         // 優先の段は 1 件ごとに、本文の読みまで含めた合計の上限を掛ける（遅い本文の 1 件が段を
         // maxDuration まで引かないため）。超えたら結果を書かずに打ち切る（測れたとは言えない）。
         // 置き去りの要求がまだ走りうるので、その出品のリースは返さず期限で切らせる。
+        // 登録ドメインも要求が終わるまで離さない（holdDomainUntil・次の段も同じ holds を見る）。
         const limited = await withTotalLimit(request, priorityRequestLimitMs);
         if (limited === TOTAL_LIMIT_EXCEEDED) {
           request.catch(() => {});
           summary.priorityAbandoned++;
           keepLease = true;
-          return;
+          return { holdDomainUntil: request };
         }
         result = limited;
       } else {
-        result = await request;
+        // 普通の列も同じ上限。超えた件は行を書かない（分子に入らない）。ドメインは要求が終わるまで離さない。
+        const limited = await withTotalLimit(request, normalRequestLimitMs);
+        if (limited === TOTAL_LIMIT_EXCEEDED) {
+          request.catch(() => {});
+          summary.normalAbandoned++;
+          keepLease = true;
+          return { holdDomainUntil: request };
+        }
+        result = limited;
       }
       // 書く直前の新しい行を読み直す（選定から時間が経っている・並行する c2 が書いたかもしれない）。
       // その間に今の規則の行で片付いていれば、通常の行として書く（訂正ログの対象にしない）。
@@ -344,35 +451,51 @@ export async function runL0ProbeBatch(
     }
   }
 
-  // 2 段で流す（2 周目の形）。先に優先分を、登録ドメインごとに同時 1 件・開始間隔 1 秒で測り、
-  // 終わったらリースを返してから普通の列を従来の並行プールで流す。優先分は 1 登録ドメイン
-  // PRIORITY_PER_DOMAIN 件までなので、遅いドメインでも優先の段は 300 秒の中で終わる。
+  // 2 段で流す。先に優先分を、登録ドメインごとに同時 1 件・開始間隔 1 秒で測り、終わったらリースを返して
+  // から普通の列を流す。どちらも同じ holds（登録ドメインの保持）を使い、1 件がレーンを占めるのは laneHoldMs まで。
+  // 優先の段は L0_PROBE_PRIORITY_STAGE_MS で返り切る（最後の開始はその線 − 保持）。
   const orderedPriority = interleaveByDomain(priority, (c) => resourceRegisteredDomain(c.resourceUrl));
   try {
+    const priorityStageEndAt = Math.min(now() + L0_PROBE_PRIORITY_STAGE_MS, laneEndAt);
     await runWithDomainInterval(orderedPriority, {
       concurrency,
       intervalMs: PRIORITY_DOMAIN_INTERVAL_MS,
+      deadlineAt: priorityStageEndAt - laneHoldMs + 1,
+      laneHoldMaxMs: laneHoldMs,
+      holds,
       domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
-      run: (c) => probeOne(c, "priority"),
+      run: (c) => track(probeOne(c, "priority")),
     });
   } finally {
     await releasePriority();
   }
 
-  let cursor = 0;
-  // Small worker pool — polite to targets, bounded for the function's clock.
-  async function worker() {
-    for (;;) {
-      const index = cursor++;
-      if (index >= candidates.length) return;
-      await probeOne(candidates[index], "normal");
-    }
+  // 普通の列。どの階層も期限・レーン保持の上限・ドメインの保持（同時 1 件）は同じ。
+  // coverage の回: ホストとドメインを交互にし、残りの多い登録ドメインから取り、開始間隔を空ける
+  //   （最悪の保持でも開始数が l0WorstCaseStartsPerRun の式どおり）。
+  // c1・c2・all: SQL の並び（l0OrderBy）のまま流す。間隔を空けない（空けると、待つドメインを飛ばして後ろの
+  //   出品が先に出て、c1 の組の順＝単発 fail → 未測定 → 古い順が崩れる）。c1 は見込みに数えない（countFullRuns）。
+  const orderedCandidates = coverageTier
+    ? interleaveByDomain(
+        interleaveByHost(candidates, (c) => probeResourceHost(c.resourceUrl)),
+        (c) => resourceRegisteredDomain(c.resourceUrl),
+      )
+    : candidates;
+  await runWithDomainInterval(orderedCandidates, {
+    concurrency,
+    intervalMs: coverageTier ? L0_NORMAL_DOMAIN_INTERVAL_MS : 0,
+    deadlineAt: laneEndAt - laneHoldMs + 1,
+    laneHoldMaxMs: laneHoldMs,
+    preferLongestDomainQueue: coverageTier,
+    holds,
+    domainOf: (c) => resourceRegisteredDomain(c.resourceUrl),
+    run: (c) => track(probeOne(c, "normal")),
+  });
+  // レーンの上限を越えて書き込み中の件を、期限まで待つ（上限超過で捨てた要求は待たない）。
+  const settleLeft = runDeadlineAt - now();
+  if (outstanding.size > 0 && settleLeft > 0) {
+    await withTotalLimit(Promise.allSettled([...outstanding]), settleLeft);
   }
-
-  if (candidates.length > 0) {
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, candidates.length) }, worker),
-    );
-  }
+  summary.capped = [...capped];
   return summary;
 }

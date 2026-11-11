@@ -117,8 +117,32 @@
       "schedule": "30 10 * * *"
     },
     {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 0 * * *"
+    },
+    {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 2 * * *"
+    },
+    {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 6 * * *"
+    },
+    {
       "path": "/api/cron/l0-probe",
       "schedule": "30 10 * * *"
+    },
+    {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 14 * * *"
+    },
+    {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/l0-coverage",
+      "schedule": "30 22 * * *"
     },
     {
       "path": "/api/cron/l1-purchase",

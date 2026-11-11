@@ -271,12 +271,12 @@ test("probe-runner は優先の段を、fail-closed のリースの下で、普�
   const body = src.slice(src.indexOf("export async function runL0ProbeBatch"));
   const select = body.indexOf("await selectReprobePriority(db, priorityCap, true)");
   const lease = body.indexOf("await acquireLeaseFailClosed(PRIORITY_LEASE_NAME, PRIORITY_LEASE_TTL_SECONDS)");
-  const rest = body.indexOf("LIMIT ${restLimit}");
+  const rest = body.indexOf("fillPriorityByDomain(fetchCandidatePage");
   const exclude = body.indexOf("${excludePriority}");
   const recent = body.indexOf("${recentlyProbed}");
   const runPriority = body.indexOf("await runWithDomainInterval(orderedPriority, {");
   const release = body.indexOf("await releasePriority();", runPriority);
-  const runRest = body.indexOf("await Promise.all(", runPriority);
+  const runRest = body.indexOf("await runWithDomainInterval(orderedCandidates,", runPriority);
   for (const [name, at] of Object.entries({ select, lease, rest, exclude, recent, runPriority, release, runRest })) {
     assert.ok(at > 0, `${name} が runL0ProbeBatch に無い`);
   }
@@ -339,7 +339,7 @@ test("withTotalLimit: 上限を超えた要求は打ち切りの印を返し、�
   assert.ok(PRIORITY_REQUEST_TOTAL_MS <= 10_500, "優先の 1 件は本文まで含めて 10 秒台");
   const body = read("src/lib/observatory/probe-runner.ts");
   assert.match(body, /if \(stage === "priority"\) \{[\s\S]*?await withTotalLimit\(request, priorityRequestLimitMs\)/);
-  assert.match(body, /run: \(c\) => probeOne\(c, "priority"\)/);
+  assert.match(body, /run: \(c\) => track\(probeOne\(c, "priority"\)\)/);
 });
 
 test("優先は組をまたいで 1 登録ドメイン 5 件・全体 50 件まで。落ちた分は次の頁で埋める", async () => {
