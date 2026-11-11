@@ -80,31 +80,15 @@ const ENTRY_CARDS = [
   },
 ] as const;
 
-const FOOT_PRODUCT = [
+// 2026-11-12 オーナー「フッターも選択肢がありすぎてわけがわからない。シンプル・ザ・ベスト」。
+// 4 群 23 本を、主な行 7 本と法務 3 本に絞った。x402 のガイド（chains・check-a-seller・stablecoin-payments）への
+// 内部リンクは、ほかの頁の SiteFooter の x402 列に残る。
+const FOOT_MAIN = [
   { label: "Docs", href: "/docs/api" },
-  { label: "MCP", href: "/docs/mcp" },
-  { label: "Get an API key", href: "/signup" },
-  { label: "Dashboard", href: "/dashboard" },
-] as const;
-
-const FOOT_X402 = [
-  { label: "What is x402", href: "/x402" },
-  { label: "Check a seller", href: "/x402/check-a-seller" },
-  { label: "Observatory", href: "/observatory" },
   { label: "Sellers", href: "/sellers" },
-  { label: "x402 by chain", href: "/x402/chains" },
-  { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
-  { label: "State of x402", href: "/observatory/state" },
-  { label: "Methodology", href: "/observatory/methodology" },
-] as const;
-
-const FOOT_RECORD = [
-  { label: "About", href: "/about" },
-  { label: "FAQ", href: "/faq" },
+  { label: "Observatory", href: "/observatory" },
+  { label: "What is x402", href: "/x402" },
   { label: "Blog", href: "/blog" },
-  { label: "Status", href: "/status" },
-  { label: "Corrections", href: "/corrections" },
-  { label: "The memo", href: "/memo" },
   { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
   { label: "X", href: "https://x.com/vet402_com" },
 ] as const;
@@ -113,6 +97,7 @@ const FOOT_LEGAL = [
   { label: "Terms", href: "/legal/terms" },
   { label: "Privacy", href: "/legal/privacy" },
   { label: "Legal notice", href: "/legal/notice" },
+  { label: "The memo", href: "/memo" },
 ] as const;
 
 export default async function Home() {
@@ -415,35 +400,23 @@ export default async function Home() {
 
       <footer className={s.wrap}>
         <div className={s.foot}>
-          <div className={s.footGroups}>
-            {(
-              [
-                ["Product", FOOT_PRODUCT],
-                ["x402", FOOT_X402],
-                ["Record", FOOT_RECORD],
-                ["Legal", FOOT_LEGAL],
-              ] as const
-            ).map(([title, links]) => (
-              <div key={title} className={s.footGroup}>
-                <p className={s.footGroupLabel}>{title}</p>
-                <ul className={s.footLinks}>
-                  {links.map((f) =>
-                    f.href.startsWith("http") ? (
-                      <li key={f.href}>
-                        <OutboundAnchor href={f.href} rel="noopener">
-                          {f.label}
-                        </OutboundAnchor>
-                      </li>
-                    ) : (
-                      <li key={f.href}>
-                        <Link href={f.href}>{f.label}</Link>
-                      </li>
-                    ),
-                  )}
-                </ul>
-              </div>
-            ))}
-          </div>
+          {[FOOT_MAIN, FOOT_LEGAL].map((links, row) => (
+            <ul key={row} className={row ? `${s.footLinks} ${s.footLegal}` : s.footLinks}>
+              {links.map((f) =>
+                f.href.startsWith("http") ? (
+                  <li key={f.href}>
+                    <OutboundAnchor href={f.href} rel="noopener">
+                      {f.label}
+                    </OutboundAnchor>
+                  </li>
+                ) : (
+                  <li key={f.href}>
+                    <Link href={f.href}>{f.label}</Link>
+                  </li>
+                ),
+              )}
+            </ul>
+          ))}
           <p className={s.footNote}>
             vet402 is run by KIZUNA Creation. Figures on this page are measurements, shown with the time they were read.
           </p>

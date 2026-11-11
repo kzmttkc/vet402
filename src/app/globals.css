@@ -152,7 +152,8 @@ html {
   /* ヘッダは sticky なので、アンカー着地が見出しを隠さないようにする。 */
   scroll-padding-top: 4.5rem;
   /* ---- ブラウザが描く面もテーマに入れる（craft-floor「Browser surfaces」）---- */
-  color-scheme: light;
+  /* "only light": ブラウザの強制ダークを断る（2026-11-12・layout.tsx の viewport と対）。 */
+  color-scheme: only light;
   scrollbar-color: #8f9cb2 #eef0f3;
   /* 紙は中央に置かれているので、スクロールバーの有無で紙面が左右に跳ぶ。
      短い頁（/legal/notice）から長い頁（/legal/terms）へ移ると、承認された

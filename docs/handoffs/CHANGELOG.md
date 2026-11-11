@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Mobile: the page refuses forced dark, and the home footer is two short rows
+
+- What: `color-scheme: only light` (globals.css and the viewport export) and a `darkreader-lock` meta. The home footer drops from 4 groups and 23 links to 7 main links and a small row (Terms, Privacy, Legal notice, The memo).
+- Why: a phone browser's night mode darkened the paper but kept the navy text, so the pricing table read at about 1.6:1. The owner also found the footer had too many choices.
+- Impact: x402 guide pages keep their internal links through the SiteFooter on other pages.
+
 ## 2026-11-11 The DB client refuses the production database inside a test run
 
 - What: `getDb()` throws inside a node:test run (NODE_TEST_CONTEXT, or an entry file under tests/ or named *.test.*) when the URL is the production Neon endpoint (matched by the sha256 of its endpoint id), or when DATABASE_URL differs from TEST_DATABASE_URL. The tokyo env-name allowlists add NODE_TEST_CONTEXT and TEST_DATABASE_URL, which this guard reads.

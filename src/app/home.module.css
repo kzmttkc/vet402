@@ -740,28 +740,6 @@
   font-size: 1rem;
   color: var(--lp-ink-3);
 }
-.footGroups {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 48px;
-}
-@media (max-width: 640px) {
-  .footGroups {
-    flex-direction: column;
-    gap: 24px;
-  }
-}
-.footGroup {
-  min-width: 0;
-}
-.footGroupLabel {
-  margin: 0 0 8px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--lp-ink-4);
-}
 .footLinks {
   display: flex;
   flex-wrap: wrap;
@@ -780,6 +758,13 @@
 }
 .footLinks a:hover {
   color: var(--lp-ink);
+}
+.footLegal {
+  font-size: 0.875rem;
+}
+.footLegal a {
+  min-height: 36px;
+  color: var(--lp-ink-4);
 }
 .footNote {
   margin: 16px 0 0;

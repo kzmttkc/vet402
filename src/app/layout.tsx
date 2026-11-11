@@ -38,6 +38,8 @@ const SITE_DESCRIPTION =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  // Dark Reader 系の夜間モード（iOS の Brave など）に色の書き換えをさせない（2026-11-12・viewport の colorScheme と対）。
+  other: { "darkreader-lock": "lock" },
   // 自己参照 canonical（2026-08-13 監査是正）。"./" は各ルートの実パスに対して
   // metadataBase 基準で解決されるため、ここ1箇所で全ページに自己参照 canonical が
   // 付く（独自に canonical を持つページはページ側が優先される）。
@@ -87,8 +89,12 @@ export const metadata: Metadata = {
 // 識別色（タスク切替の帯）。走っている頁の地色とは役割が違う。
 // themeColor は metadata ではなく viewport export に置く（Next.js 15 以降、
 // metadata 側に書くとビルド警告が出て出力されない）。
+// 2026-11-12: 紙は明るい地だけで組んである（紺の文字 #233456 は暗い地で 1.6:1 前後になり読めない）。
+// ブラウザの強制ダーク（Chromium の自動ダーク・Brave の夜間モード）が地だけ暗くして紺の文字を残すと、
+// モバイルで価格表がほぼ見えなくなった（オーナーの実機・11/12）。"only light" は強制ダークを断る宣言。
 export const viewport: Viewport = {
   themeColor: "#eef0f3",
+  colorScheme: "only light",
 };
 
 export default async function RootLayout({
