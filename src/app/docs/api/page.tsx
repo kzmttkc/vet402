@@ -487,8 +487,26 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/anchors",
-    note: "One hash root per UTC day over that day's L1 rows. An older root describes the ledger as it stood when the root was computed. Query days from 1 to 366, default 30. Key-less. 30 requests per minute per IP.",
-    response: `HTTP 200. Anchors newest day first, with the recompute recipe.`,
+    note: "One hash root per UTC day over that day's L1 rows. An older root describes the ledger as it stood when the root was computed. A missed day stays without a root and is listed in missingHeadDays as no_head_for_day. dayVerification checks the newest day that a later day links to, from the day file, the published root and the next day's prevRoot. Query days from 1 to 366, default 30. No key needed. 30 requests per minute per IP.",
+    response: `HTTP 200 while the newest root is one or two days old. HTTP 503 anchors_head_stale with the same body when it is older. Anchors newest day first, with the recompute recipe.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/anchors/day",
+    note: "The canonical JSON of one sealed day, byte for byte. sha256 of the previous root, a newline and this body equals that day's root in /anchors and the prevRoot of the next sealed day. A day with no sealed root answers 404 no_head_for_day. 10 requests per minute per IP. CC-BY-4.0.",
+    response: `HTTP 200. The day JSON. x-vet402-day-root, x-vet402-prev-root, x-vet402-chain-root and x-vet402-day-verification headers.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/ledger-corrections",
+    note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). CC-BY-4.0.",
+    response: `HTTP 200. corrections, counts by kind, license and cite.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/traceable-by-chain",
+    note: "For each of the ten public chains, the latest settled purchase in the same fields as the home page example, with its tx and a public explorer link. nonce_bound and amount_payee_only are separate lists, and each row names its settledTier. A Circle Gateway row inside a shared batch transaction is not listed. A chain with no such purchase is named in chainsWithoutExample. No API key. 30 requests per minute per IP. CC-BY-4.0.",
+    response: `HTTP 200. chains, lists.nonce_bound, lists.amount_payee_only, chainsWithoutExample, home, moreThanHomeAlone, license and cite.`,
   },
   {
     method: "GET",

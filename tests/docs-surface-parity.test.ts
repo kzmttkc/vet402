@@ -83,10 +83,18 @@ test("SDK README のスコア例は固定値を約束しない（\"72 'ALLOW'\" 
   }
 });
 
-test("Python SDK README が /decision 未対応を明記する", () => {
+// 2026-11-10 公平審査 3.9-4: Python に get_resource_decision が入った。/decision は対応、/resolve は未対応。
+test("Python SDK README は /decision を get_resource_decision として書き、/resolve だけを未対応と書く", () => {
   const readme = read("packages/python-sdk/README.md");
-  assert.ok(/\/decision/.test(readme), "packages/python-sdk/README.md が /decision に触れていない");
-  assert.ok(/not (yet )?(supported|implemented|available)/i.test(readme), "未対応であることを書いていない");
+  const client = read("packages/python-sdk/src/vet402/client.py");
+  assert.match(client, /def get_resource_decision\(/, "client.py に get_resource_decision が無い");
+  assert.match(readme, /`GET \/resources\/\{resource_id\}\/decision`\*\* is\s+> available in this package as `get_resource_decision`/);
+  assert.match(readme, /`\/resolve` is not supported by this package yet/);
+  for (const line of readme.split("\n")) {
+    if (/not (yet )?(supported|implemented|available)/i.test(line)) {
+      assert.doesNotMatch(line, /decision/, `未対応の文が decision に掛かっている: ${line}`);
+    }
+  }
 });
 
 // ------------------------------------------------------------------

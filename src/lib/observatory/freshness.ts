@@ -91,11 +91,12 @@ export const PUBLIC_FRESHNESS: readonly FreshnessRow[] = [
     "public, s-maxage=600, stale-while-revalidate=1200",
   ),
   cc(
-    "`GET /api/v1/observatory/export.csv`, `/history`, `/anchors`, `/backtest`, `/concentration`",
+    "`GET /api/v1/observatory/export.csv`, `/history`, `/anchors`, `/traceable-by-chain`, `/backtest`, `/concentration`",
     [
       "src/app/api/v1/observatory/export.csv/route.ts",
       "src/app/api/v1/observatory/history/route.ts",
       "src/app/api/v1/observatory/anchors/route.ts",
+      "src/app/api/v1/observatory/traceable-by-chain/route.ts",
       "src/app/api/v1/observatory/backtest/route.ts",
       "src/app/api/v1/observatory/concentration/route.ts",
     ],

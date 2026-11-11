@@ -57,10 +57,22 @@ if (!TEST_DB) {
       assert.equal(a16.entryCount, 1);
     });
 
-    await t.test("改竄検出: 過去行を書き換えるとrootが変わる（かつ未アンカーなら更新される）", async () => {
+    // 2026-11-10 公平審査 3.8 の 6c: 後ろの日が繋がった root は書き換えない（書き換えると鎖が切れ、
+    // 封印の後に中身を差し替えた日が検証を通ってしまう）。改ざんは計算し直した root の差で見える。
+    await t.test("改竄検出: 過去行を書き換えると計算し直した root が変わり、後ろが繋がった root は書き換えない", async () => {
       await db.execute(sql`UPDATE x402_l1_purchases SET spent_units='9999' WHERE spent_units='3000'`);
       const a = await anchorDay("2026-08-15");
-      assert.notEqual(a.rootHash, root15, "tamper must change the root");
+      assert.equal(a.status, "conflict_frozen");
+      assert.equal(a.rootHash, root15, "the stored root a later day links to stays");
+      assert.notEqual(a.recomputedRoot, root15, "tamper must change the recomputed root");
+    });
+
+    await t.test("鎖の先頭（後ろに日が無い）なら、同日の遅延到着行で root を更新する", async () => {
+      const before = (await getAnchors(30)).find((r) => r.day === "2026-08-16")!;
+      await buy("settled", "500", "2026-08-16T05:00:00Z");
+      const a = await anchorDay("2026-08-16");
+      assert.equal(a.status, "updated");
+      assert.notEqual(a.rootHash, before.rootHash);
     });
 
     await t.test("anchored_txが入った日は上書きを拒否する", async () => {

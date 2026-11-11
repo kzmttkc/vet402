@@ -7,8 +7,9 @@
 // cli/verify-anchors.ts は prevRoot == 前行の rootHash しか見ないため
 // 「chainIntact: true」を 5 日間言い続けた。連結は保たれ、連続は失われていた。
 //
-// 修正: (1) 前日 root は day-1 に限る（無ければ先に埋める）、(2) cron は
-// 欠けた日を古い順に埋めてから昨日を固定する、(3) 検証は連結と連続の両方。
+// 修正: 検証は連結と連続の両方。2026-11-10（公平審査 3.8 の 6c）から、欠けた日は
+// 後から埋めず、gaps と anchors の GET の missingHeadDays で「その日はヘッドが無い」と公開する
+// （tests/anchors-backfill.pg.test.ts）。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";

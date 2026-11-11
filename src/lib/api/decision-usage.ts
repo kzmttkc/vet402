@@ -236,7 +236,7 @@ type PublishedRow = { relation: string; owners: number | string; calls: number |
 
 type AppDb = NonNullable<ReturnType<typeof getDb>>;
 
-function publishRelations(stored: PublishedRow[]): MonthlyRelationUsage[] {
+export function publishMonthlyRelations(stored: PublishedRow[]): MonthlyRelationUsage[] {
   const relations: MonthlyRelationUsage[] = [];
   for (const row of stored) {
     const owners = Number(row.owners);
@@ -311,7 +311,7 @@ export async function loadMonthlyDecisionUsage(
   const existing = await readPublished(db, query);
   if (existing.length === 0) await freezeMonthlyDecisionUsage(db, query);
   const stored = existing.length > 0 ? existing : await readPublished(db, query);
-  return { chain: query.chain, month: query.month, relations: publishRelations(stored) };
+  return { chain: query.chain, month: query.month, relations: publishMonthlyRelations(stored) };
 }
 
 /**
@@ -328,7 +328,7 @@ export async function readPublishedMonthlyDecisionUsage(
   if (!db) return null;
   const stored = await readPublished(db, query);
   if (stored.length === 0) return null;
-  return { chain: query.chain, month: query.month, relations: publishRelations(stored) };
+  return { chain: query.chain, month: query.month, relations: publishMonthlyRelations(stored) };
 }
 
 /** The newest month whose public value may exist: the previous UTC month from the 3rd, else the one before. */

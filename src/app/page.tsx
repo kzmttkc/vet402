@@ -6,6 +6,7 @@ import TrackView from "@/components/site/TrackView";
 import TrackedLink from "@/components/site/TrackedLink";
 import OutboundAnchor from "@/components/site/OutboundAnchor";
 import { HomeLivenessNote } from "@/components/site/StatusBanner";
+import { PricingSection } from "@/components/site/PricingSection";
 import { BILLING_PLANS, isStripeConfigured } from "@/lib/billing/plans";
 import { SITE_URL } from "@/lib/site-url";
 import { isPublicExplorerTxUrl } from "@/lib/observatory/chains";
@@ -409,6 +410,7 @@ export default async function Home() {
             ))}
           </ul>
         </section>
+        <PricingSection className={s.section} titleId="home-pricing" />
       </main>
 
       <footer className={s.wrap}>

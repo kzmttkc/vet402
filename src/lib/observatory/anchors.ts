@@ -12,6 +12,13 @@
 // オンチェーンへの刻印（anchored_tx）は ANCHOR_WRITES_ENABLED（既定OFF・
 // ガス代）。刻印済みの日の root は**いかなる理由でも上書きしない**——
 // 食い違いは conflict_frozen として返し、呼び手（cron）が ALERT に出す。
+//
+// 2026-11-10 公平審査（3.8 の 6c）: 日次ジョブが止まった日は、後から埋めない。
+// 後で計算した root を「その日のヘッド」として出すと、その日に封印していない
+// ものを封印済みに見せる（probe402 の 11/5〜7 の穴と同じ形）。止まった日は
+// ledger_anchors に行を作らず、次に封印する日はその前に存在する最新の root に
+// 繋ぐ。穴は chainContinuity の gaps と、anchors の GET の missingHeadDays に
+// 「その日はヘッドが無い」として出る。後ろに日が繋がった root は書き換えない。
 // ============================================================
 import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -50,20 +57,14 @@ export async function canonicalDayPayload(db: Pick<Db, "execute">, day: string):
 export type AnchorResult = {
   day: string;
   rootHash: string;
+  /** conflict_frozen のとき、今の行から計算し直した root（保存値は rootHash のまま）。 */
+  recomputedRoot?: string;
   entryCount: number;
   /** created | unchanged | updated | conflict_frozen */
   status: "created" | "unchanged" | "updated" | "conflict_frozen";
 };
 
-/**
- * 1日ぶんの root を計算して upsert。冪等。
- * 前日 root は DB の連鎖から取る（無ければ genesis = 空文字連結）。
- */
 const DAY_MS = 86_400_000;
-
-function shiftDay(day: string, days: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
 
 /** from..to（閉区間）のうち have に無い日。 */
 export function missingDaysBetween(from: string, to: string, have: readonly string[]): string[] {
@@ -95,60 +96,30 @@ export function chainContinuity(
 }
 
 /**
- * day-1 の root。day-1 が無く、かつそれより前にも 1 行も無ければ genesis
- * （found=true, root=null）。day-1 だけが無い（穴）なら found=false。
+ * day より前に存在する最新の root（無ければ genesis = null）。穴を跨いでも繋ぐ。
+ * 穴は埋めず、chainContinuity が gaps として名指しする（2026-11-10）。
  */
-async function prevDayRoot(db: Db, day: string): Promise<{ found: boolean; root: string | null }> {
-  const prev = shiftDay(day, -1);
-  const raw = await db.execute(sql`SELECT root_hash FROM ledger_anchors WHERE day = ${prev}`);
+async function latestRootBefore(db: Db, day: string): Promise<string | null> {
+  const raw = await db.execute(sql`
+    SELECT root_hash FROM ledger_anchors WHERE day < ${day} ORDER BY day DESC LIMIT 1
+  `);
   const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { root_hash: string }[];
-  if (rows.length > 0) return { found: true, root: rows[0].root_hash };
-  const before = await db.execute(sql`SELECT 1 FROM ledger_anchors WHERE day < ${day} LIMIT 1`);
-  const hasEarlier = ((Array.isArray(before) ? before : (before as { rows?: unknown[] }).rows ?? []) as unknown[]).length > 0;
-  return { found: !hasEarlier, root: null };
+  return rows.length > 0 ? rows[0].root_hash : null;
+}
+
+/** day より後に封印済みの日があるか。あれば day の root は後ろの鎖に入っている。 */
+async function hasLaterAnchor(db: Db, day: string): Promise<boolean> {
+  const raw = await db.execute(sql`SELECT 1 FROM ledger_anchors WHERE day > ${day} LIMIT 1`);
+  return ((Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as unknown[]).length > 0;
 }
 
 /**
- * 最古の固定日から `to` までの欠けた日を古い順に埋め、最後に `to` を固定する。
- * 日次ペイロードは DB から決定的に再計算できるので、後から過去日を固定しても
- * 鎖の意味は変わらない（刻印済みの日は anchorDay が conflict_frozen で守る）。
+ * `to` の日だけを封印する。欠けた日は埋めない（2026-11-10 公平審査 3.8 の 6c）。
+ * 戻り値は 1 件（`to` の結果）。呼び手の配列の形は 2026-09-02 からのものを保つ。
  */
-export async function anchorThrough(to: string, maxBackfillDays = 30): Promise<AnchorResult[]> {
+export async function anchorThrough(to: string): Promise<AnchorResult[]> {
   if (!DAY_RE.test(to)) throw new Error(`anchorThrough: not a YYYY-MM-DD day: ${to}`);
-  const db = getDb();
-  if (!db) throw new Error("anchorThrough: DATABASE_URL is not configured");
-  const raw = await db.execute(sql`
-    SELECT day, root_hash, prev_root, lag(root_hash) OVER (ORDER BY day) AS prior_root
-    FROM ledger_anchors WHERE day <= ${to} ORDER BY day ASC
-  `);
-  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
-    day: string;
-    root_hash: string;
-    prev_root: string | null;
-    prior_root: string | null;
-  }[];
-  const have = rows.map((r) => String(r.day));
-  const from = have[0] ?? to;
-  const missing = missingDaysBetween(from, to, have).slice(-maxBackfillDays);
-  // 穴を埋めたら、その日より後の既存の日も古い順に再計算する——前日 root が変わるので
-  // 後続の root は全て変わる（2026-09-02 実測: 08-26 を埋めても 08-27 の prev_root が
-  // 08-25 を指したままで、鎖は「繋がっているが飛んでいる」状態が残った）。
-  // 既に穴が埋まっていても prev_root が直前の日の root と食い違う日（旧実装が飛ばして
-  // 連結した日）があれば、そこから後ろを再計算する。
-  // 刻印済み（anchored_tx あり）の日は anchorDay が conflict_frozen で守る。
-  const earliestGap = missing[0] ?? null;
-  const earliestStale =
-    rows.find((r, i) => i > 0 && r.prev_root !== r.prior_root && shiftDay(r.day, -1) === rows[i - 1].day)?.day ??
-    rows.find((r, i) => i > 0 && shiftDay(r.day, -1) !== rows[i - 1].day)?.day ??
-    null;
-  const recomputeFrom = [earliestGap, earliestStale].filter((d): d is string => d !== null).sort()[0] ?? null;
-  const days = new Set<string>(missing);
-  for (const d of have) if (recomputeFrom !== null && d >= recomputeFrom) days.add(d);
-  days.add(to);
-  const ordered = [...days].sort();
-  const out: AnchorResult[] = [];
-  for (const d of ordered) out.push(await anchorDay(d));
-  return out;
+  return [await anchorDay(to)];
 }
 
 export async function anchorDay(day: string): Promise<AnchorResult> {
@@ -157,15 +128,10 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
   if (!db) throw new Error("anchorDay: DATABASE_URL is not configured");
 
   const { payload, count } = await canonicalDayPayload(db, day);
-  // 2026-09-02 監査: 以前は `day < ${day}` で「直前に存在する日」を取っていた。
-  // cron が 1 回落ちると翌日は穴を飛ばして前々日に連結し、鎖は「繋がっている」
-  // のに「連続していない」状態になる（本番で 1 日欠けたまま 5 日間検出されず）。
-  // 前日 root は day-1 に限る。無ければ呼び手（anchorThrough）が先に埋める。
-  const prev = await prevDayRoot(db, day);
-  if (!prev.found) {
-    throw new Error(`anchorDay: ${day} の前日が未固定——anchorThrough で古い日から埋める`);
-  }
-  const prevRoot = prev.root;
+  // 2026-11-10: 前の root は「day より前に存在する最新の日」。穴は埋めない。
+  // 2026-09-02 の「穴が 5 日間検出されなかった」は、連結と連続を分けて見る
+  // chainContinuity と、GET の missingHeadDays・headFreshness で公開して防ぐ。
+  const prevRoot = await latestRootBefore(db, day);
   const rootHash = createHash("sha256")
     .update(prevRoot ?? "genesis")
     .update("\n")
@@ -182,7 +148,12 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
     anchored_tx: string | null;
   }[];
 
+  const laterExists = await hasLaterAnchor(db, day);
   if (existing.length === 0) {
+    // 後ろに封印済みの日がある過去の日を、後から封印しない（穴埋めの禁止）。
+    if (laterExists) {
+      throw new Error(`anchorDay: ${day} より後の日が封印済み——過去の穴は埋めない（no_head_for_day として公開する）`);
+    }
     await db.execute(sql`
       INSERT INTO ledger_anchors (day, root_hash, prev_root, entry_count)
       VALUES (${day}, ${rootHash}, ${prevRoot}, ${count})
@@ -193,11 +164,18 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
   if (existing[0].root_hash === rootHash) {
     return { day, rootHash, entryCount: count, status: "unchanged" };
   }
-  if (existing[0].anchored_tx) {
-    // 刻印済み root と現データが食い違う＝整合性イベント。書き換えない。
-    return { day, rootHash: existing[0].root_hash, entryCount: count, status: "conflict_frozen" };
+  if (existing[0].anchored_tx || laterExists) {
+    // 刻印済み、または後ろの日がこの root に繋がっている。現データとの食い違いは
+    // 整合性イベントであり、書き換えない（書き換えると後ろの鎖が切れる）。
+    return {
+      day,
+      rootHash: existing[0].root_hash,
+      recomputedRoot: rootHash,
+      entryCount: count,
+      status: "conflict_frozen",
+    };
   }
-  // 未刻印なら同日中の遅延到着行を取り込んで更新（連鎖の先頭は常に最新日なので安全）。
+  // 鎖の先頭（後ろに日が無い）で未刻印なら、同日中の遅延到着行を取り込んで更新する。
   await db.execute(sql`
     UPDATE ledger_anchors SET root_hash = ${rootHash}, prev_root = ${prevRoot}, entry_count = ${count}
     WHERE day = ${day}
@@ -232,4 +210,54 @@ export async function getAnchors(days: number): Promise<AnchorRow[]> {
     entryCount: Number(r.entry_count),
     anchoredTx: r.anchored_tx === null ? null : String(r.anchored_tx),
   }));
+}
+
+/**
+ * ある日の検証の材料を、別々の場所から読む（2026-11-10 公平審査 3.8 の 6c-1）。
+ *   payload   … その日の L1 行から作った正規化バイト列（公開ファイル /observatory/anchors/day と同じ）
+ *   head      … ledger_anchors に封印した、その日の root と prev_root（公開ヘッド）
+ *   chainRoot … 次に封印した日の prev_root（鎖がこの日の値として持っているもの）。次の日が無ければ null
+ * どれか 1 つを他から写すと検証にならないので、関数は 3 つを混ぜずに返す。
+ */
+export type DayVerificationInputs = {
+  day: string;
+  payload: string;
+  entryCount: number;
+  head: { day: string; rootHash: string; prevRoot: string | null } | null;
+  chainRoot: string | null;
+  chainRootDay: string | null;
+};
+
+export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: string): Promise<DayVerificationInputs> {
+  if (!DAY_RE.test(day)) throw new Error(`readDayVerificationInputs: not a YYYY-MM-DD day: ${day}`);
+  const { payload, count } = await canonicalDayPayload(db, day);
+  const headRaw = await db.execute(sql`SELECT day, root_hash, prev_root FROM ledger_anchors WHERE day = ${day}`);
+  const headRows = (Array.isArray(headRaw) ? headRaw : (headRaw as { rows?: unknown[] }).rows ?? []) as {
+    day: string;
+    root_hash: string;
+    prev_root: string | null;
+  }[];
+  const nextRaw = await db.execute(sql`
+    SELECT day, prev_root FROM ledger_anchors WHERE day > ${day} ORDER BY day ASC LIMIT 1
+  `);
+  const nextRows = (Array.isArray(nextRaw) ? nextRaw : (nextRaw as { rows?: unknown[] }).rows ?? []) as {
+    day: string;
+    prev_root: string | null;
+  }[];
+  const head = headRows[0]
+    ? {
+        day: String(headRows[0].day),
+        rootHash: String(headRows[0].root_hash),
+        prevRoot: headRows[0].prev_root === null ? null : String(headRows[0].prev_root),
+      }
+    : null;
+  const next = nextRows[0];
+  return {
+    day,
+    payload,
+    entryCount: count,
+    head,
+    chainRoot: next && next.prev_root !== null ? String(next.prev_root) : null,
+    chainRootDay: next ? String(next.day) : null,
+  };
 }

@@ -22,16 +22,35 @@ const PLAN_ORDER = ["free", "pro", "scale"] as const;
 
 const INCLUDES: Record<(typeof PLAN_ORDER)[number], string> = {
   free: "REST, MCP and x402 middleware, TypeScript SDK",
-  pro: "Everything in Free, plus score history and priority support",
-  scale: "Everything in Pro, at the highest rate limit",
+  pro: "Everything in Free, higher monthly lookup quota",
+  scale: "Everything in Pro, highest monthly lookup quota",
 };
 
-export function PricingSection() {
+/**
+ * 2026-11-10 fair review: the home page shows the same table. The memo keeps its
+ * appendix numbering ("A. Access tiers"). The home page passes its own title and
+ * no number, so the memo heading does not leak onto the home page.
+ */
+export type PricingSectionProps = {
+  /** Appendix number shown before the title. The memo passes "A.". */
+  number?: string;
+  title?: string;
+  /** id of the heading, so the section can be named by aria-labelledby. */
+  titleId?: string;
+  className?: string;
+};
+
+export function PricingSection({
+  number,
+  title = "Pricing",
+  titleId = "pricing-title",
+  className,
+}: PricingSectionProps = {}) {
   return (
-    <section id="pricing" className="scroll-mt-24">
-      <h2 className="sec-head">
-        <span className="sec-no">A.</span>
-        <span>Access tiers</span>
+    <section id="pricing" aria-labelledby={titleId} className={className ? `scroll-mt-24 ${className}` : "scroll-mt-24"}>
+      <h2 id={titleId} className="sec-head">
+        {number ? <span className="sec-no">{number}</span> : null}
+        <span>{title}</span>
       </h2>
       <p className="doc-p">
         Usage-based. The free tier is enough to wire a check into an x402 flow and see real results

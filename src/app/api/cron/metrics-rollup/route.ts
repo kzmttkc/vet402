@@ -33,8 +33,9 @@ export async function GET(request: NextRequest) {
     // 台帳ハッシュチェーン: 完結した前日だけをアンカーする（当日は行が増える）。
     // conflict_frozen（刻印済みrootと現データの食い違い）は整合性イベント——
     // 握りつぶさず監視ログに出す。
-    // 2026-09-02 監査: 欠けた日を古い順に埋めてから昨日を固定する。cron が 1 回
-    // 落ちても翌日に鎖が自己修復する（以前は穴を飛ばして連結し、5 日間検出されなかった）。
+    // 2026-11-10 公平審査 3.8 の 6c: 欠けた日は後から埋めない。昨日だけを固定し、
+    // 穴は /api/v1/observatory/anchors の missingHeadDays と headFreshness が公開する
+    // （2026-09-02 の「5 日間検出されなかった」は、この公開と chainContinuity で防ぐ）。
     const anchors = await anchorThrough(shiftDay(utcDayString(), -1));
     for (const anchor of anchors) {
       if (anchor.status === "conflict_frozen") {
@@ -51,7 +52,6 @@ export async function GET(request: NextRequest) {
       days,
       driftDaysRecomputed,
       anchor,
-      backfilled: anchors.length - 1,
     });
   } catch (error) {
     logServerErrorSafe("cron.metrics-rollup", error);

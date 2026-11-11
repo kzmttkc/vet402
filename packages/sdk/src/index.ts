@@ -881,3 +881,10 @@ function assertWallet(wallet: string): void {
 export function createVouchClient(options: VouchClientOptions): VouchClient {
   return new VouchClient(options);
 }
+
+export {
+  createVet402ReadHook,
+  getVet402ReadSnapshot,
+  type Vet402ReadHookOptions,
+  type Vet402ReadSnapshot,
+} from "./vet402-read-hook.js";

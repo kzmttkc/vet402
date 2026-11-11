@@ -191,6 +191,14 @@ const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
   "Robinhood Chain": "eip155:4663",
 };
 
+/**
+ * 3.8b の 10 鎖（公開名と CAIP-2）。PUBLIC_CHAIN_NETWORKS と同じ並び。
+ * Robinhood Chain・Polygon・Monad は、公開の byChain に載るまでここに入れない。
+ */
+export function traceablePublicChains(): { label: string; network: string }[] {
+  return Object.entries(PUBLIC_CHAIN_NETWORKS).map(([label, network]) => ({ label, network }));
+}
+
 /** Public name. Accepts a CAIP-2 id, a legacy slug, or a `chainLabel()` key such as `BSC`. */
 export function publicChainLabel(networkOrChain: unknown): string {
   if (typeof networkOrChain !== "string" || networkOrChain === "") return chainLabel(networkOrChain);

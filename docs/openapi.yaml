@@ -1324,11 +1324,15 @@ paths:
         canonical JSON of that day's L1 rows, pk-ascending). A root covers the
         day's rows as they stood when it was computed; rows are still updated
         afterwards (settlement verification, corrections), so an older root
-        describes the ledger as it was then. Third parties can check that each
-        prevRoot links to the previous day's root and that no day is missing; a
-        root cannot be recomputed from export.csv, which omits hashed fields.
-        The chain is kept by vet402; anchoredTx, when present, is the on-chain
-        anchor (staged rollout, off by default). Key-less; 30/min.
+        describes the ledger as it was then. A root cannot be recomputed from
+        export.csv, which omits hashed fields. The exact day JSON is served at
+        /api/v1/observatory/anchors/day. Since 2026-11-10 a day the daily job
+        missed stays without a root. It appears in missingHeadDays as
+        no_head_for_day, and the next sealed day links to the newest root before it.
+        dayVerification checks the newest day that a later day links to. The answer
+        is 503 anchors_head_stale, with the same body, when the newest root is three
+        or more days old. anchoredTx, when present, is the on-chain anchor (staged
+        rollout, off by default). No key needed. 30/min.
       security: []
       parameters:
         - in: query
@@ -1353,11 +1357,96 @@ paths:
                         prevRoot: { type: string, nullable: true }
                         entryCount: { type: integer }
                         anchoredTx: { type: string, nullable: true }
+                  chainContinuity: { type: object }
+                  headFreshness: { type: object }
+                  missingHeadDays:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        day: { type: string, format: date }
+                        status: { type: string, enum: [no_head_for_day] }
+                  dayVerification: { type: object, nullable: true }
                   recompute: { type: string }
                   humanReadable: { type: string, format: uri }
+                  license: { type: string }
+                  retrievedAt: { type: string, format: date-time }
+                  cite: { type: string }
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { description: Rate limited }
+        "503": { description: Store unavailable, or anchors_head_stale with the full body }
+
+  /api/v1/observatory/ledger-corrections:
+    get:
+      operationId: getLedgerCorrections
+      tags: [Observatory]
+      summary: Ledger corrections, added and not rewritten
+      description: |
+        Corrections to the observatory ledger, kept apart from the measurement
+        `correction_log`. Each row names its proposer kind, `self` or `third_party`.
+        A third_party row carries `signerAddress`, `signature` and `signedMessage`, and
+        `signatureValid` is checked again on each read. Anyone can repeat that check
+        with EIP-191 recovery and no key. CC-BY-4.0.
+      security: []
+      responses:
+        "200":
+          description: Corrections, counts by proposer kind, license and citation
+        "429": { description: Rate limited }
         "503": { description: Store unavailable }
+    post:
+      operationId: postLedgerCorrection
+      tags: [Observatory]
+      summary: Add a ledger correction (self with a bearer token, third_party with a signature)
+      security: []
+      responses:
+        "201": { description: Added }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { description: Token or signer refused }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
+  /api/v1/observatory/anchors/day:
+    get:
+      operationId: getLedgerAnchorDay
+      tags: [Observatory]
+      summary: The canonical JSON of one sealed day, byte for byte
+      description: |
+        The exact bytes the day root was computed from. sha256((prevRoot or "genesis")
+        + newline + body) must equal that day's rootHash in /api/v1/observatory/anchors
+        and the prevRoot of the next sealed day. Headers carry the roots and the result
+        of that check. A day with no sealed root answers 404 no_head_for_day. CC-BY-4.0.
+      security: []
+      parameters:
+        - name: day
+          in: query
+          required: true
+          schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+      responses:
+        "200": { description: Canonical day JSON }
+        "400": { description: invalid_day }
+        "404": { description: no_head_for_day }
+        "429": { description: Rate limited }
+        "503": { description: Observatory unavailable }
+
+  /api/v1/observatory/traceable-by-chain:
+    get:
+      operationId: getTraceablePurchasesByChain
+      tags: [Observatory]
+      summary: The latest traceable settled purchase on each public chain
+      description: |
+        For each of the ten public chains, the latest settled purchase in the
+        same fields as the home page example, with its transaction hash and a
+        public explorer link. nonce_bound and amount_payee_only are separate
+        lists and each row names its settledTier. A Circle Gateway row whose
+        payment sits inside a shared batch transaction is not listed. A chain
+        with no such purchase is named in chainsWithoutExample and is never
+        filled with a new purchase. No API key. 30 requests per minute per IP.
+        CC-BY-4.0.
+      security: []
+      responses:
+        "200": { description: Per chain examples and the two tier lists }
+        "429": { description: Rate limited }
+        "503": { description: Observatory unavailable }
 
   /api/mcp:
     post:
@@ -6104,9 +6193,15 @@ components:
             - waitlist_unavailable
             # --- observatory reads ---
             - invalid_days
+            - invalid_day
             # 2026-09-29 監査 6 周目: CSV export は全体で同時に 1 本（503・Retry-After）。
             - export_busy
             - observatory_unavailable
+            - ledger_corrections_unavailable
+            - self_token_invalid
+            - self_writes_closed
+            - anchors_head_stale
+            - no_head_for_day
             - endpoint_not_found
             - frame_unavailable
             - graph_unavailable

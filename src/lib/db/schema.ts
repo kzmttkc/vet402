@@ -1235,6 +1235,28 @@ export const ledgerAnchors = pgTable(
 );
 
 /**
+ * ledger_corrections — 台帳の訂正（2026-11-10 公平審査 3.8 の 6c）。追記だけ。
+ *
+ * 提案者は self（運用者のトークン）か third_party（許可したアドレスの EIP-191 署名）。
+ * third_party の行は署名とアドレスを残し、GET を読んだ人が鍵なしで確かめ直せる。
+ * 行を消す・書き換えるコードは無い。本番の表は scripts/sql/2026-11-10-ledger-corrections.sql
+ * で作り、UPDATE と DELETE をトリガで拒む。
+ */
+export const ledgerCorrections = pgTable(
+  "ledger_corrections",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    citedDay: text("cited_day").notNull(),
+    note: text("note").notNull(),
+    signerAddress: text("signer_address"),
+    signature: text("signature"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("ledger_corrections_created_idx").on(t.createdAt)],
+);
+
+/**
  * verification_requests — 公開検証リクエストキュー v0（無償枠）。
  * 誰でも「このエンドポイントを測って」を積める。日次cronが未消化分を
  * L0 の優先対象に注入する。支払い優先枠（x402課金＝自社ドッグフード）は

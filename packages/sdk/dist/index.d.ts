@@ -697,3 +697,4 @@ export declare class VouchClient {
     private request;
 }
 export declare function createVouchClient(options: VouchClientOptions): VouchClient;
+export { createVet402ReadHook, getVet402ReadSnapshot, type Vet402ReadHookOptions, type Vet402ReadSnapshot, } from "./vet402-read-hook.js";

@@ -98,6 +98,27 @@ def test_batch_score_rejects_empty_list(make_client) -> None:
         client.batch_score([])
 
 
+def test_get_resource_decision_hits_decision_path(make_client) -> None:
+    client, recorder = make_client(
+        lambda request: httpx.Response(
+            200,
+            json={"recommendation": "ALLOW", "deliveredRatePct": 91.2},
+        )
+    )
+    result = client.get_resource_decision("res_abc_123")
+    assert result["recommendation"] == "ALLOW"
+    request = recorder.requests[0]
+    assert request.url.path == "/api/v1/resources/res_abc_123/decision"
+    assert request.method == "GET"
+
+
+def test_get_resource_decision_rejects_blank_id(make_client) -> None:
+    client, recorder = make_client(lambda request: httpx.Response(200, json={}))
+    with pytest.raises(ValueError, match="invalid_resource_id"):
+        client.get_resource_decision("   ")
+    assert recorder.requests == []
+
+
 def test_get_agent_score_validates_agent_id(make_client) -> None:
     client, recorder = make_client(
         lambda request: httpx.Response(200, json={"trustScore": 72})

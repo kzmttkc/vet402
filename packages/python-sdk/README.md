@@ -1,6 +1,6 @@
 # vet402-sdk (Python)
 
-Python client for the [vet402](https://vet402.com) Trust API — check a payee
+Python client for the [vet402](https://vet402.com) Trust API. Check a payee
 before your agent pays, and never pay without an explicit `ALLOW`.
 
 Python 3.10+, single runtime dependency (`httpx`). Semantics mirror the
@@ -8,11 +8,10 @@ TypeScript SDK ([`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk)
 0.2.x): fail-closed SpendGuard by default, identical machine-readable reason
 codes, identical error contract.
 
-> **`/decision` and `/resolve` are not supported by this package yet.** The product-spec
-> §9.1 decision endpoint (`GET /api/v1/resources/{resource_id}/decision`, facts +
-> recommendation in one document) and the §7.3 reverse lookup are available in
-> `@vet402/sdk` 0.5.0 (`getDecision` / `resolve`) and in `@vet402/mcp-server` 0.2.0
-> (`check_resource_decision`). From Python, call them over plain HTTP for now.
+> **`/resolve` is not supported by this package yet.** The §7.3 reverse lookup is
+> available in `@vet402/sdk` (`resolve`) and in `@vet402/mcp-server`
+> (`check_resource_decision`). **`GET /resources/{resource_id}/decision`** is
+> available in this package as `get_resource_decision`.
 >
 > **Not yet published to PyPI.** Until then, install from a local checkout:
 >
@@ -29,7 +28,7 @@ export it as `VOUCH_API_KEY`, and this runs as-is:
 import os
 from vet402 import create_vouch_client
 
-# api_url defaults to https://vet402.com/api/v1 — pass it only to point at
+# api_url defaults to https://vet402.com/api/v1. Pass it only to point at
 # another deployment (a local dev server, say).
 vouch = create_vouch_client(os.environ["VOUCH_API_KEY"])
 
@@ -40,16 +39,22 @@ print(score["trustScore"], score["recommendation"])  # e.g. 72 'ALLOW'
 # Buyer side: "should my agent pay this wallet?"
 payee = vouch.get_payee_score("0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
 print(payee["score"], payee["recommendation"], payee["dataDepth"])
+
+# Buyer side, per resource: what vet402 saw when it paid this resource itself.
+decision = vouch.get_resource_decision("<resource id>")
+print(decision["recommendation"], decision["reason_codes"])
 ```
 
+The client only reads. It never signs or sends a payment.
+
 Methods: `get_agent_score`, `get_wallet_score`, `get_payee_score`,
-`batch_score`, `attest_x402_payment`, `create_spend_guard`.
+`get_resource_decision`, `batch_score`, `attest_x402_payment`, `create_spend_guard`.
 
 ## Errors
 
 A non-2xx answer raises `VouchApiError` carrying the API's machine-readable
-code and the HTTP status, so you can tell *your key is wrong* from *we are
-having a bad day* without parsing strings:
+code and the HTTP status, so you can tell an invalid key from a transient
+service outage without parsing strings:
 
 ```python
 from vet402 import VouchApiError
@@ -58,14 +63,14 @@ try:
     vouch.get_payee_score("0x...")
 except VouchApiError as err:
     if err.status == 401:
-        # err.code == "missing_api_key" | "invalid_api_key" — fix the key.
+        # err.code is "missing_api_key" or "invalid_api_key". Fix the key.
         ...
 ```
 
-## SpendGuard — pre-payment policy for agents
+## SpendGuard: pre-payment policy for agents
 
 Before your agent *pays* someone, ask the guard. It returns an allow/deny
-decision plus machine-readable reasons — and nothing else. SpendGuard is
+decision plus machine-readable reasons, and nothing else. SpendGuard is
 strictly non-custodial: it never touches keys, funds, signing, or transaction
 submission. Execution stays with your wallet stack.
 
@@ -80,51 +85,51 @@ the payee trust lookup and **denies** when:
 | Partial measurement (`signalsUnavailable` non-empty) | `payee_partial_measurement` |
 | The score is older than 5 min or past its own expiry | `payee_score_stale` |
 | The lookup was refused for your key (401/403) | `payee_trust_unauthenticated` |
-| The lookup failed on our side (5xx, timeout, rate limit) | `payee_trust_unavailable` |
+| The lookup failed on the API side (5xx, timeout, rate limit) | `payee_trust_unavailable` |
 
-Opt-outs: `trust_policy="block-only"` (WARN passes; BLOCK, degraded, stale and
+Opt-outs: `trust_policy="block-only"` (WARN passes. BLOCK, degraded, stale and
 failed lookups still deny) or `trust_policy="custom"` (only the rules you set
 apply, and the lookup only runs when `min_payee_score` /
 `block_on_recommendation` is set).
 
 ```python
 guard = vouch.create_spend_guard(
-    max_per_tx_usd=10,      # deny any single payment above $10
-    daily_budget_usd=50,    # deny once today's allowed total would pass $50
+    max_per_tx_usd=10,  # deny any single payment above $10
+    daily_budget_usd=50,  # deny once today's allowed total would pass $50
     # trust_policy="allow-only" is the default: deny anything but a clean ALLOW
-    min_payee_score=40,     # optional stricter floor on top of the policy
+    min_payee_score=40,  # optional stricter floor on top of the policy
 )
 
 decision = guard.evaluate("0x...", 5)
 if decision.allow:
-    ...  # hand off to your wallet stack / signer
+    ...  # hand off to your wallet stack or signer
 else:
     print(decision.reasons)  # e.g. ["payee_recommendation_not_allow"]
 ```
 
 How it works:
 
-- The local rules (`max_per_tx_usd`, `daily_budget_usd`) are optional — set
+- The local rules (`max_per_tx_usd`, `daily_budget_usd`) are optional. Set
   only the ones you want. Under the default `trust_policy="allow-only"` the
   payee trust lookup (`GET /api/v1/payees/{address}/score`) always runs, but
   is skipped when a local rule already denied, so no quota is burned on a dead
   payment.
 - Everything the guard cannot vet **fails closed** (reason codes in the table
-  above). A failed lookup names *whose* problem it is:
+  above). A failed lookup names *whose* problem it is.
   `payee_trust_unauthenticated` means the API key is missing or invalid and
-  retrying will not help; `payee_trust_unavailable` means the upstream is
+  retrying will not help. `payee_trust_unavailable` means the upstream is
   unhappy and retrying might.
-- A DENY is returned as a structured `SpendDecision`, never raised — only
+- A DENY is returned as a structured `SpendDecision`, never raised. Only
   invalid arguments raise.
-- Budget reservation is optimistic and lock-protected: once the local rules
+- Budget reservation is optimistic and lock-protected. Once the local rules
   pass, the amount is reserved *before* the trust lookup runs and returned
-  automatically if the trust rules deny — so concurrent `evaluate` calls
+  automatically if the trust rules deny, so concurrent `evaluate` calls
   within one process cannot race past the daily budget together. If an
   allowed transfer then fails or is skipped, call `guard.release(amount_usd)`
   to give the reservation back.
-- The daily budget counter lives **in this process's memory** (UTC day): it
+- The daily budget counter lives **in this process's memory** (UTC day). It
   resets on process restart and is not shared across replicas. Treat it as a
-  runaway-agent brake, not an accounting system — persist your own ledger if
+  runaway-agent brake, not an accounting system. Keep your own ledger if
   you need durable budgets.
 
 ## Using it from LangChain (Python)
@@ -147,7 +152,7 @@ def pay_service(payee: str, amount_usd: float) -> str:
     if not decision.allow:
         return f"DENIED: {', '.join(decision.reasons)}"
     tx_hash = my_wallet.transfer(payee, amount_usd)  # your wallet stack
-    # Feed the settlement back — weights future scores.
+    # Feed the settlement back. Weights future scores.
     vouch.attest_x402_payment(wallet=payee, tx_hash=tx_hash)
     return f"paid {amount_usd} USD to {payee}: {tx_hash}"
 ```
@@ -165,18 +170,26 @@ guard offline:
 import httpx
 from vet402 import VouchClient
 
+
 def handler(request: httpx.Request) -> httpx.Response:
-    return httpx.Response(200, json={...})  # a canned payee score
+    if request.url.path.endswith("/decision"):
+        return httpx.Response(200, json={"recommendation": "ALLOW", "reason_codes": []})
+    return httpx.Response(200, json={"recommendation": "ALLOW", "score": 82})
+
 
 vouch = VouchClient("vk_test", transport=httpx.MockTransport(handler))
+print(vouch.get_resource_decision("res_1")["recommendation"])
 ```
+
+`tests/test_readme.py` runs this block offline and checks that every Python
+block in this README compiles.
 
 ## Links
 
-- [API key](https://vet402.com/dashboard/keys) — `VOUCH_API_KEY`
+- [API key](https://vet402.com/dashboard/keys): `VOUCH_API_KEY`
 - [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
-- [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk) — TypeScript twin of this package
-- [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware) — seller side (x402 request gate)
-- [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server) — MCP tool
+- [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk): TypeScript twin of this package
+- [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware): seller side (x402 request gate)
+- [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server): MCP tool
 
 MIT · [vet402](https://vet402.com)

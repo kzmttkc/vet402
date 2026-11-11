@@ -98,6 +98,7 @@ test("3. Freshness の表の Cache-Control を持つ route は、全部この表
     "src/app/api/v1/observatory/export.csv/route.ts",
     "src/app/api/v1/observatory/history/route.ts",
     "src/app/api/v1/observatory/anchors/route.ts",
+    "src/app/api/v1/observatory/traceable-by-chain/route.ts",
     "src/app/api/v1/observatory/backtest/route.ts",
     "src/app/api/v1/observatory/concentration/route.ts",
     "src/app/api/v1/observatory/l0/export.csv/route.ts",

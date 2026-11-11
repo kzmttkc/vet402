@@ -854,7 +854,7 @@ export default async function Memo() {
         </p>
 
         {/* ================= Appendix A. Access tiers ================= */}
-        <PricingSection />
+        <PricingSection number="A." title="Access tiers" />
 
         {/* ================= Appendix B. References ================= */}
         <h2 id="references" className="sec-head scroll-mt-24">

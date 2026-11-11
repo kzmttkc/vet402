@@ -7,7 +7,9 @@ import {
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
 import { readStateAggregates } from "@/lib/observatory/state-reads";
+import { validateL1SettledTwoTier } from "@/lib/observatory/settled-two-tier";
 import { readAdoption, type Adoption } from "@/lib/observatory/adoption";
+import { readPublicClientUsage } from "@/lib/api/client-usage-public";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { ERC8004_ABOUT, getErc8004MatchCached } from "@/lib/observatory/erc8004-match";
@@ -48,7 +50,8 @@ export async function GET(request: NextRequest) {
 
   try {
     // 2026-11-08: the same shared data cache the HTML pages read (state-reads.ts).
-    const [{ stats, byChain, chainScope, coverage, retrievedAt }, halt, erc8004, adoption] = await Promise.all([
+    const [{ stats, byChain, chainScope, coverage, retrievedAt }, halt, erc8004, adoption, publicApiUsage] =
+      await Promise.all([
       readStateAggregates(),
       // 集計とは別に、毎回読み直す。ObservatoryStats に入れると公開頁側の
       // 300 秒の読み取りキャッシュに載り、止めた直後の 5 分間「止めていない」と
@@ -63,11 +66,18 @@ export async function GET(request: NextRequest) {
         readAdoption(),
         new Promise<Adoption>((resolve) => setTimeout(() => resolve({}), ADOPTION_BUDGET_MS)),
       ]).catch((): Adoption => ({})),
+      readPublicClientUsage(),
     ]);
+    const tierInvariant = validateL1SettledTwoTier(stats.l1);
+    if (!tierInvariant.ok) {
+      logServerErrorSafe("observatory_state_tier_invariant", new Error(tierInvariant.reason));
+      return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+    }
     return NextResponse.json(
       {
         ...stats,
         byChain,
+        publicApiUsage,
         /**
          * vet402 自身が L1 の支出を止めているか。true の間は l1 の件数が動かないので、
          * 静かな日と止めている日を取り違えないための鮮度情報（l1.lastAttemptAt と併読する）。

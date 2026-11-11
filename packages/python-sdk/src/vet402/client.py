@@ -117,6 +117,13 @@ class VouchClient:
         _assert_wallet(wallet)
         return self._request("GET", f"/wallets/{wallet}/score")
 
+    def get_resource_decision(self, resource_id: str) -> Dict[str, Any]:
+        """Buyer side: facts and recommendation for one resource id
+        (``GET /resources/{resource_id}/decision``). Read-only."""
+        if not isinstance(resource_id, str) or resource_id.strip() == "":
+            raise ValueError("invalid_resource_id")
+        return self._request("GET", f"/resources/{resource_id}/decision")
+
     def get_payee_score(self, payee: str) -> Dict[str, Any]:
         """Buyer-side lookup: "should my agent pay this wallet?" — scores the
         payment *recipient* (settlement receiving history, wallet health,
