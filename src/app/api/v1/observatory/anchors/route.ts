@@ -50,6 +50,10 @@ export async function GET(request: NextRequest) {
     const noHeadDays = missingHeadDays(publishedUtcDay, anchors);
     // 3.8 の 6c-1: 鎖が次の日の prevRoot として持っている最新の日を、3 つの値で検算する。
     // 公開ファイル（その日の行から作ったバイト列）、公開ヘッド（この応答の行）、鎖の値を別々に読む。
+    // 検算するのは anchors[1]（ヘッドの 1 つ前の封印日）であって、anchors[0]（ヘッド）ではない。設計どおり。
+    // ヘッドの日はまだ後ろに封印日が無く、鎖の値（次の日の prevRoot）が存在しない。ヘッドを検算すると
+    // 必ず no_chain_root になり、三つ一致の確認にならない。ヘッドの根は、翌日を封印した時点で
+    // その日の prevRoot として鎖に入り、次の応答で anchors[1] として検算される。
     let dayVerification: DayTripleResult | null = null;
     const db = getDb();
     const linkedDay = anchors[1]?.day ?? null;

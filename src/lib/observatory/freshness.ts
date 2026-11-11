@@ -133,7 +133,7 @@ export const FRESHNESS_LEAD =
 export function freshnessLines(): string[] {
   return PUBLIC_FRESHNESS.map((r) =>
     r.cacheControl
-      ? `- ${r.surface}: \`Cache-Control: ${r.cacheControl}\` — a copy can be up to ${humanDuration(r.maxStaleSec)} old.${r.mechanism ? ` ${r.mechanism}.` : ""}`
+      ? `- ${r.surface}: \`Cache-Control: ${r.cacheControl}\`. A copy can be up to ${humanDuration(r.maxStaleSec)} old.${r.mechanism ? ` ${r.mechanism}.` : ""}`
       : `- ${r.surface}: ${r.mechanism}.`,
   );
 }

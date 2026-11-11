@@ -22,7 +22,7 @@ import { clientUsageLabel, SELF_MONITOR_CLIENT } from "@/lib/api/client-usage";
 import { getPlanLimit } from "@/lib/api/auth";
 import { BILLING_PLANS } from "@/lib/billing/plans";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
-import { PUBLIC_USAGE_MIN_OWNERS, publishMonthlyRelations } from "@/lib/api/decision-usage";
+import { PUBLIC_USAGE_MIN_OWNERS } from "@/lib/api/decision-usage";
 import { settledTier } from "@/lib/observatory/settled-tier";
 import { FILE_1108, ROOT_1107, ROOT_1108, sealedAnchors } from "./fixtures/ledger-day-2026-11-08";
 
@@ -97,14 +97,32 @@ test("[guard] 公平-1: 自社の UA は self-monitor、第三者の UA は othe
   assert.equal(clientUsageLabel("vet402-sdk/0.7.2"), "vet402-sdk/0.7.2");
 });
 
-test("[guard] 公平-1: 月次は 3 人未満なら件数を出さない", () => {
+// main にもある公開の読み（readPublishedMonthlyDecisionUsage）を通して見る。main で読み込みに失敗して赤くなる形にしない。
+// 規則は main と同じなので、直す前も緑が正しい。PUBLIC_USAGE_MIN_OWNERS を 2 に下げる変異で赤になる。
+test("[guard] 公平-1: 月次は 3 人未満なら件数を出さない（公開の読みの戻りで見る）", async () => {
+  const { readPublishedMonthlyDecisionUsage, parseMonthlyUsageQuery } = await import("@/lib/api/decision-usage");
+  const { __setDbForTests } = await import("@/lib/db/client");
   assert.equal(PUBLIC_USAGE_MIN_OWNERS, 3);
-  assert.deepEqual(publishMonthlyRelations([{ relation: "external", owners: 2, calls: 500 }]), [
-    { owner_relation: "external", owners: "<3" },
-  ]);
-  assert.deepEqual(publishMonthlyRelations([{ relation: "external", owners: 3, calls: 120 }]), [
-    { owner_relation: "external", owners: 3, calls: 120 },
-  ]);
+  const stored = [
+    { relation: "external", owners: 2, calls: 500 },
+    { relation: "related", owners: 3, calls: 120 },
+  ];
+  __setDbForTests({ execute: async () => stored.map((r) => ({ ...r })) });
+  try {
+    const query = parseMonthlyUsageQuery("eip155:42220", "2026-10");
+    assert.ok(query.ok, JSON.stringify(query));
+    if (!query.ok) return;
+    const published = await readPublishedMonthlyDecisionUsage(query, new Date("2026-11-10T00:00:00Z"));
+    assert.ok(published, "the frozen month is readable");
+    const external = published.relations.find((r) => r.owner_relation === "external");
+    const related = published.relations.find((r) => r.owner_relation === "related");
+    assert.deepEqual(external, { owner_relation: "external", owners: "<3" }, "two owners publish no call count");
+    assert.equal("calls" in (external ?? {}), false);
+    assert.deepEqual(related, { owner_relation: "related", owners: 3, calls: 120 });
+    assert.ok(!JSON.stringify(published).includes("500"), "the two owner count of 500 is not in the public value");
+  } finally {
+    __setDbForTests(null);
+  }
 });
 
 test("[guard] 公平-1: DB が無いとき publicApiUsage は空で、利用者数の欄を作らない", async () => {
@@ -526,6 +544,11 @@ test("[guard] 公平-3 3.9-3: 料金の数は BILLING_PLANS と getPlanLimit で
 test("[fix] 公平-3 3.9-3: ホームの料金の表はメモの付録の見出しを持ち込まず、強制していない特典を書かない", async () => {
   const page = read("src/app/page.tsx");
   assert.match(page, /<PricingSection className=\{s\.section\} titleId="home-pricing" \/>/);
+  assert.match(page, /^import \{ PricingSection \} from "@\/components\/site\/PricingSection";$/m, "the home page imports the pricing section");
+  const mainOpen = page.indexOf("<main");
+  const mainClose = page.indexOf("</main>");
+  const at = page.indexOf('<PricingSection className={s.section} titleId="home-pricing" />');
+  assert.ok(mainOpen >= 0 && mainOpen < at && at < mainClose, "the pricing section renders inside the home page <main>");
   const { renderToStaticMarkup } = await import("react-dom/server");
   const { PricingSection } = await import("@/components/site/PricingSection");
   const home = renderToStaticMarkup(PricingSection({ titleId: "home-pricing" }));
@@ -541,7 +564,7 @@ test("[fix] 公平-3 3.9-3: ホームの料金の表はメモの付録の見出�
 
 test("[fix] 公平-3 3.9-4: Python README は公開の英語の決まりに従い、見本の字下げは 4 文字", () => {
   const readme = read("packages/python-sdk/README.md");
-  assert.doesNotMatch(readme, /\b(we|our|us)\b|—|–|;/i);
+  assert.doesNotMatch(readme, FORBIDDEN_PUBLIC_ENGLISH);
   assert.doesNotMatch(readme, / \. /, "ダッシュを消した跡の ' . ' が残っている");
   const blocks = [...readme.matchAll(/```python\n([\s\S]*?)```/g)].map((m) => m[1]);
   assert.ok(blocks.length >= 4);

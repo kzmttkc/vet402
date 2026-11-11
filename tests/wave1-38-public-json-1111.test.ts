@@ -87,11 +87,14 @@ function sealedRun(start: string, n: number): FakeAnchorRow[] {
 // 6c-1 その日のハッシュが三つ一致する（公開ファイル・保存済みヘッド・鎖の値を別々の読みから）
 // ------------------------------------------------------------------
 
-test("[fix] 3.8-6c-1: the anchors JSON checks the day from the file bytes, the stored head and the chain value, against pinned roots", async () => {
+test("[fix] 3.8-6c-1: the anchors JSON checks anchors[1], the newest day the chain holds, from the file bytes, the stored head and the chain value, against pinned roots", async () => {
   publishAt("2026-11-10T06:00:00Z");
   const db = useTables({ l1: freshRows(), ledger_anchors: sealedAnchors() });
   const { res, body } = await anchorsBody();
   assert.equal(res.status, 200);
+  // ヘッド（anchors[0] = 11/09）には後ろの封印日が無く鎖の値が無いので、検算は anchors[1] = 11/08 を見る（設計どおり）。
+  assert.equal(body.anchors[0].day, "2026-11-09");
+  assert.equal(body.anchors[1].day, "2026-11-08");
   assert.deepEqual(body.dayVerification, {
     day: "2026-11-08",
     ok: true,
@@ -123,6 +126,8 @@ test("[fix] 3.8-6c-1: one byte changed in the day's rows fails the check and the
   rows[0].tx_hash = rows[0].tx_hash!.slice(0, -1) + "c";
   useTables({ l1: rows, ledger_anchors: sealedAnchors() });
   const { body } = await anchorsBody();
+  assert.equal(typeof body.dayVerification, "object", "the anchors JSON carries dayVerification");
+  assert.notEqual(body.dayVerification, null, "the anchors JSON carries dayVerification");
   assert.equal(body.dayVerification.ok, false);
   assert.equal(body.dayVerification.code, "payload_does_not_match_head");
   assert.notEqual(body.dayVerification.recomputedRoot, ROOT_1108);
@@ -140,6 +145,8 @@ test("[fix] 3.8-6c-1: a stored head that differs from the file fails even when t
   anchors[1].root_hash = "c".repeat(64);
   useTables({ l1: freshRows(), ledger_anchors: anchors });
   const { body } = await anchorsBody();
+  assert.equal(typeof body.dayVerification, "object", "the anchors JSON carries dayVerification");
+  assert.notEqual(body.dayVerification, null, "the anchors JSON carries dayVerification");
   assert.equal(body.dayVerification.ok, false);
   assert.equal(body.dayVerification.code, "payload_does_not_match_head");
   assert.equal(body.dayVerification.recomputedRoot, ROOT_1108);
@@ -152,6 +159,8 @@ test("[fix] 3.8-6c-1: a chain value that differs from the head fails even when t
   anchors[2].prev_root = "d".repeat(64);
   useTables({ l1: freshRows(), ledger_anchors: anchors });
   const { body } = await anchorsBody();
+  assert.equal(typeof body.dayVerification, "object", "the anchors JSON carries dayVerification");
+  assert.notEqual(body.dayVerification, null, "the anchors JSON carries dayVerification");
   assert.equal(body.dayVerification.ok, false);
   assert.equal(body.dayVerification.code, "head_does_not_match_chain");
   assert.equal(body.dayVerification.publishedRoot, ROOT_1108);
@@ -169,6 +178,7 @@ test("[fix] 3.8-6c-2: a head on the day before publication answers 200 with no m
   useTables({ l1: freshRows(), ledger_anchors: sealedAnchors() });
   const { res, body } = await anchorsBody();
   assert.equal(res.status, 200);
+  assert.equal(typeof body.headFreshness, "object", "the anchors JSON carries headFreshness");
   assert.deepEqual(
     { ok: body.headFreshness.ok, headDay: body.headFreshness.headDay, lagDays: body.headFreshness.lagDays, published: body.headFreshness.publishedUtcDay },
     { ok: true, headDay: "2026-11-09", lagDays: 1, published: "2026-11-10" },
@@ -208,6 +218,7 @@ test("[fix] 3.8-6c-2: a head 2 days old still answers 200 and names yesterday as
   useTables({ l1: freshRows(), ledger_anchors: sealedAnchors() });
   const { res, body } = await anchorsBody();
   assert.equal(res.status, 200);
+  assert.equal(typeof body.headFreshness, "object", "the anchors JSON carries headFreshness");
   assert.equal(body.headFreshness.lagDays, 2);
   assert.deepEqual(body.missingHeadDays, [{ day: "2026-11-10", status: "no_head_for_day" }]);
 });
@@ -247,9 +258,10 @@ test("[fix] probe402: a head stopped on 2026-11-04 is refused by the public anch
   publishAt("2026-11-08T03:00:00Z");
   useTables({ l1: [], ledger_anchors: sealedRun("2026-11-01", 4) });
   const { res, body } = await anchorsBody();
-  assert.equal(body.headFreshness.headDay, "2026-11-04");
   assert.equal(res.status, 503);
   assert.equal(body.error, "anchors_head_stale");
+  assert.equal(body.anchors[0].day, "2026-11-04");
+  assert.equal(body.headFreshness?.headDay, "2026-11-04");
   assert.equal(body.headFreshness.code, "head_too_stale");
   assert.equal(body.headFreshness.lagDays, 4);
 });
@@ -258,8 +270,10 @@ test("[fix] probe402: a last anchor run on 2026-11-05 is refused by the public a
   publishAt("2026-11-08T03:00:00Z");
   useTables({ l1: [], ledger_anchors: sealedRun("2026-11-01", 5) });
   const { res, body } = await anchorsBody();
-  assert.equal(body.headFreshness.headDay, "2026-11-05");
   assert.equal(res.status, 503);
+  assert.equal(body.error, "anchors_head_stale");
+  assert.equal(body.anchors[0].day, "2026-11-05");
+  assert.equal(body.headFreshness?.headDay, "2026-11-05");
   assert.equal(body.headFreshness.code, "head_too_stale");
   assert.equal(body.headFreshness.lagDays, 3);
 });
@@ -654,4 +668,14 @@ test("[guard] 3.8b-4: a Gateway row whose payment sits only in the batch tx is n
     id: "gw-1",
   };
   assert.equal(formatSettledReceipt(row, { rows: 1, settled: 1, from: "", to: "" }), null);
+});
+
+test("[fix] public English: the llms.txt line this wave touched follows the rules, and no generated freshness line carries a dash", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { freshnessLines } = await import("@/lib/observatory/freshness");
+  const forbidden = /\b(we|our|us)\b|—|–|;|Key-less|in-house|Append-only|third-party/i;
+  const line = readFileSync("public/llms.txt", "utf8").split("\n").find((l) => l.includes("`/traceable-by-chain`"));
+  assert.ok(line, "llms.txt lists the traceable route");
+  assert.doesNotMatch(line, forbidden);
+  for (const l of freshnessLines()) assert.doesNotMatch(l, /—|–/, l);
 });
