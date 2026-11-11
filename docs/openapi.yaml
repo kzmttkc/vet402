@@ -1389,7 +1389,7 @@ paths:
         with EIP-191 recovery and no key. A row may cite one ledger row with
         `citedRowId`. Its `priorRowSha256` is the SHA-256 of JSON.stringify of that
         row in /api/v1/observatory/anchors/day, read from the ledger when the
-        correction was filed. The cited row is never changed. CC-BY-4.0.
+        correction was filed. Filing a correction leaves the cited row as it is. CC-BY-4.0.
       security: []
       responses:
         "200":

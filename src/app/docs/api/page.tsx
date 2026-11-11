@@ -499,7 +499,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/ledger-corrections",
-    note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). A row that cites citedRowId gets priorRowSha256, the SHA-256 of that row in the day file, read from the ledger. The cited row is never changed. CC-BY-4.0.",
+    note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). A row that cites citedRowId gets priorRowSha256, the SHA-256 of that row in the day file, read from the ledger. Filing a correction leaves the cited row as it is. CC-BY-4.0.",
     response: `HTTP 200. corrections, counts by kind, license and cite.`,
   },
   {

@@ -209,7 +209,7 @@ Every number on this site moves, so it is published with the schedule that moves
   - `GET /api/v1/sellers/export.csv`: `Cache-Control: public, s-maxage=900, stale-while-revalidate=1800` — a copy can be up to 45 minutes old.
   - `GET /api/v1/accuracy`: `Cache-Control: public, s-maxage=600, stale-while-revalidate=1200` — a copy can be up to 30 minutes old.
   - `GET /api/v1/observatory/endpoints/{id}/purchases`: `Cache-Control: public, s-maxage=600, stale-while-revalidate=1200` — a copy can be up to 30 minutes old.
-  - `GET /api/v1/observatory/export.csv`, `/history`, `/anchors`, `/traceable-by-chain`, `/backtest`, `/concentration`: `Cache-Control: public, s-maxage=3600, stale-while-revalidate=7200`. A copy can be up to 3 hours old.
+  - `GET /api/v1/observatory/export.csv`, `/history`, `/anchors`, `/traceable-by-chain`, `/backtest`, `/concentration`: `Cache-Control: public, s-maxage=3600, stale-while-revalidate=7200` — a copy can be up to 3 hours old.
   - `GET /api/v1/census/summary`: `Cache-Control: public, max-age=300, s-maxage=300, stale-while-revalidate=900` — a copy can be up to 20 minutes old.
   - key-less object reads (`/api/v1/resolve`, `/resources/{id}`, `/endpoints/{id}`, `/endpoints/{id}/payees`, `/payees/{address}/endpoints`, `/observatory/endpoints/{id}/facts`, `/observatory/corrections`): `Cache-Control: public, max-age=60, s-maxage=60, stale-while-revalidate=300` — a copy can be up to 6 minutes old.
   - `/llms.txt` and `/llms-full.txt`: `Cache-Control: public, max-age=3600` — a copy can be up to 1 hour old.

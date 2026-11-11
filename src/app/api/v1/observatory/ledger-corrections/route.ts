@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
           third_party: corrections.filter((c) => c.kind === "third_party").length,
         },
         verify:
-          "A third_party row verifies with EIP-191 personal_sign recovery of signature over signedMessage. The recovered address must equal signerAddress. A row with citedRowId also carries priorRowSha256. It is the SHA-256 of JSON.stringify of the row with that id in /api/v1/observatory/anchors/day?day=citedDay, read from the ledger when the correction was filed. The cited row is never changed or removed. No key is needed.",
+          "A third_party row verifies with EIP-191 personal_sign recovery of signature over signedMessage. The recovered address must equal signerAddress. A row with citedRowId also carries priorRowSha256. It is the SHA-256 of JSON.stringify of the row with that id in /api/v1/observatory/anchors/day?day=citedDay, read from the ledger when the correction was filed. Filing a correction leaves the cited row as it is. No key is needed.",
         license: "CC-BY-4.0",
         licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
         retrievedAt,
