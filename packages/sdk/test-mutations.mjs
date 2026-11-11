@@ -463,8 +463,8 @@ const MUTATIONS = [
     what: "署名した EIP-3009 の認可（validBefore を含む）を結果に控えない",
     rule: "R1/R2 署名した以上、何に署名したかは receipt に残る",
     file: PAY,
-    find: "      facts.authorization = { ...authorization };",
-    replace: "      /* MUTANT: authorization not kept */",
+    find: "      // 何に署名したか（validBefore を含む認可の全体）を控える。署名そのものは控えない。\n      facts.authorization = { ...authorization };",
+    replace: "      // 何に署名したか（validBefore を含む認可の全体）を控える。署名そのものは控えない。\n      /* MUTANT: authorization not kept */",
   },
   {
     id: "M50",

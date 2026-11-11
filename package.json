@@ -102,6 +102,7 @@
     "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@x402/evm": "2.30.0",
     "axe-core": "^4.13.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",

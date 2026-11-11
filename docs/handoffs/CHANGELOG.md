@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-11 E4 follow-up: root build resolves the auth-capture client, mutation anchor is unique
+
+- What: `@x402/evm` 2.30.0 (same exact version as the SDK) is a root devDependency, so the app build type-checks `packages/sdk/src/auth-capture-pay.ts` through the tests that import SDK source. Mutation M49 now anchors on the exact-path line with its comment, since the auth-capture path keeps the authorization the same way.
+- Why: the E4 commit (ef07ce97) added the auth-capture client import and a second `facts.authorization` line.
+- Impact: none at runtime. `npm run build` and `node packages/sdk/test-mutations.mjs` (50 of 50 killed) pass.
+
 ## 2026-11-11 Wave 1 3.8 and 3.8b: traceable tx per chain, two settled tiers, rows cited by corrections
 
 - **What** (one commit on `origin/main`, with the fair review items below in the same commit):
