@@ -65,6 +65,9 @@ import { clientIdentityHeaders } from "./user-agent.js";
 // **段 2.5 の本体（`ens-attestation.js`・`ens-read.js`・viem）は `payeeName` を渡した呼び手のときだけ動的 import する**
 // ——名前を使わない呼び手の静的グラフに viem を入れない（`test/tokyo/regression.test.mjs` の T30・T30b）。
 import { ENS_ATTESTATION_REASONS } from "./ens-reasons.js";
+// x402 `auth-capture`（E4・2026-11-11）。実行時の import を持たない定数と述語だけのモジュールなので静的 import でよい。
+// 署名と `@x402/evm` は `./auth-capture-pay.js` にあり、ALLOW ブランチでしか動的 import しない（第3層）。
+import { authCaptureEnabled, isAuthCaptureEligible, AUTH_CAPTURE_SCHEME, type AuthCaptureOptions, type AuthCaptureReceipt } from "./auth-capture.js";
 import type { EnsAttestationPolicy, EnsOfferCheck, X402Offer } from "./ens-attestation.js";
 import type { EnsReadClients } from "./ens-read.js";
 
@@ -472,6 +475,12 @@ export type PayOrRefuseBaseInput = {
    */
   chainReader?: ChainReceiptReader;
   chainReaderCrossCheck?: ChainReceiptReader;
+  /**
+   * x402 `auth-capture`（E4・2026-11-11）。402 の accepts に払える形の auth-capture があるときだけ使い、
+   * 署名は1つ（ERC-3009 ReceiveWithAuthorization）、資金はエスクローに置かれ、届いたときだけ確定（capture）する。
+   * `exact` しか出さない売り手には今までと同じ。**本番 Base では既定で使わない**（`authCapture.onBase: true` のときだけ）。
+   */
+  authCapture?: AuthCaptureOptions;
 };
 
 /**
@@ -566,6 +575,11 @@ export type PayOrRefuseResult = {
    * 呼び手のコードを壊さないため）。再試行の前に確かめる値をまとめたもの。{@link PayReceipt}。
    */
   receipt?: PayReceipt;
+  /**
+   * x402 `auth-capture` で払ったときだけある（exact の結果にはこのキー自体が無い）。届いたか・エスクローの状態・
+   * 戻り道（void か、期限後の買い手の reclaim）。`status` は「届いて capture された」ときだけ "paid"。
+   */
+  authCapture?: AuthCaptureReceipt;
 };
 
 /**
@@ -735,8 +749,12 @@ function isEligibleOnRail(
   rail: PayRail,
   x402Version: 1 | 2,
   profile: ChainProfile = CHAIN_PROFILES.base,
+  authCaptureOn = false,
 ): boolean {
-  return rail === "svm" ? isSvmProtocolEligible(accept, x402Version) : isProtocolEligible(accept, profile);
+  if (rail === "svm") return isSvmProtocolEligible(accept, x402Version);
+  // auth-capture は呼び手と profile が許したときだけ（本番 Base は既定で許さない）。許さなければ今までどおり exact だけ。
+  if (accept.scheme === AUTH_CAPTURE_SCHEME) return authCaptureOn && isAuthCaptureEligible(accept, profile, x402Version);
+  return isProtocolEligible(accept, profile);
 }
 
 /**
@@ -777,6 +795,7 @@ function selectAccept(
   rail: PayRail = "evm",
   x402Version: 1 | 2 = 2,
   profile: ChainProfile = CHAIN_PROFILES.base,
+  authCaptureOn = false,
 ): { accept: X402Accept; eligible: boolean } | null {
   const normalized = raw.map(normalizeAccept).filter((a): a is X402Accept => a !== null);
   if (normalized.length === 0) return null;
@@ -785,6 +804,12 @@ function selectAccept(
   if (rail === "svm") {
     const svmEligible = normalized.filter((a) => isSvmProtocolEligible(a, x402Version));
     return svmEligible.length === 0 ? { accept: normalized[0], eligible: false } : { accept: svmEligible[0], eligible: true };
+  }
+  // auth-capture（届いてから確定）を出す売り手には、それを先に選ぶ。許されていない呼び出しでは候補にしない
+  // ——その場合の選び方は 2026-11-10 までと1文字も変わらない。
+  if (authCaptureOn) {
+    const held = normalized.filter((a) => a.scheme === AUTH_CAPTURE_SCHEME && isAuthCaptureEligible(a, profile, x402Version));
+    if (held.length > 0) return { accept: held.find((a) => hasCanonicalUsdcDomain(a, profile)) ?? held[0], eligible: true };
   }
   const eligible = normalized.filter((a) => isProtocolEligible(a, profile));
   if (eligible.length === 0) return { accept: normalized[0], eligible: false };
@@ -796,13 +821,14 @@ function decodeChallenge(
   raw: string,
   rail: PayRail = "evm",
   profile: ChainProfile = CHAIN_PROFILES.base,
+  authCaptureOn = false,
 ): { x402Version: 1 | 2; accept: X402Accept; eligible: boolean } | null {
   try {
     const json = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw), (c) => c.charCodeAt(0))));
     const accepts = (json as { accepts?: unknown[] }).accepts;
     if (!Array.isArray(accepts) || accepts.length === 0) return null;
     const version: 1 | 2 = (json as { x402Version?: unknown }).x402Version === 1 ? 1 : 2;
-    const selected = selectAccept(accepts, rail, version, profile);
+    const selected = selectAccept(accepts, rail, version, profile, authCaptureOn);
     if (!selected) return null;
     return {
       x402Version: version,
@@ -934,6 +960,9 @@ async function decideAndPay(input: DecideInput, facts: ReceiptFacts): Promise<Pa
   const ensGate = named ? await prepareEnsGate(input.ens, payeeName) : null;
   // 支払いチェーン（Tokyo B3）。省略は "base"＝今までの挙動。知らない値は通信の前に throw（invalid_network）。
   const profile = profileFor(input.network);
+  // x402 auth-capture（E4）。設定の誤りは通信の前に throw。本番 Base は `onBase: true` のときだけ使う（既定 false）。
+  assertAuthCaptureOptions(input.authCapture);
+  const authCaptureOn = rail === "evm" && authCaptureEnabled(profile, input.authCapture);
   // 名前経路は testnet だけ（§1.6・本番 Base を名前経路で払わない）。
   if (ensGate !== null && profile.name !== "base-sepolia") {
     throw new Error(
@@ -1355,7 +1384,7 @@ async function decideAndPay(input: DecideInput, facts: ReceiptFacts): Promise<Pa
   try {
     const response = await fetchFn(input.resource, { method });
     const raw = readHeader(response.headers, "payment-required");
-    const challenge = raw ? decodeChallenge(raw, rail, profile) : null;
+    const challenge = raw ? decodeChallenge(raw, rail, profile, authCaptureOn) : null;
     if (challenge) {
       accept = challenge.accept;
       x402Version = challenge.x402Version;
@@ -1393,7 +1422,7 @@ async function decideAndPay(input: DecideInput, facts: ReceiptFacts): Promise<Pa
   if (!sameAddress(accept.payTo, payeeAddr)) {
     return refuse([...pathReasons, ...selectionReasons, "payee_mismatch"], evidenceVerdictSource, decision, null, accept);
   }
-  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version, profile);
+  const moneyGate = evaluateMoneyGate(accept, maxPerTxUsd, rail, x402Version, profile, authCaptureOn);
   if (moneyGate) {
     return refuse([...pathReasons, ...selectionReasons, ...moneyGate], evidenceVerdictSource, decision, null, accept);
   }
@@ -1534,6 +1563,65 @@ async function decideAndPay(input: DecideInput, facts: ReceiptFacts): Promise<Pa
     };
   }
 
+  if (accept.scheme === AUTH_CAPTURE_SCHEME) {
+    // x402 auth-capture（E4）。**署名と @x402/evm はここで初めて評価される**（第3層・exact と同じ形）。
+    // 署名は1つ。売り手へは1回だけ再送し、払い直さない。attest は POST しない（capture の tx は EIP-3009 の
+    // 送金ではないので、本番の nonce 束縛の照合に載らない。本番 Base は既定で使わない）。
+    const { executeAuthCapturePayment } = await import("./auth-capture-pay.js");
+    let acNonce: string | null = null;
+    const held = await executeAuthCapturePayment({
+      account: input.account,
+      accept,
+      resource: input.resource,
+      method,
+      profile,
+      fetch: fetchFn,
+      ...(input.authCapture?.deliveryTimeoutMs !== undefined ? { deliveryTimeoutMs: input.authCapture.deliveryTimeoutMs } : {}),
+      ...(input.authCapture?.stateReader !== undefined ? { stateReader: input.authCapture.stateReader } : {}),
+      onSigned: ({ nonce, authorization, payer }) => {
+        acNonce = nonce;
+        facts.authorization = { ...authorization };
+        facts.payer = payer;
+      },
+    }).catch((error: unknown) => {
+      // 署名の**前**に落ちたなら金は動いていない（上限・宛先・ドメインの食い違いで署名を拒んだときも含む）。
+      if (acNonce === null) throw error;
+      return null;
+    });
+    if (held === null) {
+      return {
+        status: "failed",
+        decision: record("ALLOW", [...allowReasons, "settle_failed"], verdictSource, decision, payeeScore, policyOverride),
+        signed: true,
+        attested: false,
+        txHash: null,
+        nonce: acNonce,
+        challenge: accept,
+        stored: false,
+        storeError: null,
+        rail,
+        svmTransaction: null,
+      };
+    }
+    facts.settlement = held.settlement;
+    facts.responseStatus = held.responseStatus;
+    const failureReasons = held.paid ? [] : [held.receipt.delivered ? "settle_failed" : "not_delivered"];
+    return {
+      status: held.paid ? "paid" : "failed",
+      decision: record("ALLOW", [...allowReasons, ...failureReasons], verdictSource, decision, payeeScore, policyOverride),
+      signed: true,
+      attested: false,
+      txHash: held.txHash,
+      nonce: held.nonce,
+      challenge: accept,
+      stored: false,
+      storeError: null,
+      rail,
+      svmTransaction: null,
+      authCapture: held.receipt,
+    };
+  }
+
   const { executeX402Payment } = await import("./x402-pay.js");
   // 署名の直後に nonce を確定させる。ここから先で落ちても「何に署名したか」は残る。
   let signedNonce: string | null = null;
@@ -1648,10 +1736,11 @@ function evaluateMoneyGate(
   rail: PayRail = "evm",
   x402Version: 1 | 2 = 2,
   profile: ChainProfile = CHAIN_PROFILES.base,
+  authCaptureOn = false,
 ): PayRefuseReason[] | null {
   // scheme / network / asset / 転送方式。**選別と同じ述語**で見る——別の述語を書くと、
   // 選ばれたのに関門で落ちる（またはその逆の）食い違いが静かに入り込む。
-  if (!isEligibleOnRail(accept, rail, x402Version, profile)) return ["chain_or_asset_mismatch"];
+  if (!isEligibleOnRail(accept, rail, x402Version, profile, authCaptureOn)) return ["chain_or_asset_mismatch"];
   // EIP-712 ドメインはトークンのものであって売り手のものではない（本番 2026-08-22 監査）。
   // 矛盾する accept を**署名の前に**落とす: 誤ったドメインの署名は決済され得ないので、
   // 通せば「一円も動かないまま署名だけが生きている」状態を売り手が無料で作れてしまう。
@@ -1688,6 +1777,25 @@ function evaluateMoneyGate(
  * Solana の payee に渡された署名者の**形**を、通信の前に見る。見るのは `svm` の欄の有無と `rpcUrl` だけで、
  * `svm.account` のプロパティには触らない（`typeof` は Proxy の get を起こさない）。
  */
+function assertAuthCaptureOptions(options: unknown): void {
+  if (options === undefined) return;
+  if (typeof options !== "object" || options === null) {
+    throw new Error("invalid_auth_capture: authCapture must be an object like { onBase?: boolean, deliveryTimeoutMs?: number }");
+  }
+  const o = options as Record<string, unknown>;
+  for (const key of ["enabled", "onBase"] as const) {
+    if (o[key] !== undefined && typeof o[key] !== "boolean") throw new Error(`invalid_auth_capture: authCapture.${key} must be a boolean`);
+  }
+  const t = o.deliveryTimeoutMs;
+  if (t !== undefined && (typeof t !== "number" || !Number.isFinite(t) || t <= 0)) {
+    throw new Error("invalid_auth_capture: authCapture.deliveryTimeoutMs must be a positive number of milliseconds");
+  }
+  const r = o.stateReader as { readContract?: unknown } | undefined;
+  if (r !== undefined && (typeof r !== "object" || r === null || typeof r.readContract !== "function")) {
+    throw new Error("invalid_auth_capture: authCapture.stateReader must have readContract (a viem PublicClient works)");
+  }
+}
+
 function assertSvmPayer(input: DecideInput): SvmPayOptions {
   const svm: unknown = input.svm;
   if (input.account !== NO_EVM_ACCOUNT || typeof svm !== "object" || svm === null) {

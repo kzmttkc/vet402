@@ -165,6 +165,35 @@ before a request is made, so a typo cannot fall back to mainnet. Leave `network`
 const r = await payOrRefuse({ payee, resource, amountUsd: 0.01, fetch, account, network: "base-sepolia" })
 ```
 
+### Settle only once the answer has arrived: x402 `auth-capture`
+
+This applies only to sellers that offer the x402 scheme [`auth-capture`](https://github.com/x402-foundation/x402/blob/d3eb19d018801c190be58acf4017e76f8bcf6d45/specs/schemes/auth-capture/scheme_auth_capture.md#L1).
+A seller that offers only `exact` is paid with `exact`, as before.
+
+When the 402 lists an `auth-capture` accept that the SDK can pay (operator type `delegated`, payment flow
+`escrow`, sync capture, EIP-3009, the v1.1 escrow `0xf96815976523E00e65Be8f34cA5e64b4f41EB19c`, a capture
+deadline at most one hour away), `payOrRefuse` picks it over `exact` and signs one ERC-3009
+`ReceiveWithAuthorization` with the official client `@x402/evm/auth-capture/client`. The funds sit in the
+escrow contract, not in a vet402 wallet. The seller's operator captures the hold or voids it.
+
+`status` is `"paid"` only when a non-empty 2xx other than 202 arrived in time and the hold was captured.
+An HTTP status of 400 or more, an empty body, a 202 or a timeout gives `"failed"` with `not_delivered`, and
+`r.authCapture.recovery` lists the ways back: `void` by the operator, or `reclaim` by the buyer's own wallet
+after `captureDeadline`. Pass `authCapture.stateReader` (a viem `PublicClient`) to have the SDK read the
+escrow after the answer, so `r.authCapture.outcome` is checked on chain instead of taken from the seller.
+
+```ts
+const r = await payOrRefuse({ payee, resource, amountUsd: 0.01, fetch, account, network: "base-sepolia",
+  authCapture: { stateReader: publicClient } })
+if (r.authCapture?.outcome === "held") {
+  // after r.authCapture.recovery.reclaim.availableAt
+  await reclaimAuthCapture({ wallet: walletClient, paymentInfo: r.authCapture.paymentInfo })
+}
+```
+
+On Base mainnet the SDK does not use `auth-capture` unless `authCapture.onBase` is `true`. The default is
+`false`. The 402 amount must still fit under the ceiling, and the SDK never re-sends a payment.
+
 ### Receipts on the payment chain: `minChainReceipts`
 
 `policy.evidence.minChainReceipts` is a floor on the USDC transfers the payee has received on the

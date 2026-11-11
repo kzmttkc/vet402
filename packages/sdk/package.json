@@ -18,6 +18,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "test": "npm run build && node --test 'test/*.test.mjs'",
+    "test:anvil": "npm run build && node --test 'test/integration/*.test.mjs'",
     "mutations": "node test-mutations.mjs",
     "mutations:svm": "node test-mutations-svm.mjs"
   },
@@ -73,5 +74,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@x402/evm": "2.30.0"
   }
 }

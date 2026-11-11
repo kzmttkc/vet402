@@ -1,6 +1,7 @@
 import type { DecisionResult, PayeeScoreResult } from "./index.js";
 import type { Eip3009Authorization, PayerAccount, X402Accept, X402Settlement } from "./x402-pay.js";
 import { type ChainProfileName } from "./chain-profile.js";
+import { type AuthCaptureOptions, type AuthCaptureReceipt } from "./auth-capture.js";
 import type { EnsAttestationPolicy, EnsOfferCheck } from "./ens-attestation.js";
 import type { EnsReadClients } from "./ens-read.js";
 export type { PayerAccount, X402Accept, X402Settlement, Eip3009Authorization } from "./x402-pay.js";
@@ -348,6 +349,12 @@ export type PayOrRefuseBaseInput = {
      */
     chainReader?: ChainReceiptReader;
     chainReaderCrossCheck?: ChainReceiptReader;
+    /**
+     * x402 `auth-capture`（E4・2026-11-11）。402 の accepts に払える形の auth-capture があるときだけ使い、
+     * 署名は1つ（ERC-3009 ReceiveWithAuthorization）、資金はエスクローに置かれ、届いたときだけ確定（capture）する。
+     * `exact` しか出さない売り手には今までと同じ。**本番 Base では既定で使わない**（`authCapture.onBase: true` のときだけ）。
+     */
+    authCapture?: AuthCaptureOptions;
 };
 /**
  * 支払いチェーンの受領を読む口（viem `PublicClient` の部分集合）。`getLogs` は ERC-20 `Transfer` を
@@ -447,6 +454,11 @@ export type PayOrRefuseResult = {
      * 呼び手のコードを壊さないため）。再試行の前に確かめる値をまとめたもの。{@link PayReceipt}。
      */
     receipt?: PayReceipt;
+    /**
+     * x402 `auth-capture` で払ったときだけある（exact の結果にはこのキー自体が無い）。届いたか・エスクローの状態・
+     * 戻り道（void か、期限後の買い手の reclaim）。`status` は「届いて capture された」ときだけ "paid"。
+     */
+    authCapture?: AuthCaptureReceipt;
 };
 /**
  * **再試行の前に確かめるための控え。** SDK が既に持っていた値を載せるだけで、ここで新しい判定はしない。
