@@ -300,6 +300,11 @@ test("[guard] probe402: 79 sealed against 76 published does not happen, every se
   useTables({ l1: [], ledger_anchors: sealed });
   const { res, body } = await anchorsBody(366);
   assert.equal(res.status, 200);
+  // 公開の件数は公開 JSON から、封印の件数は表から、別々に読む。76 という公開数は合格にしない。
+  const published = body.anchors.length;
+  const sealedCount = sealed.length;
+  assert.notEqual(published, 76, "76 published heads is probe402's shape");
+  assert.equal(published, sealedCount, "published heads equal sealed days");
   assert.equal(body.anchors.length, 79);
   assert.deepEqual(new Set(body.anchors.map((a: { day: string }) => a.day)), new Set(sealed.map((a) => a.day)));
   assert.equal(body.anchors[0].day, "2026-11-09");
@@ -656,6 +661,33 @@ test("[fix] 3.8b-4: a Circle Gateway row is never listed, even with the batch tx
   assert.equal(body.chains.find((c) => c.label === "Arc")!.nonceBound!.tx, PINNED[5].tx);
 });
 
+test("[fix] 3.8b-4: a Circle Gateway row with the batch tx in tx_hash is not a home receipt either", () => {
+  const row = {
+    attempted_at: "2026-11-09T23:30:00Z",
+    resource_key: "gw.example/api",
+    network: "eip155:5042",
+    spent_units: "10000",
+    tx_hash: `0x${"bb".repeat(32)}`,
+    settlement_source: "circle_gateway",
+    id: "gw-2",
+  };
+  assert.equal(formatSettledReceipt(row, { rows: 1, settled: 1, from: "", to: "" }), null, "the batch tx does not make a HomeReceipt");
+  // 同じ行で自分の tx を持つもの（Gateway でない）は受領になる。
+  assert.notEqual(formatSettledReceipt({ ...row, settlement_source: "seller_claim", tx_hash: `0x${"cc".repeat(32)}` }, { rows: 1, settled: 1, from: "", to: "" }), null);
+});
+
+test("[fix] 3.8b-4: the home receipt skips a newer Circle Gateway row and shows the newest purchase with its own tx", async () => {
+  const rows = tenChainRows();
+  const gateway = candidate(32, { network: "eip155:5042", tx: `0x${"bb".repeat(32)}`, nonce: false, source: "circle_gateway", at: "2026-11-09T23:59:00Z" });
+  useTables({ l1: [], ledger_anchors: [], traceableCandidates: rows, homeLatest: [gateway, rows[0]] });
+  // ホームの読み（readHomeExample。main にもある）を直接通す。
+  const { readHomeExample } = await import("@/lib/observatory/home-example");
+  const home = await readHomeExample();
+  assert.ok(home, "a home receipt is read");
+  assert.equal(home.receipt.purchaseId, rows[0].id, "the Gateway batch row is not the home receipt");
+  assert.ok(!home.latest.some((r) => r.purchaseId === gateway.id), "the Gateway batch row is not in the home list");
+});
+
 test("[guard] 3.8b-4: a Gateway row whose payment sits only in the batch tx is not a home grade receipt", () => {
   const row = {
     attempted_at: "2026-11-08T12:02:00Z",
@@ -678,4 +710,79 @@ test("[fix] public English: the llms.txt line this wave touched follows the rule
   assert.ok(line, "llms.txt lists the traceable route");
   assert.doesNotMatch(line, forbidden);
   for (const l of freshnessLines()) assert.doesNotMatch(l, /—|–/, l);
+});
+
+// ------------------------------------------------------------------
+// 6c-4 の口そのもの: 新しい訂正の口があればそれを、無い木では旧 recordCorrection を、同じ入力で叩く。
+// 新しいモジュールが無いときに「public entry missing」で止まるのではなく、旧の口の振る舞いで落とす。
+// ------------------------------------------------------------------
+
+type PortInput = { kind: "self" | "third_party"; citedDay: string; citedRowId: string; note: string; priorRowSha256: string };
+type PortResult = { port: string; accepted: boolean; stored: { kind?: unknown; priorRowSha256?: unknown } | null };
+
+async function fileCorrectionThroughThePort(input: PortInput): Promise<PortResult> {
+  let route: CorrectionsRoute | null = null;
+  try {
+    route = (await import("@/app/api/v1/observatory/ledger-corrections/route")) as unknown as CorrectionsRoute;
+  } catch {
+    route = null;
+  }
+  if (route) {
+    const { memoryLedgerCorrectionStore, setLedgerCorrectionStoreForTests } = (await import(
+      "@/lib/observatory/ledger-corrections-store"
+    )) as unknown as StoreModule;
+    const store = memoryLedgerCorrectionStore();
+    setLedgerCorrectionStoreForTests(store);
+    try {
+      return await withCorrectionsEnv(async () => {
+        const body =
+          input.kind === "self"
+            ? { ...input }
+            : { ...(await signThirdParty(THIRD_PARTY_PK, { citedDay: input.citedDay, citedRowId: input.citedRowId, note: input.note })), priorRowSha256: input.priorRowSha256 };
+        const res = await route!.POST(postCorrection(body, input.kind === "self" ? "tok-self-test" : undefined));
+        return { port: "ledger-corrections", accepted: res.status === 201, stored: store.rows[0] ?? null };
+      });
+    } finally {
+      setLedgerCorrectionStoreForTests(null);
+    }
+  }
+  // 旧の口: correction_log への追記。提案者の種別の欄は無く、prior は呼び手が before に渡した値のまま残る。
+  const { recordCorrection } = await import("@/lib/observatory/corrections");
+  const db = (await import("@/lib/db/client")).getDb() as unknown as { writes: { sql: string; params: unknown[] }[] };
+  const id = await recordCorrection({
+    subjectType: "purchase",
+    subjectId: input.citedRowId,
+    level: "l1",
+    before: { priorRowSha256: input.priorRowSha256 },
+    after: { note: input.note },
+    reason: "reverify",
+  });
+  const write = db.writes.find((w) => /^INSERT INTO correction_log /.test(w.sql));
+  const before = write ? JSON.parse(String(write.params[3])) : null;
+  return { port: "recordCorrection", accepted: id !== null, stored: write ? { priorRowSha256: before?.priorRowSha256 } : null };
+}
+
+test("[fix] 3.8-6c-4 port: a correction stored through the public port names its proposer kind", async () => {
+  publishAt("2026-11-10T06:00:00Z");
+  useTables({ l1: freshRows(), ledger_anchors: sealedAnchors() });
+  for (const kind of ["self", "third_party"] as const) {
+    const r = await fileCorrectionThroughThePort({ kind, citedDay: "2026-11-08", citedRowId: ROW_1.id, note: "late settle", priorRowSha256: ROW_1_FINGERPRINT });
+    assert.equal(r.accepted, true, `${r.port} accepts a ${kind} correction of a ledger row`);
+    assert.ok(r.stored, `${r.port} stores the row`);
+    assert.equal(r.stored.kind, kind, `${r.port} stores no proposer kind`);
+  }
+});
+
+test("[fix] 3.8-6c-4 port: a prior fingerprint handed in by the test cannot be appended", async () => {
+  publishAt("2026-11-10T06:00:00Z");
+  useTables({ l1: freshRows(), ledger_anchors: sealedAnchors() });
+  const madeUp = "0".repeat(64);
+  // 台帳に無い行と、試験が作った prior。台帳から prior を取る口なら追記しない。
+  const missing = await fileCorrectionThroughThePort({ kind: "self", citedDay: "2026-11-08", citedRowId: "not-in-the-ledger", note: "x", priorRowSha256: madeUp });
+  assert.equal(missing.accepted, false, `${missing.port} appended a correction for a row the ledger does not have`);
+  // 台帳にある行でも、残る prior は台帳から読んだ値で、試験が渡した値ではない。
+  const present = await fileCorrectionThroughThePort({ kind: "self", citedDay: "2026-11-08", citedRowId: ROW_1.id, note: "x", priorRowSha256: madeUp });
+  assert.ok(present.stored, `${present.port} stores the row`);
+  assert.notEqual(present.stored.priorRowSha256, madeUp, `${present.port} kept the prior the test handed in`);
+  assert.equal(present.stored.priorRowSha256, ROW_1_FINGERPRINT);
 });

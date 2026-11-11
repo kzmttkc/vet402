@@ -208,6 +208,9 @@ export function formatSettledReceipt(
   const id = typeof row.id === "string" ? row.id : "";
   const amount = unitsToAmount(String(row.confirmed_units || row.spent_units || ""));
   if (!at || !key || !tx || !id || !amount) return null;
+  // 2026-11-11（3.8b-4）: Circle Gateway の共有バッチで決済した行は、tx_hash にバッチ tx が入っていても
+  // この購入だけの tx ではない。辿れる tx の一覧（traceable-by-chain.ts）と同じく、ホームの受領にもしない。
+  if (row.settlement_source === "circle_gateway") return null;
   const slash = key.indexOf("/");
   const host = slash === -1 ? key : key.slice(0, slash);
   const path = slash === -1 ? "/" : key.slice(slash);
@@ -304,6 +307,7 @@ async function loadLatestReceipt(): Promise<{ receipt: HomeReceipt; latest: Home
         AND pu.status = 'settled'
         AND pu.tx_hash IS NOT NULL AND pu.tx_hash <> ''
         AND e.resource_key IS NOT NULL AND e.resource_key <> ''
+        AND (${sql.raw(settlementSourceSql("pu"))}) IS DISTINCT FROM 'circle_gateway'
       ORDER BY pu.attempted_at DESC, pu.id ASC
       LIMIT 8
     `),

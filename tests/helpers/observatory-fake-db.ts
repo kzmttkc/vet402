@@ -125,6 +125,11 @@ export function observatoryFakeDb(tables: FakeObservatoryTables): FakeObservator
       if (row) Object.assign(row, { root_hash, prev_root, entry_count: Number(entry_count) });
       return [];
     }
+    // 旧の訂正ログ（corrections.ts の recordCorrection）。新しい訂正の口が無い木で、同じ入力を当てるため。
+    if (/^INSERT INTO correction_log /.test(text)) {
+      writes.push({ sql: text, params });
+      return [{ id: `correction-${writes.length}` }];
+    }
     if (/row_number\(\) OVER/.test(text) && /FROM x402_l1_purchases pu JOIN x402_endpoints e/.test(text)) {
       return (tables.traceableCandidates ?? []).map((r) => ({ ...r }));
     }
