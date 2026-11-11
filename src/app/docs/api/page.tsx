@@ -505,7 +505,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/traceable-by-chain",
-    note: "For each of the ten public chains, the latest settled purchase in the same fields as the home page example, with its tx and a public explorer link. nonce_bound and amount_payee_only are separate lists, and each row names its settledTier. A Circle Gateway row inside a shared batch transaction is not listed. A chain with no such purchase is named in chainsWithoutExample. No API key. 30 requests per minute per IP. CC-BY-4.0.",
+    note: "For each of ten chains (Base, Solana, Tempo, XRPL, Celo, Arc, Stellar, BNB Chain, Arbitrum One and Avalanche C-Chain), the latest settled purchase in the same fields as the home page example, with its tx and a public explorer link. nonce_bound and amount_payee_only are separate lists, and each row names its settledTier. A Circle Gateway row inside a shared batch transaction is not listed. A chain with no such purchase is named in chainsWithoutExample. No API key. 30 requests per minute per IP. CC-BY-4.0.",
     response: `HTTP 200. chains, lists.nonce_bound, lists.amount_payee_only, chainsWithoutExample, home, moreThanHomeAlone, license and cite.`,
   },
   {

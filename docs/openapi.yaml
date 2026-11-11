@@ -1437,8 +1437,9 @@ paths:
       tags: [Observatory]
       summary: The latest traceable settled purchase on each public chain
       description: |
-        For each of the ten public chains, the latest settled purchase in the
-        same fields as the home page example, with its transaction hash and a
+        For each of ten chains (Base, Solana, Tempo, XRPL, Celo, Arc, Stellar,
+        BNB Chain, Arbitrum One and Avalanche C-Chain), the latest settled
+        purchase in the same fields as the home page example, with its transaction hash and a
         public explorer link. nonce_bound and amount_payee_only are separate
         lists and each row names its settledTier. A Circle Gateway row whose
         payment sits inside a shared batch transaction is not listed. A chain

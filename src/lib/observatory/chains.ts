@@ -192,11 +192,29 @@ const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
 };
 
 /**
- * 3.8b の 10 鎖（公開名と CAIP-2）。PUBLIC_CHAIN_NETWORKS と同じ並び。
- * Robinhood Chain・Polygon・Monad は、公開の byChain に載るまでここに入れない。
+ * 3.8b の 10 鎖（公開名と CAIP-2）。要件 3.8b が固定した IG の内訳の 10 で、名前で列挙する。
+ * PUBLIC_CHAIN_NETWORKS から導かない: 2026-11-11 に Robinhood Chain が公開の鎖に入ったが、
+ * 3.8b は「Robinhood を足して 11 にしない」「Polygon と Monad は 3.11 の公開の後」と書く。
  */
+const TRACEABLE_PUBLIC_CHAIN_LABELS = [
+  "Base",
+  "Solana",
+  "Tempo",
+  "XRPL",
+  "Celo",
+  "Arc",
+  "Stellar",
+  "BNB Chain",
+  "Arbitrum One",
+  "Avalanche C-Chain",
+] as const;
+
 export function traceablePublicChains(): { label: string; network: string }[] {
-  return Object.entries(PUBLIC_CHAIN_NETWORKS).map(([label, network]) => ({ label, network }));
+  return TRACEABLE_PUBLIC_CHAIN_LABELS.map((label) => {
+    const network = PUBLIC_CHAIN_NETWORKS[label];
+    if (!network) throw new Error(`traceablePublicChains: ${label} has no public CAIP-2`);
+    return { label, network };
+  });
 }
 
 /** Public name. Accepts a CAIP-2 id, a legacy slug, or a `chainLabel()` key such as `BSC`. */

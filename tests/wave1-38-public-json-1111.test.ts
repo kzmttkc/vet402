@@ -555,7 +555,9 @@ const HOME_KEYS = Object.keys(
 ).sort();
 
 test("[fix] 3.8b-2: each of the ten public chains has its pinned tx, in the home receipt fields, with its https explorer link", async () => {
-  useTables({ l1: [], ledger_anchors: [], traceableCandidates: tenChainRows() });
+  // Robinhood Chain は公開の鎖に入っても 3.8b の 10 に足さない（要件 3.8b）。
+  const robinhood = candidate(41, { network: "eip155:4663", tx: `0x${"46".repeat(32)}`, nonce: true });
+  useTables({ l1: [], ledger_anchors: [], traceableCandidates: [...tenChainRows(), robinhood] });
   const { status, body } = await traceableBody();
   assert.equal(status, 200);
   assert.deepEqual(body.chains.map((c) => c.label), PINNED.map((c) => c.label));
@@ -572,6 +574,8 @@ test("[fix] 3.8b-2: each of the ten public chains has its pinned tx, in the home
   assert.deepEqual(body.chainsWithoutExample, []);
   assert.equal(body.allChainsTraceable, true);
   assert.equal(body.traceableCount, 10);
+  assert.ok(!JSON.stringify(body).includes(robinhood.tx_hash), "the Robinhood row is not one of the ten");
+  assert.ok(!body.chains.some((c) => c.label === "Robinhood Chain"));
   assert.equal(body.license, "CC-BY-4.0");
 });
 
