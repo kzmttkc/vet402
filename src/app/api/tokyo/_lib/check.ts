@@ -142,9 +142,8 @@ export async function readAfterWrite(
     ) {
       return r;
     }
-    const left = deadline - Date.now();
-    if (left <= 0) break;
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pauseMs, left)));
+    if (deadline - Date.now() <= pauseMs) break;
+    await new Promise((resolve) => setTimeout(resolve, pauseMs));
   }
   return null;
 }

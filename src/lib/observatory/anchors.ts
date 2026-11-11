@@ -261,3 +261,28 @@ export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: st
     chainRootDay: next ? String(next.day) : null,
   };
 }
+
+/**
+ * 台帳の 1 行の指紋（2026-11-11 3.8 の 6c-4）。その日の公開ファイル（/anchors/day）の rows にある
+ * 行オブジェクトを JSON.stringify したバイト列の sha256。第三者は公開ファイルを JSON.parse し、
+ * 同じ id の行に同じ式をかければ、訂正が指した行の当時の中身を鍵なしで確かめられる。
+ */
+export function ledgerRowFingerprint(row: unknown): string {
+  return createHash("sha256").update(JSON.stringify(row)).digest("hex");
+}
+
+/**
+ * 訂正が指す台帳の行を、その日の正規化ペイロードから読み、指紋を返す。行が無ければ null。
+ * 呼び手（訂正の POST）が渡した値ではなく、台帳そのものから取る。行は読むだけで変えない。
+ */
+export async function readLedgerRowFingerprint(
+  db: Pick<Db, "execute">,
+  day: string,
+  rowId: string,
+): Promise<string | null> {
+  if (!DAY_RE.test(day)) return null;
+  const { payload } = await canonicalDayPayload(db, day);
+  const parsed = JSON.parse(payload) as { rows: Record<string, unknown>[] };
+  const row = parsed.rows.find((r) => r.id === rowId);
+  return row ? ledgerRowFingerprint(row) : null;
+}

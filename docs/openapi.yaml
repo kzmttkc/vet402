@@ -1386,7 +1386,10 @@ paths:
         `correction_log`. Each row names its proposer kind, `self` or `third_party`.
         A third_party row carries `signerAddress`, `signature` and `signedMessage`, and
         `signatureValid` is checked again on each read. Anyone can repeat that check
-        with EIP-191 recovery and no key. CC-BY-4.0.
+        with EIP-191 recovery and no key. A row may cite one ledger row with
+        `citedRowId`. Its `priorRowSha256` is the SHA-256 of JSON.stringify of that
+        row in /api/v1/observatory/anchors/day, read from the ledger when the
+        correction was filed. The cited row is never changed. CC-BY-4.0.
       security: []
       responses:
         "200":
@@ -1400,7 +1403,7 @@ paths:
       security: []
       responses:
         "201": { description: Added }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400": { description: Bad input, or cited_row_not_found when citedRowId is not a row of citedDay }
         "403": { description: Token or signer refused }
         "429": { description: Rate limited }
         "503": { description: Store unavailable }

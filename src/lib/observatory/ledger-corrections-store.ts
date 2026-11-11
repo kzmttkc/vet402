@@ -22,6 +22,8 @@ type Row = {
   id: string;
   kind: string;
   cited_day: string;
+  cited_row_id: string | null;
+  prior_row_sha256: string | null;
   note: string;
   signer_address: string | null;
   signature: string | null;
@@ -36,6 +38,8 @@ function toEntry(r: Row): LedgerCorrectionEntry {
     note: String(r.note),
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : new Date(r.created_at).toISOString(),
   };
+  if (r.cited_row_id !== null && r.cited_row_id !== undefined) entry.citedRowId = String(r.cited_row_id);
+  if (r.prior_row_sha256 !== null && r.prior_row_sha256 !== undefined) entry.priorRowSha256 = String(r.prior_row_sha256);
   if (r.signer_address !== null) entry.signerAddress = String(r.signer_address);
   if (r.signature !== null) entry.signature = String(r.signature);
   return entry;
@@ -47,7 +51,7 @@ export function dbLedgerCorrectionStore(): LedgerCorrectionStore | null {
   return {
     async list() {
       const raw = await db.execute(sql`
-        SELECT id, kind, cited_day, note, signer_address, signature, created_at
+        SELECT id, kind, cited_day, cited_row_id, prior_row_sha256, note, signer_address, signature, created_at
         FROM ledger_corrections ORDER BY created_at ASC, id ASC LIMIT 5000
       `);
       const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Row[];
@@ -55,8 +59,9 @@ export function dbLedgerCorrectionStore(): LedgerCorrectionStore | null {
     },
     async append(entry) {
       await db.execute(sql`
-        INSERT INTO ledger_corrections (id, kind, cited_day, note, signer_address, signature, created_at)
-        VALUES (${entry.id}, ${entry.kind}, ${entry.citedDay}, ${entry.note},
+        INSERT INTO ledger_corrections
+          (id, kind, cited_day, cited_row_id, prior_row_sha256, note, signer_address, signature, created_at)
+        VALUES (${entry.id}, ${entry.kind}, ${entry.citedDay}, ${entry.citedRowId ?? null}, ${entry.priorRowSha256 ?? null}, ${entry.note},
                 ${entry.signerAddress ?? null}, ${entry.signature ?? null}, ${entry.createdAt}::timestamptz)
       `);
     },

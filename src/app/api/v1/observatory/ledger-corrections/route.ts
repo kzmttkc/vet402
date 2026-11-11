@@ -10,6 +10,8 @@ import {
   type LedgerCorrectionWriteInput,
 } from "@/lib/observatory/ledger-corrections-public";
 import { ledgerCorrectionStore } from "@/lib/observatory/ledger-corrections-store";
+import { readLedgerRowFingerprint } from "@/lib/observatory/anchors";
+import { getDb } from "@/lib/db/client";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
@@ -21,6 +23,8 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
  *      third_party は署名で書く。署名者は LEDGER_CORRECTION_THIRD_PARTY_PUBKEY（カンマ区切り）にあり、
  *      LEDGER_CORRECTION_SELF_PUBKEY（自社のアドレス）に無いこと。
  * 保存は追記だけ（ledger-corrections-store.ts）。保存先が無ければ 503 で閉じる。
+ * citedRowId を付けた訂正は、その行の当時の指紋（priorRowSha256）を台帳（その日の公開ファイルの行）から
+ * 読んで残す。書き手が送った指紋は使わない。行が無ければ 400 cited_row_not_found。台帳の行は変えない。
  */
 
 export const dynamic = "force-dynamic";
@@ -72,7 +76,7 @@ export async function GET(request: NextRequest) {
           third_party: corrections.filter((c) => c.kind === "third_party").length,
         },
         verify:
-          "A third_party row verifies with EIP-191 personal_sign recovery of signature over signedMessage. The recovered address must equal signerAddress. No key is needed.",
+          "A third_party row verifies with EIP-191 personal_sign recovery of signature over signedMessage. The recovered address must equal signerAddress. A row with citedRowId also carries priorRowSha256. It is the SHA-256 of JSON.stringify of the row with that id in /api/v1/observatory/anchors/day?day=citedDay, read from the ledger when the correction was filed. The cited row is never changed or removed. No key is needed.",
         license: "CC-BY-4.0",
         licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
         retrievedAt,
@@ -109,8 +113,19 @@ export async function POST(request: NextRequest) {
   if (!store) {
     return NextResponse.json({ error: "ledger_corrections_unavailable" }, { status: 503, headers: gate.headers });
   }
-  const prepared = await prepareLedgerCorrection(body, authFromEnv());
+  const db = getDb();
+  const readPrior = db ? (day: string, rowId: string) => readLedgerRowFingerprint(db, day, rowId) : null;
+  let prepared: Awaited<ReturnType<typeof prepareLedgerCorrection>>;
+  try {
+    prepared = await prepareLedgerCorrection(body, authFromEnv(), new Date(), readPrior);
+  } catch (error) {
+    logServerErrorSafe("ledger_corrections_prior", error);
+    return NextResponse.json({ error: "ledger_corrections_unavailable" }, { status: 503, headers: gate.headers });
+  }
   if (!prepared.ok) {
+    if (prepared.error === "ledger_unavailable") {
+      return NextResponse.json({ error: "ledger_corrections_unavailable" }, { status: 503, headers: gate.headers });
+    }
     const status = prepared.error === "self_key_cannot_write_third_party" || prepared.error === "third_party_signer_not_allowed" || prepared.error === "invalid_signature" ? 403 : 400;
     return NextResponse.json({ error: prepared.error }, { status, headers: gate.headers });
   }

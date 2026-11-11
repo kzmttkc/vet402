@@ -1248,6 +1248,10 @@ export const ledgerCorrections = pgTable(
     id: text("id").primaryKey(),
     kind: text("kind").notNull(),
     citedDay: text("cited_day").notNull(),
+    /** 訂正が指す台帳の行（x402_l1_purchases.id）。日全体への訂正なら null（2026-11-11）。 */
+    citedRowId: text("cited_row_id"),
+    /** その行の、訂正を受け付けた時点の指紋。台帳から読む（anchors.ts の ledgerRowFingerprint）。 */
+    priorRowSha256: text("prior_row_sha256"),
     note: text("note").notNull(),
     signerAddress: text("signer_address"),
     signature: text("signature"),

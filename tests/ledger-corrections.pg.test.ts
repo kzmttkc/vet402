@@ -7,6 +7,7 @@
 //   2. 2 行目を足しても 1 行目は変わらない
 //   3. 本番の SQL（scripts/sql/2026-11-10-ledger-corrections.sql）を当てた表は UPDATE と DELETE を拒む
 //   4. GET は third_party の署名を、DB から読んだ行だけで確かめ直す
+//   5. 行を指す訂正の指紋は台帳から取り、公開ファイルの同じ行で再計算できる（2026-11-11 6c-4）
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -77,6 +78,65 @@ if (!TEST_DB) {
       const third = body.corrections.find((c: { kind: string }) => c.kind === "third_party");
       assert.equal(third.signatureValid, true);
       assert.match(third.signedMessage, /cited_day: 2026-11-02/);
+    });
+
+    await t.test("行を指す訂正は、その行の指紋を Postgres の台帳から取り、公開ファイルの同じ行で誰でも再計算できる", async () => {
+      const { createHash } = await import("node:crypto");
+      const { GET: dayGet } = await import("@/app/api/v1/observatory/anchors/day/route");
+      await db.execute(sql`TRUNCATE ip_rate_limits`);
+      const rowsOf = <T>(raw: unknown) => (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as T[];
+      const eid = rowsOf<{ id: string }>(
+        await db.execute(sql`
+          INSERT INTO x402_endpoints (resource_key, resource_url, method, network)
+          VALUES ('correction-cite.example/api', 'https://correction-cite.example/api', 'GET', 'eip155:8453')
+          RETURNING id::text AS id
+        `),
+      )[0].id;
+      const pid = rowsOf<{ id: string }>(
+        await db.execute(sql`
+          INSERT INTO x402_l1_purchases (endpoint_id, status, network, tx_hash, http_status_paid, spent_units, attempted_at)
+          VALUES (${eid}::uuid, 'settled', 'eip155:8453', ${`0x${"ef".repeat(32)}`}, 200, '10000', '2026-11-02T09:00:00Z'::timestamptz)
+          RETURNING id::text AS id
+        `),
+      )[0].id;
+      try {
+        const note = "delivered body was empty";
+        const signature = await account.signMessage({
+          message: ledgerCorrectionSignMessage({ citedDay: "2026-11-02", citedRowId: pid, note }),
+        });
+        const posted = await POST(
+          req({ kind: "third_party", citedDay: "2026-11-02", citedRowId: pid, note, signerAddress: account.address, signature, priorRowSha256: "0".repeat(64) }),
+        );
+        assert.equal(posted.status, 201);
+        const missing = await POST(req({ kind: "self", citedDay: "2026-11-02", citedRowId: "00000000-0000-4000-8000-000000000000", note: "x" }, "tok-pg"));
+        assert.equal(missing.status, 400);
+        assert.equal((await missing.json()).error, "cited_row_not_found");
+
+        const body = await (await GET(new NextRequest("http://localhost/api/v1/observatory/ledger-corrections"))).json();
+        const cited = body.corrections.find((c: { citedRowId?: string }) => c.citedRowId === pid);
+        assert.ok(cited, "the correction names the cited row");
+        assert.equal(cited.signatureValid, true);
+        assert.notEqual(cited.priorRowSha256, "0".repeat(64), "the writer's fingerprint is not used");
+        // その日を封印して、公開ファイルを /anchors/day から読む。第三者はこのバイト列だけで再計算する。
+        const { anchorDay } = await import("@/lib/observatory/anchors");
+        await db.execute(sql`TRUNCATE ledger_anchors`);
+        await anchorDay("2026-11-02");
+        const fileRes = await dayGet(new NextRequest("http://localhost/api/v1/observatory/anchors/day?day=2026-11-02"));
+        assert.equal(fileRes.status, 200);
+        const row = (JSON.parse(await fileRes.text()) as { rows: { id: string }[] }).rows.find((r) => r.id === pid);
+        assert.ok(row, "the cited row is in the day file");
+        assert.equal(createHash("sha256").update(JSON.stringify(row)).digest("hex"), cited.priorRowSha256);
+        const still = rowsOf<{ n: number }>(await db.execute(sql`SELECT count(*)::int AS n FROM x402_l1_purchases WHERE id = ${pid}::uuid`))[0].n;
+        assert.equal(still, 1, "the cited row stays in the ledger");
+        await assert.rejects(
+          () => db.execute(sql`INSERT INTO ledger_corrections (id, kind, cited_day, cited_row_id, note) VALUES ('pair', 'self', '2026-11-02', ${pid}, 'no prior')`),
+          (e: unknown) => /ledger_corrections_row_prior_pair/.test(String((e as { cause?: unknown }).cause ?? e)),
+        );
+      } finally {
+        await db.execute(sql`TRUNCATE ledger_anchors`);
+        await db.execute(sql`DELETE FROM x402_l1_purchases WHERE id = ${pid}::uuid`);
+        await db.execute(sql`DELETE FROM x402_endpoints WHERE id = ${eid}::uuid`);
+      }
     });
 
     await db.execute(sql.raw("DROP TABLE IF EXISTS ledger_corrections CASCADE"));

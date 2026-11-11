@@ -13,7 +13,6 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
@@ -25,6 +24,7 @@ import { BILLING_PLANS } from "@/lib/billing/plans";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import { PUBLIC_USAGE_MIN_OWNERS, publishMonthlyRelations } from "@/lib/api/decision-usage";
 import { settledTier } from "@/lib/observatory/settled-tier";
+import { FILE_1108, ROOT_1107, ROOT_1108, sealedAnchors } from "./fixtures/ledger-day-2026-11-08";
 
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -125,16 +125,13 @@ test("[guard] 公平-1: DB が無いとき publicApiUsage は空で、利用者�
 // 公平-2 日次ハッシュ（6c-1・6c-2）
 // ------------------------------------------------------------------
 
-// 公開した式を、製品のヘルパーを使わずに書き下す（自己一致にしない）。
-const rootOf = (prevRoot: string | null, bytes: Buffer) =>
-  createHash("sha256").update(prevRoot ?? "genesis").update("\n").update(bytes).digest("hex");
-
+// 3 つの値は別々に置く: ファイル（公開のバイト列）、公開ヘッドの行、次の日の prevRoot（鎖の値）。
+// 根は製品のコードを使わずに Python の hashlib で計算し、tests/fixtures/ledger-day-2026-11-08.ts に固定した。
+// 同じ関数を両側にかけて一致を作らない。ルートを通す同じ確認は tests/wave1-38-public-json-1111.test.ts。
 function sealedFixture() {
-  // 3 つの値は別々に作る: ファイル（公開のバイト列）、公開ヘッドの行、次の日の prevRoot（鎖の値）。
-  const prevRoot = "a".repeat(64);
-  const file = Buffer.from('{"v":1,"day":"2026-11-08","rows":[{"id":"1","status":"settled"}]}', "utf8");
-  const head = { day: "2026-11-08", rootHash: rootOf(prevRoot, file), prevRoot };
-  const nextDayPrevRoot = rootOf(prevRoot, Buffer.from(file));
+  const file = Buffer.from(FILE_1108, "utf8");
+  const head = { day: "2026-11-08", rootHash: ROOT_1108, prevRoot: ROOT_1107 };
+  const nextDayPrevRoot = sealedAnchors().find((a) => a.day === "2026-11-09")!.prev_root!;
   return { file, head, nextDayPrevRoot };
 }
 
@@ -143,7 +140,8 @@ test("[fix] 公平-2 6c-1: ファイル・公開ヘッド・鎖の値が一致�
   const { file, head, nextDayPrevRoot } = sealedFixture();
   const r = verifyPublishedDayTriple({ day: head.day, payloadBytes: file, publishedHead: head, chainRoot: nextDayPrevRoot });
   assert.equal(r.ok, true, JSON.stringify(r));
-  assert.equal(r.recomputedRoot, head.rootHash);
+  assert.equal(r.recomputedRoot, ROOT_1108);
+  assert.equal(r.chainRoot, ROOT_1108);
 });
 
 test("[fix] 公平-2 6c-1: ファイルを 1 バイト変えると落ちる", async () => {

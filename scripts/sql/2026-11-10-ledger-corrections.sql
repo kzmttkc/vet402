@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS ledger_corrections (
   id text PRIMARY KEY,
   kind text NOT NULL CHECK (kind IN ('self', 'third_party')),
   cited_day text NOT NULL,
+  cited_row_id text,
+  prior_row_sha256 text,
   note text NOT NULL,
   signer_address text,
   signature text,
@@ -20,6 +22,18 @@ CREATE TABLE IF NOT EXISTS ledger_corrections (
     OR (kind = 'third_party' AND signer_address IS NOT NULL AND signature IS NOT NULL)
   )
 );
+
+-- 2026-11-11: 訂正が指す台帳の行と、その行の当時の指紋（台帳から読んだ値）。先に表だけ作っていても足せる。
+ALTER TABLE ledger_corrections ADD COLUMN IF NOT EXISTS cited_row_id text;
+ALTER TABLE ledger_corrections ADD COLUMN IF NOT EXISTS prior_row_sha256 text;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ledger_corrections_row_prior_pair') THEN
+    ALTER TABLE ledger_corrections ADD CONSTRAINT ledger_corrections_row_prior_pair
+      CHECK ((cited_row_id IS NULL) = (prior_row_sha256 IS NULL));
+  END IF;
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS ledger_corrections_created_idx ON ledger_corrections (created_at);
 
