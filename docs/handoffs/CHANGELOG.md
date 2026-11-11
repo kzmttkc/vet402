@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-11 The DB client refuses the production database inside a test run
+
+- What: `getDb()` throws inside a node:test run (NODE_TEST_CONTEXT, or an entry file under tests/ or named *.test.*) when the URL is the production Neon endpoint (matched by the sha256 of its endpoint id), or when DATABASE_URL differs from TEST_DATABASE_URL. The tokyo env-name allowlists add NODE_TEST_CONTEXT and TEST_DATABASE_URL, which this guard reads.
+- Why: a test run with the production DATABASE_URL in its environment wrote the production spending halt on 2026-11-10. Unsetting the variable in `npm test` covers one entry point. This covers every way a test file can start.
+- Impact: production on Vercel and ops scripts are outside a test run and unchanged. DB-backed suites assign DATABASE_URL from TEST_DATABASE_URL, so they pass.
 ## 2026-11-11 Unit tests cannot reach a real database through DATABASE_URL
 
 - What: root `npm test` runs the unit suites with `env -u DATABASE_URL`, and `tests/spending-halt-route.test.ts` deletes `DATABASE_URL` before it calls the route.
