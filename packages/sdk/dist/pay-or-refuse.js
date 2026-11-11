@@ -1065,7 +1065,10 @@ async function decideAndPay(input, facts) {
         }
         facts.settlement = held.settlement;
         facts.responseStatus = held.responseStatus;
-        const failureReasons = held.paid ? [] : [held.receipt.delivered ? "settle_failed" : "not_delivered"];
+        // 失敗の語。届かずに capture された（chain で確かめた）ものは、お金が売り手へ動いた失敗として別の語で残す。
+        const failureReasons = held.paid
+            ? []
+            : [held.receipt.delivered ? "settle_failed" : "not_delivered", ...(held.receipt.capturedUndelivered ? ["operator_captured_undelivered"] : [])];
         return {
             status: held.paid ? "paid" : "failed",
             decision: record("ALLOW", [...allowReasons, ...failureReasons], verdictSource, decision, payeeScore, policyOverride),

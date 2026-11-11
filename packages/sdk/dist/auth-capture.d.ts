@@ -130,29 +130,61 @@ export type AuthCaptureReceipt = {
     outcome: AuthCaptureOutcome;
     /** 届いて capture されたときの tx（売り手の申告）。それ以外は null。 */
     captureTx: string | null;
-    /** 戻り道。払えた（届いて capture された）ときは null。 */
-    recovery: null | {
-        /** operator が void すれば hold は即座に戻る。売り手が tx を申告していれば載せる（確かめた値ではない）。 */
-        void: {
-            by: "operator";
-            reportedTx: string | null;
-        };
-        /** 期限（`captureDeadline` = `authorizationExpiry`）を過ぎたら、買い手の財布が `reclaim(paymentInfo)` を呼べる。 */
-        reclaim: {
-            by: "payer";
-            escrow: string;
-            availableAt: number;
-            fn: "reclaim";
-        };
-        /**
-         * 届かないのに capture された（chain で確かめた）とき、または売り手の申告だけで決められない（`outcome: "unknown"`）とき。
-         * capture された分を戻すのは operator の refund だけ（買い手からは呼べない）。
-         */
-        refund: {
-            by: "operator";
-        } | null;
-    };
+    /**
+     * 届かずに capture された（chain で確かめた）印。正直でない operator、または 400 未満を capture する公式の
+     * 売り手実装で起きる。`status` は "failed"、`reason_codes` に `operator_captured_undelivered`。
+     */
+    capturedUndelivered: boolean;
+    /**
+     * 戻り道。払えた（届いて capture された）ときは null。資金の場所で 3 つに分ける。
+     *  - `captured` … capture 済み。戻すのは operator の refund だけ（買い手からは呼べない）
+     *  - `uncaptured` … capture されていない（chain で確かめた）。hold が残っていれば operator の void か、
+     *    期限後の買い手の reclaim で戻る。すでに戻っていれば（void 済み・エスクローに入っていない）`fundsWithBuyer: true`
+     *  - `unknown` … chain を読んでいないので判定しない。`readState` の値で `readAuthCaptureState` を呼んでから選ぶ
+     *    （reclaim は capture 済みの支払いを戻せないので、ここでは勧めない）
+     */
+    recovery: AuthCaptureRecovery | null;
 };
+export type AuthCaptureRecovery = {
+    state: "captured";
+    refund: {
+        by: "operator";
+    };
+} | {
+    state: "uncaptured";
+    fundsWithBuyer: boolean;
+    /** hold が残っているときだけ。売り手が tx を申告していれば載せる（確かめた値ではない）。 */
+    void: {
+        by: "operator";
+        reportedTx: string | null;
+    } | null;
+    /** hold が残っているときだけ。期限（`captureDeadline` = `authorizationExpiry`）を過ぎたら買い手の財布が呼べる。 */
+    reclaim: {
+        by: "payer";
+        escrow: string;
+        availableAt: number;
+        fn: "reclaim";
+    } | null;
+} | {
+    state: "unknown";
+    /** 判定に読む値。`readAuthCaptureState({ reader, paymentInfoHash, escrow })`。 */
+    readState: {
+        fn: "paymentState";
+        escrow: string;
+        paymentInfoHash: string;
+    };
+    /** 売り手が PAYMENT-RESPONSE で申告した tx（capture か void か authorize かは、ヘッダだけでは分からない）。 */
+    reportedTx: string | null;
+};
+/** 結果の値から戻り道を組む。chain で読めていない（`outcome: "unknown"`）なら判定しない。 */
+export declare function recoveryFor(input: {
+    paid: boolean;
+    outcome: AuthCaptureOutcome;
+    paymentInfo: AuthCapturePaymentInfo;
+    paymentInfoHash: string;
+    escrow: string;
+    reportedTx: string | null;
+}): AuthCaptureRecovery | null;
 /** この呼び出しで auth-capture を使ってよいか。本番 Base は `onBase: true` のときだけ。 */
 export declare function authCaptureEnabled(profile: ChainProfile, options: AuthCaptureOptions | undefined): boolean;
 /**

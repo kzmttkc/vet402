@@ -7,7 +7,10 @@
 //   ローカル facilitator（operator）= 公式の @x402/core x402Facilitator ＋ @x402/evm auth-capture facilitator
 // を繋ぎ、配備済みの commerce-payments v1.1 AuthCaptureEscrow で次を実際に通す:
 //   - 届いた例は capture（売り手 +10000）
-//   - 届かなかった例（500・空の 200・202）は void（買い手の差分 0）
+//   - 届かなかった例は void（買い手の差分 0）。500 は公式の門（Express ミドルウェアの status >= 400 で cancel）で void、
+//     空の 200 と 202 は試験用の売り手の決まり（vet402 の届いた規則: 空でない 2xx かつ 202 以外だけ capture）で void
+//   - 公式の門のままの売り手は 202 を capture する。SDK はそれを paid にせず operator_captured_undelivered の失敗で返す
+//     （買い手の差分は -10000 のまま。戻すのは operator の refund だけ）
 //   - 上限超え: SDK は署名しない。署名済みの上限を超える authorize は ExceedsMaxAmount で revert
 //   - 売り手が消えた例は、期限後に買い手の財布が reclaim（買い手の差分 0）
 //
@@ -157,11 +160,15 @@ test("E4 9a 統合（Base Sepolia fork の anvil・公式の auth-capture server
   );
   await server.initialize();
   const chainNow = async () => Number((await pub.getBlock()).timestamp);
+  // rule "official": x402-foundation/x402 d3eb19d0 typescript/packages/http/express/src/index.ts の門と同じ
+  //   （handler の後 res.statusCode >= 400 なら cancel、400 未満は after-handler settle = capture）。
+  // rule "delivery": 試験用の売り手の決まり（空でない 2xx かつ 202 以外だけ capture、それ以外は void）。公式の挙動ではない。
   const ROUTES = {
-    "/delivered": { status: 200, body: '{"answer":"42"}' },
-    "/fail500": { status: 500, body: '{"error":"upstream"}' },
-    "/empty200": { status: 200, body: "" },
-    "/accepted202": { status: 202, body: "" },
+    "/delivered": { status: 200, body: '{"answer":"42"}', rule: "delivery" },
+    "/fail500": { status: 500, body: '{"error":"upstream"}', rule: "official" },
+    "/empty200": { status: 200, body: "", rule: "delivery" },
+    "/accepted202": { status: 202, body: "", rule: "delivery" },
+    "/official202": { status: 202, body: "", rule: "official" },
     "/greedy": { greedy: true },
     "/vanish": { vanish: true },
   };
@@ -241,10 +248,13 @@ test("E4 9a 統合（Base Sepolia fork の anvil・公式の auth-capture server
         // 売り手が答えを返さず、capture も void もしない（operator が消えた形）。接続は開けたまま。
         return;
       }
-      // 売り手の規則: 空でない 2xx（202 を除く）を返すときだけ capture。それ以外は void。
-      const delivered = route.status >= 200 && route.status < 300 && route.status !== 202 && route.body.trim().length > 0;
+      events.push({ route: url.pathname, handler: { status: route.status, bodyLength: route.body.length, at: Date.now() } });
+      const capture = route.rule === "official"
+        ? route.status < 400
+        : route.status >= 200 && route.status < 300 && route.status !== 202 && route.body.trim().length > 0;
+      const delivered = capture;
       let finalize;
-      if (delivered) {
+      if (capture) {
         finalize = await server.settlePayment(payload, match, undefined, undefined, undefined, "after-handler");
       } else {
         const dispatcher = server.createPaymentCancellationDispatcher(payload, match, undefined, undefined, ["before-handler"]);
@@ -299,26 +309,52 @@ test("E4 9a 統合（Base Sepolia fork の anvil・公式の auth-capture server
     assert.equal(b1 - b0, -10000n);
     const rc = await pub.getTransactionReceipt({ hash: r.txHash });
     assert.equal(rc.status, "success");
+    // 順序: authorize（hold）の tx が capture の tx より前のブロック、capture は売り手の handler が答えを作った後。
+    const ra = await pub.getTransactionReceipt({ hash: auth.transaction });
+    assert.equal(ra.status, "success");
+    assert.ok(ra.blockNumber < rc.blockNumber, `authorize ${ra.blockNumber} < capture ${rc.blockNumber}`);
+    const seq = events.filter((e) => e.route === "/delivered").map((e) => Object.keys(e).find((k) => k !== "route"));
+    assert.deepEqual(seq, ["authorize", "handler", "finalize"]);
+    log(`[capture order] authorize block=${ra.blockNumber} < capture block=${rc.blockNumber}, seller order=${seq.join(">")}, sdk read the body (bodyLength=${r.authCapture.bodyLength}) then the escrow (state.source=${r.authCapture.state.source})`);
   });
 
   // 2. 届かなかった → void
   for (const [path, failure] of [["/fail500", "http_status"], ["/empty200", "empty_body"], ["/accepted202", "accepted_202"]]) {
-    await t.test(`届かなかった例（${path}）は void（買い手の差分 0・売り手 0）`, async () => {
+    await t.test(`届かなかった例（${path}・${ROUTES[path].rule === "official" ? "公式の門" : "試験用の売り手の決まり"}）は void（買い手の差分 0・売り手 0）`, async () => {
       const [b0, s0] = [await bal(acct.buyer.address), await bal(acct.seller.address)];
       const r = await pay(path);
       const [b1, s1] = [await bal(acct.buyer.address), await bal(acct.seller.address)];
       const auth = lastEvent(path, "authorize");
       const fin = lastEvent(path, "finalize");
-      log(`[void ${path}] sdk status=${r.status} delivered=${r.authCapture?.delivered} failure=${r.authCapture?.deliveryFailure} outcome=${r.authCapture?.outcome} authorize=${auth?.transaction} void=${fin?.transaction} buyerΔ=${b1 - b0} sellerΔ=${s1 - s0}`);
+      log(`[void ${path} rule=${ROUTES[path].rule}] sdk status=${r.status} delivered=${r.authCapture?.delivered} failure=${r.authCapture?.deliveryFailure} outcome=${r.authCapture?.outcome} authorize=${auth?.transaction} void=${fin?.transaction} buyerΔ=${b1 - b0} sellerΔ=${s1 - s0}`);
       assert.equal(r.status, "failed");
       assert.equal(r.txHash, null);
       assert.equal(r.authCapture.deliveryFailure, failure);
       assert.equal(r.authCapture.outcome, "voided");
-      assert.equal(r.authCapture.recovery.void.reportedTx, fin.transaction);
+      assert.deepEqual(r.authCapture.recovery, { state: "uncaptured", fundsWithBuyer: true, void: null, reclaim: null });
+      assert.equal(r.decision.reason_codes.includes("operator_captured_undelivered"), false);
+      assert.match(fin.transaction, /^0x[0-9a-f]{64}$/);
       assert.equal(b1 - b0, 0n);
       assert.equal(s1 - s0, 0n);
     });
   }
+
+  // 2b. 公式の門のままの売り手は 202 を capture する（9a-2 の合格ではない）。SDK は paid にせず印を付けて失敗で返す。
+  await t.test("公式の門の 202 は capture される → SDK は paid にせず operator_captured_undelivered（買い手 -10000・戻すのは operator の refund）", async () => {
+    const [b0, s0] = [await bal(acct.buyer.address), await bal(acct.seller.address)];
+    const r = await pay("/official202");
+    const [b1, s1] = [await bal(acct.buyer.address), await bal(acct.seller.address)];
+    const fin = lastEvent("/official202", "finalize");
+    log(`[official202 rule=official] sdk status=${r.status} reasons=${r.decision.reason_codes.join(",")} outcome=${r.authCapture?.outcome} recovery=${JSON.stringify(r.authCapture?.recovery)} capture=${fin?.transaction} buyerΔ=${b1 - b0} sellerΔ=${s1 - s0}`);
+    assert.equal(r.status, "failed");
+    assert.equal(r.txHash, null);
+    assert.equal(r.authCapture.outcome, "captured");
+    assert.equal(r.authCapture.capturedUndelivered, true);
+    assert.equal(r.decision.reason_codes.includes("operator_captured_undelivered"), true);
+    assert.deepEqual(r.authCapture.recovery, { state: "captured", refund: { by: "operator" } });
+    assert.equal(b1 - b0, -10000n);
+    assert.equal(s1 - s0, 10000n);
+  });
 
   // 3. 上限超え
   await t.test("上限超え: SDK は署名しない／署名した上限を超える authorize は ExceedsMaxAmount", async () => {
@@ -350,6 +386,8 @@ test("E4 9a 統合（Base Sepolia fork の anvil・公式の auth-capture server
     assert.equal(r.status, "failed");
     assert.equal(r.authCapture.deliveryFailure, "timeout");
     assert.equal(r.authCapture.outcome, "held");
+    assert.equal(r.authCapture.recovery.state, "uncaptured");
+    assert.equal(r.authCapture.recovery.reclaim.by, "payer");
     assert.equal(held - b0, -10000n);
     const pi = r.authCapture.paymentInfo;
     const buyerWallet = wallet(acct.buyer);
@@ -367,5 +405,5 @@ test("E4 9a 統合（Base Sepolia fork の anvil・公式の auth-capture server
   });
 
   log(`facilitator settles: ${facilitatorTxs.map((x) => `${x.type}:${x.success ? short(x.tx) : "fail(" + x.errorReason + ")"}`).join(" ")}`);
-  log(`payment re-sends per SDK call: 1 (the seller handled ${events.filter((e) => "authorize" in e || "greedy" in e).length} paid requests for 6 paid calls)`);
+  log(`payment re-sends per SDK call: 1 (the seller handled ${events.filter((e) => "authorize" in e || "greedy" in e).length} paid requests for 7 paid calls)`);
 });

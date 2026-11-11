@@ -21,7 +21,7 @@
  */
 import { AuthCaptureEvmScheme } from "@x402/evm/auth-capture/client";
 import { encodeAbiParameters, keccak256, zeroAddress } from "viem";
-import { AUTH_CAPTURE_EIP3009_COLLECTOR_V1_1, AUTH_CAPTURE_ESCROW_V1_1, DEFAULT_DELIVERY_TIMEOUT_MS, classifyDelivery, isAuthCaptureEligible, outcomeFromState, readAuthCaptureState, } from "./auth-capture.js";
+import { AUTH_CAPTURE_EIP3009_COLLECTOR_V1_1, AUTH_CAPTURE_ESCROW_V1_1, DEFAULT_DELIVERY_TIMEOUT_MS, classifyDelivery, isAuthCaptureEligible, outcomeFromState, readAuthCaptureState, recoveryFor, } from "./auth-capture.js";
 import { MAX_AUTHORIZATION_WINDOW_SECONDS, parseSettlementResponse, } from "./x402-pay.js";
 const PAYMENT_INFO_TYPEHASH = keccak256(new TextEncoder().encode("PaymentInfo(address operator,address payer,address receiver,address token,uint120 maxAmount,uint48 preApprovalExpiry,uint48 authorizationExpiry,uint48 refundExpiry,uint16 minFeeBps,uint16 maxFeeBps,address feeReceiver,uint256 salt)"));
 /** `AuthCaptureEscrow.getHash` と同じ計算。`payer` を 0 にすると、署名の nonce（payer に依らない hash）になる。 */
@@ -220,7 +220,8 @@ export async function executeAuthCapturePayment(args) {
     }
     const paid = delivery.delivered && outcome === "captured";
     const captureTx = paid ? settlement?.transaction ?? null : null;
-    const capturedUndelivered = !delivery.delivered && outcome === "captured";
+    // 届かずに capture された、と言えるのは chain で読んだときだけ（売り手の申告では capture か void か分からない）。
+    const capturedUndelivered = !delivery.delivered && state.source === "chain" && outcome === "captured";
     const receipt = {
         scheme: "auth-capture",
         operatorType: "delegated",
@@ -235,14 +236,15 @@ export async function executeAuthCapturePayment(args) {
         state,
         outcome,
         captureTx,
-        recovery: paid
-            ? null
-            : {
-                void: { by: "operator", reportedTx: settlement?.success === true ? settlement.transaction : null },
-                reclaim: { by: "payer", escrow, availableAt: paymentInfo.authorizationExpiry, fn: "reclaim" },
-                // capture されていれば（または売り手の申告だけで決められなければ）、戻すのは operator の refund だけ。
-                refund: capturedUndelivered || outcome === "unknown" ? { by: "operator" } : null,
-            },
+        capturedUndelivered,
+        recovery: recoveryFor({
+            paid,
+            outcome,
+            paymentInfo,
+            paymentInfoHash,
+            escrow,
+            reportedTx: settlement?.success === true ? settlement.transaction : null,
+        }),
     };
     return {
         signed: true,

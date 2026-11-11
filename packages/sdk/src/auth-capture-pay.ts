@@ -31,6 +31,7 @@ import {
   isAuthCaptureEligible,
   outcomeFromState,
   readAuthCaptureState,
+  recoveryFor,
   type AuthCapturePaymentInfo,
   type AuthCaptureReceipt,
   type AuthCaptureStateReader,
@@ -304,7 +305,8 @@ export async function executeAuthCapturePayment(args: {
 
   const paid = delivery.delivered && outcome === "captured";
   const captureTx = paid ? settlement?.transaction ?? null : null;
-  const capturedUndelivered = !delivery.delivered && outcome === "captured";
+  // 届かずに capture された、と言えるのは chain で読んだときだけ（売り手の申告では capture か void か分からない）。
+  const capturedUndelivered = !delivery.delivered && state.source === "chain" && outcome === "captured";
   const receipt: AuthCaptureReceipt = {
     scheme: "auth-capture",
     operatorType: "delegated",
@@ -319,14 +321,15 @@ export async function executeAuthCapturePayment(args: {
     state,
     outcome,
     captureTx,
-    recovery: paid
-      ? null
-      : {
-          void: { by: "operator", reportedTx: settlement?.success === true ? settlement.transaction : null },
-          reclaim: { by: "payer", escrow, availableAt: paymentInfo.authorizationExpiry, fn: "reclaim" },
-          // capture されていれば（または売り手の申告だけで決められなければ）、戻すのは operator の refund だけ。
-          refund: capturedUndelivered || outcome === "unknown" ? { by: "operator" } : null,
-        },
+    capturedUndelivered,
+    recovery: recoveryFor({
+      paid,
+      outcome,
+      paymentInfo,
+      paymentInfoHash,
+      escrow,
+      reportedTx: settlement?.success === true ? settlement.transaction : null,
+    }),
   };
   return {
     signed: true,

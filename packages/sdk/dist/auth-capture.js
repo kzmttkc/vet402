@@ -52,6 +52,31 @@ export const AUTH_CAPTURE_SPEC_URL = `https://github.com/x402-foundation/x402/bl
 export const MAX_CAPTURE_WINDOW_SECONDS = 3600;
 /** 届いたかを待つ既定の時間（ミリ秒）。過ぎたら届かなかったと数える。 */
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 30_000;
+/** 結果の値から戻り道を組む。chain で読めていない（`outcome: "unknown"`）なら判定しない。 */
+export function recoveryFor(input) {
+    if (input.paid)
+        return null;
+    switch (input.outcome) {
+        case "captured":
+            return { state: "captured", refund: { by: "operator" } };
+        case "held":
+            return {
+                state: "uncaptured",
+                fundsWithBuyer: false,
+                void: { by: "operator", reportedTx: input.reportedTx },
+                reclaim: { by: "payer", escrow: input.escrow, availableAt: input.paymentInfo.authorizationExpiry, fn: "reclaim" },
+            };
+        case "voided":
+        case "not_authorized":
+            return { state: "uncaptured", fundsWithBuyer: true, void: null, reclaim: null };
+        default:
+            return {
+                state: "unknown",
+                readState: { fn: "paymentState", escrow: input.escrow, paymentInfoHash: input.paymentInfoHash },
+                reportedTx: input.reportedTx,
+            };
+    }
+}
 const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
 const ZERO = "0x0000000000000000000000000000000000000000";
 function isNonZeroAddress(v) {

@@ -141,14 +141,87 @@ function escrowState(collected, capturable, refundable) {
 
 const base = { payee: SELLER, resource: RESOURCE, amountUsd: 0.01, network: "base-sepolia" };
 
+/**
+ * 偽のエスクロー（残高の台帳つき）と、それを使う売り手。売り手は x402 の escrow・sync と同じ順で動く:
+ * 支払いヘッダを受けたら authorize（買い手 → エスクロー）→ handler → 規則に従い capture（エスクロー → 売り手）か void（→ 買い手）。
+ * 規則は 3 つ。
+ *   - "delivery" … 試験用の売り手の決まり（vet402 の届いた規則）: 空でない 2xx（202 を除く）だけ capture、それ以外は void
+ *   - "official" … 公式 Express ミドルウェア（x402-foundation/x402 d3eb19d0 typescript/packages/http/express/src/index.ts）の門:
+ *                  handler の後 status >= 400 なら cancel（void）、400 未満は capture
+ *   - "vanish" … authorize のあと何もしない（capture も void もしない・operator が消えた形）
+ * 買い手の SDK が本文を読んだ時刻とエスクローを読んだ時刻を、同じ events に積む（9a-1 の順序の断言に使う）。
+ */
+function escrowWorld(accepts, { rule = "delivery", status = 200, body = '{"answer":42}', hang = false } = {}) {
+  const events = [];
+  const ledger = { buyer: 10_000_000n, seller: 0n, escrow: 0n, collected: false, capturable: 0n, refundable: 0n };
+  const paid = [];
+  const fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes("/decision")) return respond(200, { body: JSON.stringify(ALLOW) });
+    if (u.includes("/payments/x402")) return respond(200, { body: "{}" });
+    const h = init.headers ?? {};
+    const raw = h["PAYMENT-SIGNATURE"] ?? h["payment-signature"];
+    if (!raw) return respond(402, { headers: { "payment-required": b64({ x402Version: 2, accepts }) } });
+    const decoded = JSON.parse(atob(raw));
+    paid.push(decoded);
+    if (decoded.accepted.scheme !== "auth-capture") {
+      // auth-capture を使わない買い手（直す前のコード）: exact として即時に送金される。
+      events.push("seller:exact_settle");
+      ledger.buyer -= 10000n; ledger.seller += 10000n;
+      return respond(200, { body, headers: receiptHeader("0x" + "e".repeat(64)), text: async () => { events.push("buyer:body_read"); return body; } });
+    }
+    const amount = BigInt(decoded.payload.authorization.value);
+    ledger.buyer -= amount; ledger.escrow += amount; ledger.collected = true; ledger.capturable = amount;
+    events.push("seller:authorize");
+    events.push("seller:handler");
+    if (hang || rule === "vanish") {
+      return new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    }
+    const capture =
+      rule === "official" ? status < 400
+      : status >= 200 && status < 300 && status !== 202 && body.trim().length > 0;
+    let tx;
+    if (capture) {
+      ledger.escrow -= amount; ledger.seller += amount; ledger.capturable = 0n; ledger.refundable = amount;
+      events.push("seller:capture"); tx = CAPTURE_TX;
+    } else {
+      ledger.escrow -= amount; ledger.buyer += amount; ledger.capturable = 0n;
+      events.push("seller:void"); tx = VOID_TX;
+    }
+    return respond(status, { body, headers: receiptHeader(tx), text: async () => { events.push("buyer:body_read"); return body; } });
+  };
+  const reader = {
+    readContract: async (args) => {
+      events.push("buyer:state_read");
+      assert.equal(args.functionName, "paymentState");
+      return [ledger.collected, ledger.capturable, ledger.refundable];
+    },
+  };
+  return { fetch, paid, events, ledger, reader };
+}
+
 // ---------- 9a-1 届いた例は確定する ----------
+
+test("9a-1 順序: authorize → 売り手の handler → capture のあとで、SDK が本文を読み、エスクローを読んでから paid と言う", async () => {
+  const b = buyer();
+  // exact を先頭に置く（auth-capture を選ばない実装は exact で払ってしまい、ここで振る舞いの理由で落ちる）。
+  const w = escrowWorld([exactAccept(), acAccept()], { rule: "delivery" });
+  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: w.reader } });
+  assert.ok(w.events.includes("buyer:body_read"), "SDK は本文を読んでから判定する（読まずに paid と言わない）");
+  assert.ok(w.events.includes("seller:authorize"), "資金はまず hold（authorize）になる。即時の送金ではない");
+  assert.equal(w.events.includes("seller:exact_settle"), false, "exact の即時送金を使っていない");
+  assert.deepEqual(w.events, ["seller:authorize", "seller:handler", "seller:capture", "buyer:body_read", "buyer:state_read"]);
+  assert.equal(r.status, "paid");
+  assert.equal(r.txHash, CAPTURE_TX);
+  assert.equal(r.authCapture.state.source, "chain");
+  assert.equal(w.ledger.seller, 10000n);
+  assert.equal(w.ledger.buyer, 10_000_000n - 10000n);
+});
 
 test("9a-1 auth-capture: 空でない 200 が届き、売り手が capture を返す → paid・確定 tx は capture の 1 つ・署名は ReceiveWithAuthorization の 1 つ", async () => {
   const b = buyer();
   const w = world([exactAccept(), acAccept()], () => respond(200, { body: '{"answer":42}', headers: receiptHeader(CAPTURE_TX) }));
   const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch });
-  assert.equal(r.status, "paid");
-  assert.equal(r.txHash, CAPTURE_TX);
   assert.equal(r.challenge.scheme, "auth-capture", "auth-capture を出す売り手には auth-capture を選ぶ（exact が先頭でも）");
   assert.equal(w.paid.length, 1, "売り手への支払いつき再送は 1 回");
   assert.equal(b.signed.length, 1, "署名は 1 つ");
@@ -158,31 +231,20 @@ test("9a-1 auth-capture: 空でない 200 が届き、売り手が capture を�
   assert.equal(String(td.message.value), "10000");
   assert.equal(td.domain.verifyingContract.toLowerCase(), SEPOLIA_USDC.toLowerCase());
   assert.equal(Number(td.domain.chainId), 84532);
-  assert.equal(w.paid[0].accepted.scheme, "auth-capture");
   assert.equal(w.paid[0].payload.authorization.to.toLowerCase(), COLLECTOR.toLowerCase());
+  assert.equal(r.status, "paid");
+  assert.equal(r.txHash, CAPTURE_TX);
   const ac = r.authCapture;
-  assert.ok(ac, "auth-capture の控えがある");
   assert.equal(ac.delivered, true);
   assert.equal(ac.outcome, "captured");
+  assert.equal(ac.state.source, "seller_header", "chain を読まないときは売り手の申告だと書く");
   assert.equal(ac.captureTx, CAPTURE_TX);
   assert.equal(ac.recovery, null);
-  assert.equal(ac.signatures, 1);
   assert.equal(r.attested, false);
   assert.equal(w.attests.length, 0, "testnet の支払いを本番の台帳へ attest しない");
 });
 
-test("9a-1 chain の読みを渡すと、capture の確定はエスクローで確かめる（refundable > 0 のときだけ paid）", async () => {
-  const b = buyer();
-  const s = escrowState(true, 0, 10000);
-  const w = world([acAccept()], () => respond(200, { body: "ok", headers: receiptHeader(CAPTURE_TX) }));
-  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: s.reader } });
-  assert.equal(r.status, "paid");
-  assert.equal(r.authCapture.state.source, "chain");
-  assert.equal(s.reads.length, 1);
-  assert.equal(s.reads[0].args[0], r.authCapture.paymentInfoHash, "読むのは控えた paymentInfoHash");
-});
-
-test("9a-1 届いても、エスクローに hold が残ったまま（capture されていない）なら paid にしない", async () => {
+test("9a-1 届いても、エスクローに hold が残ったまま（capture されていない）なら paid にしない・戻り道は void か期限後の reclaim", async () => {
   const b = buyer();
   const s = escrowState(true, 10000, 0);
   const w = world([acAccept()], () => respond(200, { body: "ok", headers: receiptHeader(CAPTURE_TX) }));
@@ -191,56 +253,65 @@ test("9a-1 届いても、エスクローに hold が残ったまま（capture �
   assert.equal(r.txHash, null);
   assert.equal(r.authCapture.outcome, "held");
   assert.equal(r.decision.reason_codes.includes("settle_failed"), true);
+  assert.equal(r.authCapture.recovery.state, "uncaptured");
   assert.equal(r.authCapture.recovery.reclaim.availableAt, r.authCapture.paymentInfo.authorizationExpiry);
 });
 
 // ---------- 9a-2 届かなかった例は確定せず、買い手へ戻る ----------
+// 合格の主張は「正直な operator（届かなければ void する売り手）か、hold が残り期限後に reclaim できる場合に限る」。
+// 公式 Express ミドルウェアは 400 未満を capture するので、202 と空の 200 で void するのは試験用の売り手の決まり（rule "delivery"）。
+// 届かずに capture された例は 9a-2 の合格に数えない（下の「9a-2 の外」）。SDK はそれを paid にせず、印を付けて失敗で返す。
 
 const NOT_DELIVERED = [
-  ["HTTP 500（売り手が void を返す）", () => respond(500, { body: '{"error":"x"}', headers: receiptHeader(VOID_TX) }), "http_status"],
-  ["HTTP 400", () => respond(400, { body: "bad" }), "http_status"],
-  ["空の 200", () => respond(200, { body: "  ", headers: receiptHeader(VOID_TX) }), "empty_body"],
-  ["202 で本文なし", () => respond(202, { body: "", headers: receiptHeader(VOID_TX) }), "accepted_202"],
+  ["HTTP 500（公式の門でも void）", { status: 500, body: '{"error":"x"}', rule: "official" }, "http_status"],
+  ["HTTP 400（公式の門でも void）", { status: 400, body: "bad", rule: "official" }, "http_status"],
+  ["空の 200（試験用の売り手の決まりで void）", { status: 200, body: "  ", rule: "delivery" }, "empty_body"],
+  ["202 で本文なし（試験用の売り手の決まりで void）", { status: 202, body: "", rule: "delivery" }, "accepted_202"],
 ];
 
-for (const [label, answer, failure] of NOT_DELIVERED) {
-  test(`9a-2 ${label} → 確定しない（failed・txHash null・not_delivered）・戻り道は void と期限後の reclaim`, async () => {
+for (const [label, opts, failure] of NOT_DELIVERED) {
+  test(`9a-2 ${label} → 確定しない・capture なし・買い手の残高は呼ぶ前と同じ（chain で確かめる）`, async () => {
     const b = buyer();
-    const w = world([acAccept()], answer);
-    const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch });
+    const w = escrowWorld([acAccept()], opts);
+    const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: w.reader } });
     assert.equal(r.status, "failed");
     assert.equal(r.signed, true, "署名は隠さない");
     assert.equal(r.txHash, null, "確定の tx として何も返さない");
     assert.equal(r.decision.reason_codes.includes("not_delivered"), true);
+    assert.equal(r.decision.reason_codes.includes("operator_captured_undelivered"), false);
     assert.equal(w.paid.length, 1, "払い直さない");
     assert.equal(b.signed.length, 1);
+    assert.equal(w.events.includes("seller:capture"), false, "capture の tx が無い");
+    assert.equal(w.ledger.buyer, 10_000_000n, "買い手の残高は呼ぶ前と同じ");
+    assert.equal(w.ledger.seller, 0n);
     const ac = r.authCapture;
     assert.equal(ac.delivered, false);
     assert.equal(ac.deliveryFailure, failure);
-    assert.notEqual(ac.outcome, "captured", "売り手の申告だけで capture とは言わない");
-    assert.equal(ac.captureTx, null);
-    assert.ok(ac.recovery, "戻り道がある");
-    assert.equal(ac.recovery.reclaim.by, "payer");
-    assert.equal(ac.recovery.reclaim.fn, "reclaim");
-    assert.equal(ac.recovery.reclaim.escrow.toLowerCase(), ESCROW.toLowerCase());
-    assert.equal(ac.recovery.reclaim.availableAt, ac.paymentInfo.authorizationExpiry, "reclaim は captureDeadline から");
-    assert.ok(Math.abs(ac.paymentInfo.authorizationExpiry - (now() + 1200)) <= 5, "captureDeadline は 402 の値そのまま");
-    assert.equal(ac.paymentInfo.payer.toLowerCase(), BUYER.toLowerCase(), "reclaim に渡す PaymentInfo の payer は買い手");
-    assert.equal(ac.recovery.void.by, "operator");
+    assert.equal(ac.outcome, "voided");
+    assert.equal(ac.capturedUndelivered, false);
+    assert.deepEqual(ac.recovery, { state: "uncaptured", fundsWithBuyer: true, void: null, reclaim: null });
+    assert.equal(ac.paymentInfo.payer.toLowerCase(), BUYER.toLowerCase(), "PaymentInfo の payer は買い手");
   });
 }
 
-test("9a-2 時間切れ（応答が来ない）→ 届かなかった・確定しない・払い直さない", async () => {
+test("9a-2 時間切れ（売り手が消えた・hold が残る）→ 確定しない・戻り道は operator の void か、期限後の買い手の reclaim", async () => {
   const b = buyer();
-  const w = world([acAccept()], (_d, init) => new Promise((_, reject) => {
-    init.signal.addEventListener("abort", () => reject(new Error("aborted")));
-  }));
-  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { deliveryTimeoutMs: 50 } });
+  const w = escrowWorld([acAccept()], { rule: "vanish" });
+  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { deliveryTimeoutMs: 50, stateReader: w.reader } });
   assert.equal(r.status, "failed");
   assert.equal(r.txHash, null);
   assert.equal(r.authCapture.deliveryFailure, "timeout");
-  assert.equal(r.authCapture.delivered, false);
+  assert.equal(r.authCapture.outcome, "held");
   assert.equal(w.paid.length, 1);
+  const rec = r.authCapture.recovery;
+  assert.equal(rec.state, "uncaptured");
+  assert.equal(rec.fundsWithBuyer, false);
+  assert.equal(rec.void.by, "operator");
+  assert.equal(rec.reclaim.by, "payer");
+  assert.equal(rec.reclaim.fn, "reclaim");
+  assert.equal(rec.reclaim.escrow.toLowerCase(), ESCROW.toLowerCase());
+  assert.equal(rec.reclaim.availableAt, r.authCapture.paymentInfo.authorizationExpiry, "reclaim は captureDeadline から");
+  assert.ok(Math.abs(r.authCapture.paymentInfo.authorizationExpiry - (now() + 1200)) <= 5, "captureDeadline は 402 の値そのまま");
 });
 
 test("9a-2 時間切れ（ヘッダだけ返して本文を流さない）→ 届かなかった", async () => {
@@ -250,39 +321,59 @@ test("9a-2 時間切れ（ヘッダだけ返して本文を流さない）→ �
   assert.equal(r.status, "failed");
   assert.equal(r.txHash, null);
   assert.equal(r.authCapture.deliveryFailure, "timeout");
+  assert.equal(r.authCapture.recovery.state, "unknown", "売り手が capture したかもしれないので判定しない");
 });
 
-test("9a-2 chain の読みで void を確かめる → outcome voided（買い手の差分 0）", async () => {
-  const b = buyer();
-  const s = escrowState(true, 0, 0);
-  const w = world([acAccept()], () => respond(500, { body: "x", headers: receiptHeader(VOID_TX) }));
-  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: s.reader } });
-  assert.equal(r.status, "failed");
-  assert.equal(r.authCapture.outcome, "voided");
-  assert.equal(r.authCapture.recovery.void.reportedTx, VOID_TX);
-  assert.equal(r.authCapture.recovery.refund, null, "capture されていないので refund は要らない");
-});
+// chain を読まないとき: 届かなかった支払いは「不明」。reclaim を勧めない（capture 済みなら reclaim では戻らない）。
+const UNKNOWN_CASES = [
+  ["HTTP 500", () => respond(500, { body: "x", headers: receiptHeader(VOID_TX) }), "http_status", VOID_TX],
+  ["空の 200", () => respond(200, { body: "", headers: receiptHeader(CAPTURE_TX) }), "empty_body", CAPTURE_TX],
+  ["202", () => respond(202, { body: "", headers: receiptHeader(CAPTURE_TX) }), "accepted_202", CAPTURE_TX],
+  ["ヘッダなしの 400", () => respond(400, { body: "bad" }), "http_status", null],
+];
+for (const [label, answer, failure, reported] of UNKNOWN_CASES) {
+  test(`chain を読まない ${label} → failed・outcome unknown・戻り道は「不明（chain を読むまで判定しない）」・reclaim を勧めない`, async () => {
+    const b = buyer();
+    const w = world([acAccept()], answer);
+    const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch });
+    assert.equal(r.status, "failed");
+    assert.equal(r.txHash, null);
+    assert.equal(r.decision.reason_codes.includes("not_delivered"), true);
+    const ac = r.authCapture;
+    assert.equal(ac.deliveryFailure, failure);
+    assert.equal(ac.outcome, "unknown");
+    assert.equal(ac.state.source, "seller_header");
+    assert.equal(ac.capturedUndelivered, false, "chain を読まずに capture 済みとも言わない");
+    assert.deepEqual(ac.recovery, {
+      state: "unknown",
+      readState: { fn: "paymentState", escrow: ESCROW, paymentInfoHash: ac.paymentInfoHash },
+      reportedTx: reported,
+    });
+    assert.equal("reclaim" in ac.recovery, false);
+  });
+}
 
-test("9a-2 chain の読みで hold が残る（売り手が消えた）→ outcome held・期限後に reclaim", async () => {
-  const b = buyer();
-  const s = escrowState(true, 10000, 0);
-  const w = world([acAccept()], () => respond(202, { body: "" }));
-  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: s.reader } });
-  assert.equal(r.status, "failed");
-  assert.equal(r.authCapture.outcome, "held");
-  assert.equal(r.authCapture.recovery.reclaim.availableAt, r.authCapture.paymentInfo.authorizationExpiry);
-});
+// ---------- 9a-2 の外: 届かずに capture された（正直でない operator、または公式の 400 未満 capture） ----------
 
-test("9a-2 届かないのに capture された（chain で確かめた）→ paid にせず、戻すのは operator の refund と書く", async () => {
-  const b = buyer();
-  const s = escrowState(true, 0, 10000);
-  const w = world([acAccept()], () => respond(202, { body: "", headers: receiptHeader(CAPTURE_TX) }));
-  const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: s.reader } });
-  assert.equal(r.status, "failed");
-  assert.equal(r.txHash, null);
-  assert.equal(r.authCapture.outcome, "captured");
-  assert.deepEqual(r.authCapture.recovery.refund, { by: "operator" });
-});
+for (const [label, opts] of [
+  ["公式の門で 202（400 未満なので capture される）", { status: 202, body: "", rule: "official" }],
+  ["公式の門で空の 200", { status: 200, body: "", rule: "official" }],
+]) {
+  test(`9a-2 の外: ${label} → paid にしない・operator_captured_undelivered・戻すのは operator の refund だけ`, async () => {
+    const b = buyer();
+    const w = escrowWorld([acAccept()], opts);
+    const r = await payOrRefuse({ ...base, account: b.account, fetch: w.fetch, authCapture: { stateReader: w.reader } });
+    assert.equal(w.events.includes("seller:capture"), true, "この形では売り手側で capture が起きる（9a-2 の合格ではない）");
+    assert.equal(w.ledger.buyer, 10_000_000n - 10000n, "買い手の差分は 0 にならない（隠さない）");
+    assert.equal(r.status, "failed");
+    assert.equal(r.txHash, null, "届かなかった capture を確定の tx として返さない");
+    assert.equal(r.decision.reason_codes.includes("not_delivered"), true);
+    assert.equal(r.decision.reason_codes.includes("operator_captured_undelivered"), true);
+    assert.equal(r.authCapture.outcome, "captured");
+    assert.equal(r.authCapture.capturedUndelivered, true);
+    assert.deepEqual(r.authCapture.recovery, { state: "captured", refund: { by: "operator" } });
+  });
+}
 
 // ---------- 9a-3 上限超えは払わない ----------
 

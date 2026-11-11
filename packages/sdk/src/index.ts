@@ -75,6 +75,7 @@ export {
   type AuthCapturePaymentInfo,
   type AuthCaptureStateReader,
   type AuthCaptureDeliveryFailure,
+  type AuthCaptureRecovery,
 } from "./auth-capture.js";
 
 // 手元の支出の決まり（2026-11-08）。vet402 には渡さない。判定の正は test/p1-spend-rules-acceptance.test.mjs。

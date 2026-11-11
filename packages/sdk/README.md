@@ -177,10 +177,18 @@ deadline at most one hour away), `payOrRefuse` picks it over `exact` and signs o
 escrow contract, not in a vet402 wallet. The seller's operator captures the hold or voids it.
 
 `status` is `"paid"` only when a non-empty 2xx other than 202 arrived in time and the hold was captured.
-An HTTP status of 400 or more, an empty body, a 202 or a timeout gives `"failed"` with `not_delivered`, and
-`r.authCapture.recovery` lists the ways back: `void` by the operator, or `reclaim` by the buyer's own wallet
-after `captureDeadline`. Pass `authCapture.stateReader` (a viem `PublicClient`) to have the SDK read the
-escrow after the answer, so `r.authCapture.outcome` is checked on chain instead of taken from the seller.
+An HTTP status of 400 or more, an empty body, a 202 or a timeout gives `"failed"` with `not_delivered`.
+What happens to the money then depends on the seller. The x402 reference server voids the hold when the
+handler answers with 400 or more, and captures it below 400, so an empty 200 or a 202 can still be captured.
+
+Pass `authCapture.stateReader` (a viem `PublicClient`) so the SDK reads the escrow after the answer and
+`r.authCapture.recovery` tells the three cases apart:
+
+| `recovery.state` | Where the money is | Way back |
+|---|---|---|
+| `"captured"` | Paid out to the seller. `reason_codes` adds `operator_captured_undelivered` when no answer arrived. | Only the seller's operator can refund it. |
+| `"uncaptured"` | Still held, or already back (`fundsWithBuyer: true`). | `void` by the operator, or `reclaim` by the buyer's own wallet after `captureDeadline`. |
+| `"unknown"` | Not read. The SDK does not guess. | Read `recovery.readState` with `readAuthCaptureState` first. Reclaim cannot return a captured payment. |
 
 ```ts
 const r = await payOrRefuse({ payee, resource, amountUsd: 0.01, fetch, account, network: "base-sepolia",

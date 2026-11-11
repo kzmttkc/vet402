@@ -5,7 +5,7 @@
  * 根拠: ~/Takeshi_Automation/output/1111/e4_proof/FINDINGS.md（exact では形1が成り立たない実測と、auth-capture の一次）。
  *
  * 公開名は x402 公式文書の一次引用（コミット固定の URL と行）があるときだけ出す。拒むのは自社の造語・`nvm:`・`subetha-`。
- * 公開文は「対応する売り手に限り、届かなかった支払いは確定しない」の範囲に留める（11/11 時点で auth-capture を出す売り手は
+ * 公開文は「対応する売り手に限り、売り手がエラーを返した支払いは確定しない」の範囲に留める（11/11 時点で auth-capture を出す売り手は
  * 実測 0 件なので、対応済みの売り手が居るとは書かない）。英文は I／vet402 主語、ダッシュとセミコロンを置かない。
  */
 
@@ -85,15 +85,21 @@ export function isForbiddenE4SchemePublicName(name: string): boolean {
 /** 公開の短い英文（第5版から変えない）。 */
 export const E4_PUBLIC_TAGLINE = "Settle only once the answer has arrived";
 
-/** 公開の範囲の英文。対応する売り手に限る。対応済みの売り手が居るとは書かない。 */
+/**
+ * 公開の範囲の英文。対応する売り手に限り、売り手がエラーを返した支払いは確定しない、まで。
+ * 公式の売り手実装（x402-foundation/x402 d3eb19d0 の Express ミドルウェア）が void するのは handler が 400 以上を返したときだけで、
+ * 400 未満は capture する。202 や空の本文で void するのは、それを決まりにした売り手（統合試験の試験用の売り手）だけ。
+ * 対応済みの売り手が居るとは書かない。
+ */
 export const E4_PUBLIC_SCOPE_EN =
-  "This applies only to sellers that offer auth-capture. With such a seller, vet402 signs a hold, not a final payment, " +
-  "and reports the payment as settled only when the answer arrived and the hold was captured. " +
-  "A hold that was not captured goes back to the buyer by void, or by the buyer's own reclaim after the capture deadline. " +
+  "This applies only to sellers that offer auth-capture. With such a seller, vet402 signs a hold, not a final payment. " +
+  "When the seller answers with an error status, the x402 reference server voids the hold and the money stays with the buyer. " +
+  "vet402 reports a payment as settled only when a non-empty answer arrived and the hold was captured. " +
+  "If a hold was captured without a delivered answer, vet402 reports a failure, and only the seller's operator can refund it. " +
   "A seller that offers only exact is paid with exact, as before.";
 
 /** 同じ範囲の日本語（社内の正典の言い方）。 */
-export const E4_PUBLIC_SCOPE_JA = "対応する売り手に限り、届かなかった支払いは確定しない。";
+export const E4_PUBLIC_SCOPE_JA = "対応する売り手に限り、売り手がエラーを返した支払いは確定しない。";
 
 export type E4FormComparisonRow = {
   form: 1 | 2 | 3;
@@ -120,7 +126,9 @@ export function e4FormComparisonTable(): E4FormComparisonRow[] {
       movesFundsOnSettle: false,
       testnetResult:
         "Passed on a local fork of Base Sepolia (chain 84532) on 2026-11-11 with the official x402 auth-capture server and facilitator. " +
-        "Delivered answer: captured, seller +10000 units. HTTP 500, empty 200 and 202: voided, buyer delta 0. " +
+        "Delivered answer: captured, seller +10000 units. HTTP 500: voided under the reference server rule, buyer delta 0. " +
+        "Empty 200 and 202: voided only because the test seller follows a delivery rule, buyer delta 0. " +
+        "Under the reference server rule a 202 is captured, and vet402 reports it as a failure marked operator_captured_undelivered. " +
         "Hold above the signed maximum: reverted with ExceedsMaxAmount. Seller gone: buyer reclaim after the capture deadline, buyer delta 0. " +
         "Not yet run on the public Base Sepolia network.",
     },

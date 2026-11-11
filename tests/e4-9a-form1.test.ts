@@ -100,7 +100,13 @@ test("公開の英文: 短い英文は変えない・we/our/us・ダッシュ・
 });
 
 test("公開の範囲は「対応する売り手に限り」。対応済みの売り手が居るとは書かない", () => {
-  assert.equal(E4_PUBLIC_SCOPE_JA, "対応する売り手に限り、届かなかった支払いは確定しない。");
+  assert.equal(E4_PUBLIC_SCOPE_JA, "対応する売り手に限り、売り手がエラーを返した支払いは確定しない。");
+  // 公式の売り手実装は 400 未満を capture する。202 や空の本文まで「確定しない」と広げない。
+  for (const s of [E4_PUBLIC_SCOPE_JA, E4_PUBLIC_SCOPE_EN]) {
+    assert.doesNotMatch(s, /届かなかった支払いは確定しない|202|empty body|never arrived/i, s);
+  }
+  assert.match(E4_PUBLIC_SCOPE_EN, /error status/);
+  assert.match(E4_PUBLIC_SCOPE_EN, /only the seller's operator can refund it/);
   assert.match(E4_PUBLIC_SCOPE_EN, /^This applies only to sellers that offer auth-capture\./);
   for (const s of PUBLIC_EN()) {
     assert.doesNotMatch(s, /\b(already|now|today)\b/i, s);
@@ -117,10 +123,14 @@ test("9a-7 比較表: 形1の testnet は未実施ではない（実際に通し
   assert.ok(f1);
   assert.notEqual(f1.testnetResult, "未実施");
   assert.doesNotMatch(f1.testnetResult, /pending/i, "pending を合格文にしない");
-  for (const word of ["captured", "voided", "ExceedsMaxAmount", "reclaim", "buyer delta 0", "84532"]) {
+  for (const word of ["captured", "voided", "ExceedsMaxAmount", "reclaim", "buyer delta 0", "84532", "operator_captured_undelivered"]) {
     assert.ok(f1.testnetResult.includes(word), word);
   }
   assert.match(f1.testnetResult, /local fork/);
+  // 空の 200 と 202 の void は試験用の売り手の決まり。公式の門の結果として書かない。
+  assert.match(f1.testnetResult, /Empty 200 and 202: voided only because the test seller follows a delivery rule/);
+  assert.match(f1.testnetResult, /Under the reference server rule a 202 is captured/);
+  assert.doesNotMatch(f1.testnetResult, /HTTP 500, empty 200 and 202: voided/);
   assert.match(f1.testnetResult, /Not yet run on the public Base Sepolia network\./, "公開の testnet で払ったとは書かない");
   assert.equal(f1.holdsCustody, false);
   assert.equal(f1.movesFundsOnSettle, false);
