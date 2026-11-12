@@ -152,6 +152,12 @@ function scalarToQueryValue(v: unknown): string | null {
   return null;
 }
 
+/** JSON Schema の型の名前だけが入った見本の値（"string"・"integer" など）。実際の値ではない。 */
+export function isTypePlaceholder(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  return /^(string|number|integer|boolean|object|array|null)$/i.test(raw.trim());
+}
+
 /** 規則の本体（文書を読んだ後）。declaredRequestBodyFromDoc と同じく、カタログの掲載にも同じ関数を通す。 */
 export function declaredRequestUrlFromDoc(input: { resourceUrl: string; document: unknown }): DeclaredRequestUrl {
   const none: DeclaredRequestUrl = { url: input.resourceUrl, source: "empty", query: null };
@@ -177,6 +183,9 @@ export function declaredRequestUrlFromDoc(input: { resourceUrl: string; document
   const listedNames = new Set([...listed.searchParams.keys()].map(foldQueryName));
   const declaredNames = new Set<string>();
   const add = new URLSearchParams();
+  // 値が型の名前（"string" など）だけの宣言は見本ではない。送ると売り手が 422 で返す
+  // （2026-11-12 api.blockscout.com: sort=string・hash=string で 422、それでも決済された）。宣言ごと使わない。
+  if (entries.some(([, raw]) => isTypePlaceholder(raw))) return unchanged;
   for (const [name, raw] of entries) {
     const value = scalarToQueryValue(raw);
     const folded = foldQueryName(name);

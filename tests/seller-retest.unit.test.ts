@@ -109,6 +109,7 @@ test("blockscout celo request is on the seller retest list and Base requests sta
   assert.deepEqual(celoIds, [
     "agent-embassy-2026-11-12-celo-verify",
     "blockscout-2026-11-12-celo-addresses",
+    "blockscout-2026-11-13-celo-addresses-noquery",
     "open-rails-2026-11-12-celo-block",
     "paycrawl-2026-11-12-celo-article",
   ]);

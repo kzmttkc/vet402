@@ -198,7 +198,19 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     payTo: "0x242ba6d68ffeb4a098b591b32d370f973ff882b7",
     expiresOn: "2026-12-12",
     amountUnits: "2000",
-  },  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。USAT と USDC の2つを受ける。払うのは USDC だけ。402 は 2026-11-12 14:4x JST に読んで Celo USDC の accept を照合。 */
+  },  /** blockscout の買い直し（2026-11-12）。前の回は宣言の見本（型の名前）をクエリに入れて 422 だった。今は型の名前の見本は送らない。 */
+  {
+    id: "blockscout-2026-11-13-celo-addresses-noquery",
+    requestedOn: "2026-11-12",
+    sellerDomain: "api.blockscout.com",
+    url: "https://api.blockscout.com/42220/api/v2/addresses",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x242ba6d68ffeb4a098b591b32d370f973ff882b7",
+    expiresOn: "2026-12-12",
+    amountUnits: "2000",
+  },
+  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。USAT と USDC の2つを受ける。払うのは USDC だけ。402 は 2026-11-12 14:4x JST に読んで Celo USDC の accept を照合。 */
   {
     id: "agent-embassy-2026-11-12-celo-verify",
     requestedOn: "2026-11-12",

@@ -244,3 +244,19 @@ test("N-8: query は足した対だけ・宣言のキー順・form-urlencoded（
   assert.equal(r.query, "z=last+first&a=x%26y%3Dz&k+e+y=%E3%81%82");
   assert.equal(r.url, `${listed}&${r.query}`);
 });
+
+test("見本の値が型の名前（\"string\" など）の宣言は使わない。カタログの URL のまま払う（2026-11-12 blockscout の 422）", () => {
+  const r = run({ fetched_coin_balance: "string", hash: "string", items_count: 0, order: "string", sort: "string" });
+  assert.equal(r.source, "refused");
+  assert.equal(r.url, URL_PLAIN);
+  assert.equal(r.query, null);
+  for (const t of ["integer", "Number", " boolean ", "object", "array"]) {
+    assert.equal(run({ q: t }).source, "refused", t);
+  }
+});
+
+test("型の名前に似ていても実際の値なら送る", () => {
+  const r = run({ q: "strings", kind: "string-theory", n: 0 });
+  assert.equal(r.source, "declared");
+  assert.equal(r.query, "q=strings&kind=string-theory&n=0");
+});

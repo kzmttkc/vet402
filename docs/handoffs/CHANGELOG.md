@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Declared query examples that are only type names are not sent
+
+- What: when a seller's 402 declares query examples whose values are JSON Schema type names ("string", "integer" and so on), L1 no longer appends them to the paid URL. The row records requestQuery refused and the purchase uses the listed URL. The Celo request lane buys api.blockscout.com/42220/api/v2/addresses once more without a query.
+- Why: api.blockscout.com declares sort, hash and order as "string". Sending those values got a 422.
+- Impact: the paid URL changes only for listings whose declared examples are type names. Amounts, payees and signing are unchanged.
+
 ## 2026-11-12 Local purchase CSV from the decision store (D2)
 
 - What: `exportLocalPurchaseCsv` reads the SDK decision store (`.vet402/decisions.jsonl`) and returns a CSV. The header is the same 19 column names in the same order as `/api/v1/observatory/export.csv`. `resource_key` is the request. `tx_hash` is the settlement transaction. `http_status_paid` is whether an answer came back. vet402 does not receive the file.
