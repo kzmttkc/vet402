@@ -1,5 +1,5 @@
 // 売り手端の遅れを公開面へ出す。測った試料だけを載せる。試料が 20 未満のときは目標を達成したと書かない。
-import { reportSellerEdgeLatency } from "../../../packages/middleware/src/seller-edge.js";
+import { reportSellerEdgeLatency } from "../../../packages/middleware/src/seller-edge";
 
 export type SellerEdgePublicOverhead = {
   samples: number;
