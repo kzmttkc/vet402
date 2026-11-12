@@ -2766,6 +2766,26 @@ paths:
         "503": { description: Store unavailable }
 
   /api/v1/observatory/disputes:
+    get:
+      operationId: getTradeDispute
+      tags: [Observatory]
+      summary: Public E6 trade dispute stage for one purchase id (P2)
+      description: |
+        Returns the disagreement stage for one purchase. vet402 does not publish
+        response bodies or headers here. Measurement disputes stay on POST.
+      security: []
+      parameters:
+        - in: query
+          name: purchaseId
+          required: true
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: Stage and delivery confirmation flag only
+        "400": { description: "`invalid_request`" }
+        "404": { description: "`not_found`" }
+        "429": { description: Rate limited }
+        "503": { description: "`disputes_unavailable`" }
     post:
       operationId: submitDispute
       tags: [Observatory]

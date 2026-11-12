@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { submitDispute } from "@/lib/observatory/disputes";
+import { getE6Store } from "@/lib/observatory/e6-store";
+import { publicTradeDisputeJson } from "@/lib/observatory/trade-dispute";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 /**
+ * GET /api/v1/observatory/disputes?purchaseId=… — P2 の取引争い（E6）の公開 JSON。
+ * 判定の段だけ。本文とヘッダは返さない。測定の異議（POST）とは別口。
+ *
  * POST /api/v1/observatory/disputes — 売り手の署名付き異議（C8）。
  * payTo 保持者の EIP-191 署名を実検証し、受理と同時に本物の L0 を
  * 1回再測定して通常の公開ゲートへ流す。申し立てで記録は消えない——
@@ -20,6 +25,33 @@ const RL_WINDOW_MS = 60_000;
 
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
 export const dynamic = "force-dynamic";
+
+const PURCHASE_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
+
+export async function GET(request: NextRequest) {
+  const ip = getClientIp(request) ?? "unknown";
+  const limited = await consumeIpRateLimit(`disputes-read:${ip}`, 60, RL_WINDOW_MS);
+  const perCaller = ipRateLimitHeaders(limited);
+  if (!limited.allowed) {
+    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
+  }
+  const purchaseId = request.nextUrl.searchParams.get("purchaseId")?.trim() ?? "";
+  if (!PURCHASE_ID_RE.test(purchaseId)) {
+    return NextResponse.json({ error: "invalid_request" }, { status: 400, headers: perCaller });
+  }
+  const store = getE6Store();
+  if (!store) {
+    return NextResponse.json({ error: "disputes_unavailable" }, { status: 503, headers: perCaller });
+  }
+  const record = await store.get(purchaseId);
+  if (!record) {
+    return NextResponse.json({ error: "not_found" }, { status: 404, headers: perCaller });
+  }
+  return NextResponse.json(publicTradeDisputeJson(record, { viewer: "anonymous" }), {
+    status: 200,
+    headers: perCaller,
+  });
+}
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request) ?? "unknown";

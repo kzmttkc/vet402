@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Trade dispute records (E6) and the dispute page draft (P2)
+
+- What: one trade id can carry the buyer's side (payment tx, received body hash, state) and the seller's side (verified payment, delivered body hash, signature). When both hashes match and both sides signed, delivery is confirmed. /connect/trade-dispute shows both sides on one screen as a draft for public testnet, and the disputes API keeps each party's own record behind a signature check.
+- Why: a seller can now answer an unfair "not delivered" with signed evidence, and a buyer can show what arrived.
+- Impact: records and the page only. No refund is wired to production funds and no email is sent.
 ## 2026-11-12 Read a PAYMENT-RESPONSE on its chain without paying
 
 - What: `POST /api/v1/payment-proof` (no key) takes a seller's PAYMENT-RESPONSE header, or a network and a transaction, and reads the transaction on the chains vet402 reads again after a purchase. It returns found, from, to, asset, amount in atomic units, status and an explorer link. The MCP server gains `check_payment_proof`.
