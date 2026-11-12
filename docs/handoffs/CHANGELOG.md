@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 A seller edge that records delivery and never settles for the seller
+
+- What: @vet402/middleware gains a ./seller entry with Express, Hono, plain HTTP and Lambda@Edge adapters. One line in front of a seller's route records the seller's side of each paid call (the verified payment it saw and a hash of what it sent). Settlement stays with the seller's own facilitator. A Base Sepolia example and the public overhead figure are in the state API.
+- Why: the seller side of a trade (E6) needs a record the seller can add without moving its payments to vet402.
+- Impact: no npm publish yet. No settlement path change and no database write.
 ## 2026-11-12 Declared query examples that are only type names are not sent
 
 - What: when a seller's 402 declares query examples whose values are JSON Schema type names ("string", "integer" and so on), L1 no longer appends them to the paid URL. The row records requestQuery refused and the purchase uses the listed URL. The Celo request lane buys api.blockscout.com/42220/api/v2/addresses once more without a query.

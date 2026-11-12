@@ -20,6 +20,10 @@
     "./hono": {
       "types": "./dist/hono.d.ts",
       "import": "./dist/hono.js"
+    },
+    "./seller": {
+      "types": "./dist/seller.d.ts",
+      "import": "./dist/seller.js"
     }
   },
   "scripts": {

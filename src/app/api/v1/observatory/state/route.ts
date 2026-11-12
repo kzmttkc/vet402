@@ -10,6 +10,7 @@ import { readStateAggregates } from "@/lib/observatory/state-reads";
 import { validateL1SettledTwoTier } from "@/lib/observatory/settled-two-tier";
 import { readAdoption, type Adoption } from "@/lib/observatory/adoption";
 import { readPublicClientUsage } from "@/lib/api/client-usage-public";
+import { sellerEdgePublicOverhead } from "@/lib/seller-edge/public-overhead";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { ERC8004_ABOUT, getErc8004MatchCached } from "@/lib/observatory/erc8004-match";
@@ -78,6 +79,7 @@ export async function GET(request: NextRequest) {
         ...stats,
         byChain,
         publicApiUsage,
+        sellerEdgeOverhead: sellerEdgePublicOverhead(),
         /**
          * vet402 自身が L1 の支出を止めているか。true の間は l1 の件数が動かないので、
          * 静かな日と止めている日を取り違えないための鮮度情報（l1.lastAttemptAt と併読する）。

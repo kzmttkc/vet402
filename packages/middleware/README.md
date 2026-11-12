@@ -163,3 +163,49 @@ const gate = createTrustGate({
 A WARN now passes **only** when the payee's measured receiving record clears
 those floors. BLOCK still blocks, a degraded/stale/partial read still blocks,
 and a missing evidence field counts as zero — absence is never a pass.
+
+## Seller edge
+
+vet402 adds one call beside the seller's own payment check. vet402 does not settle the payment and does not receive the funds. The seller keeps the facilitator the seller already uses.
+
+Express:
+
+```ts
+app.use("/paid", createExpressSellerEdge(sellerEdgeConfig))
+```
+
+Hono:
+
+```ts
+app.use("/paid/*", createHonoSellerEdge(sellerEdgeConfig))
+```
+
+Next.js:
+
+```ts
+export const POST = withSellerEdge(sellerEdgeConfig, handler)
+```
+
+Cloudflare Workers:
+
+```ts
+export default { fetch: withWorkerSellerEdge(sellerEdgeConfig, handler) }
+```
+
+Lambda@Edge:
+
+```ts
+export const handler = withLambdaEdgeSellerEdge(sellerEdgeConfig, handler)
+```
+
+A fake payment, a replayed payment, or a payment whose amount or destination does not match the offer stops before the handler. The body is not returned. A matching payment adds a signature over the body hash on the response and writes the seller leg to the E6 record.
+
+A 4xx hold is not scored as a seller miss.
+
+`edge.latency().statement` is the sentence vet402 publishes for the overhead. That sentence includes the measured p95. vet402 does not fill it in before measuring.
+
+`createSellerChainReader` reads `eth_chainId` and `eth_getTransactionReceipt` on the RPC the seller passes in. vet402 does not send a transaction.
+
+vet402 publishes that overhead sentence on `GET /api/v1/observatory/state` as `sellerEdgeOverhead.statement`.
+
+Not yet published to npm.

@@ -1,0 +1,26 @@
+{
+  "network": "eip155:84532",
+  "chainId": 84532,
+  "chainIdHex": "0x14a34",
+  "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+  "txHash": "0x8453200000000000000000000000000000000000000000000000000000000001",
+  "payTo": "0xC0f58Df8753A4C53fD98c17e46e9f4CE6B8E9fa6",
+  "from": "0x1111111111111111111111111111111111111111",
+  "amount": "10000",
+  "note": "Receipt shape for Base Sepolia (chain 84532) and the USDC contract the sdk profile names for base-sepolia. This file is a fixture. It is not a broadcast transaction.",
+  "receipt": {
+    "status": "0x1",
+    "transactionHash": "0x8453200000000000000000000000000000000000000000000000000000000001",
+    "logs": [
+      {
+        "address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "topics": [
+          "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+          "0x0000000000000000000000001111111111111111111111111111111111111111",
+          "0x000000000000000000000000c0f58df8753a4c53fd98c17e46e9f4ce6b8e9fa6"
+        ],
+        "data": "0x0000000000000000000000000000000000000000000000000000000000002710"
+      }
+    ]
+  }
+}
