@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 L2 checks the seller's current 402 before the catalog schema
+
+- What: `resolveOutputDeclaration` in src/lib/observatory/l2-check.ts reads the seller's live 402 (outputSchema, then the output example) first and the CDP Bazaar catalog schema only when the 402 declares no output. A mismatch row carries `declarationSource` (live_402 or catalog). Methodology §7, the vocabulary and docs/claims.yaml say the same.
+- Why: a stale catalog schema marked responses that matched the seller's own 402 as mismatch (32 of 40 mismatch rows in 30 days, 13 hosts).
+- Impact: new purchases only. Past rows keep their recorded l2_schema. export.csv is unchanged.
 ## 2026-11-12 Requirement 3.7 is pinned by acceptance tests
 
 - What: tests that pin the public `publicApiUsage` block in the state API (wave 1 requirement 3.7), and the OpenAPI description now reads like the live note.

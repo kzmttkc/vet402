@@ -1151,13 +1151,14 @@ export default async function ObservatoryMethodologyPage() {
           L2 runs only when the paid request in the same purchase answered <code>2xx</code> other than{" "}
           <code>202 Accepted</code>. It is
           a minimal structural check, not a full JSON-Schema validation: the response must parse
-          as JSON and carry the top-level keys the catalog&apos;s own declared output schema marks
-          as required. <strong>no_declaration</strong>: the listing&apos;s output schema gave
+          as JSON and carry the top-level keys the declaration vet402 uses marks as required.
+          vet402 uses the current 402 from the seller first and the catalog schema only when that
+          402 declares no output. <strong>no_declaration</strong>: the listing&apos;s output schema gave
           vet402 nothing to check this response against (no schema, a schema with no required
           keys and no example properties, or example properties with a content type that
-          is not JSON). An output example the seller puts in the 402 (
+          is not JSON). vet402 checks the current 402 from the seller before the catalog schema. An output example in the 402 (
           <code>extensions.bazaar.info.output.example</code>
-          ) is not checked yet. It is never counted as a failed delivery.{" "}
+          ) is part of that check when the catalog also declares an output. It is never counted as a failed delivery.{" "}
           <strong>match</strong> — the response parses
           and every declared required key is present. With an example that marks no key as required, a
           JSON object or array is enough. <strong>mismatch</strong> — the body does

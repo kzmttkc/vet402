@@ -3,8 +3,8 @@
 //
 // カタログの schema.properties.output.properties.example.{properties,required}
 // （v1）が空でも、extensions.bazaar.info.output.example が空でないプレーンな
-// オブジェクトなら宣言として使う。見本に必須の印は無いので、キーが欠けても mismatch にしない。
-// v1 から requiredKeys か exampleProps が取れるときはそちらを優先する。
+// オブジェクトなら宣言として使う。カタログが宣言していないとき、見本のキーが欠けても mismatch にしない。
+// カタログと 402 が両方あるときは 402 を先に使う（tests/l2-declaration-priority.test.ts）。
 // Run: npx tsx --test tests/l2-v2-output-example.test.ts
 // ============================================================
 import { test } from "node:test";
@@ -76,7 +76,7 @@ test("(a) v2 の見本だけ・JSON 本文は match。配列の本文も match�
     assert.equal(d.declarationHash, shaJson(example));
     assert.notEqual(d.declarationHash, schema ? shaJson(schema) : null);
     assert.equal(d.responseHash, sha(body));
-    assert.equal(l2DeclarationSource(schema, example), "live_402_output_example");
+    assert.equal(l2DeclarationSource(schema, example), "live_402");
     assert.deepEqual(declaredOutputOf(schema, example), { requiredKeys: [], exampleProps: example });
   }
   assert.equal(checkL2Detailed(null, "[1,2]", "application/json; charset=utf-8", null, example).status, "match");
@@ -115,19 +115,22 @@ test("見本を使っても Content-Type が JSON でなければ no_declaration
   assert.deepEqual([over.status, over.reason, over.missing], ["not_checked", "body_over_cap", []]);
 });
 
-test("(d) v1 のスキーマがあれば見本より v1 が優先する", () => {
+test("(d) カタログと見本が両方あるときは見本を先に使う", () => {
   const schema = v1(["price", "symbol"]);
-  const body = '{"symbol":"BTC"}';
+  const body = '{"symbol":"BTC","price":1}';
   const d = checkL2Detailed(schema, body, "application/json", null, example);
-  assert.deepEqual([d.status, d.reason, d.missing], ["mismatch", "missing_keys", ["price"]]);
-  assert.equal(d.declarationHash, shaJson(schema));
-  assert.notEqual(d.declarationHash, shaJson(example));
-  assert.equal(l2DeclarationSource(schema, example), "catalog_schema");
-  assert.deepEqual(declaredOutputOf(schema, example), declaredOutputOf(schema));
-  // 見本の形に本文が合っていても、v1 の必須キーが欠けていれば mismatch のまま。
-  const matched = checkL2Detailed(schema, '{"price":1,"symbol":"BTC"}', "application/json", null, { other: true });
-  assert.equal(matched.status, "match");
-  assert.equal(matched.declarationHash, shaJson(schema));
+  assert.equal(d.status, "match");
+  assert.equal(d.reason, null);
+  assert.deepEqual(d.missing, []);
+  assert.equal(d.declarationHash, shaJson(example));
+  assert.notEqual(d.declarationHash, shaJson(schema));
+  assert.equal(d.declarationSource, "live_402");
+  assert.equal(l2DeclarationSource(schema, example), "live_402");
+  // 見本のキーが欠けていれば、カタログの必須キーが揃っていても 402 側の mismatch。
+  const missed = checkL2Detailed(schema, '{"price":1,"symbol":"BTC"}', "application/json", null, { other: true });
+  assert.deepEqual([missed.status, missed.reason, missed.missing], ["mismatch", "missing_keys", ["other"]]);
+  assert.equal(missed.declarationSource, "live_402");
+  assert.equal(missed.declarationHash, shaJson({ other: true }));
 });
 
 test("(e) 見本が配列・null・空オブジェクト・文字列なら使わない", () => {
@@ -262,30 +265,35 @@ test("(g) 第5引数を渡さない既存の呼び出しは結果が同一。古
   );
 });
 
-test("l1-runner は x402 だけ見本を渡し、Tempo の checkL2Detailed は引数を増やさない", () => {
+test("l1-runner は x402 の 402 を判定に渡し、影では l2_schema を決めない", () => {
   const src = readFileSync("src/lib/observatory/l1-runner.ts", "utf8");
-  // l2_schema はカタログの宣言だけ（引数 4 つ）。見本は x402 だけの影（shadow）。
-  assert.match(src, /const d = checkL2Detailed\(candidate\.declaredSchema, paidBody, contentType, paidBodyRead\.incomplete\);\s*l2Schema = d\.status;/);
-  assert.match(src, /if \(!isTempo\) \{[\s\S]{0,200}?try \{\s*const liveOutputExample = liveOutputExampleOf\(\{ bodyText: firstBody, headers: first\.headers \}\);/);
+  assert.match(src, /liveOutputExample = liveOutputExampleOf\(\{ bodyText: firstBody, headers: first\.headers \}\)/);
+  assert.match(src, /liveOutputSchema = liveOutputSchemaOf\(\{ bodyText: firstBody, headers: first\.headers \}\)/);
   assert.match(src, /const shadow = checkL2Detailed\(candidate\.declaredSchema, paidBody, contentType, paidBodyRead\.incomplete, liveOutputExample\);/);
   assert.match(src, /shadowStatus: shadow\.status,/);
+  assert.match(src, /l2Schema = d\.status/);
   assert.equal((src.match(/l2Schema = shadow/g) ?? []).length, 0);
 });
 
-test("公開の no_declaration は 402 の見本をまだ照合しないと書いてあり、禁止の語法が無い", () => {
-  const sentence = "gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). An output example the seller puts in the 402";
+test("公開の no_declaration は 402 をカタログより先に見ると書いてあり、禁止の語法が無い", () => {
+  const sentence = "gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). vet402 checks the current 402 from the seller before the catalog schema";
+  const checked = "vet402 checks the current 402 from the seller before the catalog schema.";
   const squash = (s: string) => s.replace(/\s+/g, " ");
   const endpoint = squash(readFileSync("src/app/observatory/e/[id]/page.tsx", "utf8"));
   const method = squash(readFileSync("src/app/observatory/methodology/page.tsx", "utf8"));
+  const vocab = squash(readFileSync("src/lib/observatory/vocabulary.ts", "utf8"));
   assert.ok(endpoint.includes(sentence));
   assert.ok(endpoint.includes("extensions.bazaar.info.output.example"));
   assert.ok(method.includes(sentence));
   assert.ok(method.includes("extensions.bazaar.info.output.example"));
+  assert.ok(vocab.includes(checked));
   assert.ok(method.includes("It is never counted as a failed delivery."));
+  assert.equal(endpoint.includes("is not checked yet"), false);
+  assert.equal(method.includes("is not checked yet"), false);
+  assert.equal(vocab.includes("is not checked yet"), false);
   assert.equal(endpoint.includes("the listing declares no output schema to check the response against"), false);
   assert.equal(method.includes("output schema; never counted as a failure."), false);
-  assert.ok(endpoint.includes("is not checked yet\"") && method.includes("is not checked yet."));
-  for (const prose of [sentence, "is not checked yet.", "It is never counted as a failed delivery."]) {
+  for (const prose of [sentence, checked, "It is never counted as a failed delivery."]) {
     assert.equal(/\b(we|our|us)\b/i.test(prose), false, prose);
     assert.equal(prose.includes(";"), false, prose);
     assert.equal(prose.includes("—") || prose.includes("–") || prose.includes("--"), false, prose);
@@ -316,7 +324,7 @@ test("見本を当てない応答: 0 バイト・空白だけ・ストリーム�
 test("見本を当てた応答は declarationSource と見本のハッシュを返す", () => {
   const d = checkL2Detailed(v2Frame, '{"other":1}', "application/json; charset=utf-8", null, example);
   assert.equal(d.status, "match");
-  assert.equal(d.declarationSource, "live_402_output_example");
+  assert.equal(d.declarationSource, "live_402");
   assert.equal(d.declarationHash, shaJson(example));
   const broken = checkL2Detailed(v2Frame, "<html>", "application/json", null, example);
   assert.equal(broken.status, "mismatch");
@@ -325,7 +333,8 @@ test("見本を当てた応答は declarationSource と見本のハッシュを�
   const cut = checkL2Detailed(v2Frame, '{"symbol":', "application/json", "body_timeout", example);
   assert.equal(cut.status, "not_checked");
   const v1d = checkL2Detailed(v1(["a"]), '{"a":1}', "application/json", null, example);
-  assert.equal(v1d.declarationSource, "catalog_schema");
+  assert.equal(v1d.declarationSource, "live_402");
+  assert.equal(v1d.status, "mismatch");
   assert.equal(checkL2Detailed(v2Frame, '{"a":1}', "application/json").declarationSource, null);
 });
 

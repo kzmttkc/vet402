@@ -138,7 +138,7 @@ import {
   type MppxCharge,
 } from "./mpp-payer";
 // L2（宣言との一致）の判定と、支払い付き応答の本文の読み取り上限（2026-09-29・l2-check.ts）。
-import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, legacyL2SchemaOf, liveOutputExampleHash, liveOutputExampleOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
+import { L1_BODY_OVER_CAP_REASON, L1_PAID_BODY_CAP_BYTES, checkL2Detailed as checkL2DetailedImpl, legacyL2SchemaOf, liveOutputExampleHash, liveOutputExampleOf, liveOutputSchemaOf, paidBodyReadOf, type L2Detail, type LiveOutputExampleShadow } from "./l2-check";
 import {
   buildSellerRetestCandidate,
   claimSellerRequestAuthSlot,
@@ -4815,11 +4815,10 @@ async function purchaseOne(input: {
     const contentType = paid?.headers.get("content-type") ?? null;
     const contentTypeMatch = contentType === null ? null : contentType.includes("json");
 
-    // L2 — minimal structural check against the catalog-declared schema.
+    // L2 — 売り手の今の 402（challenge の outputSchema・見本）を先に、カタログは予備（2026-11-12）。
     // 2026-09-29: 本文を読み切れなかった応答（上限超え・読み取りの途中の失敗）は判定しない（not_checked）。
-    // 2026-10-20: x402 だけ、無払い 402 の extensions.bazaar.info.output.example を影で記録する。
-    // l2_schema はカタログの宣言だけで決める（見本で決めると判定の declaration_hash・conform の文と食い違う。
-    // 点検 2 周目 高）。影は「見本を当てたら」の結果で、status・判定・公開の値は変えない。Tempo（MPP）は x402 の封筒を読まない。
+    // 2 つの宣言が食い違い、応答が 402 側に合っていれば mismatch にしない。mismatch には declarationSource を付ける。
+    // Tempo（MPP）は x402 の封筒を読まない。見本の影（liveOutputExample）はハッシュの記録として残す。l2_schema は影では決めない。
     const paidBodyRead = paidBodyReadOf(paidBody, paidBodyBytes, paidBodyFailure);
     paidBody = paidBodyRead.body;
     let l2Schema: string = "not_checked";
@@ -4827,24 +4826,48 @@ async function purchaseOne(input: {
     // 2026-09-29 監査 7 周目（高 1）: 判定する条件は配達と同じ（delivery.ts isDeliveryHttp: 2xx・202 を除く）。以前は 200 だけで、
     // 201 等の配達は not_checked のまま判定の L2 を素通りしていた。
     if (paid && isDeliveryHttp(paid.status)) {
-      const d = checkL2Detailed(candidate.declaredSchema, paidBody, contentType, paidBodyRead.incomplete);
-      l2Schema = d.status;
-      l2Detail = { missing: d.missing, declarationHash: d.declarationHash, responseHash: d.responseHash, reason: d.reason };
+      let liveOutputExample: Record<string, unknown> | null = null;
+      let liveOutputSchema: unknown = null;
       if (!isTempo) {
-        // 影は購入の記録を落とさない（点検 3 周目 低）。shadowSource が catalog_schema ならカタログが勝った結果。
         try {
-          const liveOutputExample = liveOutputExampleOf({ bodyText: firstBody, headers: first.headers });
-          if (liveOutputExample) {
-            const shadow = checkL2Detailed(candidate.declaredSchema, paidBody, contentType, paidBodyRead.incomplete, liveOutputExample);
-            l2Detail.liveOutputExample = {
-              exampleHash: liveOutputExampleHash(liveOutputExample),
-              shadowStatus: shadow.status,
-              shadowReason: shadow.reason,
-              shadowSource: shadow.declarationSource,
-            };
-          }
+          liveOutputExample = liveOutputExampleOf({ bodyText: firstBody, headers: first.headers });
+          liveOutputSchema = liveOutputSchemaOf({ bodyText: firstBody, headers: first.headers });
         } catch {
-          // 影だけを諦める。l2_schema と l2Detail の本体はカタログの判定のまま。
+          // 402 の読み取りだけを諦める。カタログの宣言で判定する。
+          liveOutputExample = null;
+          liveOutputSchema = null;
+        }
+      }
+      const d = checkL2Detailed(
+        candidate.declaredSchema,
+        paidBody,
+        contentType,
+        paidBodyRead.incomplete,
+        liveOutputExample,
+        liveOutputSchema,
+      );
+      l2Schema = d.status;
+      l2Detail = {
+        missing: d.missing,
+        declarationHash: d.declarationHash,
+        responseHash: d.responseHash,
+        reason: d.reason,
+        ...(d.status === "mismatch" && (d.declarationSource === "live_402" || d.declarationSource === "catalog")
+          ? { declarationSource: d.declarationSource }
+          : {}),
+      };
+      if (liveOutputExample) {
+        // 影は購入の記録を落とさない（点検 3 周目 低）。l2_schema は上の d のまま。
+        try {
+          const shadow = checkL2Detailed(candidate.declaredSchema, paidBody, contentType, paidBodyRead.incomplete, liveOutputExample);
+          l2Detail.liveOutputExample = {
+            exampleHash: liveOutputExampleHash(liveOutputExample),
+            shadowStatus: shadow.status,
+            shadowReason: shadow.reason,
+            shadowSource: shadow.declarationSource,
+          };
+        } catch {
+          // 影だけを諦める。l2_schema と declarationSource は上の判定のまま。
         }
       }
     }

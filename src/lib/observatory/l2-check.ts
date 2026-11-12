@@ -55,8 +55,17 @@ export type L2Reason =
   | "unparseable"
   | L2NotCheckedReason;
 
-/** raw_response_meta.l2 の形（seller-facts.ts の parseL2Detail が読む。reason は 2026-09-29 から）。 */
-export type L2Detail = { missing: string[]; declarationHash: string | null; responseHash: string; reason: L2Reason | null };
+/**
+ * raw_response_meta.l2 の形（seller-facts.ts の parseL2Detail が読む。reason は 2026-09-29 から）。
+ * declarationSource は mismatch の行に必ず付ける（2026-11-12。live_402 か catalog）。
+ */
+export type L2Detail = {
+  missing: string[];
+  declarationHash: string | null;
+  responseHash: string;
+  reason: L2Reason | null;
+  declarationSource?: Exclude<L2DeclarationSource, null>;
+};
 
 /** 本文の読み取りの失敗が時間切れ（AbortController の abort・タイムアウト）か。 */
 export function isTimeoutError(error: unknown): boolean {
@@ -84,10 +93,11 @@ export function paidBodyReadOf(
 }
 
 /**
- * 行の raw_response_meta.l2.declarationSource（2026-10-20）。
- * カタログの v1 形を使ったか、無払い 402 の見本を使ったか、どちらも無いか。
+ * 行の raw_response_meta.l2.declarationSource（2026-10-20、値は 2026-11-12 に短くした）。
+ * live_402 は売り手の今の 402（challenge の outputSchema、無ければ見本）。
+ * catalog は CDP Bazaar のカタログ。どちらも無ければ null。
  */
-export type L2DeclarationSource = "catalog_schema" | "live_402_output_example" | null;
+export type L2DeclarationSource = "live_402" | "catalog" | null;
 
 /** カタログの schema（v1 形）の output から、必須キーと例のプロパティを取り出す。見本は見ない。 */
 function catalogOutputOf(declaredSchema: unknown): { requiredKeys: string[]; exampleProps: Record<string, unknown> | null } {
@@ -186,8 +196,7 @@ export function liveOutputExampleOf(input: {
       const fromHeader = headerDoc.ok ? exampleFromDoc(headerDoc.value) : null;
       if (fromHeader) return fromHeader;
     }
-    // ヘッダに見本が無ければ本文を見る。どちらも同じ 402 応答の文書。支払いに使った文書と分かれることはあるが、
-    // 見本は影の記録にだけ使うので判定は変わらない（2026-10-20 点検 2 周目 中）。
+    // ヘッダに見本が無ければ本文を見る。どちらも同じ 402 応答の文書。
     if (typeof input.bodyText === "string" && input.bodyText !== "") {
       const bodyDoc = jsonFromText(input.bodyText);
       if (bodyDoc !== undefined) return exampleFromDoc(bodyDoc);
@@ -196,6 +205,106 @@ export function liveOutputExampleOf(input: {
   } catch {
     return null;
   }
+}
+
+function stringKeys(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((k): k is string => typeof k === "string") : [];
+}
+
+type LiveSchemaParts = {
+  requiredKeys: string[];
+  exampleProps: Record<string, unknown> | null;
+  sample: Record<string, unknown> | null;
+};
+
+/** output ノードから、必須キー・プロパティのスキーマ・見本値を分ける。空の properties は宣言にしない。 */
+function readOutputNode(output: Record<string, unknown>): LiveSchemaParts {
+  const none: LiveSchemaParts = { requiredKeys: [], exampleProps: null, sample: null };
+  const requiredKeys = stringKeys(output.required);
+  const props = asPlain(output.properties);
+  const exampleProps = props && Object.keys(props).length > 0 ? props : null;
+  const exampleNode = output.example;
+  const exampleSchema = asPlain(exampleNode);
+  const exampleLooksLikeSchema = !!exampleSchema && (Array.isArray(exampleSchema.required) || !!asPlain(exampleSchema.properties));
+  if (exampleLooksLikeSchema && exampleSchema) {
+    const fromExample = stringKeys(exampleSchema.required);
+    const exampleSchemaProps = asPlain(exampleSchema.properties);
+    const exampleSchemaPropsOrNull = exampleSchemaProps && Object.keys(exampleSchemaProps).length > 0 ? exampleSchemaProps : null;
+    if (fromExample.length > 0 || exampleSchemaPropsOrNull) {
+      return { requiredKeys: fromExample, exampleProps: exampleSchemaPropsOrNull, sample: null };
+    }
+  }
+  const sample = exampleLooksLikeSchema ? null : usableLiveExample(exampleNode);
+  if (requiredKeys.length > 0 || exampleProps) return { requiredKeys, exampleProps, sample };
+  if (sample) return { requiredKeys: [], exampleProps: null, sample };
+  return none;
+}
+
+/**
+ * challenge の outputSchema（v1 の accepts[].outputSchema、またはカタログと同じ v1 形）から宣言を取る。
+ * 必須キーかプロパティが取れればそれを返す。取れず output.example が見本なら sample に載せる。
+ */
+function declarationFromOutputSchema(outputSchema: unknown): LiveSchemaParts {
+  const none: LiveSchemaParts = { requiredKeys: [], exampleProps: null, sample: null };
+  const asCatalog = catalogOutputOf(outputSchema);
+  if (asCatalog.requiredKeys.length > 0 || asCatalog.exampleProps) {
+    return { requiredKeys: asCatalog.requiredKeys, exampleProps: asCatalog.exampleProps, sample: null };
+  }
+  const root = asPlain(outputSchema);
+  if (!root) return none;
+  const wrapped = asPlain(root.output);
+  const output = wrapped ?? (root.required !== undefined || root.properties !== undefined || root.example !== undefined ? root : null);
+  if (!output) return none;
+  return readOutputNode(output);
+}
+
+function outputSchemaFromDoc(doc: unknown): unknown | null {
+  const root = asPlain(doc);
+  if (!root || !Array.isArray(root.accepts)) return null;
+  for (const accept of root.accepts) {
+    const rec = asPlain(accept);
+    if (!rec || rec.outputSchema == null) continue;
+    const parsed = declarationFromOutputSchema(rec.outputSchema);
+    if (parsed.requiredKeys.length > 0 || parsed.exampleProps || parsed.sample) return rec.outputSchema;
+  }
+  return null;
+}
+
+/**
+ * 無払いの 402 から challenge の outputSchema を取る。liveOutputExampleOf と同じ順
+ * （PAYMENT-REQUIRED ヘッダ、無ければ本文）。宣言として使えるものだけ返す。例外は出さない。
+ */
+export function liveOutputSchemaOf(input: {
+  bodyText?: unknown;
+  headers?: { get(name: string): string | null } | null;
+}): unknown | null {
+  try {
+    const headerB64 = paymentRequiredHeader(input.headers);
+    if (headerB64 !== null) {
+      const headerDoc = jsonFromBase64(headerB64);
+      const fromHeader = headerDoc.ok ? outputSchemaFromDoc(headerDoc.value) : null;
+      if (fromHeader) return fromHeader;
+    }
+    if (typeof input.bodyText === "string" && input.bodyText !== "") {
+      const bodyDoc = jsonFromText(input.bodyText);
+      if (bodyDoc !== undefined) return outputSchemaFromDoc(bodyDoc);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 見本だけの outputSchema は、見本を当てられる応答のときだけ宣言にする。
+ * 必須キーかプロパティがある outputSchema は Content-Type に関係なく残す。
+ */
+function outputSchemaForCheck(outputSchema: unknown, exampleApplies: boolean): unknown {
+  if (outputSchema == null) return null;
+  if (exampleApplies) return outputSchema;
+  const parsed = declarationFromOutputSchema(outputSchema);
+  if (parsed.requiredKeys.length > 0 || parsed.exampleProps) return outputSchema;
+  return null;
 }
 
 /**
@@ -232,28 +341,52 @@ type ResolvedOutput = {
   requiredKeys: string[];
   exampleProps: Record<string, unknown> | null;
   source: L2DeclarationSource;
+  /** ハッシュする対象。見本、402 の outputSchema、カタログの schema 全体、のどれか。 */
+  hashOf: "example" | "live_schema" | "catalog" | "none";
 };
 
 /**
- * 使う宣言。カタログの v1 形から requiredKeys か exampleProps が取れるならそれ（見本より優先）。
- * 取れないときだけ、空でないプレーンな liveOutputExample を exampleProps にし、requiredKeys は空。
+ * 使う宣言（2026-11-12）。売り手の今の 402 を先、カタログは予備。
+ *   1. challenge の outputSchema から必須キーかプロパティが取れるならそれ（live_402）。
+ *   2. 取れないとき、outputSchema の見本か liveOutputExample。カタログも宣言しているなら
+ *      見本の最上位キーを必須にする（応答が見本に合っていればカタログの欠けでは mismatch にしない）。
+ *      カタログが宣言していなければ必須キーは空（見本のキーが欠けても mismatch にしない）。
+ *   3. 402 に宣言が無ければカタログ。
+ *   4. どちらも無ければ今までどおり宣言なし。
  */
-function resolveOutputDeclaration(declaredSchema: unknown, liveOutputExample?: Record<string, unknown> | null): ResolvedOutput {
-  const catalog = catalogOutputOf(declaredSchema);
-  if (catalog.requiredKeys.length > 0 || catalog.exampleProps) {
-    return { requiredKeys: catalog.requiredKeys, exampleProps: catalog.exampleProps, source: "catalog_schema" };
+function resolveOutputDeclaration(
+  declaredSchema: unknown,
+  liveOutputExample?: Record<string, unknown> | null,
+  liveOutputSchema?: unknown,
+): ResolvedOutput {
+  const fromSchema = declarationFromOutputSchema(liveOutputSchema);
+  if (fromSchema.requiredKeys.length > 0 || fromSchema.exampleProps) {
+    return { requiredKeys: fromSchema.requiredKeys, exampleProps: fromSchema.exampleProps, source: "live_402", hashOf: "live_schema" };
   }
-  const live = usableLiveExample(liveOutputExample);
-  if (live) return { requiredKeys: [], exampleProps: live, source: "live_402_output_example" };
-  return { requiredKeys: catalog.requiredKeys, exampleProps: catalog.exampleProps, source: null };
+  const sample = fromSchema.sample ?? usableLiveExample(liveOutputExample);
+  const catalog = catalogOutputOf(declaredSchema);
+  const catalogDeclares = catalog.requiredKeys.length > 0 || !!catalog.exampleProps;
+  if (sample) {
+    return {
+      requiredKeys: catalogDeclares ? Object.keys(sample) : [],
+      exampleProps: sample,
+      source: "live_402",
+      hashOf: "example",
+    };
+  }
+  if (catalogDeclares) {
+    return { requiredKeys: catalog.requiredKeys, exampleProps: catalog.exampleProps, source: "catalog", hashOf: "catalog" };
+  }
+  return { requiredKeys: [], exampleProps: null, source: null, hashOf: "none" };
 }
 
-/** 宣言（カタログの schema）の output から、必須キーと例のプロパティを取り出す。第2引数は 2026-10-20 の見本。 */
+/** 宣言の output から、必須キーと例のプロパティを取り出す。第2引数は見本、第3引数は challenge の outputSchema。 */
 export function declaredOutputOf(
   declaredSchema: unknown,
   liveOutputExample?: Record<string, unknown> | null,
+  liveOutputSchema?: unknown,
 ): { requiredKeys: string[]; exampleProps: Record<string, unknown> | null } {
-  const r = resolveOutputDeclaration(declaredSchema, liveOutputExample);
+  const r = resolveOutputDeclaration(declaredSchema, liveOutputExample, liveOutputSchema);
   return { requiredKeys: r.requiredKeys, exampleProps: r.exampleProps };
 }
 
@@ -261,8 +394,9 @@ export function declaredOutputOf(
 export function l2DeclarationSource(
   declaredSchema: unknown,
   liveOutputExample?: Record<string, unknown> | null,
+  liveOutputSchema?: unknown,
 ): L2DeclarationSource {
-  return resolveOutputDeclaration(declaredSchema, liveOutputExample).source;
+  return resolveOutputDeclaration(declaredSchema, liveOutputExample, liveOutputSchema).source;
 }
 
 /** 本文が JSON の頭（空白の後の { か [）で始まるか。 */
@@ -288,11 +422,11 @@ function parsedRecord(bodyText: string): { ok: true; rec: Record<string, unknown
  * 読めない本文はこの場合も mismatch になっていた——本番の mismatch 711 行のうち 437 行）。
  * 欠けたキー（missing）は JSON として読めた本文からだけ作る。
  *
- * 2026-10-20: 第5引数 liveOutputExample は無払い 402 の見本。カタログの schema から requiredKeys か
- * exampleProps が取れるときは今までどおりそちらだけを使う。取れず、見本が空でないプレーンなオブジェクトの
- * ときだけ exampleProps を見本にし、requiredKeys は空（見本のキーが欠けても mismatch にしない）。
- * schema が null でも見本があればそれで判定する。declarationHash は使った宣言（schema か見本）の sha256。
- * 引数を省いた呼び出しの結果は変えない。
+ * 2026-10-20: 第5引数 liveOutputExample は無払い 402 の見本。カタログが宣言していないとき、
+ * 見本のキーが欠けても mismatch にしない。schema が null でも見本があればそれで判定する。
+ * 2026-11-12: 第6引数 liveOutputSchema は challenge の outputSchema。402 を先、カタログは予備。
+ * 両方が宣言していて応答が 402 側に合っていれば mismatch にしない。declarationHash は使った宣言の sha256。
+ * 402 を渡さない呼び出しの status は、カタログだけのとき今までどおり。
  */
 export function checkL2Detailed(
   declaredSchema: unknown,
@@ -300,6 +434,7 @@ export function checkL2Detailed(
   contentType: string | null,
   bodyIncomplete: L2NotCheckedReason | null = null,
   liveOutputExample?: Record<string, unknown> | null,
+  liveOutputSchema?: unknown,
 ): {
   status: string;
   missing: string[];
@@ -309,22 +444,25 @@ export function checkL2Detailed(
   declarationSource: L2DeclarationSource;
 } {
   const schema = typeof declaredSchema === "object" && declaredSchema !== null ? (declaredSchema as Record<string, unknown>) : null;
-  const live = liveOutputExample && liveExampleApplies(bodyText, contentType) ? liveOutputExample : null;
-  const resolved = resolveOutputDeclaration(declaredSchema, live);
+  const exampleApplies = liveExampleApplies(bodyText, contentType);
+  const live = liveOutputExample && exampleApplies ? liveOutputExample : null;
+  const liveSchema = outputSchemaForCheck(liveOutputSchema, exampleApplies);
+  const resolved = resolveOutputDeclaration(declaredSchema, live, liveSchema);
   const sha = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
-  // 見本を使ったときだけ見本をハッシュする。それ以外は従来どおり schema 全体（schema が無ければ null）。
-  // 見本は第三者の値なので、stringify が落ちたらハッシュだけ null にする（判定自体は止めない）。
+  // 見本を使ったときは見本、outputSchema を使ったときはそのオブジェクト、それ以外は schema 全体。
+  // 第三者の値なので、stringify が落ちたらハッシュだけ null にする（判定自体は止めない）。
   let declarationHash: string | null = null;
-  if (resolved.source === "live_402_output_example") {
+  const hashJson = (value: unknown): string | null => {
     try {
-      const json = JSON.stringify(resolved.exampleProps);
-      declarationHash = typeof json === "string" ? sha(json) : null;
+      const json = JSON.stringify(value);
+      return typeof json === "string" ? sha(json) : null;
     } catch {
-      declarationHash = null;
+      return null;
     }
-  } else if (schema) {
-    declarationHash = sha(JSON.stringify(schema));
-  }
+  };
+  if (resolved.hashOf === "example") declarationHash = hashJson(resolved.exampleProps);
+  else if (resolved.hashOf === "live_schema") declarationHash = hashJson(liveSchema);
+  else if (schema) declarationHash = hashJson(schema);
   const out = (status: string, reason: L2Reason | null, missing: string[] = []) => ({
     status,
     missing,
@@ -333,8 +471,8 @@ export function checkL2Detailed(
     reason,
     declarationSource: resolved.source,
   });
-  // schema が null でも、見本があれば下の判定へ進む（2026-10-20）。見本が無ければ従来の no_declaration。
-  if (!schema && resolved.source !== "live_402_output_example") return out("no_declaration", null);
+  // schema が null でも、402 の宣言があれば下の判定へ進む。無ければ従来の no_declaration。
+  if (!schema && resolved.source !== "live_402") return out("no_declaration", null);
   const { requiredKeys, exampleProps } = resolved;
   const missingIn = (rec: Record<string, unknown>) => requiredKeys.filter((k) => !(k in rec));
 

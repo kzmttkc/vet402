@@ -102,7 +102,7 @@ const TIER_GLOSS = {
 } as const;
 const L2_GLOSS: Readonly<Record<string, string>> = {
   not_checked: "not checked: the paid request did not answer 200, so there was no response to check against the listing's output schema",
-  no_declaration: "the listing's output schema gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). An output example the seller puts in the 402 (extensions.bazaar.info.output.example) is not checked yet",
+  no_declaration: "the listing's output schema gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). vet402 checks the current 402 from the seller before the catalog schema. An output example in the 402 (extensions.bazaar.info.output.example) is part of that check when the catalog also declares an output",
   match: "the response parsed as JSON and had the keys the listing marks as required. With an example that marks no key as required, a JSON object or array is enough",
   mismatch: "the content type was not JSON although the listing marks required keys, or the body read in full did not parse as JSON, was JSON but not an object or array, or lacked a key the listing marks as required",
 };
