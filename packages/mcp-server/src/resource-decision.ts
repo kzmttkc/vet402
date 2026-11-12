@@ -24,6 +24,9 @@ import {
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 
+/** 402 を読む HTTP method。診断 URL に載せる語は GET と POST だけ。 */
+export type DiagnoseHttpMethod = "GET" | "POST";
+
 /** 呼び手の誤り。メッセージは我々が組み立てる（上流の文字列を含まない）ので tool-errors がそのまま通す。 */
 export const INVALID_TARGET_PREFIX = "invalid_target:";
 
@@ -44,7 +47,28 @@ export type UncataloguedResult = {
     /** 同じホストでカタログに載っている endpoint（最大 5 件）。打ち間違いの手がかり。 */
     same_host_candidates: { resource_id: string | null; canonical_url: string; method: string }[];
   };
+  /** 払う前の 402 読み取り。REFUSE の意味は変えない。 */
+  diagnose_at: {
+    tool: "diagnose_x402_url";
+    url: string | null;
+    note: string | null;
+  };
 };
+
+function diagnoseAt(url: string | null, method: DiagnoseHttpMethod): UncataloguedResult["diagnose_at"] {
+  if (!url) {
+    return {
+      tool: "diagnose_x402_url",
+      url: null,
+      note: "vet402 needs the 402 URL before it can read this resource.",
+    };
+  }
+  return {
+    tool: "diagnose_x402_url",
+    url: `https://vet402.com/api/v1/diagnose?url=${encodeURIComponent(url)}&method=${method}`,
+    note: null,
+  };
+}
 
 export type ResourceDecisionOutcome =
   | { kind: "decision"; resourceId: string; resolvedFrom: string | null; result: DecisionResult }
@@ -83,7 +107,9 @@ export function assertTarget(target: ResourceTarget): { resourceId: string } | {
 export function uncatalogued(
   lookup: { resourceId: string | null; url: string | null; canonicalUrl: string | null },
   candidates: ResolveEndpointRef[] = [],
+  method: DiagnoseHttpMethod = "GET",
 ): UncataloguedResult {
+  const diagnoseMethod: DiagnoseHttpMethod = method === "POST" ? "POST" : "GET";
   const what = lookup.url ? `The URL ${lookup.url}` : `The resource id ${lookup.resourceId}`;
   return {
     decision: "REFUSE",
@@ -93,7 +119,9 @@ export function uncatalogued(
     summary:
       `${what} is not in vet402's catalog, so vet402 has no L0–L2 record to decide from. ` +
       "Not in the catalog is not an ALLOW. pay_if_trusted can still judge an uncatalogued seller " +
-      "from the 402's payTo and the payee score when you pass it resource and payee.",
+      "from the 402's payTo and the payee score when you pass it resource and payee. " +
+      "Call diagnose_x402_url, or open the URL in diagnose_at, to read the 402 before paying.",
+    diagnose_at: diagnoseAt(lookup.url, diagnoseMethod),
     lookup: {
       resourceId: lookup.resourceId,
       url: lookup.url,
@@ -114,19 +142,21 @@ export function uncatalogued(
 export async function resourceDecision(
   target: ResourceTarget,
   query: DecisionQuery,
+  method?: DiagnoseHttpMethod,
 ): Promise<ResourceDecisionOutcome> {
+  const diagnoseMethod: DiagnoseHttpMethod = method === "POST" ? "POST" : "GET";
   const checked = assertTarget(target);
   let resourceId: string;
   let resolvedFrom: string | null = null;
   let canonical: string | null = null;
 
   if ("url" in checked) {
-    const resolved = await resolveQuery(checked.url);
+    const resolved = await resolveQuery(checked.url, method);
     const hit = resolved.resource;
     if (!hit || !hit.resource_id) {
       return {
         kind: "uncatalogued",
-        body: uncatalogued({ resourceId: null, url: checked.url, canonicalUrl: null }, resolved.endpoints ?? []),
+        body: uncatalogued({ resourceId: null, url: checked.url, canonicalUrl: null }, resolved.endpoints ?? [], diagnoseMethod),
       };
     }
     resourceId = hit.resource_id;
@@ -143,7 +173,7 @@ export async function resourceDecision(
     if (error instanceof VouchApiError && error.message === "not_found") {
       return {
         kind: "uncatalogued",
-        body: uncatalogued({ resourceId, url: resolvedFrom, canonicalUrl: canonical }),
+        body: uncatalogued({ resourceId, url: resolvedFrom, canonicalUrl: canonical }, [], diagnoseMethod),
       };
     }
     throw error;

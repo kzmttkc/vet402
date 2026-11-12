@@ -101,6 +101,21 @@ export async function fetchAgentScore(agentId, wallet) {
     const query = wallet ? `?wallet=${encodeURIComponent(wallet)}` : "";
     return vouchFetch(`/agents/${agentId}/score${query}`);
 }
+/** Read one unpaid 402. vet402 does not pay and does not sign. */
+export async function fetchDiagnose(url, method = "GET") {
+    let parsed;
+    try {
+        parsed = new URL(url);
+    }
+    catch {
+        throw new Error("invalid_url");
+    }
+    if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
+        throw new Error("invalid_url");
+    }
+    const query = new URLSearchParams({ url, method });
+    return vouchFetch(`/diagnose?${query.toString()}`);
+}
 export async function fetchWalletScore(wallet) {
     assertWallet(wallet);
     return vouchFetch(`/wallets/${wallet}/score`);
@@ -145,8 +160,9 @@ export async function fetchDecision(resourceId, query = {}) {
         throw new Error("payer_required");
     return vouchFetch(`/resources/${resourceId}/decision?${decisionQueryString(query)}`);
 }
-export async function resolveQuery(q) {
+export async function resolveQuery(q, method) {
     if (typeof q !== "string" || q.length === 0 || q.length > 2048)
         throw new Error("invalid_request");
-    return vouchFetch(`/resolve?q=${encodeURIComponent(q)}`);
+    const methodQuery = method === "GET" || method === "POST" ? `&method=${method}` : "";
+    return vouchFetch(`/resolve?q=${encodeURIComponent(q)}${methodQuery}`);
 }

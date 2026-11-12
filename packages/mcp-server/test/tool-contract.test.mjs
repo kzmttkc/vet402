@@ -119,6 +119,7 @@ test("the AST actually found the tools (no vacuous pass)", () => {
     // 製品定義書 §9.1（2026-09-02）: 新規統合は /decision を正規とする
     "check_resource_decision",
     "check_wallet_trust",
+    "diagnose_x402_url",
     "explain_trust_score",
     // ETHOnline 2026 / WINDOW_PLAN §2 #2: 判定を返すだけでなく signer を握る唯一のツール
     "pay_if_trusted",

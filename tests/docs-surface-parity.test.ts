@@ -22,7 +22,8 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 // ------------------------------------------------------------------
 function mcpToolNames(): string[] {
   const src = read("packages/mcp-server/src/index.ts");
-  return [...src.matchAll(/server\.tool\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
+  // 数字を落とすと diagnose_x402_url が文書検査から消える。
+  return [...src.matchAll(/server\.tool\(\s*"([a-z0-9_]+)"/g)].map((m) => m[1]);
 }
 
 test("McpServer の version 文字列が packages/mcp-server/package.json と一致する", () => {

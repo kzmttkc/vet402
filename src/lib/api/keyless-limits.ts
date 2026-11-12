@@ -11,6 +11,10 @@ export const DECISION_KEYLESS_WINDOW_MS = 60_000;
 export const RESOLVE_KEYLESS_LIMIT = 60;
 export const RESOLVE_KEYLESS_WINDOW_MS = 60_000;
 
+/** /diagnose が publicRateLimit に渡す回数。窓は 60 秒。売り手へ 1 回取りに行くので /resolve より少ない。 */
+export const DIAGNOSE_KEYLESS_LIMIT = 20;
+export const DIAGNOSE_KEYLESS_WINDOW_MS = 60_000;
+
 export function requestsPerMinute(limit: number, windowMs: number): number {
   return Math.round((limit * 60_000) / windowMs);
 }
@@ -21,6 +25,10 @@ export function keylessDecisionPerMinute(): number {
 
 export function keylessResolvePerMinute(): number {
   return requestsPerMinute(RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS);
+}
+
+export function keylessDiagnosePerMinute(): number {
+  return requestsPerMinute(DIAGNOSE_KEYLESS_LIMIT, DIAGNOSE_KEYLESS_WINDOW_MS);
 }
 
 /** 鍵なしが開いている間の回数。旗が閉じている状態を「いつも」とは書かない。 */

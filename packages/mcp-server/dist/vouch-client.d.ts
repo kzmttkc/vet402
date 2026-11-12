@@ -253,6 +253,10 @@ export declare class VouchApiError extends Error {
     constructor(code: string, reason?: string);
 }
 export declare function fetchAgentScore(agentId: string, wallet?: string): Promise<TrustScoreResult>;
+/** Read one unpaid 402. vet402 does not pay and does not sign. */
+export declare function fetchDiagnose(url: string, method?: "GET" | "POST"): Promise<{
+    verdict?: string;
+}>;
 export declare function fetchWalletScore(wallet: string): Promise<TrustScoreResult>;
 /** Buyer-side lookup: scores the payment *recipient* before an agent pays it. */
 export declare function fetchPayeeScore(payee: string): Promise<PayeeScoreResult>;
@@ -288,4 +292,4 @@ export type ResolveResult = {
     resource?: ResolveEndpointRef;
     endpoints?: ResolveEndpointRef[];
 };
-export declare function resolveQuery(q: string): Promise<ResolveResult>;
+export declare function resolveQuery(q: string, method?: "GET" | "POST"): Promise<ResolveResult>;

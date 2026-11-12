@@ -17,6 +17,20 @@ import { fetchDecision, resolveQuery, VouchApiError, } from "./vouch-client.js";
 const SHA256_RE = /^[0-9a-f]{64}$/;
 /** 呼び手の誤り。メッセージは我々が組み立てる（上流の文字列を含まない）ので tool-errors がそのまま通す。 */
 export const INVALID_TARGET_PREFIX = "invalid_target:";
+function diagnoseAt(url, method) {
+    if (!url) {
+        return {
+            tool: "diagnose_x402_url",
+            url: null,
+            note: "vet402 needs the 402 URL before it can read this resource.",
+        };
+    }
+    return {
+        tool: "diagnose_x402_url",
+        url: `https://vet402.com/api/v1/diagnose?url=${encodeURIComponent(url)}&method=${method}`,
+        note: null,
+    };
+}
 /** 入力を検査する。どちらか片方だけ。URL は https の絶対 URL に限る（resolve と同じ）。 */
 export function assertTarget(target) {
     const hasId = typeof target.resourceId === "string" && target.resourceId.length > 0;
@@ -47,7 +61,8 @@ export function assertTarget(target) {
     }
     return { url: target.url };
 }
-export function uncatalogued(lookup, candidates = []) {
+export function uncatalogued(lookup, candidates = [], method = "GET") {
+    const diagnoseMethod = method === "POST" ? "POST" : "GET";
     const what = lookup.url ? `The URL ${lookup.url}` : `The resource id ${lookup.resourceId}`;
     return {
         decision: "REFUSE",
@@ -56,7 +71,9 @@ export function uncatalogued(lookup, candidates = []) {
         not_in_catalog: true,
         summary: `${what} is not in vet402's catalog, so vet402 has no L0–L2 record to decide from. ` +
             "Not in the catalog is not an ALLOW. pay_if_trusted can still judge an uncatalogued seller " +
-            "from the 402's payTo and the payee score when you pass it resource and payee.",
+            "from the 402's payTo and the payee score when you pass it resource and payee. " +
+            "Call diagnose_x402_url, or open the URL in diagnose_at, to read the 402 before paying.",
+        diagnose_at: diagnoseAt(lookup.url, diagnoseMethod),
         lookup: {
             resourceId: lookup.resourceId,
             url: lookup.url,
@@ -73,18 +90,19 @@ export function uncatalogued(lookup, candidates = []) {
  * url なら /resolve → resource_id、id ならそのまま。/decision の 404 は「カタログに無い」に写す。
  * それ以外の失敗は throw のまま（呼び手の scoreToolFailure が REFUSE に写す）。
  */
-export async function resourceDecision(target, query) {
+export async function resourceDecision(target, query, method) {
+    const diagnoseMethod = method === "POST" ? "POST" : "GET";
     const checked = assertTarget(target);
     let resourceId;
     let resolvedFrom = null;
     let canonical = null;
     if ("url" in checked) {
-        const resolved = await resolveQuery(checked.url);
+        const resolved = await resolveQuery(checked.url, method);
         const hit = resolved.resource;
         if (!hit || !hit.resource_id) {
             return {
                 kind: "uncatalogued",
-                body: uncatalogued({ resourceId: null, url: checked.url, canonicalUrl: null }, resolved.endpoints ?? []),
+                body: uncatalogued({ resourceId: null, url: checked.url, canonicalUrl: null }, resolved.endpoints ?? [], diagnoseMethod),
             };
         }
         resourceId = hit.resource_id;
@@ -102,7 +120,7 @@ export async function resourceDecision(target, query) {
         if (error instanceof VouchApiError && error.message === "not_found") {
             return {
                 kind: "uncatalogued",
-                body: uncatalogued({ resourceId, url: resolvedFrom, canonicalUrl: canonical }),
+                body: uncatalogued({ resourceId, url: resolvedFrom, canonicalUrl: canonical }, [], diagnoseMethod),
             };
         }
         throw error;

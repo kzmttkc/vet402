@@ -1637,6 +1637,56 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/diagnose:
+    get:
+      operationId: diagnoseX402Url
+      tags: [Observatory]
+      summary: Read one unpaid 402 before anyone pays
+      description: |
+        Keyless read of one unpaid 402. No wallet. vet402 fetches the URL once
+        through its SSRF guard and returns ALLOW, WARN, or BLOCK, the cheapest
+        payable accept, and one fix line per check. method is GET or POST.
+        20 requests a minute per IP. The fetch stops at 10 seconds and 64 KB.
+        Private addresses are refused with unsafe_target. A completed read may
+        be cached for 60 seconds. A failed live read is not stored. A listed
+        URL also points at GET /api/v1/check. This route does not pay.
+      security: []
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string, maxLength: 2048 }
+          description: The https URL to read once.
+        - in: query
+          name: method
+          required: false
+          schema: { type: string, enum: [GET, POST] }
+          description: HTTP method for the unpaid read. Default GET.
+      responses:
+        "200":
+          description: Diagnosis. verdict is ALLOW, WARN, or BLOCK. x-robots-tag is noindex.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [verdict, recommended_accept, checks, checked, not_checked, as_of, catalog, http_status]
+                properties:
+                  verdict: { type: string, enum: [ALLOW, WARN, BLOCK] }
+                  recommended_accept: { type: object, nullable: true }
+                  checks: { type: array, items: { type: object } }
+                  checked: { type: array, items: { type: string } }
+                  not_checked: { type: array, items: { type: object } }
+                  as_of: { type: string, format: date-time }
+                  catalog: { type: object, nullable: true }
+                  http_status: { type: integer, nullable: true }
+        "400":
+          description: invalid_query, invalid_url, invalid_method, or unsafe_target.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { description: Rate limited }
+        "503": { description: Rate limit store unavailable }
+
   /api/v1/resolve:
     get:
       operationId: resolveQuery
@@ -6186,6 +6236,7 @@ components:
             - invalid_query
             - invalid_url
             - invalid_method
+            - unsafe_target
             - resolve_unavailable
             - invalid_resource_id
             - invalid_endpoint_id

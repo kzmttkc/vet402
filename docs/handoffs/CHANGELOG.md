@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Diagnose any x402 URL before paying
+
+- What: `GET /api/v1/diagnose?url=&method=` (no key, no wallet) reads one unpaid 402 through the SSRF guard and runs structural checks: x402 version and shape, header and body agreement, atomic amount, CAIP-2 network, the right USDC per network, burn or zero payTo, testnet only, Solana feePayer, scheme. Each check is pass, warn, fail or info with a one line fix. The answer carries ALLOW, WARN or BLOCK, the cheapest payable accept, checked and not_checked. MCP gains `diagnose_x402_url`, and `check_resource_decision` points to it when a resource is not in the catalog.
+- Why: an agent asking about a URL outside the catalog got REFUSE and nothing else.
+- Impact: no purchase and no signing. Per IP rate limit. export.csv is unchanged.
+
 ## 2026-11-12 L2 checks the seller's current 402 before the catalog schema
 
 - What: `resolveOutputDeclaration` in src/lib/observatory/l2-check.ts reads the seller's live 402 (outputSchema, then the output example) first and the CDP Bazaar catalog schema only when the 402 declares no output. A mismatch row carries `declarationSource` (live_402 or catalog). Methodology §7, the vocabulary and docs/claims.yaml say the same.

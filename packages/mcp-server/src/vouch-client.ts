@@ -322,6 +322,21 @@ export async function fetchAgentScore(agentId: string, wallet?: string): Promise
   return vouchFetch<TrustScoreResult>(`/agents/${agentId}/score${query}`);
 }
 
+/** Read one unpaid 402. vet402 does not pay and does not sign. */
+export async function fetchDiagnose(url: string, method: "GET" | "POST" = "GET"): Promise<{ verdict?: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("invalid_url");
+  }
+  if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "") {
+    throw new Error("invalid_url");
+  }
+  const query = new URLSearchParams({ url, method });
+  return vouchFetch(`/diagnose?${query.toString()}`);
+}
+
 export async function fetchWalletScore(wallet: string): Promise<TrustScoreResult> {
   assertWallet(wallet);
   return vouchFetch<TrustScoreResult>(`/wallets/${wallet}/score`);
@@ -392,7 +407,8 @@ export type ResolveResult = {
   endpoints?: ResolveEndpointRef[];
 };
 
-export async function resolveQuery(q: string): Promise<ResolveResult> {
+export async function resolveQuery(q: string, method?: "GET" | "POST"): Promise<ResolveResult> {
   if (typeof q !== "string" || q.length === 0 || q.length > 2048) throw new Error("invalid_request");
-  return vouchFetch<ResolveResult>(`/resolve?q=${encodeURIComponent(q)}`);
+  const methodQuery = method === "GET" || method === "POST" ? `&method=${method}` : "";
+  return vouchFetch<ResolveResult>(`/resolve?q=${encodeURIComponent(q)}${methodQuery}`);
 }

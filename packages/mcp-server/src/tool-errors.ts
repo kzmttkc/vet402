@@ -33,6 +33,11 @@ export const KNOWN_ERROR_CODES = new Set([
   // fetchDecision が通信の前に投げる呼び手の誤り（vouch-client.ts）。
   "invalid_resource_id",
   "payer_required",
+  // GET /api/v1/diagnose（鍵なしの 402 読み取り）。
+  "invalid_url",
+  "invalid_method",
+  "unsafe_target",
+  "temporarily_unavailable",
 ]);
 
 /**
@@ -45,6 +50,10 @@ export const KNOWN_ERROR_EXPLANATIONS: Readonly<Record<string, string>> = {
     "url must be an absolute https URL — vet402's /resolve did not accept the query (a domain, address, payee_id or tx hash also works)",
   invalid_resource_id: "resourceId must be 64 lowercase hex characters — or pass the URL that answers 402 as url",
   payer_required: "role=payee needs payer (chain:address, or a bare 0x / base58 address)",
+  invalid_url: "url must be an absolute https URL",
+  invalid_method: "method must be GET or POST",
+  unsafe_target: "vet402 refused this URL because it is not a public address",
+  temporarily_unavailable: "vet402 could not answer right now. Try again later",
 };
 
 /**

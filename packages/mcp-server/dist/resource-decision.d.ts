@@ -1,4 +1,6 @@
 import { type DecisionQuery, type DecisionResult, type ResolveEndpointRef } from "./vouch-client.js";
+/** 402 を読む HTTP method。診断 URL に載せる語は GET と POST だけ。 */
+export type DiagnoseHttpMethod = "GET" | "POST";
 /** 呼び手の誤り。メッセージは我々が組み立てる（上流の文字列を含まない）ので tool-errors がそのまま通す。 */
 export declare const INVALID_TARGET_PREFIX = "invalid_target:";
 export type ResourceTarget = {
@@ -24,6 +26,12 @@ export type UncataloguedResult = {
             method: string;
         }[];
     };
+    /** 払う前の 402 読み取り。REFUSE の意味は変えない。 */
+    diagnose_at: {
+        tool: "diagnose_x402_url";
+        url: string | null;
+        note: string | null;
+    };
 };
 export type ResourceDecisionOutcome = {
     kind: "decision";
@@ -44,12 +52,12 @@ export declare function uncatalogued(lookup: {
     resourceId: string | null;
     url: string | null;
     canonicalUrl: string | null;
-}, candidates?: ResolveEndpointRef[]): UncataloguedResult;
+}, candidates?: ResolveEndpointRef[], method?: DiagnoseHttpMethod): UncataloguedResult;
 /**
  * url なら /resolve → resource_id、id ならそのまま。/decision の 404 は「カタログに無い」に写す。
  * それ以外の失敗は throw のまま（呼び手の scoreToolFailure が REFUSE に写す）。
  */
-export declare function resourceDecision(target: ResourceTarget, query: DecisionQuery): Promise<ResourceDecisionOutcome>;
+export declare function resourceDecision(target: ResourceTarget, query: DecisionQuery, method?: DiagnoseHttpMethod): Promise<ResourceDecisionOutcome>;
 /**
  * 判定の `verified_terms` を summary に添える 1 文。読める条件が 1 つも無ければ null（何も足さない）。
  * 配列なら先頭 3 件まで。

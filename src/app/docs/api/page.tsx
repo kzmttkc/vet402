@@ -10,7 +10,7 @@ import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
-import { KEYLESS_READ_STOP, keylessDecisionPerMinute, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
+import { KEYLESS_READ_STOP, keylessDecisionPerMinute, keylessDiagnosePerMinute, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
 import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
@@ -229,9 +229,15 @@ const endpoints: Endpoint[] = [
     response: `{ "not_in_catalog": false, "recommendation": "ALLOW", "delivery": { "paid_attempts": 3, "delivered": 3, "settled_not_delivered": 0, "window_days": 30 }, "l1_purchases": [ … ], "as_of": "…" }`,
   },
   {
+    method: "GET",
+    path: "/api/v1/diagnose?url=https%3A%2F%2Fseller.example%2Fpaid",
+    note: `Keyless read of one unpaid 402. No wallet. vet402 fetches the URL once through its SSRF guard and returns ALLOW, WARN, or BLOCK, the cheapest payable accept, and one fix line per check. method is GET or POST. ${keylessDiagnosePerMinute()} requests a minute per IP. The fetch stops at 10 seconds and 64 KB. Private addresses are refused with unsafe_target. A completed read may be cached for 60 seconds, and a shared cache may keep serving it for five more minutes while it refreshes. A failed live read is not stored. A listed URL also points at GET /api/v1/check.`,
+    response: `{ "verdict": "ALLOW", "recommended_accept": { "scheme": "exact", "network": "eip155:8453", "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "amount": "1000", "payTo": "0x1111111111111111111111111111111111111111", "usd_atomic": "1000" }, "checks": [ { "id": "returns_402", "status": "pass", "fix": "vet402 received HTTP 402." } ], "checked": ["returns_402"], "not_checked": [ { "id": "solana_fee_payer", "reason": "vet402 found no Solana accept to check." } ], "as_of": "2026-11-12T00:00:00.000Z", "catalog": { "listed": false, "check_url": null }, "http_status": 402 }`,
+  },
+  {
     method: "POST",
     path: "/api/mcp",
-    note: "The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again) and find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count). 120/min per IP, plus 30/min per IP for find_x402_sellers and 30/min per IP for check_my_x402_endpoint (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB.",
+    note: "The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again) and find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count). 120/min per IP, plus 30/min per IP for find_x402_sellers and 30/min per IP for check_my_x402_endpoint (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB. The installable package @vet402/mcp-server also offers diagnose_x402_url. vet402 reads one unpaid 402 for a URL and does not pay and does not sign.",
     response: `{
   "jsonrpc": "2.0", "id": 1,
   "result": {

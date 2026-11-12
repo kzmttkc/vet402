@@ -15,7 +15,8 @@ There is nothing to clone or build — your MCP client launches it with `npx`.
 | `explain_trust_score` | Human-readable score breakdown |
 | `attest_x402_payment` | Write a settlement attestation after payment verification |
 | `pay_if_trusted` | Pay an x402 resource **only if** the decision is `ALLOW` — the signer is unreachable on any other outcome (2026-09-05) |
-| `check_resource_decision` | Pre-payment decision for one x402 resource — `ALLOW_PAY` / `REFUSE` with the L0–L2 facts that produced it (0.2.0). Takes `amountUsd` / `maxPerTxUsd` / `minL1Deliveries` / `requireVet402Allow` and returns the server-applied `caller_policy` (2026-09-07) |
+| `check_resource_decision` | Pre-payment decision for one x402 resource — `ALLOW_PAY` / `REFUSE` with the L0–L2 facts that produced it (0.2.0). Takes `amountUsd` / `maxPerTxUsd` / `minL1Deliveries` / `requireVet402Allow` and returns the server-applied `caller_policy` (2026-09-07). Pass `method` as GET or POST. `diagnose_at` uses that method when the URL is not in the catalog. The default is GET. |
+| `diagnose_x402_url` | Read one unpaid 402 for an https URL before anyone pays. No key and no wallet. Pass `method` as GET or POST (default GET). vet402 fetches once and returns ALLOW, WARN, or BLOCK with one fix line per check. This tool does not pay and does not sign. |
 
 The full description of each tool, including how to read a `check_payee_trust` result, is in the
 [package README](../packages/mcp-server/README.md#tools).
@@ -56,6 +57,9 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
    - `check_payee_trust`
    - `explain_trust_score`
    - `attest_x402_payment` (after payment verification)
+   - `check_resource_decision`
+   - `pay_if_trusted`
+   - `diagnose_x402_url` (read one unpaid 402, no payment and no signature)
 
 ## Verify before wiring it into a client
 
@@ -70,7 +74,7 @@ A `serverInfo` line on stdout means the server starts and speaks MCP.
 
 | Variable | Required | Default |
 |---|---|---|
-| `VOUCH_API_KEY` | No for `check_resource_decision` / `pay_if_trusted` (key-less `/decision`, 10/min per IP); yes for the score and attest tools | — |
+| `VOUCH_API_KEY` | No for `check_resource_decision`, `pay_if_trusted`, and `diagnose_x402_url` (key-less `/decision` at 10/min per IP, and the unpaid 402 read). Yes for the score and attest tools | — |
 | `VOUCH_API_URL` | No | `https://vet402.com/api/v1` |
 | `VOUCH_SOLANA_PAYER_SECRET_KEY` + `SOLANA_RPC_URL` | Only for `pay_if_trusted` with a base58 (Solana) `payee`; also `npm install @solana/web3.js` | — (such a call refuses with `payer_not_configured`; the Base payer is never used for a Solana payee) |
 | `GRAPH_API_KEY` | Only for `pay_if_trusted` with `policy.evidence.source` `"subgraph"` / `"both"` | — (such a call refuses with `graph_key_not_configured`; the key is never a tool input) |

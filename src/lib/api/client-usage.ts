@@ -62,7 +62,7 @@ export type ClientUsageRoute = "resolve" | "decision" | "rest:check" | McpUsageR
 export const DISTRIBUTED_CLIENTS = ["vet402-hermes", "vet402-sdk", "vet402-mcp"] as const;
 /**
  * 自社の道具が名乗る UA の先頭の名前（`/`・空白・`(`・`;` の前まで）。完全一致だけ。
- * vet402 リポ: scripts/ のカナリア 2 本と、アプリが外へ出すときの名前（L0・L1 の測定、カタログ、照合、/rwa の頁）。
+ * vet402 リポ: scripts/ のカナリア 2 本と、アプリが外へ出すときの名前（L0・L1 の測定、カタログ、照合、/rwa の頁、未掲載 URL の診断）。
  * Takeshi_Automation の scripts/: `vet402-<名前>/<版>` の 4 本。`kizuna-<名前>/<版>` は SELF_MONITOR_PREFIX で受ける。
  * この 2 つの口を鍵なしで毎日呼ぶのは今は `vet402-surface-consistency-canary` だけ。ほかは呼んだときに混ざらないための登録。
  * vet402 リポに `vet402-` の UA を足したら、ここにも足す（tests/client-usage.test.ts がリポを走査して落とす）。
@@ -80,6 +80,7 @@ export const SELF_MONITOR_NAMES: readonly string[] = [
   "vet402-weekly-facts",
   "vet402-gtm-weekly",
   "vet402-payer-balance",
+  "vet402-diagnose",
 ];
 /** Takeshi_Automation の監視が名乗る先頭（`kizuna-grant-figures/1` など）。社内の接頭辞で、配布物には使わない。 */
 const SELF_MONITOR_PREFIX = "kizuna-";

@@ -13,6 +13,7 @@ import { resourceDecision, verifiedTermsNote } from "./resource-decision.js";
 import {
   attestX402Payment,
   fetchAgentScore,
+  fetchDiagnose,
   fetchPayeeScore,
   fetchWalletScore,
 } from "./vouch-client.js";
@@ -284,10 +285,13 @@ server.tool(
     "is always there - The Graph is read only with your own key, through pay_if_trusted).",
     `The ceiling you name is capped by this server's own ${MAX_PER_TX_USD_ENV} (default $${DEFAULT_MAX_PER_TX_USD}), so this`,
     "answer matches what pay_if_trusted would actually do; tool input can lower that ceiling, never raise it.",
+    "When refuse_reasons is resource_uncatalogued, diagnose_at names diagnose_x402_url for that URL. REFUSE still means do not pay.",
+    "Pass method as GET or POST. diagnose_at uses that method. The default is GET.",
   ].join("\n"),
   {
     resourceId: RESOURCE_ID.optional(),
     url: z.string().max(2048).optional().describe("The URL that answers 402. Resolved to its resourceId through /api/v1/resolve. Pass this or resourceId, not both."),
+    method: z.enum(["GET", "POST"]).optional().describe("HTTP method of the 402. diagnose_at uses it. Default GET."),
     role: z.enum(["payer", "payee"]).optional().describe("payer (default): should my agent pay this resource? payee: should this seller serve this payer?"),
     payer: z.string().max(120).optional().describe("Required when role=payee: chain:address, or a bare 0x / base58 address"),
     callerDialect: z.enum(["v1", "v2"]).optional().describe("Your x402 client dialect; a mismatch with the seller's wall is a WARN"),
@@ -296,7 +300,7 @@ server.tool(
     minL1Deliveries: z.number().int().nonnegative().optional().describe("Floor on vet402's delivered L1 purchases for this resource"),
     requireVet402Allow: z.boolean().optional().describe("Default true (a WARN refuses with payee_recommendation_not_allow). false waives a WARN and needs minL1Deliveries >= 1"),
   },
-  async ({ resourceId, url, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
+  async ({ resourceId, url, method, role, payer, callerDialect, amountUsd, maxPerTxUsd, minL1Deliveries, requireVet402Allow }) => {
     try {
       // 2026-09-12 監査 H-1: 天井は運用者のもの。ここは署名器を握らない**助言**のツールだが、
       // 助言が「$500 でも ALLOW_PAY」と言えば呼び手はそれで払う。同じ天井を当てて、
@@ -311,7 +315,7 @@ server.tool(
       const asksPolicy = amountUsd !== undefined || maxPerTxUsd !== undefined;
       const ceiling = role === "payee" || !asksPolicy ? null : resolveMaxPerTxUsd(maxPerTxUsd, process.env[MAX_PER_TX_USD_ENV]);
       // 2026-09-29: url でも受ける。カタログに無いものは request_failed ではなく「無い」と言う。
-      const outcome = await resourceDecision({ resourceId, url }, { role, payer, callerDialect, amountUsd, maxPerTxUsd: ceiling ? ceiling.effective : maxPerTxUsd, minL1Deliveries, requireVet402Allow });
+      const outcome = await resourceDecision({ resourceId, url }, { role, payer, callerDialect, amountUsd, maxPerTxUsd: ceiling ? ceiling.effective : maxPerTxUsd, minL1Deliveries, requireVet402Allow }, method);
       if (outcome.kind === "uncatalogued") {
         return { content: [{ type: "text" as const, text: JSON.stringify(outcome.body, null, 2) }] };
       }
@@ -342,6 +346,31 @@ server.tool(
       return { content: [{ type: "text" as const, text: JSON.stringify({ ...decision, ...resolved, measurement: result }, null, 2) }] };
     } catch (error) {
       return scoreToolFailure(error);
+    }
+  },
+);
+
+server.tool(
+  "diagnose_x402_url",
+  [
+    "Read one unpaid 402 for a URL before anyone pays it. No key and no wallet.",
+    "vet402 fetches the URL once and returns verdict ALLOW, WARN, or BLOCK, the cheapest payable accept, and one fix line per check.",
+    "This tool does not pay and does not sign. A transport failure is an error, not a fourth verdict word.",
+    "Pass url (https) and an optional method of GET or POST.",
+  ].join("\n"),
+  {
+    url: z.string().max(2048).describe("The https URL that answers 402"),
+    method: z.enum(["GET", "POST"]).optional().describe("HTTP method for the unpaid read. Default GET"),
+  },
+  async ({ url, method }) => {
+    try {
+      const body = await fetchDiagnose(url, method ?? "GET");
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    } catch (error) {
+      return {
+        content: [{ type: "text" as const, text: sanitizeToolError(error) }],
+        isError: true,
+      };
     }
   },
 );

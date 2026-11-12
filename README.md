@@ -341,7 +341,7 @@ cd packages/mcp-server
 npm install && npm run build
 ```
 
-Tools: `check_agent_trust`, `check_wallet_trust`, `check_payee_trust`, `explain_trust_score`, `attest_x402_payment`, `check_resource_decision`, `pay_if_trusted`
+Tools: `check_agent_trust`, `check_wallet_trust`, `check_payee_trust`, `explain_trust_score`, `attest_x402_payment`, `check_resource_decision`, `pay_if_trusted`, `diagnose_x402_url`
 
 See [MCP setup](./docs/mcp-setup.md) for Cursor / Claude Desktop configuration.
 
