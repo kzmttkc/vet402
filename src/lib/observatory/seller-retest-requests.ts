@@ -1,12 +1,15 @@
 // ============================================================
 // 売り手から依頼された 1 回きりの L1 買い直しリスト（2026-10-30・Goldsky 他）。
 //
-// 目録に無い URL でも、依頼ごとに 1 回だけ Base で買う。完了・期限・402 の照合は
-// seller-retest.ts と l1-runner.ts が行う。ここは版管理された依頼の正典だけ。
+// 目録に無い URL でも、依頼ごとに 1 回だけ買う。Base の依頼は今までどおり Base。
+// Celo（eip155:42220）の依頼は、402 の accepts から network と payTo と額と Celo の USDC が
+// 一致する accept を選び、Celo レーンと同じ purchaseOne（selectAccept と signX402Payment）で払う。
+// それ以外の網は拒む。完了・期限・402 の照合は seller-retest.ts と l1-runner.ts が行う。
+// ここは版管理された依頼の正典だけ。
 // ============================================================
 import { sql, type SQL } from "drizzle-orm";
 import { EVM_LANE_ENDPOINT_SOURCE } from "./evm-lane-ingest";
-import { BASE_CAIP2, BASE_USDC } from "./x402-payer";
+import { BASE_CAIP2, BASE_USDC, CELO_CAIP2 } from "./x402-payer";
 
 /** x402_endpoints.source — 目録同期（cdp_bazaar / circle_discovery）の diff・reconcile 対象外。 */
 export const SELLER_RETEST_REQUEST_SOURCE = "seller_retest_request";
@@ -183,6 +186,55 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     payTo: "0x6fc99c8a5334e00f6fce854700959930a3c62dbc",
     expiresOn: "2026-12-10",
     amountUnits: "2000",
+  },
+  /** Prezenti M3 のための Celo の1回。売り手の依頼ではない。402 は 2026-11-12 14:3x JST に読んで照合（accepts は Celo・Arc・Base の3つ）。 */
+  {
+    id: "blockscout-2026-11-12-celo-addresses",
+    requestedOn: "2026-11-12",
+    sellerDomain: "api.blockscout.com",
+    url: "https://api.blockscout.com/42220/api/v2/addresses",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x242ba6d68ffeb4a098b591b32d370f973ff882b7",
+    expiresOn: "2026-12-12",
+    amountUnits: "2000",
+  },  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。USAT と USDC の2つを受ける。払うのは USDC だけ。402 は 2026-11-12 14:4x JST に読んで Celo USDC の accept を照合。 */
+  {
+    id: "agent-embassy-2026-11-12-celo-verify",
+    requestedOn: "2026-11-12",
+    sellerDomain: "agent-embassy-celo.fly.dev",
+    url: "https://agent-embassy-celo.fly.dev/v1/check/verify",
+    method: "POST",
+    body: '{"url":"https://example.com"}',
+    network: CELO_CAIP2,
+    payTo: "0xD004278bC57FE4B9F743ABf17d713ed4169A88E9",
+    expiresOn: "2026-12-12",
+    amountUnits: "1000",
+  },
+
+  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。402 は 2026-11-12 14:4x JST に読んで Celo USDC の accept を照合。 */
+  {
+    id: "open-rails-2026-11-12-celo-block",
+    requestedOn: "2026-11-12",
+    sellerDomain: "open-rails-data-agent.shablony-pro.workers.dev",
+    url: "https://open-rails-data-agent.shablony-pro.workers.dev/celo/block",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x5a8DbD4788584f9C4B59eB64087a1A18fc2f7952",
+    expiresOn: "2026-12-12",
+    amountUnits: "500",
+  },
+  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。402 は 2026-11-12 14:4x JST に読んで Celo USDC の accept を照合。 */
+  {
+    id: "paycrawl-2026-11-12-celo-article",
+    requestedOn: "2026-11-12",
+    sellerDomain: "paycrawl-gateway.raghu250407.workers.dev",
+    url: "https://paycrawl-gateway.raghu250407.workers.dev/agent/page/article-1",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x24c9DEAF91f462EE6705F710C4D0aadCbD64b4E7",
+    expiresOn: "2026-12-12",
+    amountUnits: "1000",
   },
 ];
 

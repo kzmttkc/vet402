@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 The seller retest lane pays one Celo request per seller
+
+- What: the one-off request lane accepts Celo (eip155:42220) requests. It picks the accept whose network, payTo, exact amount and asset (Celo USDC) all match the request, and pays it through the Celo lane's purchaseOne. Base requests behave as before. Other networks are refused. Four Celo requests are listed: api.blockscout.com, agent-embassy-celo.fly.dev, open-rails-data-agent, paycrawl-gateway. Each is at most 0.002 USDC and expires on 2026-12-12.
+- Why: Prezenti M3 counts independent Celo sellers. Two catalog teams could not be bought on Celo (one path template, one seller that dropped Celo), so these four are bought once each.
+- Impact: at most 0.0045 USDC in total on Celo. The per purchase cap, the daily budget, the payTo cap and the unproven gate all still apply.
 ## 2026-11-12 Diagnose no longer blocks a 402 whose body is only an error message
 
 - What: header_body compares the header and the body only when the body carries an x402 challenge. A body like {"error":"..."} beside a valid PAYMENT-REQUIRED header now passes.

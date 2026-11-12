@@ -17,7 +17,7 @@ import {
   sellerRetestRequestCatalog,
   type SellerRetestRequest,
 } from "./seller-retest-requests";
-import { BASE_USDC, MAX_PER_PURCHASE_UNITS, type ParsedChallenge } from "./x402-payer";
+import { BASE_CAIP2, BASE_USDC, CELO_CAIP2, CELO_USDC, MAX_PER_PURCHASE_UNITS, type ParsedChallenge } from "./x402-payer";
 
 export { SELLER_RETEST_REQUEST_SOURCE, SELLER_RETEST_MAX_PER_RUN };
 
@@ -199,7 +199,7 @@ export function sellerRequestUnpaidOf(req: SellerRetestRequest, payerAddress: st
 }
 
 export type SellerRequest402Verdict =
-  | { ok: true; amountUnits: bigint; payTo: string }
+  | { ok: true; amountUnits: bigint; payTo: string; asset?: string }
   | { ok: false; reason: string; detail?: Record<string, unknown> };
 
 /** JSON の値の深い等しさ。オブジェクトはキーの順番を問わない。配列は順番を区別する。数値と文字列は区別する。 */
@@ -233,12 +233,88 @@ export function sellerRequestBodiesEqual(expected: string, declared: string): bo
   return jsonValuesEqual(e, d);
 }
 
+/**
+ * Celo の依頼で払ってよい accept か。network は eip155:42220、資産は Celo の USDC、
+ * payTo は依頼と一致（0x は大小を無視）、額は依頼の額そのもの（上限未満では買わない）。
+ * 1 件の上限（MAX_PER_PURCHASE_UNITS）を超える額はここでも外す。
+ */
+function celoSellerAcceptMatches(
+  accept: { network: string; amount?: unknown; payTo?: unknown; asset?: unknown },
+  gate: SellerRequestGate,
+): boolean {
+  if (gate.network !== CELO_CAIP2 || accept.network !== CELO_CAIP2) return false;
+  if (typeof accept.asset !== "string" || accept.asset.toLowerCase() !== CELO_USDC.toLowerCase()) return false;
+  if (typeof accept.payTo !== "string" || normalizedEvmPayTo(accept.payTo) !== normalizedEvmPayTo(gate.expectedPayTo)) return false;
+  if (typeof accept.amount !== "string" || accept.amount !== String(gate.maxAmountUnits)) return false;
+  let amount: bigint;
+  try {
+    amount = BigInt(accept.amount);
+  } catch {
+    return false;
+  }
+  return amount > 0n && amount === gate.maxAmountUnits && amount <= MAX_PER_PURCHASE_UNITS;
+}
+
 /** 署名する accept を依頼の network だけに絞る（Arbitrum 等のレーンが ON でも依頼の network で払う）。 */
 export function sellerRequestAccepts<T extends { network: string }>(accepts: readonly T[], gate: SellerRequestGate): T[] {
+  // Celo は network だけでなく payTo と額と Celo USDC が一致したものだけを、Celo レーンと同じ selectAccept へ渡す。
+  if (gate.network === CELO_CAIP2) return accepts.filter((a) => celoSellerAcceptMatches(a, gate));
+  // Base と Celo 以外は署名側へ渡さない（レーンが ON でも依頼レーンでは買わない）。
+  if (gate.network !== BASE_CAIP2) return [];
   return accepts.filter((a) => a.network === gate.network);
 }
 
+function validateCeloSellerRequest402(challenge: ParsedChallenge, gate: SellerRequestGate): SellerRequest402Verdict {
+  const onNetwork = challenge.accepts.filter((a) => a.network === CELO_CAIP2);
+  if (onNetwork.length === 0) {
+    return { ok: false, reason: "seller_request_network_missing", detail: { network: gate.network } };
+  }
+  for (const accept of onNetwork) {
+    if (!celoSellerAcceptMatches(accept, gate)) continue;
+    return { ok: true, amountUnits: BigInt(accept.amount), payTo: accept.payTo, asset: accept.asset };
+  }
+  const expected = normalizedEvmPayTo(gate.expectedPayTo);
+  for (const accept of onNetwork) {
+    if (accept.asset.toLowerCase() !== CELO_USDC.toLowerCase()) continue;
+    let amount: bigint;
+    try {
+      amount = BigInt(accept.amount);
+    } catch {
+      continue;
+    }
+    if (amount === gate.maxAmountUnits && amount > 0n && amount <= MAX_PER_PURCHASE_UNITS && normalizedEvmPayTo(accept.payTo) !== expected) {
+      return {
+        ok: false,
+        reason: "seller_request_payto_mismatch",
+        detail: { expected: gate.expectedPayTo, wall: accept.payTo },
+      };
+    }
+  }
+  for (const accept of onNetwork) {
+    let amount: bigint;
+    try {
+      amount = BigInt(accept.amount);
+    } catch {
+      continue;
+    }
+    if (amount > gate.maxAmountUnits || amount > MAX_PER_PURCHASE_UNITS) {
+      return {
+        ok: false,
+        reason: "seller_request_over_cap",
+        detail: { amount: accept.amount, maxPerPurchase: String(MAX_PER_PURCHASE_UNITS), requestMax: String(gate.maxAmountUnits) },
+      };
+    }
+  }
+  return { ok: false, reason: "seller_request_no_eligible_accept" };
+}
+
 export function validateSellerRequest402(challenge: ParsedChallenge, gate: SellerRequestGate): SellerRequest402Verdict {
+  // Celo の依頼だけ、network・payTo・額・Celo USDC が一致する accept を選ぶ。払う関数は purchaseOne の selectAccept / signX402Payment（Celo レーンと同じ）。
+  if (gate.network === CELO_CAIP2) return validateCeloSellerRequest402(challenge, gate);
+  // Base 以外の網（Arc、Arbitrum、BNB、Avalanche、Solana など）は依頼レーンでは買わない。
+  if (gate.network !== BASE_CAIP2) {
+    return { ok: false, reason: "seller_request_network_unsupported", detail: { network: gate.network } };
+  }
   const expected = normalizedEvmPayTo(gate.expectedPayTo);
   const accepts = challenge.accepts.filter((a) => a.network === gate.network);
   if (accepts.length === 0) {
@@ -280,6 +356,8 @@ export async function ensureSellerRetestEndpoint(
   const resourceKey = normalizeResourceKey(resourceUrl);
   const method = req.method;
   const amount = req.amountUnits ?? "5000";
+  // Base の依頼は BASE_USDC のまま。Celo の依頼だけ Celo の USDC を書く。
+  const asset = req.network === CELO_CAIP2 ? CELO_USDC : BASE_USDC;
   const ids = canonicalUrl(resourceUrl);
   const rid = resourceId(method, resourceUrl);
   const ehash = endpointHash(resourceUrl);
@@ -289,7 +367,7 @@ export async function ensureSellerRetestEndpoint(
       scheme: "exact",
       network: req.network,
       amount,
-      asset: BASE_USDC,
+      asset,
       payTo: req.payTo,
     },
   ];
@@ -303,7 +381,7 @@ export async function ensureSellerRetestEndpoint(
       network: req.network,
       payTo: req.payTo,
       priceAmount: amount,
-      priceAsset: BASE_USDC,
+      priceAsset: asset,
       rawAccepts: accepts,
       status: "active",
       delistedAt: null,
@@ -320,7 +398,7 @@ export async function ensureSellerRetestEndpoint(
         network: req.network,
         payTo: req.payTo,
         priceAmount: amount,
-        priceAsset: BASE_USDC,
+        priceAsset: asset,
         rawAccepts: accepts,
         status: "active",
         delistedAt: null,

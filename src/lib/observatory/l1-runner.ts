@@ -2892,6 +2892,9 @@ export async function runL1Batch(
 
   // 3.7 売り手依頼の 1 回きり買い直し（2026-10-30）。Base の主候補ループの前に、依頼リストだけを
   // 最大 SELLER_RETEST_MAX_PER_RUN 件（census / retest の枠とは別）。playground の 1 件指定では走らない。
+  // Celo（eip155:42220）の依頼もここ（2026-11-12）。accept は seller-retest が network・payTo・額・Celo USDC で選び、
+  // 払う経路は Celo レーンと同じ purchaseOne（selectAccept と signX402Payment）。Base 以外かつ Celo 以外は拒む。
+  // 1 回の上限、日次の予算、payTo の上限、unproven の関門は Base の依頼と同じものを掛けたままにする。
   if (!onlyEndpointId && sellerRetestLaneEnabled()) {
     const completedSeller = await completedSellerRequestIds(db);
     const attemptedToday = await sellerRequestIdsAttemptedToday(db);
