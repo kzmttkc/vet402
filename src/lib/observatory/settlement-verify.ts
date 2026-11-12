@@ -103,6 +103,18 @@ function clientFor(chain: EvmPayChain): EvmVerifyClient | null {
   return getPublicClient();
 }
 
+/**
+ * 支払い証明が使う clientFor。Base の getPublicClient は RPC 未設定で throw する。
+ * ここでは null に倒す。公開 RPC へは倒さない。
+ */
+export function evmVerifyClientFor(chain: EvmPayChain): EvmVerifyClient | null {
+  try {
+    return clientFor(chain);
+  } catch {
+    return null;
+  }
+}
+
 /** clientFor が null を返したチェーンの、未設定の env の名前（照合の detail に残す）。 */
 function rpcEnvOf(chain: EvmPayChain): string {
   if (chain.chainId === 42220) return "CELO_RPC_URL";

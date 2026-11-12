@@ -49,6 +49,12 @@ export const findSellersInput = z.object({
   limit: z.number().int().min(1).max(10).optional().describe(INPUT_TEXT.limit),
 });
 
+export const checkPaymentProofInput = z.object({
+  payment_response: z.string().max(8_192).optional().describe(INPUT_TEXT.payment_response),
+  network: z.string().max(128).optional().describe(INPUT_TEXT.payment_network),
+  transaction: z.string().max(128).optional().describe(INPUT_TEXT.payment_transaction),
+});
+
 const iso = z.string();
 
 export const l1PurchaseSchema = z
@@ -226,7 +232,24 @@ export const findSellersOutput = z
   })
   .strict();
 
+export const checkPaymentProofOutput = z
+  .object({
+    found: z.boolean(),
+    network: z.string(),
+    tx: z.string(),
+    block: z.string().nullable(),
+    from: z.string().nullable(),
+    to: z.string().nullable(),
+    asset: z.string().nullable(),
+    amount: z.string().nullable(),
+    status: z.enum(["confirmed", "failed", "not_found", "unsupported_network"]),
+    explorer: z.string().nullable(),
+    as_of: iso,
+  })
+  .strict();
+
 export type CheckSellerOutput = z.infer<typeof checkSellerOutput>;
 export type CheckEndpointOutput = z.infer<typeof checkEndpointOutput>;
 export type FindSellersOutput = z.infer<typeof findSellersOutput>;
+export type CheckPaymentProofOutput = z.infer<typeof checkPaymentProofOutput>;
 export type L1PurchaseOut = z.infer<typeof l1PurchaseSchema>;

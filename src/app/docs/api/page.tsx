@@ -10,7 +10,7 @@ import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { TableScroll } from "@/components/site/TableScroll";
 import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
-import { KEYLESS_READ_STOP, keylessDecisionPerMinute, keylessDiagnosePerMinute, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
+import { KEYLESS_READ_STOP, PAYMENT_PROOF_RPC_TIMEOUT_MS, keylessDecisionPerMinute, keylessDiagnosePerMinute, keylessPaymentProofPerMinute, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
 import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
@@ -243,8 +243,15 @@ const endpoints: Endpoint[] = [
   },
   {
     method: "POST",
+    path: "/api/v1/payment-proof",
+    note: `Keyless read of one payment receipt. No wallet. Pass paymentResponse (the seller PAYMENT-RESPONSE header, base64 JSON) or network plus transaction. vet402 reads the transaction on Base, Celo, Arbitrum One, Avalanche C-Chain, BNB Chain, Solana, Arc, Tempo, XRPL and Stellar, the chains it reads again after a purchase, and returns found, network, tx, block, from, to, asset, amount in atomic units, status (confirmed, failed, not_found, unsupported_network), explorer and as_of. A chain outside that set comes back as unsupported_network. ${keylessPaymentProofPerMinute()} requests a minute per IP. The chain read stops at ${PAYMENT_PROOF_RPC_TIMEOUT_MS / 1000} seconds. This route does not pay and does not sign.`,
+    request: `{ "paymentResponse": "<base64>" }`,
+    response: `{ "found": true, "network": "eip155:8453", "tx": "0x…", "block": "123", "from": "0x…", "to": "0x…", "asset": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", "amount": "10000", "status": "confirmed", "explorer": "https://basescan.org/tx/0x…", "as_of": "2026-11-12T00:00:00.000Z" }`,
+  },
+  {
+    method: "POST",
     path: "/api/mcp",
-    note: "The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again) and find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count). 120/min per IP, plus 30/min per IP for find_x402_sellers and 30/min per IP for check_my_x402_endpoint (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB. The installable package @vet402/mcp-server also offers diagnose_x402_url. vet402 reads one unpaid 402 for a URL and does not pay and does not sign.",
+    note: `The hosted MCP server, also at https://vet402.com/mcp. Streamable HTTP, stateless, free, no key. It reads records and makes no payment. It serves protocol revisions 2025-06-18 (with initialize) and 2026-07-28 (server/discover). Tools: check_x402_seller (what happened when vet402 paid an x402 URL, with the transaction of each attempt and verified_terms), check_my_x402_endpoint (for sellers: the catalogs a host is listed in, the latest result of each listing, failure modes with links to /sellers/fix-first and when vet402 can buy again), find_x402_sellers (listings that vet402 paid and received content from in the last 30 days, ordered by that count) and check_payment_proof (reads a PAYMENT-RESPONSE header or a network and a transaction on the chains vet402 reads again after a purchase, at ${keylessPaymentProofPerMinute()} requests a minute per IP shared with POST /api/v1/payment-proof). 120/min per IP, plus 30/min per IP for find_x402_sellers and 30/min per IP for check_my_x402_endpoint (429 with JSON-RPC code -32029). GET and DELETE are 405. A request with an Origin header from another site is 403. The body is capped at 64 KB. The installable package @vet402/mcp-server also offers diagnose_x402_url. vet402 reads one unpaid 402 for a URL and does not pay and does not sign.`,
     response: `{
   "jsonrpc": "2.0", "id": 1,
   "result": {

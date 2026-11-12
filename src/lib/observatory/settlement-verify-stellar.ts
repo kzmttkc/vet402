@@ -549,6 +549,98 @@ export async function verifyStellarSettlement(
   });
 }
 
+export type StellarMovementRead =
+  | {
+      state: "confirmed";
+      block: string;
+      from: string | null;
+      to: string | null;
+      asset: string | null;
+      amount: string | null;
+    }
+  | { state: "failed"; block: string | null }
+  | { state: "not_found" }
+  | { state: "unavailable" };
+
+/**
+ * 期待額を持たない読み。verifyStellarSettlement と同じ Horizon の読み方で、
+ * 動いた資産を stroops（原子単位）で返す。購入照合の成否は変えない。
+ */
+export async function readStellarSettlementMovement(
+  input: { txHash: string; payer: string | null },
+  deps?: { horizon?: StellarHorizonReader },
+): Promise<StellarMovementRead> {
+  const hash = input.txHash.trim().toLowerCase();
+  let horizon: StellarHorizonReader;
+  try {
+    horizon = deps?.horizon ?? createStellarHorizonReader();
+  } catch {
+    return { state: "unavailable" };
+  }
+
+  let root: unknown;
+  try {
+    root = await horizon.root();
+  } catch {
+    return { state: "unavailable" };
+  }
+  const passphrase = asString(asRec(root)?.network_passphrase);
+  if (!passphrase) return { state: "unavailable" };
+  if (passphrase !== Networks.PUBLIC) return { state: "unavailable" };
+
+  let txRaw: unknown | null;
+  try {
+    txRaw = await horizon.transaction(hash);
+  } catch {
+    return { state: "unavailable" };
+  }
+  if (txRaw === null) return { state: "not_found" };
+  const tx = readTx(txRaw);
+  if (!tx || !tx.hash) return { state: "unavailable" };
+  if (tx.hash.toLowerCase() !== hash) return { state: "unavailable" };
+  if (!tx.successful) return { state: "failed", block: tx.ledger !== null && tx.ledger > 0 ? String(tx.ledger) : null };
+  if (tx.ledger === null || tx.ledger <= 0 || tx.operationCount === null || tx.operationCount < 0) {
+    return { state: "unavailable" };
+  }
+
+  let opsRaw: unknown;
+  let effectsRaw: unknown;
+  try {
+    [opsRaw, effectsRaw] = await Promise.all([horizon.operations(hash), horizon.effects(hash)]);
+  } catch {
+    return { state: "unavailable" };
+  }
+  const ops = readPage(opsRaw);
+  const effects = readPage(effectsRaw);
+  if (!ops || !effects) return { state: "unavailable" };
+  if (ops.full || effects.full) return { state: "unavailable" };
+  if (ops.records.length !== tx.operationCount) return { state: "unavailable" };
+
+  const collected = collectStellarMoves(ops.records, effects.records);
+  if ("error" in collected) return { state: "unavailable" };
+  const move = pickStellarMove(collected.moves, input.payer);
+  return {
+    state: "confirmed",
+    block: String(tx.ledger),
+    from: move?.from ?? null,
+    to: move && move.to ? move.to : null,
+    asset: move?.asset ?? null,
+    amount: move ? move.stroops.toString() : null,
+  };
+}
+
+function pickStellarMove(moves: Move[], payer: string | null): Move | null {
+  const positive = moves.filter((m) => m.stroops > 0n && m.from);
+  const fromPayer = payer ? positive.filter((m) => m.from === payer) : positive;
+  const usdc = fromPayer.filter((m) => m.kind === "usdc");
+  const pool = usdc.length > 0 ? usdc : fromPayer;
+  let best: Move | null = null;
+  for (const move of pool) {
+    if (!best || move.stroops > best.stroops) best = move;
+  }
+  return best;
+}
+
 function isUsdcTrustline(raw: unknown): { balance: string; authorized: boolean } | null {
   const line = asRec(raw);
   if (!line) return null;

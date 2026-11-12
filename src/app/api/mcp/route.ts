@@ -11,15 +11,18 @@
 //   - GET と DELETE は 405
 //   - 本文は 64KB まで（SDK の既定は 4MB で、mcp-handler からは変えられない）。JSON-RPC の batch 配列は受けない
 //   - 枠: bucket mcp（MCP_RATE_PER_MIN・既定 120/分/IP）と、② は bucket mcp_find（MCP_FIND_RATE_PER_MIN・既定 30）、
-//     ③ は bucket mcp_seller（MCP_SELLER_RATE_PER_MIN・既定 30）。
+//     ③ は bucket mcp_seller（MCP_SELLER_RATE_PER_MIN・既定 30）、
+//     check_payment_proof は POST /api/v1/payment-proof と同じ bucket payment-proof（20/分/IP）。
 //     超えたら HTTP 429 と JSON-RPC の -32029
 //   - DB を読めなかったら 503 temporarily_unavailable・Retry-After 30
 //   - 要求ごとに server と transport を作る（共有しない）。応答は全部読み切ってから返す（SSE を開けっぱなしにしない）
-// 自分の HTTP API を経由しない（ライブラリの関数を直接呼ぶ）。route から外への通信は 0（読むのは DB だけ）。
+// 自分の HTTP API を経由しない（ライブラリの関数を直接呼ぶ）。
+// check_payment_proof だけは、購入と同じチェーンの読み手で RPC を読む。それ以外の tool は DB だけ。
 // ログは logServerErrorSafe だけ。入力の URL・IP・UA の生の値は出さない。
 // ============================================================
 import { NextResponse, type NextRequest } from "next/server";
 import { createMcpHandler } from "mcp-handler";
+import { PAYMENT_PROOF_KEYLESS_LIMIT } from "@/lib/api/keyless-limits";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { mcpClientUsageLabel, isOwnPageRequest, recordMcpUsage, type McpUsageRoute } from "@/lib/api/client-usage";
 import { OWN_ORIGINS } from "@/lib/decision/lookup-caller";
@@ -171,11 +174,13 @@ export async function POST(request: NextRequest): Promise<Response> {
   // 重い 2 本は、全体の枠に加えて別の低い枠を持つ（② は LIKE の全件走査、③ はホストごとの出品の走査）。
   const tool = rpc?.method === "tools/call" ? rpc.params?.name : undefined;
   const extra =
-    FIND_TOOL_ENABLED && tool === TOOL_NAMES.findSellers
-      ? { bucket: "mcp_find", limit: perMin(process.env.MCP_FIND_RATE_PER_MIN, DEFAULT_FIND_RATE_PER_MIN) }
-      : tool === TOOL_NAMES.checkEndpoint
-        ? { bucket: "mcp_seller", limit: perMin(process.env.MCP_SELLER_RATE_PER_MIN, DEFAULT_SELLER_RATE_PER_MIN) }
-        : null;
+    tool === TOOL_NAMES.checkPayment
+      ? { bucket: "payment-proof", limit: PAYMENT_PROOF_KEYLESS_LIMIT }
+      : FIND_TOOL_ENABLED && tool === TOOL_NAMES.findSellers
+        ? { bucket: "mcp_find", limit: perMin(process.env.MCP_FIND_RATE_PER_MIN, DEFAULT_FIND_RATE_PER_MIN) }
+        : tool === TOOL_NAMES.checkEndpoint
+          ? { bucket: "mcp_seller", limit: perMin(process.env.MCP_SELLER_RATE_PER_MIN, DEFAULT_SELLER_RATE_PER_MIN) }
+          : null;
   if (extra) {
     const more = await publicRateLimit(request, extra.bucket, extra.limit, 60_000);
     if (!more.ok) return rateLimitedOrUnavailable(more.response, id);

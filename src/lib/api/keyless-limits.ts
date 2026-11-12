@@ -15,6 +15,13 @@ export const RESOLVE_KEYLESS_WINDOW_MS = 60_000;
 export const DIAGNOSE_KEYLESS_LIMIT = 20;
 export const DIAGNOSE_KEYLESS_WINDOW_MS = 60_000;
 
+/** POST /api/v1/payment-proof と MCP check_payment_proof が同じ桶で使う回数。窓は 60 秒。 */
+export const PAYMENT_PROOF_KEYLESS_LIMIT = 20;
+export const PAYMENT_PROOF_KEYLESS_WINDOW_MS = 60_000;
+
+/** チェーン読みの時間切れ。これを超えたら 503。公開 RPC へは倒さない。 */
+export const PAYMENT_PROOF_RPC_TIMEOUT_MS = 8_000;
+
 export function requestsPerMinute(limit: number, windowMs: number): number {
   return Math.round((limit * 60_000) / windowMs);
 }
@@ -29,6 +36,10 @@ export function keylessResolvePerMinute(): number {
 
 export function keylessDiagnosePerMinute(): number {
   return requestsPerMinute(DIAGNOSE_KEYLESS_LIMIT, DIAGNOSE_KEYLESS_WINDOW_MS);
+}
+
+export function keylessPaymentProofPerMinute(): number {
+  return requestsPerMinute(PAYMENT_PROOF_KEYLESS_LIMIT, PAYMENT_PROOF_KEYLESS_WINDOW_MS);
 }
 
 /** 鍵なしが開いている間の回数。旗が閉じている状態を「いつも」とは書かない。 */

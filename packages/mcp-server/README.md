@@ -33,10 +33,12 @@ The hosted endpoint has its own read-only tools. `check_x402_seller` and
 | `check_x402_seller` | What vet402 saw when it paid an x402 URL (paid attempts, deliveries, the five latest purchases with their transactions), `recommendation`, `reason_codes` and `verified_terms` (the payTo, amount and network of the last delivered purchase; the amount is in 6-decimal ledger units, so multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402) |
 | `check_my_x402_endpoint` | For sellers: the catalogs a host is listed in, what happened when vet402 paid its listings, the failure modes with links to the fix-first page, and when vet402 can buy each listing again |
 | `find_x402_sellers` | Listings whose URL or description matches a query and that vet402 paid and received content from in the last 30 days, ordered by that count |
+| `check_payment_proof` | Reads a PAYMENT-RESPONSE header or a network and a transaction on the chains vet402 reads again after a purchase, and returns found, from, to, asset and amount in atomic units |
 
 The hosted endpoint does not pay and holds no signer. `pay_if_trusted` stays
 in this stdio package only. Limits: 120 requests per minute per IP, plus 30 per
-minute for `find_x402_sellers` and 30 per minute for `check_my_x402_endpoint`. The OpenAPI spec documents it as `/api/mcp`.
+minute for `find_x402_sellers` and 30 per minute for `check_my_x402_endpoint`.
+`check_payment_proof` shares 20 requests a minute per IP with `POST /api/v1/payment-proof`. The OpenAPI spec documents the hosted server as `/api/mcp`.
 
 ## Tools
 

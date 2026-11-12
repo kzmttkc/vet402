@@ -63,7 +63,7 @@ test("#1 2025-06-18 で initialize → tools/list: ① ③ ②、各 tool に ti
   assert.equal(l.res.status, 200);
   const tools = (l.json.result as { tools: ToolDef[] }).tools;
   const { FIND_TOOL_ENABLED } = await import("@/lib/mcp/tools");
-  const expected = ["check_x402_seller", "check_my_x402_endpoint", ...(FIND_TOOL_ENABLED ? ["find_x402_sellers"] : [])];
+  const expected = ["check_x402_seller", "check_my_x402_endpoint", "check_payment_proof", ...(FIND_TOOL_ENABLED ? ["find_x402_sellers"] : [])];
   assert.deepEqual(tools.map((t) => t.name).sort(), expected.sort());
   for (const t of tools) {
     assert.ok(t.name.length <= 64, t.name);
@@ -71,14 +71,22 @@ test("#1 2025-06-18 で initialize → tools/list: ① ③ ②、各 tool に ti
     assert.ok(t.description && t.description.length > 0, `${t.name} description`);
     assert.deepEqual(
       { ...t.annotations },
-      { title: t.title, readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      {
+        title: t.title,
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: t.name === "check_payment_proof",
+      },
       `${t.name} annotations`,
     );
     assert.equal(t.outputSchema?.type, "object", `${t.name} outputSchema`);
     assert.equal(t.outputSchema?.additionalProperties, false, `${t.name} outputSchema は strict`);
     // 11/5 まで: 使う人の上限・承認・購入の記録・取り戻し・取り置きの入力を作らない（amount_usd を含む）
+    // check_payment_proof の network はチェーンの名前で、使う人の支払い上限ではない。
     const props = Object.keys((t.inputSchema?.properties as Record<string, unknown>) ?? {});
     for (const banned of ["amount_usd", "network", "max_per_tx_usd", "budget", "approve", "refund", "hold"]) {
+      if (t.name === "check_payment_proof" && banned === "network") continue;
       assert.ok(!props.includes(banned), `${t.name} が入力 ${banned} を受ける`);
     }
   }

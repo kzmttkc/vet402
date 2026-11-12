@@ -21,9 +21,12 @@ import { resolveSellerPage, type SellerPageData, type ShownRow } from "@/lib/sel
 import { parseSellerHostParam } from "@/lib/sellers/host";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { FoundListing, HostExtras } from "./reads";
+import { runCheckPaymentProof } from "@/lib/payment-proof/handle";
 import {
   checkEndpointInput,
   checkEndpointOutput,
+  checkPaymentProofInput,
+  checkPaymentProofOutput,
   checkSellerInput,
   checkSellerOutput,
   findSellersInput,
@@ -47,8 +50,11 @@ import {
 export const TOOL_NAMES = {
   checkSeller: "check_x402_seller",
   checkEndpoint: "check_my_x402_endpoint",
+  checkPayment: "check_payment_proof",
   findSellers: "find_x402_sellers",
 } as const;
+
+export { runCheckPaymentProof };
 
 /**
  * ② を v1 に載せるか。要件書 §2.2: 本番と同じ件数規模の fixture で p95 1.5 秒を満たしたときだけ。
@@ -443,6 +449,9 @@ export async function findSellers(deps: McpDeps, input: { query: string; limit?:
 // ------------------------------------------------------------
 
 const ANNOTATIONS = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+const CHAIN_READ_ANNOTATIONS = { ...ANNOTATIONS, openWorldHint: true } as const;
+
+const PAYMENT_INPUT_CODES = new Set(["invalid_payment_response", "invalid_transaction", "invalid_body"]);
 
 type ToolResult = {
   content: { type: "text"; text: string }[];
@@ -494,6 +503,28 @@ export function registerVet402Tools(server: McpServer, deps: McpDeps, state: Mcp
       guarded(state, TOOL_NAMES.checkEndpoint, async () => {
         const out = await checkEndpoint(deps, args);
         return out === "invalid_host" ? fail("invalid_host") : ok(out);
+      }),
+  );
+  server.registerTool(
+    TOOL_NAMES.checkPayment,
+    {
+      title: TOOL_TEXT.check_payment_proof.title,
+      description: TOOL_TEXT.check_payment_proof.description,
+      inputSchema: checkPaymentProofInput,
+      outputSchema: checkPaymentProofOutput,
+      annotations: { title: TOOL_TEXT.check_payment_proof.title, ...CHAIN_READ_ANNOTATIONS },
+    },
+    async (args) =>
+      guarded(state, TOOL_NAMES.checkPayment, async () => {
+        try {
+          const out = await runCheckPaymentProof(args);
+          return ok({ ...out });
+        } catch (error) {
+          if (error instanceof Error && PAYMENT_INPUT_CODES.has(error.message)) {
+            return fail(error.message as "invalid_payment_response" | "invalid_transaction" | "invalid_body");
+          }
+          throw error;
+        }
       }),
   );
   if (!FIND_TOOL_ENABLED) return;

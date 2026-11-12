@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Read a PAYMENT-RESPONSE on its chain without paying
+
+- What: `POST /api/v1/payment-proof` (no key) takes a seller's PAYMENT-RESPONSE header, or a network and a transaction, and reads the transaction on the chains vet402 reads again after a purchase. It returns found, from, to, asset, amount in atomic units, status and an explorer link. The MCP server gains `check_payment_proof`.
+- Why: after paying, a buyer could not check on its own whether the seller's receipt points at a real transfer.
+- Impact: read only. No purchase and no signing. Per IP rate limit. export.csv is unchanged.
+
 ## 2026-11-12 Verdicts can carry a signed EIP-191 receipt
 
 - What: GET /api/v1/check and GET /api/v1/resources/{id}/decision add a receipt (input sha256, verdict, as_of, signer, EIP-191 signature) when a receipt signing key is configured. POST /api/v1/receipts/verify (no key) rebuilds the message and checks it. docs/verdict-receipt.md describes the canonical input.

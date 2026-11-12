@@ -1734,6 +1734,70 @@ paths:
           description: invalid_json or invalid_input.
         "429": { description: Rate limited }
 
+  /api/v1/payment-proof:
+    post:
+      operationId: readPaymentProof
+      tags: [Observatory]
+      summary: Read one payment receipt on its chain
+      description: |
+        Keyless read of one payment receipt. No wallet. The body is
+        paymentResponse (the seller PAYMENT-RESPONSE header, base64 JSON)
+        or network plus transaction. vet402 reads the transaction on Base,
+        Celo, Arbitrum One, Avalanche C-Chain, BNB Chain, Solana, Arc,
+        Tempo, XRPL and Stellar, the chains it reads again after a purchase.
+        The answer carries found, network, tx, block, from, to, asset,
+        amount in atomic units, status, explorer and as_of. status is
+        confirmed, failed, not_found or unsupported_network. A chain outside
+        that set comes back as unsupported_network. 20 requests a minute
+        per IP. The chain read stops at 8 seconds. This route does not pay
+        and does not sign.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentResponse:
+                  type: string
+                  description: Seller PAYMENT-RESPONSE header, base64 JSON.
+                network:
+                  type: string
+                  description: Chain id or name. Used when paymentResponse is left out.
+                transaction:
+                  type: string
+                  description: Transaction hash. Used when paymentResponse is left out.
+      responses:
+        "200":
+          description: Chain read. found is false for not_found and unsupported_network.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [found, network, tx, block, from, to, asset, amount, status, explorer, as_of]
+                properties:
+                  found: { type: boolean }
+                  network: { type: string }
+                  tx: { type: string }
+                  block: { type: string, nullable: true }
+                  from: { type: string, nullable: true }
+                  to: { type: string, nullable: true }
+                  asset: { type: string, nullable: true }
+                  amount: { type: string, nullable: true, description: Atomic units. }
+                  status:
+                    type: string
+                    enum: [confirmed, failed, not_found, unsupported_network]
+                  explorer: { type: string, nullable: true }
+                  as_of: { type: string, format: date-time }
+        "400":
+          description: invalid_payment_response, invalid_body, or invalid_transaction.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "429": { description: Rate limited }
+        "503": { description: Chain read did not finish, or the rate limit store is unavailable }
+
   /api/v1/resolve:
     get:
       operationId: resolveQuery
