@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Purchase lifecycle keeps reorg-revoked rows in the total
+
+- What: every purchase row is counted once under lifecycle. When the settlement verifier finds that a chain reorganization revoked a row, it adds raw_response_meta.purchaseLifecycle.reorgRevokedAt and the row moves to reorg_revoked in the state API, the methodology and the seller pages. A row vet402 cannot place stays unknown.
+- Why: a row that cannot be confirmed should stay visible as unknown rather than drop out of the counts.
+- Impact: status, tx_hash and settlement columns are unchanged, so export.csv keeps its meaning. No schema change.
+
 ## 2026-11-12 Local purchase CSV from the decision store (D2)
 
 - What: `exportLocalPurchaseCsv` reads the SDK decision store (`.vet402/decisions.jsonl`) and returns a CSV. The header is the same 19 column names in the same order as `/api/v1/observatory/export.csv`. `resource_key` is the request. `tx_hash` is the settlement transaction. `http_status_paid` is whether an answer came back. vet402 does not receive the file.

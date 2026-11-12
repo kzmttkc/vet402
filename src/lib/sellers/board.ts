@@ -21,6 +21,7 @@ import {
   type SellerRowFacts,
 } from "./fix-modes";
 import { nextBuyOf, type NextBuy, type NextBuyFacts } from "./next-buy";
+import { lifecycleAtOf, lifecycleStageOf, type LifecycleStage } from "@/lib/observatory/purchase-lifecycle";
 
 /**
  * 出品（endpoint id）→ seller の側の候補になった失敗の UTC の日付（2026-09-29 第4巡・reader.ts の
@@ -341,6 +342,10 @@ export interface ShownRow {
   evidence: { signed: string; answer: string } | null;
   /** export.csv の held_reason と頁の原因が違うときの説明（fix-modes.ts の exportReasonLine）。 */
   exportReason: string | null;
+  /** B1 の段階。台帳の status とは別。export.csv には出さない。 */
+  lifecycleStage: LifecycleStage;
+  /** 取り消しならその時刻。そうでなければ試行時刻。 */
+  lifecycleAt: string | null;
 }
 
 export interface SellerListing extends SellerEndpointFacts {
@@ -415,6 +420,8 @@ export function showRow(r: SellerRowFacts, days?: Iterable<string>, now: number 
     confirmedSeller: c.confirmedSeller,
     evidence: paidEvidenceLines(r),
     exportReason: exportReasonLine(c.held, c.mode),
+    lifecycleStage: lifecycleStageOf(r),
+    lifecycleAt: lifecycleAtOf(r),
   };
 }
 

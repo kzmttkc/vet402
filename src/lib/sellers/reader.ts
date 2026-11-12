@@ -146,7 +146,10 @@ const ROW_COLUMNS_BASE = sql`
   pu.payload_non_empty,
   CASE WHEN pu.status = 'settle_failed' AND pu.tx_hash IS NOT NULL THEN
     (pu.settlement_verified IS TRUE OR EXISTS (SELECT 1 FROM settlements s WHERE s.tx_hash IN (pu.tx_hash, lower(pu.tx_hash))))
-  END AS settlement_confirmed`;
+  END AS settlement_confirmed,
+  CASE WHEN jsonb_typeof(pu.raw_response_meta->'purchaseLifecycle') = 'object'
+       THEN left(pu.raw_response_meta->'purchaseLifecycle'->>'reorgRevokedAt', 40)
+  END AS reorg_revoked_at`;
 
 /** 行の列（ROW_COLUMNS_BASE と example_input）。行の少ない問い合わせ用。 */
 const ROW_COLUMNS = sql`${ROW_COLUMNS_BASE},
@@ -256,6 +259,7 @@ export function toRowFacts(r: Record<string, unknown>): SellerRowFacts {
     paidContentType: str(r.paid_content_type),
     payloadNonEmpty: typeof r.payload_non_empty === "boolean" ? r.payload_non_empty : null,
     settlementConfirmed: typeof r.settlement_confirmed === "boolean" ? r.settlement_confirmed : null,
+    reorgRevokedAt: str(r.reorg_revoked_at),
     receiptPresent: typeof r.receipt_present === "boolean" ? r.receipt_present : null,
     receiptSuccess: typeof r.receipt_success === "boolean" ? r.receipt_success : null,
     receiptErrorReason: str(r.receipt_error_reason),
