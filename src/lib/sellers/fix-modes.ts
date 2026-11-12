@@ -579,11 +579,6 @@ export interface SellerRowFacts {
    * tx は false / null。
    */
   settlementConfirmed?: boolean | null;
-  /**
-   * B1. 鎖の組み直しで取り消した時刻（raw_response_meta.purchaseLifecycle.reorgRevokedAt）。
-   * 台帳の status とは別。reader がこの値だけを頁へ渡す。無い行は null。
-   */
-  reorgRevokedAt?: string | null;
   // ---- 2026-09-29 第2巡: seller の側に置く積極的な根拠（(b)〜(e)）。無い（undefined / null）は「示せない」。 ----
   /** 署名した額（x402_l1_purchases.amount_units・基本単位）。 */
   amountUnits?: string | null;

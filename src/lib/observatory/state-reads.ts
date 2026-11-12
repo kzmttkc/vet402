@@ -13,9 +13,7 @@ import {
   getCoverageShareCached,
   getObservatoryStatsByChainCached,
   getObservatoryStatsCached,
-  getPurchaseLifecycleCached,
 } from "@/lib/observatory/cached-reads";
-import { readPurchaseLifecycleCounts } from "@/lib/observatory/purchase-lifecycle-read";
 import { getChainScope, getCoverageShare, getObservatoryStats, getObservatoryStatsByChain } from "@/lib/observatory/reader";
 
 export function isNoDataCacheError(error: unknown): boolean {
@@ -24,28 +22,25 @@ export function isNoDataCacheError(error: unknown): boolean {
 
 export async function readStateAggregates() {
   try {
-    const [statsRead, byChainRead, chainScope, coverageRead, lifecycleRead] = await Promise.all([
+    const [statsRead, byChainRead, chainScope, coverageRead] = await Promise.all([
       getObservatoryStatsCached(),
       getObservatoryStatsByChainCached(),
       getChainScopeCached(),
       getCoverageShareCached(),
-      getPurchaseLifecycleCached(),
     ]);
     const { readAt: statsReadAt, ...stats } = statsRead;
     const { readAt: coverageReadAt, ...coverage } = coverageRead;
     // The oldest of the cached reads, so the body never looks fresher than its numbers.
     const retrievedAt = [statsReadAt, coverageReadAt, byChainRead.readAt].sort()[0]!;
-    const publishedAt = [retrievedAt, lifecycleRead.readAt].sort()[0]!;
-    return { stats, byChain: byChainRead.rows, chainScope, coverage, lifecycle: lifecycleRead.counts, retrievedAt: publishedAt };
+    return { stats, byChain: byChainRead.rows, chainScope, coverage, retrievedAt };
   } catch (error) {
     if (!isNoDataCacheError(error)) throw error;
-    const [stats, byChain, chainScope, coverage, lifecycle] = await Promise.all([
+    const [stats, byChain, chainScope, coverage] = await Promise.all([
       getObservatoryStats(),
       getObservatoryStatsByChain(),
       getChainScope(),
       getCoverageShare(),
-      readPurchaseLifecycleCounts(),
     ]);
-    return { stats, byChain, chainScope, coverage, lifecycle, retrievedAt: new Date().toISOString() };
+    return { stats, byChain, chainScope, coverage, retrievedAt: new Date().toISOString() };
   }
 }

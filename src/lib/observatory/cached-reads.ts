@@ -34,8 +34,6 @@
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
-import { readPurchaseLifecycleCounts } from "@/lib/observatory/purchase-lifecycle-read";
-import type { LifecycleCounts } from "@/lib/observatory/purchase-lifecycle";
 import {
   getChainScope,
   getCoverageShare,
@@ -72,15 +70,6 @@ export const getObservatoryStatsCached: () => Promise<ObservatoryStatsRead> = un
 export const getCoverageShareCached: () => Promise<CoverageShareRead> = unstable_cache(
   async () => ({ ...(await getCoverageShare()), readAt: new Date().toISOString() }),
   ["observatory:coverage-share:readAt"],
-  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
-);
-
-/** B1 の段階件数。頁と同じ窓。status 列は読まない更新をしない。 */
-export type PurchaseLifecycleRead = { counts: LifecycleCounts; readAt: string };
-
-export const getPurchaseLifecycleCached: () => Promise<PurchaseLifecycleRead> = unstable_cache(
-  async () => ({ counts: await readPurchaseLifecycleCounts(), readAt: new Date().toISOString() }),
-  ["observatory:purchase-lifecycle:readAt"],
   { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
 );
 

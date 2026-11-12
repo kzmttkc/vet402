@@ -37,7 +37,6 @@ import { SELLERS_PAGE_DECISION_TEXT } from "@/lib/decision/rules-text";
 import { sellerFixListingFrom, sellerFixSnippets, type SellerFixListing } from "@/lib/sellers/fix-snippets";
 import { l0ProbeLine, nextBuyLine, NON_SETTLING_COOLDOWN_STREAK, type NextBuy } from "@/lib/sellers/next-buy";
 import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
-import { LIFECYCLE_NOTE, LIFECYCLE_STAGE_COPY } from "@/lib/observatory/purchase-lifecycle";
 import type { OtherChainAttempt } from "@/lib/sellers/board";
 
 /**
@@ -537,13 +536,6 @@ function ReadingNotes() {
         </Link>
         ).
       </p>
-      <p className="doc-p">
-        {LIFECYCLE_NOTE} vet402 lists the stage definitions on the{" "}
-        <Link href="/observatory/methodology#purchase-lifecycle" className="underline">
-          methodology page
-        </Link>
-        .
-      </p>
     </>
   );
 }
@@ -839,7 +831,7 @@ function EarlierRow({ e, endpointId }: { e: ShownRow; endpointId: string }) {
   return (
     <li className="border-t border-hair py-1.5 first:border-t-0">
       <span className="block">
-        {fmtUtc(e.facts.attemptedAt)} · <code>{e.lifecycleStage}</code> · <ResultWord r={e} /> · <WhoseSide r={e} />
+        {fmtUtc(e.facts.attemptedAt)} · <ResultWord r={e} /> · <WhoseSide r={e} />
         {e.facts.selection ? ` [${e.facts.selection}]` : ""}
       </span>
       <span className="block font-[family-name:var(--font-mono)] text-brand-lift">
@@ -1118,14 +1110,6 @@ function ListingCard({
         <dd className={`m-0 ${failed ? "text-[#9f0712]" : ""}`}>{r ? <ResultWord r={r} /> : "not tried on Base yet"}</dd>
         <dt className="text-brand-lift">Whose side</dt>
         <dd className="m-0">{r ? <WhoseSide r={r} /> : "not tried on Base yet"}</dd>
-        {r ? (
-          <>
-            <dt className="text-brand-lift">Stage</dt>
-            <dd className="m-0">
-              <code>{r.lifecycleStage}</code>. {LIFECYCLE_STAGE_COPY[r.lifecycleStage]}
-            </dd>
-          </>
-        ) : null}
         {l.otherChain ? (
           <>
             <dt className="text-brand-lift">Other chains</dt>
@@ -1370,13 +1354,6 @@ export function SellerDetailView({
         <span className="sec-no">2.</span>
         <span>How to read this</span>
       </h2>
-      <p className="doc-p" id="purchase-lifecycle">
-        {LIFECYCLE_NOTE} vet402 lists the stage definitions on the{" "}
-        <Link href="/observatory/methodology#purchase-lifecycle" className="underline">
-          methodology page
-        </Link>
-        .
-      </p>
       <p className="doc-p">
         Each listing shows its latest Base attempt and up to four earlier Base attempts. Result and Whose side follow
         that Base attempt. A purchase on another chain is listed under Other chains, with the chain name, time, status,

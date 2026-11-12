@@ -31,7 +31,6 @@ import { updateWithCorrection } from "./corrections";
 import { GATEWAY_RECONCILE_ROW_LIMIT, gatewayReadBudgetMs, reconcileArcGatewayClaims, type GatewayAuth } from "./arc-gateway-verify";
 import { fireL1RegistryHook, fireL2RegistryHook } from "@/lib/chain/registry-hook";
 import { SELLER_NAMED_TX_NOT_FOUND, SELLER_NAMED_TX_NOT_FOUND_AFTER_DAYS, SELLER_NAMED_TX_NOT_FOUND_MIN_DAYS } from "@/lib/sellers/fix-modes";
-import { rereadConfirmedSettlementsForReorg, REORG_REREAD_ROWS_PER_RUN } from "./purchase-lifecycle-write";
 
 /**
  * 売り手が名指した tx の照合の期限（2026-09-29 敵対的監査 5 周目・値の正典は src/lib/sellers/fix-modes.ts）。
@@ -226,11 +225,6 @@ export type VerifySettlementsSummary = {
   gatewayExpired: number;
   /** 減額が自社の行の合計より大きく、settle も refute もせず保留にした件数。 */
   gatewayOverDebit: number;
-  /**
-   * B1. 既に照合済みの tx を読み直して、鎖の組み直しとして reorg_revoked に移した件数。
-   * status も settlement_verified も変えていない。
-   */
-  reorgRevoked: number;
 };
 
 /**
@@ -300,7 +294,6 @@ export async function runSettlementVerification(options?: {
     gatewayNoted: 0,
     gatewayExpired: 0,
     gatewayOverDebit: 0,
-    reorgRevoked: 0,
   };
   // wrong_chain を出したチェーン。その行は読みに行かず wrong_chain として deferred に積む。
   const wrongChain = new Set<string>();
@@ -960,23 +953,6 @@ export async function runSettlementVerification(options?: {
       // 件数を summary に出してログに理由を残す（2026-09-19 レビュー 2 巡目）。
       summary.rowErrors++;
       logServerErrorSafe(`settlement-verifier.row ${row.id} (${row.network})`, error);
-    }
-  }
-
-  // B1: 照合済みの行だけを、余った予算で読み直す。未照合の主張の枠は上の SELECT のまま。
-  // 無効だった tx は purchaseLifecycle.reorgRevokedAt を足すだけ。status は倒さない。
-  // 訂正ログと 3.2 の DecisionStore には書かない。
-  if (deadline.remaining() >= 8_000) {
-    try {
-      const reorg = await rereadConfirmedSettlementsForReorg(db, {
-        verify,
-        nowIso: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
-        limit: REORG_REREAD_ROWS_PER_RUN,
-        stop: () => deadline.remaining() < 8_000,
-      });
-      summary.reorgRevoked = reorg.revoked;
-    } catch (error) {
-      logServerErrorSafe("settlement-verifier.reorg_reread", error);
     }
   }
 

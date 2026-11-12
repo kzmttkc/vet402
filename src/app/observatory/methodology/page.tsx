@@ -1,5 +1,4 @@
 import { DECISION_RULES_TEXT } from "@/lib/decision/rules-text";
-import { LIFECYCLE_NOTE, LIFECYCLE_STAGES, LIFECYCLE_STAGE_COPY } from "@/lib/observatory/purchase-lifecycle";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -718,14 +717,6 @@ export default async function ObservatoryMethodologyPage() {
           stays on the record whether or not the seller delivers. On {EIP3009_CHAINS_TEXT}
           the signature is an EIP-3009 authorization, and a signed EIP-3009 authorization is live
           money the moment it exists.
-        </p>
-        <p className="doc-p" id="purchase-lifecycle">
-          {LIFECYCLE_NOTE}{" "}
-          {LIFECYCLE_STAGES.map((stage) => (
-            <span key={stage}>
-              <code>{stage}</code> {LIFECYCLE_STAGE_COPY[stage]}{" "}
-            </span>
-          ))}
         </p>
         <p className="doc-p">
           <strong>Sellers without a track record.</strong> Since 2026-11-02 a seller has a track
