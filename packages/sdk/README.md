@@ -362,6 +362,8 @@ await payChecked({ url: "https://api.example.org/v1/quote", rules: { maxPerTxUsd
 
 `refusedBy` is `store_unreadable` when the store cannot be read or the pending line cannot be written, `payment_pending` when that idempotency key is still pending, `payee_unknown` when neither resolve nor the decision names a payee, or `decision_unavailable` when `requireAllow` is not set and vet402's payer decision could not be read after resolve (the call refuses and does not sign). When `requireAllow` is set and the decision is unreadable, `refusedBy` is `require_allow`. Spend-rule refusals use the `refusedBy` names from `evaluateSpendRules` (for example `host_max_per_day`, `resource_max_per_day`). A key left pending after a crash stays `payment_pending` and is not paid, so check on chain whether it was paid before calling again with a different idempotency key. The same idempotency key returns the saved result after a seller 5xx (with or without a payment-response header) and does not sign again. Only records written by `payChecked` count toward the limit, and a payment made by calling `payOrRefuse` directly is not counted.
 
+`exportLocalPurchaseCsv` reads that same decision store and returns CSV text. The header uses the same column names in the same order as `GET /api/v1/observatory/export.csv`. `resource_key` is the request, `tx_hash` is the settlement transaction, and `http_status_paid` is the answer's HTTP status. vet402 does not receive this CSV. vet402 does not label a local row settled, because vet402 has not read the transfer again on chain.
+
 ## SpendGuard — pre-payment policy for agents
 
 Buyer-side counterpart to the score lookups above: before your agent *pays*

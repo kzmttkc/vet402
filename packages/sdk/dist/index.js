@@ -13,6 +13,8 @@ export { reclaimAuthCapture, readAuthCaptureState, outcomeFromState, AUTH_CAPTUR
 export { evaluateSpendRules, SPEND_RULE_REFUSALS, } from "./spend-rules.js";
 // resolve → decision → 手元の記録 → 決まり → 通ったときだけ payOrRefuse。
 export { payChecked } from "./pay-checked.js";
+// D2。同じ DecisionStore を、公開 export と同じ列名の CSV にする。支払いの関門とは別。
+export { exportLocalPurchaseCsv, LOCAL_PURCHASE_EXPORT_COLUMNS } from "./local-purchase-export.js";
 /**
  * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
  * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。

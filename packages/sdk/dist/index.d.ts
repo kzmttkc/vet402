@@ -4,6 +4,7 @@ export { payOrRefuse, readDemoDecisions, readL1Decisions, appendDecision, DEFAUL
 export { reclaimAuthCapture, readAuthCaptureState, outcomeFromState, AUTH_CAPTURE_SCHEME, AUTH_CAPTURE_ESCROW_V1_1, AUTH_CAPTURE_EIP3009_COLLECTOR_V1_1, AUTH_CAPTURE_SPEC_URL, MAX_CAPTURE_WINDOW_SECONDS, DEFAULT_DELIVERY_TIMEOUT_MS, type AuthCaptureOptions, type AuthCaptureReceipt, type AuthCaptureOutcome, type AuthCapturePaymentInfo, type AuthCaptureStateReader, type AuthCaptureDeliveryFailure, type AuthCaptureRecovery, } from "./auth-capture.js";
 export { evaluateSpendRules, SPEND_RULE_REFUSALS, type SpendRules, type SpendIntent, type SpendRecord, type SpendRuleDecision, type SpendRuleRefusal, } from "./spend-rules.js";
 export { payChecked, type PayCheckedInput, type PayCheckedResult } from "./pay-checked.js";
+export { exportLocalPurchaseCsv, LOCAL_PURCHASE_EXPORT_COLUMNS } from "./local-purchase-export.js";
 /**
  * 第2の証拠源（The Graph の x402 Base subgraph）。呼び手が自分の鍵で自分で引ける形で
  * 公開する——「あなたは vet402 を信じなくてよい」を、道具として渡せなければ主張にならない。

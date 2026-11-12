@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Local purchase CSV from the decision store (D2)
+
+- What: `exportLocalPurchaseCsv` reads the SDK decision store (`.vet402/decisions.jsonl`) and returns a CSV. The header is the same 19 column names in the same order as `/api/v1/observatory/export.csv`. `resource_key` is the request. `tx_hash` is the settlement transaction. `http_status_paid` is whether an answer came back. vet402 does not receive the file.
+- Why: vet402 publishes the same column names, so this CSV lines up with the public purchase export.
+- Impact: read of the local file only. No payment and no signing. export.csv is unchanged. A local row is not labeled settled. `confirmed_units` stays 0 because vet402 has not read the transfer again on chain.
+
 ## 2026-11-12 Trade dispute records (E6) and the dispute page draft (P2)
 
 - What: one trade id can carry the buyer's side (payment tx, received body hash, state) and the seller's side (verified payment, delivered body hash, signature). When both hashes match and both sides signed, delivery is confirmed. /connect/trade-dispute shows both sides on one screen as a draft for public testnet, and the disputes API keeps each party's own record behind a signature check.
