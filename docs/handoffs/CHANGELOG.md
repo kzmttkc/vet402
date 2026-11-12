@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Verdicts can carry a signed EIP-191 receipt
+
+- What: GET /api/v1/check and GET /api/v1/resources/{id}/decision add a receipt (input sha256, verdict, as_of, signer, EIP-191 signature) when a receipt signing key is configured. POST /api/v1/receipts/verify (no key) rebuilds the message and checks it. docs/verdict-receipt.md describes the canonical input.
+- Why: an agent can later show which verdict it acted on, and anyone can check it without trusting vet402's word.
+- Impact: off until the signing key is set in production. With the key unset the responses are unchanged.
+
 ## 2026-11-12 The seller retest lane pays one Celo request per seller
 
 - What: the one-off request lane accepts Celo (eip155:42220) requests. It picks the accept whose network, payTo, exact amount and asset (Celo USDC) all match the request, and pays it through the Celo lane's purchaseOne. Base requests behave as before. Other networks are refused. Four Celo requests are listed: api.blockscout.com, agent-embassy-celo.fly.dev, open-rails-data-agent, paycrawl-gateway. Each is at most 0.002 USDC and expires on 2026-12-12.

@@ -6,6 +6,7 @@ import { withNoindex } from "@/lib/api/public-read-robots";
 import { isHttpsAbsoluteUrl } from "@/lib/mcp/schemas";
 import { ERROR_TEXT } from "@/lib/mcp/text";
 import { checkSeller, type CheckSellerDeps } from "@/lib/mcp/tools";
+import { attachVerdictReceipt, checkCanonicalInput, receiptVerdictOf } from "@/lib/receipts/verdict-receipt";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { NextResponse } from "next/server";
 
@@ -73,12 +74,18 @@ export async function handleCheck(request: Request, deps: CheckSellerDeps): Prom
   }
 
   try {
+    const method = methodRaw ? methodRaw.toUpperCase() : null;
     const out = await checkSeller(deps, {
       url: urlRaw,
-      method: methodRaw ? methodRaw.toUpperCase() : undefined,
+      method: method ?? undefined,
     });
+    const verdict = receiptVerdictOf(out.recommendation);
+    const body = await attachVerdictReceipt(
+      out,
+      verdict ? { canonicalInput: checkCanonicalInput(urlRaw, method), verdict, asOf: out.as_of } : null,
+    );
     const retrievedAt = out.as_of;
-    return NextResponse.json(out, {
+    return NextResponse.json(body, {
       headers: withNoindex(successHeaders(retrievedAt, baseHeaders)),
     });
   } catch (error) {

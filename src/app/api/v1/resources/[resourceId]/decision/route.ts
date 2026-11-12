@@ -15,6 +15,7 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { lookupCallerMaterial } from "@/lib/decision/lookup-caller";
 import { recordClientUsage } from "@/lib/api/client-usage";
 import { recordDecisionUsage, usageChainOf } from "@/lib/api/decision-usage";
+import { attachVerdictReceipt, decisionReceiptSignInput } from "@/lib/receipts/verdict-receipt";
 
 export { DECISION_KEYLESS_LIMIT };
 
@@ -176,6 +177,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
   /** policy を頼まれたときだけ足す。頼まれていなければ判定本体をそのまま返す（キーも足さない）。 */
   const withCallerPolicy = (result: DecisionResult): DecisionResult =>
     presentDecision(callerPolicy ? { ...result, caller_policy: evaluateCallerPolicy(result, callerPolicy) } : result, { includeScore });
+  // レシートは配る直前に付ける。保存するのは判定本体だけ（鍵が無いときは本文が増えない）。
+  // NextResponse.json の引数に withCallerPolicy を置く（presentDecision を通してから配る、という既存の検査）。
+  const jsonDecision = async (result: DecisionResult): Promise<NextResponse> =>
+    NextResponse.json(await attachVerdictReceipt(withCallerPolicy(result), decisionReceiptSignInput(result, {
+      resourceId,
+      role: roleRaw,
+      payer: payerId,
+      callerDialect: dialectRaw,
+      allowWithoutL1,
+    })));
 
   const idemKey = request.headers.get("idempotency-key");
   const idemHash =
@@ -193,7 +204,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     const saved = await getIdempotentResponse(idemHash);
     if (saved !== null) {
       refund(caller);
-      const res = finish(caller, NextResponse.json(withCallerPolicy(saved as DecisionResult)));
+      const res = finish(caller, await jsonDecision(saved as DecisionResult));
       res.headers.set("Idempotent-Replay", "true");
       return res;
     }
@@ -233,7 +244,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     // 枠を戻す早期 return（400/404/503・replay）では数えない——戻した枠の分だけ書き込みを増やせるため（独立レビュー・高）。
     if (caller.kind === "keyless") recordClientUsage(request.headers, "decision");
     else recordDecisionUsage(caller.ctx.apiKeyId, usageChainOf(loaded.network));
-    const res = finish(caller, NextResponse.json(withCallerPolicy(result)));
+    const res = finish(caller, await jsonDecision(result));
     res.headers.set("Server-Timing", `decision;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;
   } catch (error) {

@@ -1597,6 +1597,11 @@ paths:
         names are 400 `invalid_query` with `allowed`. Bad `url` is 400
         `invalid_url`; bad `method` is 400 `invalid_method`. Store read errors
         are 503 `temporarily_unavailable` (`Cache-Control: no-store`).
+        When VET402_RECEIPT_SIGNER_KEY is set, the body also carries receipt
+        (input_sha256, verdict, as_of, signer, signature). POST
+        /api/v1/receipts/verify checks that signature with no API key. When
+        the variable is unset, receipt is omitted and the rest of the body
+        stays as it is.
       security: []
       parameters:
         - in: query
@@ -1686,6 +1691,48 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "429": { description: Rate limited }
         "503": { description: Rate limit store unavailable }
+
+  /api/v1/receipts/verify:
+    post:
+      operationId: verifyVerdictReceipt
+      tags: [Decision]
+      summary: Check an EIP-191 verdict receipt with no API key
+      description: |
+        Rebuilds the verdict receipt message and checks the EIP-191 signature
+        with verifyMessage. No API key. A match returns ok true. A changed
+        field returns ok false and error invalid_signature. A field vet402
+        cannot read returns 400 invalid_input. 30 requests per minute per IP.
+        The message and the canonical input are in the verdict receipt section
+        of the docs. When VET402_RECEIPT_SIGNER_KEY is unset, GET /api/v1/check
+        and GET /api/v1/resources/{resourceId}/decision omit receipt and the
+        rest of the body stays as it is.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [input_sha256, verdict, as_of, signer, signature]
+              properties:
+                input_sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+                verdict: { type: string, enum: [ALLOW, WARN, BLOCK, NONE] }
+                as_of: { type: string, example: "2026-11-12T00:00:00.000Z" }
+                signer: { type: string }
+                signature: { type: string }
+      responses:
+        "200":
+          description: The signature matches (ok true) or does not (ok false, error invalid_signature).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string, enum: [invalid_signature] }
+        "400":
+          description: invalid_json or invalid_input.
+        "429": { description: Rate limited }
 
   /api/v1/resolve:
     get:
@@ -2236,7 +2283,10 @@ paths:
       tags: [Decision]
       summary: Pre-payment / pre-service decision with the facts that produced it
       description: |
-        Product spec §8.3 / §9.1. `role=payer` (default) answers "what did
+        When VET402_RECEIPT_SIGNER_KEY is set, the body also carries receipt.
+        POST /api/v1/receipts/verify checks that signature with no API key.
+        When the variable is unset, receipt is omitted and the rest of the body stays as it is.
+        Product spec §8.3 / §9.1. `role=payer` (default) answers "what did"
         vet402 record when it paid this URL in the last 30 days?" from L0
         liveness, L1 settle-through and L2 conformance. An ALLOW can carry
         `l2_undeclared`: the listing declared no output to compare with.
