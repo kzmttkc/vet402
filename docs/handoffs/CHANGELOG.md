@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Requirement 3.7 is pinned by acceptance tests
+
+- What: tests that pin the public `publicApiUsage` block in the state API (wave 1 requirement 3.7), and the OpenAPI description now reads like the live note.
+- Why: the block was already live. The tests keep it from drifting.
+- Impact: no runtime change.
 ## 2026-11-12 Seller pages carry paste-ready fix code for four stacks
 
 - What: /sellers/fix-first and /sellers/[host] show a folded "Fix code" block with Express, Next.js, Hono and FastAPI snippets. On a seller page the snippet takes payTo, the atomic amount, the CAIP-2 network and the path from that listing. A value the listing lacks stays `<...>`. The builder is the pure function `src/lib/sellers/fix-snippets.ts`.

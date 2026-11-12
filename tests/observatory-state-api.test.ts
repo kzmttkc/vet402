@@ -35,6 +35,11 @@ test("state API returns the aggregate shape with RateLimit headers", async () =>
   }
   assert.ok(Array.isArray(body.byChain), "byChain must be an array");
   assert.ok(body.l1 && typeof body.l1.attempts === "number", "l1 attempts present");
+  assert.ok(body.publicApiUsage && typeof body.publicApiUsage === "object", "publicApiUsage present");
+  assert.equal(typeof body.publicApiUsage.retrievedAt, "string");
+  assert.equal(typeof body.publicApiUsage.note, "string");
+  assert.ok(Array.isArray(body.publicApiUsage.byDay));
+  assert.equal("publicApiUsage" in body.l1, false, "usage counts stay out of l1");
   // Facts-only contract: no evaluative vocabulary in the payload.
   const raw = JSON.stringify(body).toLowerCase();
   assert.ok(!raw.includes('"score"'), "payload must not carry a score field");

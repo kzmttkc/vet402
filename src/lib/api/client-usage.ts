@@ -17,9 +17,9 @@
 //   site               … ブラウザの UA（`Mozilla/` で始まる）で、vet402.com 自身の頁が呼んだもの
 //                         （`Sec-Fetch-Site: same-origin`、または Referer が自サイト。売り手頁は判定を自動で引く）
 //   browser            … それ以外のブラウザの UA
-//   other              … 上のどれでもない（UA 無し・curl・node・python など）。SDK と MCP サーバは今の版では UA を
-//                         名乗らない（Node の fetch の既定 `node`）のでここ。自社の skill-live（.github/workflows/
-//                         skill-live.yml・SKILL.md の curl をそのまま打つ・1 日数本）もここに混ざる
+//   other              … 上のどれでもない（UA 無し・curl・node・python など）。@vet402/sdk と @vet402/mcp-server の
+//                         今の版は vet402 の API への要求だけ vet402-sdk/ か vet402-mcp/ を名乗る。名乗らない版や
+//                         ブラウザ、curl、node の既定はここ。自社の skill-live もここに混ざる
 // 保存するのは client_usage_daily の (UTC 日, client, ルート名, 件数) だけで、IP・URL・クエリ・鍵・resource_id・
 // UA の生の文字列・Referer は保存しない。ヘッダは名前を選ぶためだけに読む。
 // 名前はどれも呼び手の自己申告（UA は偽れる）。数は「誰が」ではなく「どの入口が何回」を読む。
@@ -55,8 +55,8 @@ export type ClientUsageRoute = "resolve" | "decision" | "rest:check" | McpUsageR
 /**
  * 配布物（利用者の手元で動き、vet402 の API を呼ぶときにこの名前を UA に名乗るもの）。
  * - `vet402-hermes`: Hermes プラグイン（github.com/kzmttkc/vet402-hermes・`vet402-hermes/0.1.0`）。今も名乗っている
- * - `vet402-sdk`・`vet402-mcp`: @vet402/sdk と @vet402/mcp-server の受け皿。今の版は vet402 の API へ UA を付けない
- *   （Node の fetch の既定 `node` → other）。パッケージの側が名乗り始めた版から、ここに入る
+ * - `vet402-sdk`・`vet402-mcp`: @vet402/sdk と @vet402/mcp-server。vet402 の API への要求に vet402-sdk/ か
+ *   vet402-mcp/ を付ける（売り手への要求には付けない）。名乗らない版は other のまま
  * 新しい配布物に UA を付けるときは、出す前にここへ名前を足す（足さないと other に入る）。
  */
 export const DISTRIBUTED_CLIENTS = ["vet402-hermes", "vet402-sdk", "vet402-mcp"] as const;
