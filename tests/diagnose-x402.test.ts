@@ -140,6 +140,24 @@ test("header and body fail when the amount disagrees", () => {
   assert.equal(body.recommended_accept, null);
 });
 
+test("header and body pass when the body carries only an error message", () => {
+  const header = challenge([accept()]);
+  const headers = new Headers({ "payment-required": Buffer.from(header).toString("base64") });
+  const body = judge(JSON.stringify({ error: "Proceed with API key or make a X402 payment to continue" }), { headers });
+  assert.equal(one(body, "header_body"), "pass");
+  assert.notEqual(body.verdict, "BLOCK");
+  assert.notEqual(body.recommended_accept, null);
+});
+
+test("header and body fail when the body carries accepts under an unreadable version", () => {
+  const header = challenge([accept({ amount: "1000" })]);
+  const headers = new Headers({ "payment-required": Buffer.from(header).toString("base64") });
+  const bodyText = JSON.stringify({ x402Version: 9, accepts: [{ scheme: "exact", network: "eip155:8453", amount: "999999", asset: BASE_USDC, payTo: PAY }] });
+  const body = judge(bodyText, { headers });
+  assert.equal(one(body, "header_body"), "fail");
+  assert.equal(body.verdict, "BLOCK");
+});
+
 test("resource_url pass and fail", () => {
   assert.equal(one(clean(), "resource_url"), "pass");
   const bad = judge(challenge([accept()], { resource: { url: "https://evil.example/other" } }));

@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Diagnose no longer blocks a 402 whose body is only an error message
+
+- What: header_body compares the header and the body only when the body carries an x402 challenge. A body like {"error":"..."} beside a valid PAYMENT-REQUIRED header now passes.
+- Why: api.blockscout.com sends the challenge in the header and a short error in the body, and /api/v1/diagnose answered BLOCK for it.
+- Impact: diagnose only. No purchase path change.
+
 ## 2026-11-12 Diagnose any x402 URL before paying
 
 - What: `GET /api/v1/diagnose?url=&method=` (no key, no wallet) reads one unpaid 402 through the SSRF guard and runs structural checks: x402 version and shape, header and body agreement, atomic amount, CAIP-2 network, the right USDC per network, burn or zero payTo, testnet only, Solana feePayer, scheme. Each check is pass, warn, fail or info with a one line fix. The answer carries ALLOW, WARN or BLOCK, the cheapest payable accept, checked and not_checked. MCP gains `diagnose_x402_url`, and `check_resource_decision` points to it when a resource is not in the catalog.

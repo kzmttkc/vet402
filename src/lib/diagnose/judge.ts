@@ -133,7 +133,9 @@ function headerBodyStatus(bodyText: string, body: ParsedChallenge | null, header
   if (!header.present) return "pass";
   if (!header.parsed?.versionOk) return "fail";
   if (bodyText.trim() === "") return "pass";
-  if (!body?.versionOk) return "fail";
+  // A body with no accepts (for example {"error":"..."}) is not a second challenge to compare.
+  if (!body || body.accepts.length === 0) return "pass";
+  if (!body.versionOk) return "fail";
   return challengeFinger(body) === challengeFinger(header.parsed) ? "pass" : "fail";
 }
 
