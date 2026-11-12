@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Seller pages carry paste-ready fix code for four stacks
+
+- What: /sellers/fix-first and /sellers/[host] show a folded "Fix code" block with Express, Next.js, Hono and FastAPI snippets. On a seller page the snippet takes payTo, the atomic amount, the CAIP-2 network and the path from that listing. A value the listing lacks stays `<...>`. The builder is the pure function `src/lib/sellers/fix-snippets.ts`.
+- Why: the fix-first page grouped failed buys by kind and stopped there. A seller can now paste the change.
+- Impact: page markup only. No purchase, signing or export.csv change. The import names follow @x402/express, @x402/hono and @x402/next 2.30.0.
+
 ## 2026-11-12 Mobile: the page refuses forced dark, and the home footer is two short rows
 
 - What: `color-scheme: only light` (globals.css and the viewport export) and a `darkreader-lock` meta. The home footer drops from 4 groups and 23 links to 7 main links and a small row (Terms, Privacy, Legal notice, The memo).

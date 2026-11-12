@@ -34,6 +34,7 @@ import {
 } from "@/lib/sellers/fix-modes";
 import DecisionAnswer, { REASON_CODES_HREF } from "./DecisionAnswer";
 import { SELLERS_PAGE_DECISION_TEXT } from "@/lib/decision/rules-text";
+import { sellerFixListingFrom, sellerFixSnippets, type SellerFixListing } from "@/lib/sellers/fix-snippets";
 import { l0ProbeLine, nextBuyLine, NON_SETTLING_COOLDOWN_STREAK, type NextBuy } from "@/lib/sellers/next-buy";
 import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
 import type { OtherChainAttempt } from "@/lib/sellers/board";
@@ -1051,6 +1052,30 @@ function CardLead({ l }: { l: SellerListing }) {
   return <p className="mt-2 mb-0 max-w-[70ch] text-[0.84375rem]">{lead.join(" ")}</p>;
 }
 
+function SellerFixCode({ listing, grouped }: { listing: SellerFixListing; grouped: boolean }) {
+  const snippets = sellerFixSnippets(listing);
+  return (
+    <details className="mt-3">
+      <summary className="cursor-pointer text-[0.84375rem] font-semibold">Fix code for Express, Next.js, Hono and FastAPI</summary>
+      <p className="m-0 mt-2 max-w-[70ch] text-[0.84375rem]">
+        {grouped
+          ? "Paste one snippet for the stack you run. This page groups listings, so vet402 leaves payTo, the atomic amount, the CAIP-2 network, and the path as "
+          : "Paste one snippet for the stack you run. vet402 fills payTo, the atomic amount, the CAIP-2 network, and the path from this listing. A value the listing does not have stays "}
+        {"<...>"}
+        {grouped ? ". The seller page fills them from that listing." : "."}
+      </p>
+      {snippets.map((s) => (
+        <div key={s.id} className="mt-2">
+          <p className="m-0 text-xs font-semibold">{s.title}</p>
+          <pre className="mt-1 overflow-x-auto whitespace-pre-wrap font-[family-name:var(--font-mono)] text-xs [overflow-wrap:anywhere]">
+            <code>{s.code}</code>
+          </pre>
+        </div>
+      ))}
+    </details>
+  );
+}
+
 /**
  * 1 出品を 1 枚のカードに（2026-09-29 第4巡: 4 列の表は電話の幅で横スクロールになり、文が切れていた）。
  * 見出しの事実（最新の試行・結果・どちらの側か）はラベル付きの 2 列、文はその下に表の外で折り返す。
@@ -1109,6 +1134,17 @@ function ListingCard({
           <span className="block text-brand-lift">No Base purchase is on this listing.</span>
         )}
         <AfterFix l={l} rebuyEligible={rebuyEligible} />
+        <SellerFixCode
+          grouped={false}
+          listing={sellerFixListingFrom({
+            resourceUrl: l.resourceUrl,
+            priceAmount: l.priceAmount,
+            method: l.method,
+            declaredPayTo: r?.facts.declaredPayTo,
+            declaredAmount: r?.facts.declaredAmount,
+            network: r?.facts.network,
+          })}
+        />
         {l.earlier.length > 0 && (
           <div className="mt-2 text-xs">
             <span className="block font-semibold text-brand-lift">Earlier attempts</span>
@@ -1518,6 +1554,7 @@ function GroupCard({ g, i }: { g: FixGroup; i: number }) {
         <strong>{g.side === "seller" ? "Fix: " : ""}</strong>
         {g.fix}
       </p>
+      <SellerFixCode listing={{}} grouped />
       <p className="doc-p mt-1">
         <strong>What happened:</strong> {g.what}
       </p>
