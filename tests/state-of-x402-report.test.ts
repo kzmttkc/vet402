@@ -15,7 +15,7 @@ const REPORT_REL = "content/reports/state-of-x402-2026-11.md";
 const REPORT_SHA256 = "8bdeb1821277414a191b84d978373fb81c27822cafa7f75d863c7ca09e6186a1";
 
 const PAGE_DESCRIPTION =
-  "87.9 percent of vet402's paid call attempts with a final outcome came back with content, as of 2026-11-09 (UTC). Purchases by chain and why calls did not complete.";
+  "87.9 percent of vet402's paid call attempts with a final outcome came back with content, as of 2026-11-09 (UTC). By chain, and why paid x402 calls fail.";
 
 test("report markdown sha256 is unchanged", () => {
   const raw = readFileSync(join(process.cwd(), REPORT_REL));

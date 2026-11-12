@@ -1,4 +1,3 @@
-import { WHAT_IS_X402_SEO } from "@/components/site/x402-answers";
 
 export type BlogPost = {
   slug: string;
@@ -28,8 +27,11 @@ export const BLOG_POSTS: BlogPost[] = [
     title: "What is x402? The HTTP status code that waited 28 years for a job",
     description:
       "What is x402? It's the machine-payment protocol that finally gave HTTP 402 Payment Required something to do, letting an AI agent pay for an API call in a single request. Here's how it works, where it stands today, and the one thing it deliberately doesn't tell you.",
-    seoTitle: "What is x402? HTTP 402 payments for AI agents",
-    seoDescription: WHAT_IS_X402_SEO,
+    // 2026-11-12 SEO: 「What is x402」は主柱ページ /x402 が持つ。ブログは HTTP 402 の物語の版として
+    // 「HTTP 402 Payment Required」の語を持ち、本文の末尾から /x402 へ渡す（同じ語の取り合いをやめる）。
+    seoTitle: "HTTP 402 Payment Required: how x402 put it to work",
+    seoDescription:
+      "The history of HTTP 402 Payment Required, and how x402 turned it into payments for AI agents. The protocol reference with live data is at vet402.com/x402.",
     publishedAt: "2026-08-13",
     updatedAt: "2026-11-10",
     editorsNote:

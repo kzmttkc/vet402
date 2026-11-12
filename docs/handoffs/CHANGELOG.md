@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-12 Search: /x402/refunds, observatory sitemap scope, blog phrase
+
+- What: (1) New page `/x402/refunds`: refunds per scheme and payment flow from the x402 specs, with the November report's counts as of 2026-11-09 (UTC). `/x402` links it and its FAQ follows the specs on void and the exact scheme's default flow. (2) `/sitemap-observatory.xml` lists only endpoints with a delivered purchase. (3) The blog post keeps the phrase HTTP 402 Payment Required and leaves What is x402 to `/x402`. The `/x402` article names `/observatory/state` as `isBasedOn`.
+- Why: search reach for x402 queries, and crawl time spent on pages with purchase evidence.
+- Impact: seller pages stay noindex. No data, ledger or API shape changed.
+
 ## 2026-11-12 A seller edge that records delivery and never settles for the seller
 
 - What: @vet402/middleware gains a ./seller entry with Express, Hono, plain HTTP and Lambda@Edge adapters. One line in front of a seller's route records the seller's side of each paid call (the verified payment it saw and a hash of what it sent). Settlement stays with the seller's own facilitator. A Base Sepolia example and the public overhead figure are in the state API.

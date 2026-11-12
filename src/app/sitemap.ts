@@ -26,6 +26,8 @@ const REV_2026_11_08 = "2026-11-08";
 
 // 2026-11-10: /x402 pillar page with live observatory numbers.
 const REV_2026_11_10 = "2026-11-10";
+/** 2026-11-12: /x402/refunds（返金の答えの頁）を足した。 */
+const REV_2026_11_12 = "2026-11-12";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -81,6 +83,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     { url: `${SITE_URL}/x402/stablecoin-payments`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/check-a-seller`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/refunds`, lastModified: REV_2026_11_12, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
     ...GUIDE_CHAINS.map((chain) => ({
       url: `${SITE_URL}/x402/chains/${chain.slug}`,

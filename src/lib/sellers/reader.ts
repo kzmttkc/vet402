@@ -552,6 +552,19 @@ export async function readEndpointsWithUndeliveredL1(db: Db): Promise<Set<string
 }
 
 /**
+ * 届いた L1 の購入行（deliveredPredicate）が 1 つでもある出品の集合（2026-11-12 SEO）。
+ * sitemap-observatory.xml は、これに入り、しかも届かなかった行の無い出品だけを載せる
+ * （L0 のプローブだけの薄い頁でクロールを使わず、購入の証拠がある頁へ回す）。
+ */
+export async function readEndpointsWithDeliveredL1(db: Db): Promise<Set<string>> {
+  const raw = await db.execute(sql`
+    SELECT DISTINCT pu.endpoint_id::text AS endpoint_id
+    FROM x402_l1_purchases pu
+    WHERE ${sql.raw(deliveredPredicate("pu"))}`);
+  return new Set(rowsOf(raw).map((r) => String(r.endpoint_id)));
+}
+
+/**
  * 購入行が 1 つでもある host の集合（チェーン・出品の状態を問わない）。頁はこれをキャッシュして持ち、
  * ここに無い host は host ごとの問い合わせを走らせずに 404 にする（でたらめな host に DB を読ませない）。
  */

@@ -44,7 +44,7 @@ const FAQ = [
   {
     question: "Can an x402 payment be refunded?",
     answer:
-      "Under the exact scheme a settled payment is final. The auth-capture scheme adds capture, void and refund within deadlines that the payment sets.",
+      "Under the exact scheme a settled payment is final. By default the exact scheme settles only after the seller's handler succeeds, so a failed call is not charged. The auth-capture scheme adds capture and refund within the deadlines the payment sets, and void while a hold remains. Details are at vet402.com/x402/refunds.",
   },
   {
     question: "How can an agent know an x402 seller will deliver?",
@@ -80,6 +80,9 @@ export default async function X402PillarPage() {
       dateModified: stats?.readAt?.slice(0, 10) ?? "2026-11-10",
     }),
     about: { "@type": "Thing" as const, name: "x402" },
+    // 2026-11-12 SEO: 数の出どころの Dataset は /observatory/state の 1 つだけ（impact と同じく 2 つ目を出さない）。
+    // AI の出典向けに、この頁の数がその Dataset から来ることを isBasedOn で示す。
+    isBasedOn: `${SITE_URL}/observatory/state`,
   };
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -191,8 +194,13 @@ export default async function X402PillarPage() {
               <tr>
                 <td>auth-capture</td>
                 <td>
-                  The client authorizes a maximum. The server can hold, capture, void or refund the payment within
-                  deadlines, and the client can reclaim a hold the server never captured.
+                  The client authorizes a maximum. The server can hold the payment, capture or refund it within the
+                  deadlines the payment sets, and void a hold while it remains. The client can reclaim a hold the server
+                  never captured. See{" "}
+                  <Link href="/x402/refunds" className="doc-link">
+                    x402 refunds
+                  </Link>
+                  .
                 </td>
               </tr>
             </tbody>

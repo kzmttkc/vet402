@@ -14,7 +14,7 @@ const SNAPSHOT_DATE = "2026-11-09";
 const PUBLISHED = "2026-11-10";
 
 const DESCRIPTION =
-  "87.9 percent of vet402's paid call attempts with a final outcome came back with content, as of 2026-11-09 (UTC). Purchases by chain and why calls did not complete.";
+  "87.9 percent of vet402's paid call attempts with a final outcome came back with content, as of 2026-11-09 (UTC). By chain, and why paid x402 calls fail.";
 
 export const metadata: Metadata = pageMetadata({
   title: "State of x402: November 2026",

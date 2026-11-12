@@ -26,7 +26,7 @@
 // ============================================================
 import { getSitemapEndpoints, SITEMAP_ENDPOINT_LIMIT } from "@/lib/observatory/reader";
 import { getDb } from "@/lib/db/client";
-import { readEndpointsWithUndeliveredL1 } from "@/lib/sellers/reader";
+import { readEndpointsWithUndeliveredL1, readEndpointsWithDeliveredL1 } from "@/lib/sellers/reader";
 import { SITE_URL } from "@/lib/site-url";
 
 export const dynamic = "force-dynamic";
@@ -34,13 +34,17 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const measured = await getSitemapEndpoints();
   let undelivered: Set<string>;
+  let delivered: Set<string>;
   try {
     const db = getDb();
     undelivered = db ? await readEndpointsWithUndeliveredL1(db) : new Set();
+    delivered = db ? await readEndpointsWithDeliveredL1(db) : new Set();
   } catch {
     return new Response("sitemap temporarily unavailable\n", { status: 503, headers: { "Retry-After": "600" } });
   }
-  const endpoints = measured.filter((e) => !undelivered.has(e.id));
+  // 2026-11-12 SEO: L1 で届いた購入がある出品だけ（L0 のプローブだけの頁は 2 万件を超え、薄い頁にクロールを使わせる）。
+  // 届かなかった行のある出品は従来どおり外す（記録頁が noindex）。
+  const endpoints = measured.filter((e) => delivered.has(e.id) && !undelivered.has(e.id));
   const urls = endpoints
     .map(
       (e) =>
