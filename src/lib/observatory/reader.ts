@@ -32,7 +32,7 @@ import { isOperatorExclusionConfigured, operatorExclusionPredicate, operatorMatc
 import { notSellerRetestRequestSourceSql } from "./seller-retest-requests";
 import { chainIdentity, chainLabel, isMainnet, isTestnet, networkFilterIds, toCaip2 } from "./chains";
 import { deliveredPredicate, heldReasonSql, inconclusivePredicate, inconclusiveSettledPredicate, judgedSettledCount } from "./delivery";
-import { l2ReadingOf } from "./l2-check";
+import { l2ReadingLabelOf, l2ReadingOf, type L2Detail } from "./l2-check";
 import {
   settledTier,
   settledTierPredicate,
@@ -369,6 +369,8 @@ export type EndpointDetail = {
     l2Schema: string | null;
     /** 2026-09-29 監査 7 周目: l2Schema を今の読み方で読み直した値（l2-check.ts l2ReadingOf・判定と export.csv の l2_reading と同じ）。 */
     l2Reading: string | null;
+    /** 2026-11-13: 記録頁の表示語（export の l2_reading は変えない）。 */
+    l2ReadingLabel: string | null;
     /**
      * settled 行の証拠強度（2026-09-05 監査 S-4 / S-17）。settled 以外は null。
      * 分類は settled-tier.ts が単独で持ち、描画は純粋に保つ。
@@ -413,15 +415,24 @@ export function withSettledTier<
   settlementSource: SettlementSource | null;
   gatewayBatchTx: string | null;
   l2Reading: string | null;
+  l2ReadingLabel: string | null;
 })[] {
-  return rows.map(({ authNonce, settlementVerified, lateSettlement, circleGateway, l2Detail, l2BodyHead, l2ContentType, ...rest }) => ({
-    ...rest,
-    settledTier: settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network }),
-    settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway }),
-    gatewayBatchTx: rest.status === "settled" ? circleGatewayBatchTx(circleGateway) : null,
-    // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
-    l2Reading: rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema),
-  }));
+  return rows.map(({ authNonce, settlementVerified, lateSettlement, circleGateway, l2Detail, l2BodyHead, l2ContentType, ...rest }) => {
+    const l2Reading =
+      rest.l2Schema === null ? null : l2ReadingOf({ l2Schema: rest.l2Schema, l2Detail, bodyHead: l2BodyHead, contentType: l2ContentType }, declaredSchema);
+    return {
+      ...rest,
+      settledTier: settledTier({ status: rest.status, authNonce, settlementVerified, network: rest.network }),
+      settlementSource: settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway }),
+      gatewayBatchTx: rest.status === "settled" ? circleGatewayBatchTx(circleGateway) : null,
+      // 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直し（l2Schema は記録した値のまま）。本文の先頭は出さない。
+      l2Reading,
+      l2ReadingLabel:
+        l2Reading === null
+          ? null
+          : l2ReadingLabelOf(l2Reading, { l2Detail: l2Detail as Pick<L2Detail, "declarationHash" | "liveOutputExample"> | null }, declaredSchema),
+    };
+  });
 }
 
 /**

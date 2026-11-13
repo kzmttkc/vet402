@@ -570,6 +570,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   // 2026-10-21: 45 -> 43. 「every API returns」と「rows that were never checked」を、対応表の段落に替えた。どちらも誤りで、新しい段落に断定語は無い。
   // 2026-10-30: 43 → 42。§4 の冒頭「re-fetched daily, and every fetch …」を、約 2 時間おきに続きから読む形（断定語なし）に書き直した。
   "src/app/observatory/methodology/page.tsx": 42,
+  // 2026-11-13: match / match (no required keys) gloss lines on the record table.
+  "src/app/observatory/e/[id]/page.tsx": 4,
   // 2026-09-29 監査 6 周目: 8 → 7。「[receipts] … keeps only rows with a receipt」を「[settled on-chain] … lists the endpoints …」に
   // 言い換え（receipt を売り手の受領証の意味だけにした）。主張は減っていない。
   // 2026-11-02: 7 → 6。説明文の "Daily measurements" を外した（実際は 1 日に何度も走る。文言監査 M12）。

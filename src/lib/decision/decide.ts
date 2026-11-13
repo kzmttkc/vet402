@@ -377,6 +377,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
         // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
         l1Timeline: loaded.l1Timeline,
+        l2ConformNoRequiredKeys: loaded.l2ConformNoRequiredKeys,
       },
       score,
       registry,

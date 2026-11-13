@@ -1818,7 +1818,7 @@ claims:
     verified_at: 2026-11-12
   - id: method_l2_match_requires_every_declared_required_key
     surface: src/app/observatory/methodology/page.tsx
-    quote: "the response parses and every declared required key is present."
+    quote: "each key the declaration marks as required is present."
     means: "L2 の match は、応答が JSON として読めて、使った宣言（今の 402 を先、無ければカタログ）が required とした最上位キーが全部あるときだけ"
     check: null
     why_unverifiable: "キーの照合結果は行ごとの値で、集計 GET には match の件数しか出ない。判定は l1-runner.ts の required キー走査で、語彙の値域は tests/observatory-vocabulary.test.ts が、配送判定側の扱いは tests/observatory-l1-delivery-verified.test.ts が固定する"

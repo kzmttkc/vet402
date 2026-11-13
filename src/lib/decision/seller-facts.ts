@@ -34,7 +34,7 @@ import { deliveredPredicate, isDelivered, isDeliveryHttp, isInconclusive } from 
 import { classifySellerRow, ONCE_SUFFIX, type Bucket, type MoneyMoved, type SellerRowFacts } from "@/lib/sellers/fix-modes";
 import { readRecordSides } from "@/lib/sellers/reader";
 import { MIN_CONSECUTIVE_FAILS_TO_PUBLISH, publishedVerdict } from "@/lib/observatory/l0-probe";
-import { declaredOutputOf, legacyL2SchemaOf } from "@/lib/observatory/l2-check";
+import { catalogDeclaresOutput, legacyL2SchemaOf, l2RequiredKeysOf } from "@/lib/observatory/l2-check";
 import { purchaseId as toPurchaseId } from "@/lib/ids/canonical";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getSettlementCounts } from "@/lib/settlements/census";
@@ -50,11 +50,17 @@ export function parseL2Detail(v: unknown): PurchaseInput["l2Detail"] {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   if (typeof o.responseHash !== "string") return null;
+  const live = o.liveOutputExample;
+  const liveOutputExample =
+    live && typeof live === "object" && !Array.isArray(live)
+      ? { exampleHash: typeof (live as Record<string, unknown>).exampleHash === "string" ? (live as Record<string, unknown>).exampleHash as string : null }
+      : null;
   return {
     missing: Array.isArray(o.missing) ? o.missing.filter((k): k is string => typeof k === "string") : [],
     declarationHash: typeof o.declarationHash === "string" ? o.declarationHash : null,
     responseHash: o.responseHash,
     reason: typeof o.reason === "string" ? o.reason : null,
+  ...(liveOutputExample ? { liveOutputExample } : {}),
   };
 }
 
@@ -78,7 +84,13 @@ export type PurchaseInput = {
   txHash: string | null;
   network: string | null;
   /** §6.3: l1-runner が raw_response_meta.l2 に残す判定材料（2026-09-02 以降の行だけ持つ）。 */
-  l2Detail?: { missing: string[]; declarationHash: string | null; responseHash: string; reason?: string | null } | null;
+  l2Detail?: {
+    missing: string[];
+    declarationHash: string | null;
+    responseHash: string;
+    reason?: string | null;
+    liveOutputExample?: { exampleHash: string | null } | null;
+  } | null;
   /**
    * 2026-09-29: 支払い付き応答の本文の先頭 500 文字（raw_response_meta.bodyHead）。L2 = mismatch の行だけ読む。
    * 印の無い古い mismatch を読み直す材料（legacyL2SchemaOf）。公開面には出さない。
@@ -290,6 +302,10 @@ export function l1McpDeliveryCounts(
   return l1CountsOf(input.purchases, input, now);
 }
 
+export function purchaseDeclaresOutput(l2Detail: PurchaseInput["l2Detail"]): boolean {
+  return typeof l2Detail?.declarationHash === "string" && l2Detail.declarationHash !== "";
+}
+
 export type SellerFactsInput = {
   /** newest first */
   probes: ProbeInput[];
@@ -374,13 +390,14 @@ function latestDeliveredInWindow(purchases: readonly PurchaseInput[]): PurchaseI
 
 /**
  * 2026-11-02.2: 全履歴の最後の配達を読みに行くか。L2 は「最後の配達」を読む規則で、窓に関係しない。
- * 窓で切ると、確かめた不一致が時間だけで not_checked（BLOCK → WARN）に下がる。読むのは宣言があり、窓の中に
- * 配達が無く、全履歴には配達があるときだけ（多くの出品はこの往復をしない）。
+ * 窓で切ると、確かめた不一致が時間だけで not_checked（BLOCK → WARN）に下がる。カタログ null でも、窓の中に
+ * 配達が無く全履歴に配達があれば最後の配達を 1 行読む。購入の行に宣言があるかは読むまで分からない。
  */
 export function l2NeedsDeliveryOutsideWindow(input: Pick<SellerFactsInput, "purchases" | "declaredSchema" | "lastDeliveredAt">): boolean {
-  if (input.declaredSchema === null || input.declaredSchema === undefined) return false;
   if (!input.lastDeliveredAt) return false;
-  return latestDeliveredInWindow(input.purchases) === null;
+  if (latestDeliveredInWindow(input.purchases) !== null) return false;
+  // カタログ null でも購入の行に宣言が載っているかは読むまで分からない。
+  return true;
 }
 
 /** facts.l0.status。窓の中の新しい順に、窓より前の verdict を続けて公開規則へ渡す。 */
@@ -518,7 +535,13 @@ export function l0UnverifiedCauseOf(
   return reason === "" ? "unrecorded" : reason.slice(0, 40);
 }
 
-export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline?: L1Timeline }): SellerFacts {
+export type AssembleSellerFactsOpts = {
+  l1Timeline?: L1Timeline;
+  /** 2026-11-13: conform かつ必須キー 0（l2_conform_no_required_keys 用）。 */
+  out?: { l2ConformNoRequiredKeys?: boolean };
+};
+
+export function assembleSellerFacts(input: SellerFactsInput, opts?: AssembleSellerFactsOpts): SellerFacts {
   const { probes, purchases } = input;
   const latestProbe = probes[0] ?? null;
   const l0Status = l0StatusOf(probes, input.l0VerdictsBeforeWindow);
@@ -563,21 +586,20 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
   // 最新の決済レシート。inconclusive でも金は動いており、レシートは在る。
   const lastSettled = settled[0] ?? null;
 
-  const declared = input.declaredSchema !== null && input.declaredSchema !== undefined;
-  // 2026-09-29 監査 7 周目（高 1）: 出力を宣言している出品（declaredOutputOf: 必須キーか例のプロパティ）は undeclared と
-  // 書かない。直近の配達を宣言と照合できていなければ（配達が無い・本文を読み切れなかった・照合の前の行）not_checked
-  // （判定は WARN・l2_not_checked）。宣言の本体（declared_schema）はあっても出力を宣言していなければ undeclared のまま。
-  const { requiredKeys: outKeys, exampleProps: outProps } = declaredOutputOf(input.declaredSchema);
-  const declaresOutput = declared && (outKeys.length > 0 || outProps !== null);
-  let l2Status: L2Status = declaresOutput ? "not_checked" : "undeclared";
+  const catalogNonNull = input.declaredSchema !== null && input.declaredSchema !== undefined;
+  const catalogHasOutput = catalogDeclaresOutput(input.declaredSchema);
+  // 2026-09-29 監査 7 周目（高 1）: 出力を宣言している出品は not_checked から始める。宣言の本体だけあって出力を宣言していなければ undeclared。
+  let l2Status: L2Status = catalogHasOutput ? "not_checked" : "undeclared";
   let l2ObservedAt: string | null = null;
   let l2Detail: PurchaseInput["l2Detail"] = null;
-  if (declared) {
-    // 2026-11-02.2: 窓の中に無ければ全履歴の最後の配達。公開の文は "of the latest delivery" で、窓を言っていない。
-    const lastDelivered = delivered[0] ?? input.lastDeliveryOutsideWindow ?? null;
-    if (lastDelivered) {
-      l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
-      // 2026-09-29: 印の無い古い mismatch を読み直す（読めなかった本文は not_checked → undeclared と同じ扱い）。
+  let l2ConformNoRequiredKeys = false;
+  const lastDelivered = delivered[0] ?? input.lastDeliveryOutsideWindow ?? null;
+  if (lastDelivered) {
+    const purchaseDecl = purchaseDeclaresOutput(lastDelivered.l2Detail);
+    if (catalogNonNull || purchaseDecl) {
+      if (catalogNonNull) {
+        l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
+      }
       const l2 = legacyL2SchemaOf({
         l2Schema: lastDelivered.l2Schema,
         l2Reason: lastDelivered.l2Detail?.reason,
@@ -588,11 +610,32 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
       });
       if (l2.l2Schema === "match") l2Status = "conform";
       else if (l2.l2Schema === "mismatch") l2Status = "mismatch";
+      else if (!catalogHasOutput && purchaseDecl && l2.l2Schema === "not_checked") {
+        l2Status = "not_checked";
+        l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
+      }
+      if (l2.l2Schema === "match") {
+        l2ConformNoRequiredKeys =
+          l2RequiredKeysOf({ l2Detail: lastDelivered.l2Detail, l2Reading: "match" }, input.declaredSchema) === "none";
+        if (!catalogNonNull && purchaseDecl) {
+          l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
+        }
+      } else if (l2.l2Schema === "mismatch" && !catalogNonNull && purchaseDecl) {
+        l2ObservedAt = toIsoUtc(lastDelivered.attemptedAt);
+      }
       l2Detail = lastDelivered.l2Detail ? { ...lastDelivered.l2Detail, missing: l2.missing ?? lastDelivered.l2Detail.missing } : null;
     }
   }
   const sha256 = (v: string) => createHash("sha256").update(v, "utf8").digest("hex");
-  const declarationHash = declared ? sha256(JSON.stringify(input.declaredSchema)) : null;
+  let declarationHash: string | null = null;
+  if (catalogNonNull && input.declaredSchema !== null && input.declaredSchema !== undefined) {
+    declarationHash = sha256(JSON.stringify(input.declaredSchema));
+  } else if (
+    (l2Status === "conform" || l2Status === "mismatch" || (l2Status === "not_checked" && !catalogHasOutput)) &&
+    l2Detail?.declarationHash
+  ) {
+    declarationHash = l2Detail.declarationHash;
+  }
   // §6.3: response_hash は conform でも出す。diff_hash / missing_keys は mismatch のときだけ。
   // 詳細の無い旧行はハッシュを捏造しない（null）。
   const responseHash = (l2Status === "conform" || l2Status === "mismatch") && l2Detail ? l2Detail.responseHash : null;
@@ -613,7 +656,7 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
   // test（vet402 自身）と measurement（公開一覧の他社）は wash ではない。分母に入れると、
   // 測定の支払いが多い店が wash_dominated になる。どちらも開示したうえで外す。
   const thirdPartyRaw = Math.max(0, raw - test - measurement);
-  return {
+  const facts: SellerFacts = {
     l0: {
       status: l0Status,
       // 2026-11-02（監査 M10）: 公開は format: date-time。Postgres の ::text をそのまま出さない。
@@ -655,6 +698,8 @@ export function assembleSellerFacts(input: SellerFactsInput, opts?: { l1Timeline
     unique_payers_30d_real: uniquePayersReal,
     wash_dominated: thirdPartyRaw >= WASH_DOMINATED_MIN_RAW && real <= thirdPartyRaw * WASH_DOMINATED_REAL_SHARE,
   };
+  if (opts?.out) opts.out.l2ConformNoRequiredKeys = l2ConformNoRequiredKeys;
+  return facts;
 }
 
 /**
@@ -737,6 +782,8 @@ export type SellerFactsLoaded = {
   l2ContentType?: string | null;
   /** 2026-11-02.2: L2 を決めた購入の ID（l2PurchaseIdOf）。L2 の evidence の purchase_id。 */
   l2PurchaseId?: string | null;
+  /** 2026-11-13: conform かつ必須キー 0 の宣言（判定の l2_conform_no_required_keys）。公開 facts には載せない。 */
+  l2ConformNoRequiredKeys?: boolean;
   endpoint: {
     id: string;
     resourceId: string | null;
@@ -932,9 +979,11 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     lastDeliveryOutsideWindow,
   };
   const l1Timeline = l1TimelineOf(factsInput);
-  const facts = assembleSellerFacts(factsInput, { l1Timeline });
+  const assembleOut: { l2ConformNoRequiredKeys?: boolean } = {};
+  const facts = assembleSellerFacts(factsInput, { l1Timeline, out: assembleOut });
   return {
     facts,
+    l2ConformNoRequiredKeys: assembleOut.l2ConformNoRequiredKeys,
     lastAttempt,
     l1NotCounted: l1NotCountedOf(factsInput),
     l0UnverifiedCause: l0UnverifiedCauseOf(probes, l0VerdictsBeforeWindow, l0HasProbeBeforeWindow),

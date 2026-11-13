@@ -94,6 +94,10 @@
 //     使う買い手でも高く出る（読み取り 2026-11-02T09:01Z: 間隔が測れる 11,819 payer のうち 9,455 が 0.3 超）。測れないものを理由に BLOCK に
 //     しない。数は facts.short_interval_payment_rate に残す（retry_burst_rate は同じ値の deprecated）。語 retry_burst は出さず、古い応答を
 //     読む呼び手のために表と enum に retired で残す。sybil・ブラックリスト・<input>_unavailable の BLOCK は変えない。
+//   2026-11-13.1（L2 購入行の宣言）: 答えが変わるので版を上げた。
+//     (1) カタログが空でも、購入の行の宣言で L2 を読む。mismatch は欠けたキーがあれば BLOCK、無ければ WARN になりうる（以前は l2_undeclared で ALLOW になりえた）。
+//     (2) 必須キー0の宣言の match に l2_conform_no_required_keys を載せる。推奨は変えない。
+//     (3) 購入行に宣言があり読み直しが not_checked なら not_checked（WARN）。以前は undeclared で ALLOW になりえた。
 //   BLOCK if l0 = fail ∨ paid_undelivered_seller_side_since_delivery ≥ 2
 //            ∨ (l2 = mismatch ∧ missing_keys ≠ ∅) ∨ wash_dominated ∨ operator_blacklist
 //   WARN  if l0 = unverified ∨ L1 の証拠なし／古い（オプトイン無し）∨ 結論なし（l1_inconclusive）
@@ -149,7 +153,7 @@ export type Recommendation = "ALLOW" | "WARN" | "BLOCK";
 export type Decision = { recommendation: Recommendation; reason_codes: string[] };
 
 /** 規則の版。判定の意味が変わる変更は必ず上げる（YYYY-MM-DD.n）。 */
-export const DECISION_RULES_VERSION = "2026-11-08.1";
+export const DECISION_RULES_VERSION = "2026-11-13.1";
 
 /** 2026-09-29.2: 最後の配達より後の「支払い済み・未配達」がこの回数に届いたら BLOCK（1 回は WARN）。 */
 export const L1_PAID_UNDELIVERED_BLOCK = 2;
@@ -187,6 +191,8 @@ export type PayerOptions = {
   l1Timeline?: L1Timeline;
   /** 鮮度の基準時刻。省略時は今。 */
   now?: Date;
+  /** 2026-11-13: conform かつ宣言に必須キーが無い（l2_conform_no_required_keys）。 */
+  l2ConformNoRequiredKeys?: boolean;
 };
 
 /**
@@ -386,6 +392,7 @@ export function decidePayer(f: SellerFacts, o: PayerOptions = {}): Decision {
   if (latestFailed) r.push("l1_latest_failed");
   if (v.staleDelivery) r.push("l1_stale");
   r.push(`l2_${f.l2.status}`);
+  if (f.l2.status === "conform" && o.l2ConformNoRequiredKeys) r.push("l2_conform_no_required_keys");
   const l2Explained = l2MismatchExplained(f);
   const l2Unexplained = f.l2.status === "mismatch" && !l2Explained;
   if (l2Unexplained) r.push(L2_MISMATCH_UNEXPLAINED);

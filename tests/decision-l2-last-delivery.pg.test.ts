@@ -98,12 +98,40 @@ if (!TEST_DB) {
     const dec = decidePayer(b.loaded.facts, { l1NotCounted: b.loaded.l1NotCounted, l1Timeline: b.loaded.l1Timeline });
     assert.equal(dec.recommendation, "BLOCK");
 
-    // 宣言が無い出品は読まない。
+    // カタログ・購入行とも宣言なし: 窓の外の配達は 1 回読むが undeclared。
     const noDecl = await mkEndpoint(null);
     await mkPurchase(noDecl, 40, { l2: "no_declaration" });
     const c = await load(noDecl);
-    assert.equal(c.calls, a.calls, "宣言が無ければ読まない");
+    assert.equal(c.calls, a.calls + 1, "窓の中に配達が無ければ最後の配達を読む");
     assert.equal(c.loaded.facts.l2.status, "undeclared");
+
+    // カタログ null・購入行に liveOutputExample.exampleHash あり → conform（l2_conform_no_required_keys）。
+    const live402 = await mkEndpoint(null);
+    const exHash = "ee".repeat(32);
+    await mkPurchase(live402, 5, {
+      l2: "match",
+      meta: {
+        l2: {
+          missing: [],
+          declarationHash: exHash,
+          responseHash: "ff".repeat(32),
+          reason: null,
+          liveOutputExample: { exampleHash: exHash },
+        },
+        contentType: "application/json",
+      },
+    });
+    const live = await load(live402);
+    assert.equal(live.loaded.facts.l2.status, "conform");
+    assert.equal(live.loaded.facts.l2.declaration_hash, exHash);
+    assert.equal(live.loaded.l2ConformNoRequiredKeys, true);
+    const { decide, invalidateDecisionCache } = await import("@/lib/decision/decide");
+    invalidateDecisionCache();
+    const liveDec = await decide({ role: "payer", observatoryId: live402, operatorBlacklist: false, skipScore: true });
+    assert.ok(liveDec);
+    assert.ok(liveDec.reason_codes.includes("l2_conform"));
+    assert.ok(liveDec.reason_codes.includes("l2_conform_no_required_keys"));
+    assert.ok(!liveDec.reason_codes.includes("l2_undeclared"));
 
     // 全履歴で配達が無い出品も読まない。
     const never = await mkEndpoint(DECLARED);
@@ -128,7 +156,6 @@ if (!TEST_DB) {
     const routed = await mkEndpoint(DECLARED);
     await mkPurchase(routed, 45, { l2: "mismatch", meta: l2Meta(["id"], "missing_keys"), tx: oldTx });
     await mkPurchase(routed, 3, { status: "settled", http: 500, tx: newTx });
-    const { decide, invalidateDecisionCache } = await import("@/lib/decision/decide");
     invalidateDecisionCache();
     const decided = await decide({ role: "payer", observatoryId: routed, operatorBlacklist: false, skipScore: true });
     assert.ok(decided);

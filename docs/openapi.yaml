@@ -4975,12 +4975,12 @@ components:
     DecisionReasonCode:
       type: string
       description: >-
-        Since 2026-11-08.1. The reason codes of `DecisionResult.reason_codes`:
+        Since 2026-11-13.1. The reason codes of `DecisionResult.reason_codes`:
         the fixed words in `enum`, plus the families in `x-vet402-patterns`
         (l0_unverified_<cause>, <input>_unavailable). Meaning, effect on the
         verdict, what it means for the payer and whether the seller can fix
         it: /docs/api#reason-codes (same source, src/lib/decision/reason-codes.ts).
-      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_no_recent_probe, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_undeclared, l2_not_checked, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
+      enum: [l0_pass, l0_fail, l0_unverified, l0_unverified_single_fail, l0_unverified_no_recent_probe, l1_delivered, l1_not_attempted, l1_stale, l1_inconclusive, l1_never_delivered, l1_paid_not_delivered, l1_latest_failed, l1_empty_2xx_settlement_unknown, l1_not_counted_vet402_side, l1_not_counted_held, l1_not_counted_no_charge, l1_not_counted_unproven, l1_not_counted_unconfirmed, l1_waived_by_operator, l2_conform, l2_conform_no_required_keys, l2_undeclared, l2_not_checked, l2_mismatch, l2_mismatch_unexplained, offer_drifting, wash_dominated, dialect_mismatch, data_thin, operator_blacklist, sybil_high, retry_burst, thin_history, shared_funder, new_payer, erc8004_registered, history_ok]
       x-vet402-patterns: ["^l0_unverified_[a-z0-9_]{1,40}$", "^(settlements|funder_index|erc8004)_unavailable$"]
 
     DecisionResult:
@@ -5013,7 +5013,7 @@ components:
             Machine-readable reasons. Every code, with its meaning, what it
             means for the payer and whether the seller can fix it, is in
             `DecisionReasonCode` and in the table at /docs/api#reason-codes.
-            Rules 2026-11-08.1 (rules_version). Each paid attempt (one L1
+            Rules 2026-11-13.1 (rules_version). Each paid attempt (one L1
             purchase row) is sorted by one function, the same one /sellers,
             /api/v1/sellers/export.csv and this decision read: whether money
             moved, whether it delivered, and whose side a failure is on.
@@ -5082,7 +5082,11 @@ components:
             it. A listing that declares an output schema but whose latest
             delivery vet402 has not checked against it (no delivery, a body
             over 256 KiB or cut off) is l2_not_checked, a WARN;
-            l2_undeclared means the listing declares no output schema.
+            l2_undeclared means neither the catalog nor the purchase row of
+            the latest delivery gives an output declaration to check
+            against. l2_conform_no_required_keys next to l2_conform means
+            the declaration marks no key as required, so vet402 checked that
+            the body is a JSON object or array, not which keys it carries.
             verified_terms.amount is in 6-decimal ledger units: multiply it
             by 10^12 on BNB Chain and by 10 on Stellar before comparing it
             with a 402. Every code, its effect and whether the seller can
@@ -5568,7 +5572,7 @@ components:
         written when that re-read value is mismatch. An older mismatch row with no
         recorded reason is re-read first, and a cut body reads not_checked. In the other cases the decision
         word is not_checked when the current declaration names output (a required
-        key or an example property), and undeclared when it does not. The latest
+        key or an example property), or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds. The latest
         delivery is read at any age, so a mismatch holds until a later delivery
         replaces it; facts.l2.observed_at says when.
     OfferStability:

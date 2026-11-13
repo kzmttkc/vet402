@@ -531,7 +531,7 @@ export default async function Memo() {
           (l2_reading) of the latest delivery is match. mismatch is written when that re-read
           value is mismatch. An older mismatch row with no recorded reason is re-read first, and
           a cut body reads not_checked. In the other cases the decision word is not_checked when
-          the current declaration names output (a required key or an example property), and undeclared when it does not.
+          the current declaration names output (a required key or an example property), or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds.
         </p>
 
         {/* 2026-08-13 UX監査2巡目 [M5]: この §2 の L0–L3 と、API/SDK が今日返して

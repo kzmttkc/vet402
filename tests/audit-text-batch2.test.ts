@@ -14,7 +14,7 @@ const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 const flat = (s: string) => s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 
 const L2_MAP =
-  /conform is written when the re-read L2 value \(l2_reading\) of the latest delivery is match\. mismatch is written when that re-read value is mismatch\. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked\. In the other cases the decision word is not_checked when the current declaration names output \(a required key or an example property\), and undeclared when it does not\./;
+  /conform is written when the re-read L2 value \(l2_reading\) of the latest delivery is match\. mismatch is written when that re-read value is mismatch\. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked\. In the other cases the decision word is not_checked when the current declaration names output \(a required key or an example property\), or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds\./;
 
 test("A-06 keeps the decision enum and states when conform, mismatch, not_checked, and undeclared are written", () => {
   assert.deepEqual([...L2_STATUSES], ["conform", "mismatch", "undeclared", "not_checked"]);
@@ -55,10 +55,17 @@ test("A-06 keeps the decision enum and states when conform, mismatch, not_checke
   const llms = read("public/llms.txt");
   const full = read("src/app/llms-full.txt/route.ts");
   const llmsMap =
-    /in the other cases the decision word is not_checked when the current declaration names output \(a required key or an example property\) and undeclared when it does not/;
+    /in the other cases the decision word is not_checked when the current declaration names output \(a required key or an example property\) or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds/;
   assert.match(llms, /Output: match \/ mismatch \/ no_declaration \/ not_checked/);
   assert.match(llms, llmsMap);
   assert.match(full, llmsMap);
+  const oldTail = "and undeclared when it does not";
+  assert.equal(openapi.includes(oldTail), false);
+  assert.equal(method.includes(oldTail), false);
+  assert.equal(docs.includes(oldTail), false);
+  assert.equal(home.includes(oldTail), false);
+  assert.equal(llms.includes(oldTail), false);
+  assert.equal(full.includes(oldTail), false);
 });
 
 test("A-07 gates a payment on getDecision and does not pay from the wallet score alone", () => {

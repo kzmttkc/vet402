@@ -166,7 +166,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "match",
     group: "l2",
     definition:
-      "match means the paid response parses as JSON and every key the declaration vet402 uses marks as required is present. vet402 uses the current 402 from the seller first and the catalog schema only when that 402 declares no output. With an example that marks no key as required and no catalog output beside it, a JSON object or array is enough.",
+      "match means the paid response parses as JSON and every key the declaration vet402 uses marks as required is present.",
   },
   {
     term: "mismatch",
@@ -178,7 +178,7 @@ export const OBSERVATORY_VOCABULARY: VocabularyTerm[] = [
     term: "no_declaration",
     group: "l2",
     definition:
-      "no_declaration means the listing's output schema gave vet402 nothing to check the response against: no schema, a schema with no required keys and no example properties, or example properties and a response whose content type is not JSON. vet402 checks the current 402 from the seller before the catalog schema. An output example in the 402 (extensions.bazaar.info.output.example) is part of that check when the catalog also declares an output. It is never counted as a failed delivery.",
+      "no_declaration means the listing's output schema gave vet402 nothing to check the response against: no schema, a schema with no required keys and no example properties, or example properties and a response whose content type is not JSON. An output example in the 402 (extensions.bazaar.info.output.example) counts as a declaration. When the catalog also declares an output, the example's top-level keys are required. When it does not, vet402 checks that the response is a JSON object or array, and the record page reads match (no required keys). It is never counted as a failed delivery.",
   },
   {
     term: "not_checked",

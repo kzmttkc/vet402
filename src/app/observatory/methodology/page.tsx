@@ -1161,14 +1161,13 @@ export default async function ObservatoryMethodologyPage() {
           402 declares no output. <strong>no_declaration</strong>: the listing&apos;s output schema gave
           vet402 nothing to check this response against (no schema, a schema with no required
           keys and no example properties, or example properties with a content type that
-          is not JSON). vet402 checks the current 402 from the seller before the catalog schema. An output example in the 402 (
+          is not JSON). An output example in the 402 (
           <code>extensions.bazaar.info.output.example</code>
-          ) is part of that check when the catalog also declares an output. It is never counted as a failed delivery.{" "}
-          <strong>match</strong> — the response parses
-          and every declared required key is present. With an example that marks no key as required, a
-          JSON object or array is enough. <strong>mismatch</strong> — the body does
+          ) counts as a declaration. When the catalog also declares an output, the example&apos;s top-level keys are required. When it does not, vet402 checks that the response is a JSON object or array, and the record page reads match (no required keys). It is never counted as a failed delivery.{" "}
+          <strong>match</strong>: the response parses and each key the declaration marks as required is
+          present. <strong>match (no required keys)</strong>: the declaration vet402 used marks no key as required, so vet402 checked that the response is a JSON object or array, not which keys it carries. <strong>mismatch</strong>: the body does
           not parse as JSON, is JSON but not an object or array, a required key is missing, or the
-          content type is not JSON despite declared required keys. <strong>not_checked</strong> — the paid request did not answer{" "}
+          content type is not JSON despite declared required keys. <strong>not_checked</strong>: the paid request did not answer{" "}
           <code>2xx</code> other than <code>202 Accepted</code>, so there was nothing to check. L2 does not verify that the values are
           correct or that the content is any good — that judgement is L3, and L3 is not built.
         </p>
@@ -1179,7 +1178,7 @@ export default async function ObservatoryMethodologyPage() {
           not_checked. <code>conform</code> is written when the re-read L2 value (l2_reading) of the latest delivery is
           match. <code>mismatch</code> is written when that re-read value is mismatch. An older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked.
           In the other cases the decision word is not_checked when the current declaration names
-          output (a required key or an example property), and undeclared when it does not. The
+          output (a required key or an example property), or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds. The
           quickstart resource <code>https://api.exa.ai/search</code> is an example of where to read
           that resource&apos;s decision and its purchase rows. Read <code>facts.l2.status</code> on
           its decision and on its facts document, and <code>l2_schema</code> on its purchase rows.

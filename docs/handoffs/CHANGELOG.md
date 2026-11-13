@@ -13,6 +13,15 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 L2: purchase-time 402 declaration drives conform when catalog output is empty
+
+- What: `assembleSellerFacts` reads the latest delivery L2 re-read when the catalog declares output, and also when the purchase row recorded a declaration hash. `l2RequiredKeysOf` and `l2ReadingLabelOf` in `l2-check.ts` power `l2_conform_no_required_keys` and the record page line `match (no required keys)`. export `l2_reading` and `l2ReadingOf` are unchanged.
+- Why: live listings such as landingen24h had `l2_schema=match` in export but `/check` returned `l2_undeclared` because `declared_schema` was null.
+- Tests: `tests/l2-no-required-keys.test.ts` (A through I), updates to `tests/decision-l2-last-delivery.test.ts`, `tests/decision-l2-last-delivery.pg.test.ts`, and `tests/seller-facts.test.ts`.
+- Impact: `freshness.l2` and `facts.l2` for catalog-empty listings with a recorded 402 example now follow the delivery row. Recommendation unchanged for conform with no required keys.
+- Rules version 2026-11-13.1. A listing with no catalog output whose purchase row recorded a declaration and whose latest delivery reads mismatch now gets l2_mismatch (a BLOCK with missing keys, otherwise a WARN) instead of l2_undeclared.
+- A listing with no catalog output whose purchase row recorded a declaration and whose latest delivery reads not_checked (for example a body over 256 KiB) now gets l2_not_checked, a WARN, instead of l2_undeclared. Test: `tests/l2-no-required-keys.test.ts` I.
+
 ## 2026-11-13 L1 seller request lane: a new request on the same URL is no longer refused by an older request's row
 
 - What: `reserveSpend` takes `dupSellerRequestId`. In the seller request lane the six day window check now counts only credential rows with the same `sellerRequestId`, so a second request on the same URL (same `x402_endpoints` row) is bought. Every skip in that lane now leaves one `{ id, reason }` in `summary.sellerRequestSkips`, shown in the cron response and in one log line `observatory.l1.seller_request_skips`. `purchaseOne` returns a `skipReason` on every result other than attempted. Requests past the per run limit get `run_limit`. No new ledger rows. `publicL1Summary` leaves the new field out. Test seam `sellerRetestCatalog` on `runL1Batch`.

@@ -28,6 +28,7 @@ import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { isPathTemplate } from "@/lib/observatory/path-template";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 import { purchaseShownAsWithdrawn, WITHDRAWN_FROM_CATALOG, withdrawnFromCatalogSentence, withdrawnL0FailNote } from "@/lib/observatory/l0-verdict";
+import { L2_MATCH_NO_REQUIRED_KEYS_GLOSS } from "@/lib/observatory/l2-check";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -100,10 +101,12 @@ const TIER_GLOSS = {
   nonce: "the on-chain re-read matched the one-time value stored for that purchase, so the transaction is the one for this purchase. Stellar is not in this count",
   amountPayee: "the on-chain re-read matched payer, payee, amount and asset and did not bind a one-time value (rows before 2026-09-04, and Stellar)",
 } as const;
+
 const L2_GLOSS: Readonly<Record<string, string>> = {
   not_checked: "not checked: the paid request did not answer 200, so there was no response to check against the listing's output schema",
-  no_declaration: "the listing's output schema gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). vet402 checks the current 402 from the seller before the catalog schema. An output example in the 402 (extensions.bazaar.info.output.example) is part of that check when the catalog also declares an output",
-  match: "the response parsed as JSON and had the keys the listing marks as required. With an example that marks no key as required, a JSON object or array is enough",
+  no_declaration: "the listing's output schema gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). An output example in the 402 (extensions.bazaar.info.output.example) counts as a declaration. When the catalog also declares an output, the example's top-level keys are required. When it does not, vet402 checks that the response is a JSON object or array, and the record page reads match (no required keys)",
+  match: "the response parsed as JSON and had each key the declaration marks as required",
+  "match (no required keys)": L2_MATCH_NO_REQUIRED_KEYS_GLOSS,
   mismatch: "the content type was not JSON although the listing marks required keys, or the body read in full did not parse as JSON, was JSON but not an object or array, or lacked a key the listing marks as required",
 };
 
@@ -568,7 +571,7 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                             ? `${p.amountUnits} units${usd(p.amountUnits) ? ` (≈ ${usd(p.amountUnits)} USDC)` : ""}`
                             : "amount —"}
                           {/* 2026-09-29 監査 7 周目: 判定・export.csv の l2_reading と同じ読み直しの値。記録した値が違えば添える。 */}
-                          {" · "}L2 {p.l2Reading ?? p.l2Schema ?? "—"}
+                          {" · "}L2 {p.l2ReadingLabel ?? p.l2Reading ?? p.l2Schema ?? "—"}
                           {p.l2Reading && p.l2Schema && p.l2Reading !== p.l2Schema ? ` (recorded ${p.l2Schema})` : ""}
                           {/* 2026-09-29 第4巡: 売り手頁と同じ語で「どちらの側か」。 */}
                           {shownSides[i] && (
@@ -728,7 +731,7 @@ function RecordTerms({
   purchases,
   held,
 }: {
-  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null; l2Reading?: string | null }[];
+  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null; l2Reading?: string | null; l2ReadingLabel?: string | null }[];
   held: readonly (string | null)[];
 }) {
   const items: { term: string; gloss: string }[] = [];
@@ -745,7 +748,7 @@ function RecordTerms({
   }
   for (const h of held) if (h) add(h, (HELD_GLOSS as Readonly<Record<string, string>>)[h] ? `held_reason in the export: ${(HELD_GLOSS as Readonly<Record<string, string>>)[h]}` : undefined);
   for (const p of purchases) {
-    const l2 = p.l2Reading ?? p.l2Schema;
+    const l2 = p.l2ReadingLabel ?? p.l2Reading ?? p.l2Schema;
     if (l2) add(`L2 ${l2}`, L2_GLOSS[l2]);
   }
   if (items.length === 0) return null;

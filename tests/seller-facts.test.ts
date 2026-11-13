@@ -133,7 +133,9 @@ test("L2 conform: response_hash は出すが diff_hash は null（差分が無�
   assert.equal(legacy.l2.response_hash, null, "詳細の無い旧行はハッシュを捏造しない");
   assert.equal(legacy.l2.diff_hash, null);
   const none = assembleSellerFacts({ ...base, declaredSchema: null, purchases: [{ ...purchases[0], l2Schema: "match", l2Detail: detail }] });
-  assert.equal(none.l2.response_hash, null);
+  assert.equal(none.l2.status, "conform");
+  assert.equal(none.l2.response_hash, "r".repeat(64));
+  assert.equal(none.l2.declaration_hash, "d".repeat(64));
 });
 
 test("l2EvidenceOf: conform / mismatch のとき L2 evidence にハッシュを載せる。undeclared は null", async () => {

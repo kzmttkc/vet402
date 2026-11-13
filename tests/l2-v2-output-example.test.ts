@@ -275,9 +275,10 @@ test("l1-runner は x402 の 402 を判定に渡し、影では l2_schema を決
   assert.equal((src.match(/l2Schema = shadow/g) ?? []).length, 0);
 });
 
-test("公開の no_declaration は 402 をカタログより先に見ると書いてあり、禁止の語法が無い", () => {
-  const sentence = "gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). vet402 checks the current 402 from the seller before the catalog schema";
-  const checked = "vet402 checks the current 402 from the seller before the catalog schema.";
+test("公開の no_declaration は 402 の見本を宣言として書いてあり、禁止の語法が無い", () => {
+  const sentence =
+    "gave vet402 nothing to check this response against (no schema, a schema with no required keys and no example properties, or example properties with a content type that is not JSON). An output example in the 402";
+  const checked = "counts as a declaration. When the catalog also declares an output, the example's top-level keys are required.";
   const squash = (s: string) => s.replace(/\s+/g, " ");
   const endpoint = squash(readFileSync("src/app/observatory/e/[id]/page.tsx", "utf8"));
   const method = squash(readFileSync("src/app/observatory/methodology/page.tsx", "utf8"));
@@ -293,7 +294,7 @@ test("公開の no_declaration は 402 をカタログより先に見ると書�
   assert.equal(vocab.includes("is not checked yet"), false);
   assert.equal(endpoint.includes("the listing declares no output schema to check the response against"), false);
   assert.equal(method.includes("output schema; never counted as a failure."), false);
-  for (const prose of [sentence, checked, "It is never counted as a failed delivery."]) {
+  for (const prose of [sentence, checked, "It is never counted as a failed delivery.", "When it does not, vet402 checks that the response is a JSON object or array"]) {
     assert.equal(/\b(we|our|us)\b/i.test(prose), false, prose);
     assert.equal(prose.includes(";"), false, prose);
     assert.equal(prose.includes("—") || prose.includes("–") || prose.includes("--"), false, prose);

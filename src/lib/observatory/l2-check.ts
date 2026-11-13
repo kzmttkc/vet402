@@ -65,7 +65,75 @@ export type L2Detail = {
   responseHash: string;
   reason: L2Reason | null;
   declarationSource?: Exclude<L2DeclarationSource, null>;
+  liveOutputExample?: { exampleHash: string | null } | null;
 };
+
+/** カタログが出力を宣言しているか（必須キーか example の properties）。 */
+export function catalogDeclaresOutput(declaredSchema: unknown): boolean {
+  if (declaredSchema === null || declaredSchema === undefined) return false;
+  const { requiredKeys, exampleProps } = declaredOutputOf(declaredSchema);
+  return requiredKeys.length > 0 || exampleProps !== null;
+}
+
+export type L2RequiredKeys = "none" | "some" | "unknown";
+
+function catalogDeclarationHash(declaredSchema: unknown): string | null {
+  if (declaredSchema === null || declaredSchema === undefined) return null;
+  try {
+    const json = JSON.stringify(declaredSchema);
+    return typeof json === "string" ? createHash("sha256").update(json, "utf8").digest("hex") : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * match の行だけ: 宣言に必須キーがあったか（/check と記録頁が同じ関数を使う）。
+ *   exampleHash と declarationHash が同じ: カタログが出力を宣言していれば some、していなければ none。
+ *   カタログ宣言のハッシュと同じ: requiredKeys が 0 なら none、それ以外 some。
+ *   それ以外 unknown（conform でも l2_conform_no_required_keys は付けない）。
+ * 購入時のカタログが出力を宣言していたかは行に残っていない。必須キー数は今のカタログで決める。購入時は宣言していて
+ * 後で消えた行は "none"（keys unverified）になりうる。言い控えの側に倒れる。購入時の必須キー数を行へ残す変更は別作業。
+ */
+export function l2RequiredKeysOf(
+  row: {
+    l2Detail?: Pick<L2Detail, "declarationHash" | "liveOutputExample"> | null;
+    l2Reading?: string | null;
+  },
+  catalogDeclaredSchema: unknown,
+): L2RequiredKeys {
+  const reading = row.l2Reading ?? null;
+  if (reading !== "match") return "unknown";
+  const declHash = row.l2Detail?.declarationHash ?? null;
+  if (!declHash) return "unknown";
+  const exampleHash = row.l2Detail?.liveOutputExample?.exampleHash ?? null;
+  if (exampleHash !== null && declHash === exampleHash) {
+    return catalogDeclaresOutput(catalogDeclaredSchema) ? "some" : "none";
+  }
+  const catHash = catalogDeclarationHash(catalogDeclaredSchema);
+  if (catHash !== null && declHash === catHash) {
+    const { requiredKeys } = declaredOutputOf(catalogDeclaredSchema);
+    return requiredKeys.length === 0 ? "none" : "some";
+  }
+  return "unknown";
+}
+
+/** 記録頁の L2 表示語（export の l2_reading は変えない）。match かつ必須キー 0 なら match (no required keys)。 */
+export function l2ReadingLabelOf(
+  l2Reading: string | null,
+  row: Parameters<typeof l2RequiredKeysOf>[0],
+  catalogDeclaredSchema: unknown,
+): string | null {
+  if (l2Reading === null) return null;
+  if (l2Reading === "match" && l2RequiredKeysOf({ ...row, l2Reading }, catalogDeclaredSchema) === "none") {
+    return "match (no required keys)";
+  }
+  return l2Reading;
+}
+
+/** 記録頁の L2_GLOSS 用（match (no required keys) の 1 文）。 */
+export const L2_MATCH_NO_REQUIRED_KEYS_GLOSS =
+  "the declaration vet402 used marks no key as required, so vet402 checked that the response parsed as a JSON object or array, not which keys it carries";
 
 /** 本文の読み取りの失敗が時間切れ（AbortController の abort・タイムアウト）か。 */
 export function isTimeoutError(error: unknown): boolean {

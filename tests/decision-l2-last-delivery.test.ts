@@ -7,7 +7,7 @@
 // 固定すること:
 //   1. 窓の中に配達が無ければ、loadSellerFacts が渡す全履歴の最後の配達で L2 を読む（欠けたキーあり → BLOCK）
 //   2. 窓の中に配達があれば、そちらが勝つ。古い行は読まない
-//   3. 出力を宣言していない出品は undeclared のまま
+//   3. カタログ null でも窓の中に配達が無ければ全履歴の最後の配達で L2 を読む（購入の行に宣言があるかは読むまで分からない）
 // 実際の SQL と読む回数は tests/decision-l2-last-delivery.pg.test.ts。
 // ============================================================
 import { test } from "node:test";
@@ -122,8 +122,16 @@ test("H1: 窓の中の配達があれば、そちらが勝つ", () => {
   assert.equal(l2PurchaseIdOf([inWindow], delivery()), "eip155:8453:0xnew");
 });
 
-test("H1: 出力を宣言していない出品は undeclared のまま", () => {
-  const f = assembleSellerFacts(input({ declaredSchema: null, lastDeliveryOutsideWindow: delivery() }));
+test("H1: カタログが出力を宣言していなくても、窓の外の配達に宣言ハッシュがあれば conform", () => {
+  const f = assembleSellerFacts(input({ declaredSchema: null, lastDeliveryOutsideWindow: delivery({ l2Schema: "match", l2Detail: { missing: [], declarationHash: "d", responseHash: "r", reason: null } }) }));
+  assert.equal(f.l2.status, "conform");
+  assert.equal(f.l2.observed_at, "2026-09-30T15:32:03.123Z");
+});
+
+test("H1: 出力宣言も購入行の宣言も無い出品は undeclared", () => {
+  const f = assembleSellerFacts(
+    input({ declaredSchema: null, lastDeliveryOutsideWindow: delivery({ l2Schema: "no_declaration", l2Detail: null }) }),
+  );
   assert.equal(f.l2.status, "undeclared");
   assert.equal(f.l2.observed_at, null);
 });

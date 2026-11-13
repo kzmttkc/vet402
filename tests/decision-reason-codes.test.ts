@@ -82,7 +82,7 @@ function run(purchases: PurchaseInput[], declaredSchema: unknown = null) {
   return { input, facts, d: decidePayer(facts, options) };
 }
 
-test("版: 2026-11-08.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-08.1"));
+test("版: 2026-11-13.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-13.1"));
 
 // ------------------------------------------------------------------
 // 1. お金が動いていない失敗
@@ -350,6 +350,10 @@ test("rules.ts（payer）が出しうる語は全部、表にある", () => {
               const stale = decidePayer({ ...f, l1: { ...f.l1, n_attempts: 0, n_delivered: 0 } }, { l1Timeline: { n_counted: 0, n_paid_undelivered: 0, n_paid_undelivered_since_delivery: 0, latest_counted: null, last_delivered_at: null, last_signed_attempt_at: daysAgo(40) }, now: NOW });
               for (const c of stale.reason_codes) seen.add(c);
             }
+  for (const c of decidePayer(
+    { ...SELLER_BASE, l2: { ...SELLER_BASE.l2, status: "conform" } },
+    { l2ConformNoRequiredKeys: true, now: NOW },
+  ).reason_codes) seen.add(c);
   const missing = [...seen].filter((c) => reasonCodeDocOf(c) === null);
   assert.deepEqual(missing, [], `表に無い語: ${missing.join(", ")}`);
   // 表の payer の語は、どれも実際に出る（死んだ行を載せない）。パターンは代表で確かめる。

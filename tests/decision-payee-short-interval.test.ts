@@ -25,7 +25,7 @@ const buyer = (rate: number | null): BuyerFacts => ({
   last_seen: "2026-11-02T05:00:00Z",
 });
 
-test("版: 2026-11-08.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-08.1"));
+test("版: 2026-11-13.1", () => assert.equal(DECISION_RULES_VERSION, "2026-11-13.1"));
 
 test("短い間隔の支払いの割合は判定を動かさず、理由コードにも出ない", () => {
   for (const rate of [null, 0, 0.3, 0.31, 0.5, 1]) {
@@ -97,7 +97,7 @@ test("公開の説明: /docs/api と llms.txt は新しい名前を説明し、/
 });
 
 test("公開の規則の文は版を名乗る（llms.txt・MCP が同じ文を読む）", () => {
-  assert.match(DECISION_RULES_TEXT, /Rules 2026-11-08\.1 /);
+  assert.match(DECISION_RULES_TEXT, /Rules 2026-11-13\.1 /);
 });
 
 test("純関数は定義どおり: 同じ resource の 60 秒以内の間隔の割合", () => {
