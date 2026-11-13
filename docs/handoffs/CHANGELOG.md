@@ -15,7 +15,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ## 2026-11-14 /x402/refunds: where a 4xx can count on the seller's side
 
-- On /x402/refunds, vet402 now says settled 4xx calls are held out of delivered rates, and that /sellers puts a settled Base 400 or 422 with a structured input validation error for declared input on the seller's side after seller-side failures on two UTC days (S1-1 `seller_fixable_input`). Numbers unchanged.
+- On /x402/refunds, vet402 now says settled 4xx calls are held out of delivered rates, and that /sellers can put a settled Base 400 or 422 with a structured input validation error for declared input on the seller's side after seller-side failures on two UTC days (S1-1 `seller_fixable_input`). Numbers unchanged.
 
 ## 2026-11-13 B1: purchase lifecycle stages on the state API and the record page
 

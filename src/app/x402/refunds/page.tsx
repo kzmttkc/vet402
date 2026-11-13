@@ -39,7 +39,7 @@ const FAQ = [
   },
   {
     question: "How often does a paid x402 call come back with nothing?",
-    answer: `As of ${REFUNDS_SNAPSHOT.date} (UTC), vet402 had ${REFUNDS_SNAPSHOT.settled} settled payments. ${REFUNDS_SNAPSHOT.noUsableContent} of them came back with no usable content, and ${REFUNDS_SNAPSHOT.settled4xx} came back with a 4xx. vet402 holds those 4xx calls out of its delivered rates, because its request may differ from what the seller expects. On /sellers, a settled 400 or 422 on Base that returns a structured input validation error for input vet402 sent as declared goes on the seller's side once that listing shows seller-side failures on two different UTC days.`,
+    answer: `As of ${REFUNDS_SNAPSHOT.date} (UTC), vet402 had ${REFUNDS_SNAPSHOT.settled} settled payments. ${REFUNDS_SNAPSHOT.noUsableContent} of them came back with no usable content, and ${REFUNDS_SNAPSHOT.settled4xx} came back with a 4xx. vet402 holds those 4xx calls out of its delivered rates, because its request may differ from what the seller expects. On /sellers, some of these can count on the seller's side. That needs a settled 400 or 422 on Base with a structured input validation error for input vet402 sent as declared, and seller-side failures at that listing on two different UTC days.`,
   },
   {
     question: "How can a buyer avoid needing a refund?",
@@ -159,9 +159,9 @@ export default async function RefundsPage() {
           <Link href="/sellers" className="doc-link">
             /sellers
           </Link>
-          , a settled 400 or 422 on Base that returns a structured input validation error for input vet402 sent as
-          declared goes on the seller&apos;s side once that listing shows seller-side failures on two different UTC
-          days. The breakdown by chain is in{" "}
+          , some of these can count on the seller&apos;s side. That needs a settled 400 or 422 on Base with a
+          structured input validation error for input vet402 sent as declared, and seller-side failures at that
+          listing on two different UTC days. The breakdown by chain is in{" "}
           <Link href="/x402/report/2026-11" className="doc-link">
             State of x402: November 2026
           </Link>
