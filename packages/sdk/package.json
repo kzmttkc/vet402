@@ -19,6 +19,7 @@
     "dev": "tsc --watch",
     "test": "npm run build && node --test 'test/*.test.mjs'",
     "test:anvil": "npm run build && node --test 'test/integration/*.test.mjs'",
+    "e4:testnet": "npm run build && node scripts/e4-testnet-run.mjs",
     "mutations": "node test-mutations.mjs",
     "mutations:svm": "node test-mutations-svm.mjs"
   },

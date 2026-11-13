@@ -13,6 +13,11 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 SDK: E4 auth-capture run on the public Base Sepolia network
+
+- What: `npm run e4:testnet` in packages/sdk (`scripts/e4-testnet-run.mjs` and `scripts/e4-testnet-config.mjs`). The run stops before reading keys if the chain is not 84532. All eight scenarios passed on the public Base Sepolia network: delivered answer captured, HTTP 500 and the test seller's empty 200 and 202 voided, the reference server's 202 captured and reported as operator_captured_undelivered, no signature above the SDK limit, a hold above the signed maximum reverted with ExceedsMaxAmount, and the buyer reclaimed a hold after the capture deadline. Thirteen transactions, each signed call sent its payment once. The form 1 comparison row now cites this run and the record is at `tests/fixtures/e4-testnet-run-2026-11-13.json`. P2 stays draft until its own screen checks pass.
+- Why: wave 1 item 3 needs a real testnet result for form 1, not only a local fork.
+- Impact: the recorded run moved 0.02 testnet USDC from the test buyer to the operator address on Base Sepolia. With two earlier full runs the same day, made before the last code changes, the total is 0.06 testnet USDC. No production funds moved. Public pages are unchanged. Keys stay in local files and never enter the repo, the logs or the run record. Tests: `packages/sdk/test/e4-testnet-config.test.mjs`, `tests/e4-9a-form1.test.ts`, `tests/dispute-acceptance.test.ts`.
 ## 2026-11-13 Search: snapshot DOI on /observatory/state and methodology §9
 
 - What: the Dataset JSON-LD on /observatory/state gains `sameAs` with the Zenodo concept DOI 10.5281/zenodo.24195171 and github.com/kzmttkc/vet402-observatory-data. Methodology §9 gains one paragraph pointing to the dated copies and the DOI.

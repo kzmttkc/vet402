@@ -1,0 +1,309 @@
+{
+  "kind": "e4-9a-testnet-run",
+  "startedAt": "2026-11-13T13:59:11.640Z",
+  "finishedAt": "2026-11-13T14:01:59.033Z",
+  "rpc": "https://sepolia.base.org",
+  "chainId": "84532",
+  "startBlock": "58282414",
+  "endBlock": "58283251",
+  "contracts": {
+    "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    "escrow": "0xf96815976523E00e65Be8f34cA5e64b4f41EB19c",
+    "collector": "0x8612dfdc421f80336cd14E8EF9cb1E765dB5ab88"
+  },
+  "addresses": {
+    "buyer": "0x4BBe55C794CF9af677eEC58836727e93935b854c",
+    "operator": "0xBC7378a6a2a50c96c6120968003E0CaEd6f64EB9",
+    "sellerPayTo": "0xBC7378a6a2a50c96c6120968003E0CaEd6f64EB9",
+    "receiverAuthorizer": "0x913643776049115C21bbF1944C0A1bBc640b8250"
+  },
+  "balancesBefore": {
+    "buyer": {
+      "usdc": "960000",
+      "eth": "49263749773296"
+    },
+    "operator": {
+      "usdc": "40000",
+      "eth": "33884206652655"
+    },
+    "sellerPayTo": {
+      "usdc": "40000"
+    }
+  },
+  "balancesAfter": {
+    "buyer": {
+      "usdc": "940000",
+      "eth": "48896237755318"
+    },
+    "operator": {
+      "usdc": "60000",
+      "eth": "25968987658120"
+    },
+    "sellerPayTo": {
+      "usdc": "60000"
+    }
+  },
+  "scenarios": [
+    {
+      "id": "delivered",
+      "expect": "capture",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0x1ebf18091665cedaffb7a6828fdd4ca5e5c587cc747fabd20ed12f9779ee27d2",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282443"
+        },
+        {
+          "role": "capture",
+          "hash": "0x5a008dfa174fbead230d100e9428aed4c597520d13e3d38e4773d804df734d8c",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282456"
+        }
+      ],
+      "sdk": {
+        "status": "paid",
+        "outcome": "captured",
+        "deliveryFailure": null,
+        "reasons": [],
+        "signed": true
+      },
+      "buyerDelta": "-10000",
+      "sellerDelta": "10000",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "fail500",
+      "expect": "void",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0xab0eb5ff7be8c063e86fbef11fb33488ce74a21b62250c78c9562a9e7ffa8c67",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282482"
+        },
+        {
+          "role": "void",
+          "hash": "0xdb902a6b3834bbe2270e8163ebb9457e0290b1f38a5e548dfb472b28ea51e157",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282496"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "voided",
+        "deliveryFailure": "http_status",
+        "reasons": [
+          "not_delivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "empty200",
+      "expect": "void",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0x73c9eb79254206cd1f0fc43ed1a90140c98b2f59b0c834b554fcdcda9cb87284",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282528"
+        },
+        {
+          "role": "void",
+          "hash": "0x6acdc146217cf668ee4fc1d453e509c1a0e30e34b8ddc7e13521990ce5d0732e",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282554"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "voided",
+        "deliveryFailure": "empty_body",
+        "reasons": [
+          "not_delivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "accepted202",
+      "expect": "void",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0xec28d7fba1a7c8b3a5b6c44bb06e6fc9132d3ed76c29e635833367c972a1ed1b",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282590"
+        },
+        {
+          "role": "void",
+          "hash": "0x47f41236e47ff1f111149e75053347c34f55b7a72cb6d52faae44250348e985b",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282609"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "voided",
+        "deliveryFailure": "accepted_202",
+        "reasons": [
+          "not_delivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "official202",
+      "expect": "operator_captured_undelivered",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0x82574fe611ec077e6f863d31e96f3e5cf65d41e07a3be68d5d7c61a89ccc177e",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282638"
+        },
+        {
+          "role": "capture",
+          "hash": "0x4dd2468af0704b6166517b768da4203560f30a7572a418a44475a6aa8339ebd3",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282661"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "captured",
+        "deliveryFailure": "accepted_202",
+        "reasons": [
+          "not_delivered",
+          "operator_captured_undelivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "-10000",
+      "sellerDelta": "10000",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "ceiling_sdk",
+      "expect": "refused",
+      "txs": [],
+      "sdk": {
+        "status": "refused",
+        "outcome": null,
+        "deliveryFailure": null,
+        "reasons": [
+          "price_above_ceiling"
+        ],
+        "signed": false
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "paymentHeadersSeen": "0"
+    },
+    {
+      "id": "ceiling_chain",
+      "expect": "exceeds_max",
+      "txs": [
+        {
+          "role": "greedy_authorize",
+          "hash": "0x70e7c1efda86154b0e70cbe117d2d0fa8bb81781351dfca766fc6342d563cdf0",
+          "expectedStatus": 0,
+          "status": 0,
+          "block": "58282698"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "not_authorized",
+        "deliveryFailure": "http_status",
+        "reasons": [
+          "not_delivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "revertError": "ExceedsMaxAmount",
+      "paymentHeadersSeen": "1"
+    },
+    {
+      "id": "vanish_reclaim",
+      "expect": "reclaim",
+      "txs": [
+        {
+          "role": "authorize",
+          "hash": "0xa0ea722afbc3a0d909fa1f48c02e38354fc25008786bc66824f591b45a8a6364",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58282724"
+        },
+        {
+          "role": "reclaim",
+          "hash": "0xc6a1dd82eac142540ae0410d8b49ff9eda7a069357779ce70ad22d4447a5fc3c",
+          "expectedStatus": 1,
+          "status": 1,
+          "block": "58283231"
+        }
+      ],
+      "sdk": {
+        "status": "failed",
+        "outcome": "held",
+        "deliveryFailure": "timeout",
+        "reasons": [
+          "not_delivered"
+        ],
+        "signed": true
+      },
+      "buyerDelta": "0",
+      "sellerDelta": "0",
+      "pass": true,
+      "notes": null,
+      "earlyReclaimRefused": true,
+      "paymentHeadersSeen": "1"
+    }
+  ],
+  "paidRequestsSeen": "7",
+  "sdkCallsWithPayment": "8",
+  "resendsPerCall": "0",
+  "ethSpentWei": {
+    "buyer": "367512017978",
+    "operator": "7915218994535"
+  },
+  "usdcSpentUnits": "20000",
+  "stopped": null,
+  "allPass": true
+}

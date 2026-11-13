@@ -291,10 +291,11 @@ test("[fix] 3.4-P2-6: anonymous viewers get stage only, parties see own proof no
   assert.equal(dns.reason, "dns_txt_not_implemented");
 });
 
-test("[fix] 3.4-P2-7: P2 is draft while public Base Sepolia 9a-2 is not green", async () => {
-  const { isP2LiveComplete, p2PageMode } = await entry<typeof import("@/lib/observatory/p2-live")>(
-    "@/lib/observatory/p2-live",
-  );
+test("[fix] 3.4-P2-7: P2 stays draft while E4 public testnet is green and screen acceptance is open", async () => {
+  const { isE4Form1PublicTestnetGreen, isP2LiveComplete, p2PageMode } = await entry<
+    typeof import("@/lib/observatory/p2-live")
+  >("@/lib/observatory/p2-live");
+  assert.equal(isE4Form1PublicTestnetGreen(), true);
   assert.equal(isP2LiveComplete(), false);
   assert.equal(p2PageMode(), "draft");
   const page = readFileSync(`src/app${P2_DISPUTE_PAGE_PATH}/page.tsx`, "utf8");
