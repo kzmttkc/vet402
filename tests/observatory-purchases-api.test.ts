@@ -20,6 +20,7 @@
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
+import { PURCHASE_STAGES, PURCHASE_STAGE_OUTSIDE } from "@/lib/observatory/purchase-stage";
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -184,6 +185,12 @@ if (!TEST_DB) {
       assert.equal(typeof body.vet402SideNote, "string");
       if (body.vet402SideCount !== null) assert.equal(body.attemptCountExcludingVet402Side, body.attemptCount - body.vet402SideCount);
       assert.equal(body.purchases.length, 3);
+      const stageUnion = new Set<string>([...PURCHASE_STAGES, ...PURCHASE_STAGE_OUTSIDE]);
+      for (const p of body.purchases) {
+        assert.equal(typeof p.stage, "string");
+        assert.ok(stageUnion.has(p.stage), `unexpected stage ${p.stage}`);
+        assert.ok(p.revokedAt === null || typeof p.revokedAt === "string");
+      }
       // No evaluative vocabulary anywhere in the payload (facts only).
       const raw = JSON.stringify(body).toLowerCase();
       assert.ok(!raw.includes("score"), "payload must not carry 'score'");

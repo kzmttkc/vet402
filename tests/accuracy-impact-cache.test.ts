@@ -11,6 +11,7 @@ import type {
   SettledReceiptsRead,
 } from "@/lib/observatory/impact-cached-reads";
 import type { ObservatoryStats } from "@/lib/observatory/reader";
+import { emptyPurchaseLifecycle } from "@/lib/observatory/purchase-stage";
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
@@ -156,6 +157,7 @@ const sampleObservatoryStats: ObservatoryStats = {
   catalogSnapshots: [],
   cdpBazaarIngestStale: false,
   cdpBazaarLastStrongPassAt: "2026-11-07T00:00:00.000Z",
+  lifecycle: emptyPurchaseLifecycle(),
 };
 
 test("ImpactHeadlineRead は JSON 往復できる（stats と coverage が 1 つの readAt）", () => {

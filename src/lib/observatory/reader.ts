@@ -49,6 +49,14 @@ import {
 import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { pct1 } from "@/lib/util/pct";
+import {
+  attachPurchaseStageFields,
+  emptyPurchaseLifecycle,
+  getPurchaseLifecycleCounts,
+  loadRevokedAtByPurchaseId,
+  type PurchaseLifecycleCounts,
+  type PurchaseStageKey,
+} from "@/lib/observatory/purchase-stage";
 
 export type ObservatoryListRow = {
   id: string;
@@ -386,6 +394,10 @@ export type EndpointDetail = {
      * settled の Gateway 行だけ。それ以外は null。
      */
     gatewayBatchTx: string | null;
+    /** B1: public lifecycle stage for this purchase row. */
+    stage: PurchaseStageKey;
+    /** B1: when the row left settled via correction_log (UTC ISO8601). */
+    revokedAt: string | null;
   }[];
 } | null;
 
@@ -588,9 +600,9 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
     let l1Totals: PaidAttemptTotals = EMPTY_PAID_TOTALS;
     try {
-      purchases = withSettledTier(
-        await db
+      const raw = await db
         .select({
+          id: x402L1Purchases.id,
           attemptedAt: x402L1Purchases.attemptedAt,
           status: x402L1Purchases.status,
           amountUnits: x402L1Purchases.amountUnits,
@@ -601,6 +613,7 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           l2Schema: x402L1Purchases.l2Schema,
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
+          payloadNonEmpty: x402L1Purchases.payloadNonEmpty,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
           circleGateway: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'circleGateway'`,
           l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
@@ -615,8 +628,22 @@ export async function getEndpointDetail(id: string): Promise<EndpointDetail> {
           ),
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
-        .limit(20),
-        e.declaredSchema,
+        .limit(20);
+      const revoked = await loadRevokedAtByPurchaseId(
+        db,
+        raw.map((r) => r.id),
+      );
+      purchases = attachPurchaseStageFields(
+        withSettledTier(
+          raw.map(({ id: _id, payloadNonEmpty: _p, ...row }) => row),
+          e.declaredSchema,
+        ).map((p, i) => ({
+          ...p,
+          id: raw[i]!.id,
+          payloadNonEmpty: raw[i]!.payloadNonEmpty,
+          authNonce: raw[i]!.authNonce,
+        })),
+        revoked,
       );
       l1Totals = await countPaidAttempts(db, id);
     } catch (error) {
@@ -728,9 +755,9 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
     let purchases: NonNullable<EndpointDetail>["purchases"] = [];
     let totals: PaidAttemptTotals = EMPTY_PAID_TOTALS;
     try {
-      purchases = withSettledTier(
-        await db
+      const raw = await db
         .select({
+          id: x402L1Purchases.id,
           attemptedAt: x402L1Purchases.attemptedAt,
           status: x402L1Purchases.status,
           amountUnits: x402L1Purchases.amountUnits,
@@ -741,6 +768,7 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           l2Schema: x402L1Purchases.l2Schema,
           authNonce: x402L1Purchases.authNonce,
           settlementVerified: x402L1Purchases.settlementVerified,
+          payloadNonEmpty: x402L1Purchases.payloadNonEmpty,
           lateSettlement: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'lateSettlement'`,
           circleGateway: sql<unknown>`${x402L1Purchases.rawResponseMeta}->'circleGateway'`,
           l2Detail: sql<unknown>`CASE WHEN jsonb_typeof(${x402L1Purchases.rawResponseMeta}) = 'object' THEN ${x402L1Purchases.rawResponseMeta}->'l2' END`,
@@ -755,8 +783,22 @@ export async function getEndpointPurchases(id: string): Promise<EndpointPurchase
           ),
         )
         .orderBy(desc(x402L1Purchases.attemptedAt))
-        .limit(100),
-        e.declaredSchema,
+        .limit(100);
+      const revoked = await loadRevokedAtByPurchaseId(
+        db,
+        raw.map((r) => r.id),
+      );
+      purchases = attachPurchaseStageFields(
+        withSettledTier(
+          raw.map(({ id: _id, payloadNonEmpty: _p, ...row }) => row),
+          e.declaredSchema,
+        ).map((p, i) => ({
+          ...p,
+          id: raw[i]!.id,
+          payloadNonEmpty: raw[i]!.payloadNonEmpty,
+          authNonce: raw[i]!.authNonce,
+        })),
+        revoked,
       );
       totals = await countPaidAttempts(db, id);
     } catch (error) {
@@ -947,6 +989,8 @@ export type ObservatoryStats = {
   cdpBazaarIngestStale: boolean;
   /** 最後に閉じた強い周回の completed_at（ISO8601 UTC）。無ければ null。 */
   cdpBazaarLastStrongPassAt: string | null;
+  /** B1: purchase lifecycle stage counts (all x402_l1_purchases rows). */
+  lifecycle: PurchaseLifecycleCounts;
 };
 
 /** 1 カタログ source の最新取得。fetchedCount < totalCount はその source だけの不完全さ。 */
@@ -1053,6 +1097,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     catalogSnapshots: [],
     cdpBazaarIngestStale: false,
     cdpBazaarLastStrongPassAt: null,
+    lifecycle: emptyPurchaseLifecycle(),
   };
   const db = getDb();
   if (!db) return empty;
@@ -1324,6 +1369,13 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       if (!isMissingSchemaError(error)) throw error;
     }
 
+    let lifecycle = emptyPurchaseLifecycle();
+    try {
+      lifecycle = await getPurchaseLifecycleCounts(db);
+    } catch (error) {
+      if (!isMissingSchemaError(error)) throw error;
+    }
+
     // 時刻窓は observed_purchases に依存するので別の try で囲む——その表が無い環境で
     // L1 の集計まで 0 に落ちるのは、測れないことと測って 0 だったことの混同になる。
     // lower() 突合は EVM の hex が大小どちらでも同じ tx を指すため（Solana の base58 も
@@ -1385,6 +1437,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
 
     return {
       l1,
+      lifecycle,
       totalEndpoints: total,
       activeEndpoints: Number(agg.active ?? 0),
       delistedEndpoints: Number(agg.delisted ?? 0),

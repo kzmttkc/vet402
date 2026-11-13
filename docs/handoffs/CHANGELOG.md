@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 B1: purchase lifecycle stages on the state API and the record page
+
+- What: vet402 adds `src/lib/observatory/purchase-stage.ts` with shared JS and SQL stage rules. vet402 exposes `lifecycle` stage counts on the state API via `getObservatoryStats`. vet402 adds `stage` and `revokedAt` on each purchase row on the record page and in purchases JSON.
+- Why: vet402 publishes every purchase row in exactly one lifecycle stage or outside box on the state API and on each endpoint record. vet402 keeps uncertain rows visible. vet402 keeps revoked rows in lifecycle totals when a chain re-read correction moves settled to another status.
+- Tests: `tests/purchase-stage.test.ts`, `tests/purchase-stage.pg.test.ts`, updates to `tests/observatory-state-api.test.ts` and `tests/observatory-purchases-api.test.ts`.
+- Impact: vet402 adds `lifecycle` on the state API only. vet402 leaves existing `l1` counts and `disclaimer` text unchanged. vet402 leaves `export.csv` columns frozen.
+
 ## 2026-11-13 L2: purchase-time 402 declaration drives conform when catalog output is empty
 
 - What: `assembleSellerFacts` reads the latest delivery L2 re-read when the catalog declares output, and also when the purchase row recorded a declaration hash. `l2RequiredKeysOf` and `l2ReadingLabelOf` in `l2-check.ts` power `l2_conform_no_required_keys` and the record page line `match (no required keys)`. export `l2_reading` and `l2ReadingOf` are unchanged.

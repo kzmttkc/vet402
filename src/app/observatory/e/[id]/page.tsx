@@ -584,6 +584,10 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
                               {withdrawnL0FailNote()}
                             </span>
                           )}
+                          <span className="block font-[family-name:var(--font-sans)] text-[0.84375rem] text-brand-ink">
+                            Stage: {p.stage}
+                            {p.revokedAt ? ` · revoked at ${p.revokedAt.slice(0, 16).replace("T", " ")} UTC` : ""}
+                          </span>
                         </td>
                       </tr>
                     </Fragment>

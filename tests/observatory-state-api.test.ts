@@ -11,6 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
+import { PURCHASE_STAGES, PURCHASE_STAGE_OUTSIDE } from "@/lib/observatory/purchase-stage";
 
 test("state API returns the aggregate shape with RateLimit headers", async () => {
   const { GET } = await import("@/app/api/v1/observatory/state/route");
@@ -44,6 +45,26 @@ test("state API returns the aggregate shape with RateLimit headers", async () =>
   const raw = JSON.stringify(body).toLowerCase();
   assert.ok(!raw.includes('"score"'), "payload must not carry a score field");
   assert.ok(typeof body.disclaimer === "string" && body.disclaimer.length > 0);
+  assert.ok(body.lifecycle && typeof body.lifecycle.total === "number", "lifecycle present");
+  for (const key of [
+    "http_402",
+    "signed",
+    "settle_claimed",
+    "settled",
+    "delivered",
+    "inconclusive",
+    "not_delivered",
+    "revoked",
+  ] as const) {
+    assert.equal(typeof body.lifecycle.stages[key], "number", `lifecycle.stages.${key}`);
+  }
+  assert.equal(typeof body.lifecycle.outsideStages.no_402, "number");
+  assert.equal(typeof body.lifecycle.outsideStages.unknown, "number");
+  assert.equal(typeof body.lifecycle.note, "string");
+  assert.deepEqual(Object.keys(body.lifecycle.stages), [...PURCHASE_STAGES]);
+  assert.deepEqual(Object.keys(body.lifecycle.outsideStages), [...PURCHASE_STAGE_OUTSIDE]);
+  const definitionKeys = [...PURCHASE_STAGES, ...PURCHASE_STAGE_OUTSIDE].slice().sort();
+  assert.deepEqual(Object.keys(body.lifecycle.stageDefinitions).sort(), definitionKeys);
 });
 
 // 2026-09-05 監査 S-4 / S-17: settled の証拠強度は 1 段ではない。公開 API が
