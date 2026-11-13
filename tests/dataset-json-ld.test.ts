@@ -20,7 +20,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { citeAs, datasetJsonLd, DATA_LICENSE_URL } from "@/lib/seo";
+import { citeAs, datasetJsonLd, DATA_LICENSE_URL, OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL } from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 
 const ROOT = process.cwd();
@@ -119,4 +119,24 @@ test("構造化データに書く配布 URL は llms.txt が公開だと宣言�
       assert.ok(declared.includes(path), `${file} が未宣言の配布 URL を書いている: ${u}`);
     }
   }
+});
+
+// 2026-11-13: 固定スナップショットの DOI（Zenodo）を sameAs で結ぶ。
+// /observatory/state だけが渡す。渡さない頁に空の sameAs を出さない。
+test("Dataset sameAs carries the snapshot DOI on /observatory/state only", () => {
+  assert.equal("sameAs" in sample, false);
+  const withDoi = datasetJsonLd({
+    name: "n",
+    description: "d",
+    path: "/observatory/state",
+    citeUrl: `${SITE_URL}/api/v1/observatory/state`,
+    measurementTechnique: "m",
+    variableMeasured: ["a"],
+    keywords: ["x402"],
+    distribution: [],
+    sameAs: [OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL],
+  });
+  assert.deepEqual(withDoi.sameAs, ["https://doi.org/10.5281/zenodo.24195171"]);
+  const statePage = read("src/app/observatory/state/page.tsx");
+  assert.match(statePage, /sameAs: \[OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL, OBSERVATORY_SNAPSHOT_REPO_URL\]/);
 });

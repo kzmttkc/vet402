@@ -176,6 +176,13 @@ export function pageMetadata({
 export const DATA_LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/";
 
 /**
+ * 観測所データの固定スナップショット（Zenodo）。概念 DOI は常に最新版へ解決する。
+ * 版ごとの DOI は github.com/kzmttkc/vet402-observatory-data の README と CITATION.cff。
+ */
+export const OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL = "https://doi.org/10.5281/zenodo.24195171";
+export const OBSERVATORY_SNAPSHOT_REPO_URL = "https://github.com/kzmttkc/vet402-observatory-data";
+
+/**
  * 推奨引用文。第3引数を省いた形が public/llms.txt の "Cite as:" の型
  * （取得日の位置は YYYY-MM-DD）。頁が読んだ時刻を持つときはその時刻を渡して埋める。
  * 型と埋めた文を同一とは扱わない（tests/dataset-json-ld.test.ts）。
@@ -220,6 +227,8 @@ type DatasetInput = {
    * 省くと llms.txt の型（YYYY-MM-DD）のまま。
    */
   retrievedAt?: string;
+  /** 同じデータの別の住所（DOI・固定スナップショットのリポ）。 */
+  sameAs?: string[];
 };
 
 export function webPageJsonLd(input: { name: string; description: string; path: string; isBasedOn?: string }) {
@@ -304,6 +313,7 @@ export function datasetJsonLd(input: DatasetInput) {
     keywords: input.keywords,
     ...(input.temporalCoverage ? { temporalCoverage: input.temporalCoverage } : {}),
     ...(input.dateModified ? { dateModified: input.dateModified } : {}),
+    ...(input.sameAs && input.sameAs.length > 0 ? { sameAs: input.sameAs } : {}),
     includedInDataCatalog: {
       "@type": "DataCatalog",
       name: "vet402 x402 Observatory",

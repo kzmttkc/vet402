@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 Search: snapshot DOI on /observatory/state and methodology §9
+
+- What: the Dataset JSON-LD on /observatory/state gains `sameAs` with the Zenodo concept DOI 10.5281/zenodo.24195171 and github.com/kzmttkc/vet402-observatory-data. Methodology §9 gains one paragraph pointing to the dated copies and the DOI.
+- Why: a DOI and a fixed file let a paper or an AI answer cite a figure that can be checked later.
+- Impact: none on the API or the counts. The constants live in `src/lib/seo.ts` (`OBSERVATORY_SNAPSHOT_*`). Test: tests/dataset-json-ld.test.ts.
+
 ## 2026-11-13 Celo: one request-lane purchase from landingen24h.com
 
 - What: one entry on the seller request list: GET https://landingen24h.com/celo/ar/dolar on Celo, $0.01 in USDC to the payTo its 402 names. The Celo rows' test line moves from $0.002 to $0.01. Runtime caps are unchanged.

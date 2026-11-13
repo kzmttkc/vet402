@@ -2,7 +2,12 @@ import { DECISION_RULES_TEXT } from "@/lib/decision/rules-text";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
+import {
+  pageMetadata,
+  breadcrumbJsonLd,
+  OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL,
+  OBSERVATORY_SNAPSHOT_REPO_URL,
+} from "@/lib/seo";
 import { SITE_URL } from "@/lib/site-url";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import TrackView from "@/components/site/TrackView";
@@ -1319,6 +1324,18 @@ export default async function ObservatoryMethodologyPage() {
           <code>?days=</code> accepts 1 through 366.{" "}
           <code>/api/v1/observatory/state</code> counts all time. To recount from the CSV, pass{" "}
           <code>days</code> and read <code>x-vet402-window-days</code> on the response.
+        </p>
+        <p className="doc-p">
+          Dated copies of the purchase ledger, the aggregate JSON and the daily series are kept at{" "}
+          <a href={OBSERVATORY_SNAPSHOT_REPO_URL} className="underline" rel="noopener noreferrer" target="_blank">
+            github.com/kzmttkc/vet402-observatory-data
+          </a>{" "}
+          and archived on Zenodo, so a figure can be checked against the file it came from. The DOI{" "}
+          <a href={OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL} className="underline" rel="noopener noreferrer" target="_blank">
+            10.5281/zenodo.24195171
+          </a>{" "}
+          resolves to the latest snapshot. Each snapshot also has its own DOI, listed in the
+          repository&apos;s README and <code>CITATION.cff</code>.
         </p>
         <p className="doc-p">
           Purchase rows are ordered by <code>attempted_at</code>. A published row can change

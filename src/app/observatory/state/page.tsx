@@ -2,7 +2,13 @@ import { PINNED_ASSETS_WITH_ISSUER_TEXT } from "@/lib/observatory/settlement-ass
 import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
-import { pageMetadata, breadcrumbJsonLd, datasetJsonLd } from "@/lib/seo";
+import {
+  pageMetadata,
+  breadcrumbJsonLd,
+  datasetJsonLd,
+  OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL,
+  OBSERVATORY_SNAPSHOT_REPO_URL,
+} from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
 import { deliveredRates } from "@/lib/observatory/delivered-rates";
@@ -188,6 +194,7 @@ export default async function ObservatoryStatePage() {
     ],
     keywords: ["x402", "agent payments", "HTTP 402", "endpoint liveness", "settlement", "USDC"],
     retrievedAt: stats.readAt,
+    sameAs: [OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL, OBSERVATORY_SNAPSHOT_REPO_URL],
     distribution: [
       {
         name: "Aggregate snapshot (JSON)",
