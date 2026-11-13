@@ -317,6 +317,7 @@ function nodeObservatoryGet(
 ): Promise<{ snapshot: Vet402ReadSnapshot; status: Vet402ReadStatus }> {
   return new Promise((resolve) => {
     let settled = false;
+    // eslint-disable-next-line prefer-const -- assigned after finish() is defined, and finish() reads it
     let timer: ReturnType<typeof setTimeout> | undefined;
     let req: import("node:http").ClientRequest | undefined;
 

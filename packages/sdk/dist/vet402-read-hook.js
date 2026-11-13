@@ -233,6 +233,7 @@ async function defaultReadObservatoryState(apiBase, timeoutMs, maxResponseBytes)
 function nodeObservatoryGet(targetUrl, timeoutMs, maxResponseBytes) {
     return new Promise((resolve) => {
         let settled = false;
+        // eslint-disable-next-line prefer-const -- assigned after finish() is defined, and finish() reads it
         let timer;
         let req;
         const finish = (out) => {
