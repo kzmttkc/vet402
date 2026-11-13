@@ -39,7 +39,7 @@ const FAQ = [
   },
   {
     question: "How often does a paid x402 call come back with nothing?",
-    answer: `As of ${REFUNDS_SNAPSHOT.date} (UTC), vet402 had ${REFUNDS_SNAPSHOT.settled} settled payments. ${REFUNDS_SNAPSHOT.noUsableContent} of them came back with no usable content, and ${REFUNDS_SNAPSHOT.settled4xx} came back with a 4xx, which vet402 holds out of seller scores because its request may differ from what the seller expects.`,
+    answer: `As of ${REFUNDS_SNAPSHOT.date} (UTC), vet402 had ${REFUNDS_SNAPSHOT.settled} settled payments. ${REFUNDS_SNAPSHOT.noUsableContent} of them came back with no usable content, and ${REFUNDS_SNAPSHOT.settled4xx} came back with a 4xx. vet402 holds those 4xx calls out of its delivered rates, because its request may differ from what the seller expects. On /sellers, a settled 400 or 422 on Base that returns a structured input validation error for input vet402 sent as declared goes on the seller's side once that listing shows seller-side failures on two different UTC days.`,
   },
   {
     question: "How can a buyer avoid needing a refund?",
@@ -154,8 +154,14 @@ export default async function RefundsPage() {
           vet402 buys from x402 sellers with its own wallets and records what came back. As of {s.date} (UTC), it had{" "}
           {s.settled} settled payments. {s.noUsableContent} of them came back with no usable content: a 5xx, a 202
           Accepted, an empty 2xx body, or no status on record. {s.settled4xx} came back with a 4xx answer. vet402 holds
-          those 4xx calls out of seller scores, because the request it sent may differ from what the seller expects.
-          The breakdown by chain is in{" "}
+          those 4xx calls out of its delivered rates, because the request it sent may differ from what the seller
+          expects. On{" "}
+          <Link href="/sellers" className="doc-link">
+            /sellers
+          </Link>
+          , a settled 400 or 422 on Base that returns a structured input validation error for input vet402 sent as
+          declared goes on the seller&apos;s side once that listing shows seller-side failures on two different UTC
+          days. The breakdown by chain is in{" "}
           <Link href="/x402/report/2026-11" className="doc-link">
             State of x402: November 2026
           </Link>
