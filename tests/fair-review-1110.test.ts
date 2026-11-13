@@ -503,29 +503,41 @@ test("[guard] 公平-3 3.9-2: vet402 に届かない（読みが投げる）と�
 });
 
 test("[guard] 公平-3: 既定のフックは observatory state を読む", async () => {
+  // 既定の読みは node:http(s) だけを使い、大域 fetch（支払いのラッパーかもしれない）を通らない。
   const { createVet402ReadHook, getVet402ReadSnapshot } = await import("../packages/sdk/src/vet402-read-hook.js");
-  const prior = globalThis.fetch;
+  const { createServer } = await import("node:http");
   let stateReads = 0;
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (url === "https://example.test/api/v1/observatory/state") {
+  const server = createServer((req, res) => {
+    if (req.url === "/api/v1/observatory/state") {
       stateReads++;
-      return new Response(JSON.stringify({ deliveredOfAttemptsPct: 72.5 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ deliveredOfAttemptsPct: 72.5 }));
+      return;
     }
-    throw new Error(`unexpected network call: ${url}`);
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  const prior = globalThis.fetch;
+  let globalFetchCalls = 0;
+  globalThis.fetch = (async () => {
+    globalFetchCalls++;
+    throw new Error("global fetch must not be used for the observatory read");
   }) as typeof fetch;
   try {
     const counter = { sign: 0 };
-    const wrapped = createVet402ReadHook({ observatoryApiBase: "https://example.test/api/v1" })(await payingFetch(counter));
+    const wrapped = createVet402ReadHook({ observatoryApiBase: `http://127.0.0.1:${port}/api/v1` })(
+      await payingFetch(counter),
+    );
     await wrapped("https://example.test/paid");
     assert.equal(stateReads, 1);
+    assert.equal(globalFetchCalls, 0);
     assert.equal(counter.sign, 1);
     assert.deepEqual(getVet402ReadSnapshot(wrapped), { deliveredRatePct: 72.5, vet402Unreachable: false });
   } finally {
     globalThis.fetch = prior;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 

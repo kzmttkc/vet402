@@ -293,4 +293,4 @@ function assertWallet(wallet) {
 export function createVouchClient(options) {
     return new VouchClient(options);
 }
-export { createVet402ReadHook, getVet402ReadSnapshot, } from "./vet402-read-hook.js";
+export { createVet402ReadHook, getVet402ReadSnapshot, getVet402LocalRecords, getVet402ReadResult, } from "./vet402-read-hook.js";

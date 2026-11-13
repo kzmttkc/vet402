@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 SDK: the read hook also reads the local decision store (wave1 3.9)
+
+- What: `createVet402ReadHook` gains optional `store` and `readLocalRecords: false`. `getVet402LocalRecords` returns matching rows from the JSONL decision store per request URL without signing or sending funds. `readTimeoutMs` (default 5000 ms) caps `readBeforePay` and local JSONL line scans so payment still proceeds when reads hang. Tests in `packages/sdk/test/fetch-hook.test.mjs`, `tests/pricing-home-lock.test.ts`, and `packages/python-sdk/tests/test_read_only_no_payment.py`.
+- Why: callers that already wrap `@x402/fetch` can see observatory delivery rate and their own prior decisions for the same resource before payment, with no change to sign or settle counts.
+- Review fix: the observatory read goes through Node `http`/`https` only, never a global or wrapped `fetch`, so a 402 from it is read as unreachable and is never signed or sent again. Reads stop at `maxStoreBytes` (default 1 MiB, the tail of the JSONL) and `maxResponseBytes` (default 65536). `getVet402ReadResult` adds a status of ok, none, timeout, unreachable or truncated, and the two existing getters return the same shapes as before.
+- Runtime: the default observatory read needs Node. In a browser or an edge runtime it reports unreachable, so pass your own `readBeforePay` there.
+- Impact: read paths only. Not published to npm or PyPI yet.
 ## 2026-11-13 SDK: E4 auth-capture run on the public Base Sepolia network
 
 - What: `npm run e4:testnet` in packages/sdk (`scripts/e4-testnet-run.mjs` and `scripts/e4-testnet-config.mjs`). The run stops before reading keys if the chain is not 84532. All eight scenarios passed on the public Base Sepolia network: delivered answer captured, HTTP 500 and the test seller's empty 200 and 202 voided, the reference server's 202 captured and reported as operator_captured_undelivered, no signature above the SDK limit, a hold above the signed maximum reverted with ExceedsMaxAmount, and the buyer reclaimed a hold after the capture deadline. Thirteen transactions, each signed call sent its payment once. The form 1 comparison row now cites this run and the record is at `tests/fixtures/e4-testnet-run-2026-11-13.json`. P2 stays draft until its own screen checks pass.
