@@ -13,6 +13,13 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 L1 seller request lane: a new request on the same URL is no longer refused by an older request's row
+
+- What: `reserveSpend` takes `dupSellerRequestId`. In the seller request lane the six day window check now counts only credential rows with the same `sellerRequestId`, so a second request on the same URL (same `x402_endpoints` row) is bought. Every skip in that lane now leaves one `{ id, reason }` in `summary.sellerRequestSkips`, shown in the cron response and in one log line `observatory.l1.seller_request_skips`. `purchaseOne` returns a `skipReason` on every result other than attempted. Requests past the per run limit get `run_limit`. No new ledger rows. `publicL1Summary` leaves the new field out. Test seam `sellerRetestCatalog` on `runL1Batch`.
+- Why: `blockscout-2026-11-13-celo-addresses-noquery` was never bought on Nov 13. It shares endpoint `44497188` with `blockscout-2026-11-12-celo-addresses`, whose settled row (HTTP 422) filled the window, so the reservation answered `already_purchased` after the unpaid 402 and wrote nothing.
+- Tests: `tests/l1-seller-retest.pg.test.ts` ("same endpoint: an earlier request's credential row does not block a new request id", "same endpoint: the request's own credential row still blocks it (one-time kept)") and `tests/l1-seller-retest-skips.pg.test.ts` (Celo blockscout pair, every skip leaves one reason, source scans of `purchaseOne` and the lane, public summary).
+- Impact: one time per request id is still held by `completedSellerRequestIds`, `claimSellerRequestAuthSlot` and the partial unique index. Candidates outside the seller request lane are unchanged. The noquery request should be bought on the next L1 run after deploy.
+
 ## 2026-11-13 P3: buyer and seller operations dashboards
 
 - What: `/dashboard/buyer` and `/dashboard/seller` split decision usage, reported payments, and vet402 L1 measurement across sellers for buyers, and revenue, delivered rates, trade disputes, and L0 reputation for sellers after payTo wallet proof. Reputation counts published fail and withdrawn separately, with verdicts parsed like the state API. Dispute checks read up to 1000 latest purchases per wallet and label truncation. Rates share one footnote and a denominator zero message. Webhook event `ops.digest`, email draft template, production guard on test delivery hooks, and tests `tests/ops-dashboard.test.ts` plus `tests/ops-dashboard.pg.test.ts`.

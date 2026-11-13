@@ -49,6 +49,7 @@ const HALTED: L1BatchSummary = {
   censusCandidates: 7,
   retestCandidates: 3,
   sellerRequestCandidates: 0,
+  sellerRequestSkips: [],
   censusRemaining: 612,
   laneSkippedForTime: 4,
   gatewayPostBodyUnknownActive: 2,

@@ -353,6 +353,46 @@ if (!TEST_DB) {
     assert.equal(rows[0]!.authNonce, null);
   });
 
+  test("same endpoint: an earlier request's credential row does not block a new request id", async () => {
+    await seedOnlyPending([catalog[0]!.id]);
+    const endpointId = await sr.ensureSellerRetestEndpoint(db, catalog[0]!, PAYER);
+    const dayAgo = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    await db.insert(schema.x402L1Purchases).values({
+      endpointId,
+      status: "settled",
+      payer: PAYER,
+      network: "eip155:8453",
+      httpStatusPaid: 422,
+      authNonce: "older-settled-nonce",
+      spentUnits: "5000",
+      attemptedAt: dayAgo,
+      rawResponseMeta: { selection: "seller_request", sellerRequestId: "older-request-same-url" },
+    });
+    const s = await runSeller();
+    assert.equal(await paidRowsFor(catalog[0]!.id), 1);
+    assert.deepEqual(s.sellerRequestSkips, []);
+  });
+
+  test("same endpoint: the request's own credential row still blocks it (one-time kept)", async () => {
+    await seedOnlyPending([catalog[0]!.id]);
+    const endpointId = await sr.ensureSellerRetestEndpoint(db, catalog[0]!, PAYER);
+    await db.insert(schema.x402L1Purchases).values({
+      endpointId,
+      status: "settle_failed",
+      payer: PAYER,
+      network: "eip155:8453",
+      authNonce: "presign:own-request-block",
+      spentUnits: "0",
+      attemptedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      rawResponseMeta: { selection: "seller_request", sellerRequestId: catalog[0]!.id },
+    });
+    const s = await runSeller();
+    assert.equal(await paidRowsFor(catalog[0]!.id), 0);
+    assert.equal(s.sellerRequestSkips.length, 1);
+    assert.equal(s.sellerRequestSkips[0]!.id, catalog[0]!.id);
+    assert.equal(s.sellerRequestSkips[0]!.reason, "reservation_already_purchased");
+  });
+
   test("catalog: up to 10 bought per run then remainder", async () => {
     const s1 = await runSeller();
     assert.equal(s1.sellerRequestCandidates, srq.SELLER_RETEST_MAX_PER_RUN);

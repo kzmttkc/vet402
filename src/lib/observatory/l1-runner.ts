@@ -154,7 +154,14 @@ import {
   type SellerRequestGate,
   type SellerRequestUnpaid,
 } from "./seller-retest";
-import { notSellerRetestRequestSourceSql, resolveSellerRetestUrl, sellerRetestLaneEnabled, unsignedAuthNonceSql } from "./seller-retest-requests";
+import {
+  notSellerRetestRequestSourceSql,
+  resolveSellerRetestUrl,
+  sellerRetestLaneEnabled,
+  SELLER_RETEST_MAX_PER_RUN,
+  unsignedAuthNonceSql,
+  type SellerRetestRequest,
+} from "./seller-retest-requests";
 
 export type L1BatchSummary = {
   attempted: number;
@@ -266,6 +273,10 @@ export type L1BatchSummary = {
    */
   sellerRequestCandidates: number;
   /**
+   * 売り手依頼レーンで買わずに飛ばした依頼ごとの理由（2026-11-13）。cron の応答に載せ、公開口には出さない。
+   */
+  sellerRequestSkips: { id: string; reason: string }[];
+  /**
    * バッチ開始時点の、未購入の Base ホスト数: active で Base の accept を持つ行のホスト名（ポート無視）のうち、
    * L1 の購入行がまだ 1 件も無いもの。$1 超の出品しか無い・L0 不合格・price_amount が無いなど、census が
    * 選べないホストも含む（＝census の残り件数ではなく、まだ 1 行も無い売り手の数）。
@@ -342,6 +353,7 @@ export type PublicL1BatchSummary = Omit<
   | "censusRemaining"
   | "retestCandidates"
   | "sellerRequestCandidates"
+  | "sellerRequestSkips"
   | "sellerCapped"
   | "unprovenCapped"
   | "unprovenPriceExcluded"
@@ -1425,11 +1437,18 @@ async function reserveSpend(input: {
    * 売り手依頼の 1 回きり買い直し（2026-10-30 差し戻し2）: 窓の重複判定に、資格情報を出した（auth_nonce のある）行だけを数える。
    * 402 が取れなかった・合わなかった・署名前に後始末した行で 6 日締め出さない。1 回きりは完了の判定
    * （completedSellerRequestIds）・枠取り（claimSellerRequestAuthSlot）・部分一意索引が守る。省略時は従来どおり全行。
+   * dupSellerRequestId を渡すと、raw_response_meta の sellerRequestId が同じ行だけを窓の重複に数える（同じ URL の別依頼を誤って締め出さない）。
    */
   dupCredentialOnly?: boolean;
+  /** 売り手依頼の 1 回きり買い直し: この依頼 id と同じ資格行だけを窓の重複に数える（dupCredentialOnly と併用）。 */
+  dupSellerRequestId?: string;
 }): Promise<Reservation> {
   const { db, endpointId, payer, network, asset, payTo, amountUnits, windowDays } = input;
   const dupCredentialWhere = input.dupCredentialOnly === true ? sql`AND pu.auth_nonce IS NOT NULL` : sql``;
+  const dupSellerRequestWhere =
+    typeof input.dupSellerRequestId === "string" && input.dupSellerRequestId.length > 0
+      ? sql`AND pu.raw_response_meta->>'sellerRequestId' = ${input.dupSellerRequestId}`
+      : sql``;
   const metaJson = input.meta ? JSON.stringify(input.meta) : null;
   // 予約と同じ 1 文で書く。この INSERT が落ちれば予約も無い＝署名しない（auth_nonce の UPDATE が落ちたら
   // 有料の要求を出さないのと同じ側に倒す: 記録の無い支払いを出さない）。
@@ -1487,6 +1506,7 @@ async function reserveSpend(input: {
         WHERE pu.endpoint_id = ${endpointId}::uuid
           AND pu.attempted_at > now() - make_interval(days => ${windowDays})
           ${dupCredentialWhere}
+          ${dupSellerRequestWhere}
       ) AS taken
     ), first_day AS (
       -- 初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）。候補 SQL がバッチ開始時に
@@ -2340,6 +2360,8 @@ export async function runL1Batch(
      * デッドライン（createDeadline）は差し替えない——maxDuration を守る判定は従来どおり壁時計で決める。
      */
     now?: () => number;
+    /** Test seam: 売り手依頼リスト。省略時は sellerRetestCatalogForBatch()（本番と同じ）。 */
+    sellerRetestCatalog?: readonly SellerRetestRequest[];
   } = {},
 ): Promise<L1BatchSummary> {
   const now = options.now ?? Date.now;
@@ -2409,6 +2431,7 @@ export async function runL1Batch(
     censusCandidates: 0,
     retestCandidates: 0,
     sellerRequestCandidates: 0,
+    sellerRequestSkips: [],
     censusRemaining: null,
     laneSkippedForTime: 0,
     gatewayPostBodyUnknownActive: null,
@@ -2895,20 +2918,35 @@ export async function runL1Batch(
   // Celo（eip155:42220）の依頼もここ（2026-11-12）。accept は seller-retest が network・payTo・額・Celo USDC で選び、
   // 払う経路は Celo レーンと同じ purchaseOne（selectAccept と signX402Payment）。Base 以外かつ Celo 以外は拒む。
   // 1 回の上限、日次の予算、payTo の上限、unproven の関門は Base の依頼と同じものを掛けたままにする。
+  // BEGIN seller_request_lane
   if (!onlyEndpointId && sellerRetestLaneEnabled()) {
+    const sellerCatalog = options.sellerRetestCatalog ?? sellerRetestCatalogForBatch();
     const completedSeller = await completedSellerRequestIds(db);
     const attemptedToday = await sellerRequestIdsAttemptedToday(db);
-    const sellerPending = pendingSellerRetestRequests(
-      sellerRetestCatalogForBatch(),
+    const sellerPendingAll = pendingSellerRetestRequests(
+      sellerCatalog,
       completedSeller,
       utcDateString(),
       attemptedToday,
+      Number.MAX_SAFE_INTEGER,
     );
+    const sellerOverRunLimit = sellerPendingAll.slice(SELLER_RETEST_MAX_PER_RUN);
+    const sellerPending = sellerPendingAll.slice(0, SELLER_RETEST_MAX_PER_RUN);
+    for (const req of sellerOverRunLimit) {
+      summary.sellerRequestSkips.push({ id: req.id, reason: "run_limit" });
+    }
     summary.sellerRequestCandidates = sellerPending.length;
-    for (const req of sellerPending) {
+    const pushSellerRequestSkips = (fromIndex: number, reason: string) => {
+      for (let i = fromIndex; i < sellerPending.length; i++) {
+        summary.sellerRequestSkips.push({ id: sellerPending[i]!.id, reason });
+      }
+    };
+    for (let sellerIndex = 0; sellerIndex < sellerPending.length; sellerIndex++) {
+      const req = sellerPending[sellerIndex]!;
       const paidBudgetMsSeller = timeoutMs;
       if (!canStartAnotherPurchase(deadline.remaining(), timeoutMs, paidBudgetMsSeller)) {
         summary.stoppedForDeadline = true;
+        pushSellerRequestSkips(sellerIndex, "deadline");
         break;
       }
       if (
@@ -2918,18 +2956,23 @@ export async function runL1Batch(
       ) {
         summary.skipped++;
         summary.sellerCapped++;
+        summary.sellerRequestSkips.push({ id: req.id, reason: "seller_capped_in_batch" });
         continue;
       }
       if (unprovenPoolShut(req.payTo, resolveSellerRetestUrl(req.url, account.address))) {
         summary.skipped++;
         summary.unprovenCapped++;
+        summary.sellerRequestSkips.push({ id: req.id, reason: "unproven_pool_shut" });
         continue;
       }
       try {
         const { id: endpointId, extras } = await buildSellerRetestCandidate(db, req, account.address);
         const epRows = await db.select().from(x402Endpoints).where(eq(x402Endpoints.id, endpointId)).limit(1);
         const ep = epRows[0];
-        if (!ep) continue;
+        if (!ep) {
+          summary.sellerRequestSkips.push({ id: req.id, reason: "endpoint_row_missing" });
+          continue;
+        }
         const candidate: Candidate = {
           ...rowToCandidate({
             id: ep.id,
@@ -2997,35 +3040,46 @@ export async function runL1Batch(
           summary.halted = true;
           summary.haltReason = outcome.haltReason ?? null;
           summary.disabledReason = "spending_halted";
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "halted" });
+          pushSellerRequestSkips(sellerIndex + 1, "halted");
           break;
         } else if (outcome.kind === "budget_denied") {
           summary.budgetDenied++;
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "budget_denied" });
         } else if (outcome.kind === "seller_capped" && outcome.sellerCap) {
           summary.skipped++;
           summary.sellerCapped++;
           if (outcome.sellerCap.scope === "payto") cappedPayTos.add(outcome.sellerCap.payTo);
           else if (outcome.sellerCap.scope === "host") cappedHosts.add(outcome.sellerCap.host);
           else cappedDomains.add(outcome.sellerCap.domain);
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "seller_capped" });
         } else if (outcome.kind === "unproven_capped") {
           summary.skipped++;
           summary.unprovenCapped++;
           if (outcome.unprovenScope === "pool") summary.unprovenPoolClosed = true;
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "unproven_capped" });
         } else if (outcome.kind === "over_dime_capped") {
           summary.skipped++;
           summary.overDimeCapped++;
           summary.overDimePoolClosed = true;
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "over_dime_capped" });
         } else if (outcome.kind === "payer_unfunded") {
-          // 依頼 1 件だけ見送り。他の依頼と主候補は続ける。
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? "payer_unfunded" });
         } else {
           summary.skipped++;
+          summary.sellerRequestSkips.push({ id: req.id, reason: outcome.skipReason ?? outcome.kind });
         }
-        if (summary.halted) break;
       } catch (error) {
         logServerErrorSafe("observatory.l1.seller_retest", redactedError(error));
         summary.skipped++;
+        summary.sellerRequestSkips.push({ id: req.id, reason: "error" });
       }
     }
+    if (summary.sellerRequestSkips.length > 0) {
+      logServerWarnSafe("observatory.l1.seller_request_skips", JSON.stringify(summary.sellerRequestSkips));
+    }
   }
+  // END seller_request_lane
 
   for (const [index, candidate] of candidates.entries()) {
     // Start nothing we cannot finish inside maxDuration. Purchases already in
@@ -3778,6 +3832,8 @@ async function purchaseOne(input: {
    * バッチはその候補を Base で 1 回買い直す。署名後は付けない。
    */
   retryBase?: boolean;
+  /** kind が attempted 以外のとき、飛ばした理由（snake_case 英語・売り手依頼レーンの記録用）。 */
+  skipReason?: string;
 }> {
   const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
   // 空の method は GET（SQL の候補の条件 nullif(e.method, '') と揃える。'' のままだと Request が投げる）。
@@ -3848,24 +3904,24 @@ async function purchaseOne(input: {
   // runL1Batch が solanaReady で候補を絞るので、ここに solana 候補が来て
   // 鍵が無いのは onlyEndpointId 経路等の異常系だけ——黙って進まない。
   if (isSolana && !solanaKeypair) {
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "solana_key_missing" };
   }
   // 同じく二重防御: フラグ無しの Tempo 候補はここへ来ないが、来ても 1 リクエストも出さない。
   if (isTempo && !tempoEnabled) {
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "tempo_disabled" };
   }
   if (isXrpl && (!xrplWallet || !xrplPayer)) {
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "xrpl_key_missing" };
   }
   if (isStellar && (!stellarPayer || !stellarAddress)) {
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "stellar_key_missing" };
   }
   // 2026-09-29 監査 5 周目（中・お金）: 買うのは https の出品だけ、かつカタログが受取先（pay_to）を宣言している
   // 行だけ。平文 http の 402 は経路上の誰でも書き換えられ、宣言の無い行では壁の payTo を照合する相手が無い
   // （selectAccept 等は宣言 null を「照合なしで通す」）。候補 SQL が両方を外しているが、ここが署名する唯一の
   // 入口なので二重に止める。行は書かない——我々の側の見送りで、売り手についての測定ではない。
   if (!isL1PurchasableListing(candidate)) {
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "not_purchasable_listing" };
   }
 
   // Unpaid request → expect the wall.
@@ -3914,14 +3970,14 @@ async function purchaseOne(input: {
         error: String(error).slice(0, 300),
       },
     });
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "unpaid_request_error" };
   } finally {
     clearTimeout(firstTimer);
   }
 
   if (first.status !== 402) {
     await record({ status: "no_402", httpStatusPaid: null, rawResponseMeta: { phase: "unpaid", status: first.status } });
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "no_402" };
   }
 
   // MPP の challenge（Tempo）は WWW-Authenticate に載る。x402 の封筒は Tempo では読まない
@@ -3945,7 +4001,7 @@ async function purchaseOne(input: {
         ...(isTempo ? { protocol: "mpp", ...(mppParsed.error ? { detail: "unsignable", error: mppParsed.error } : {}) } : {}),
       },
     });
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "unparseable_challenge" };
   }
 
   if (candidate.sellerRequest) {
@@ -3959,7 +4015,7 @@ async function purchaseOne(input: {
           ...(gate.detail ?? {}),
         }),
       });
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: `seller_request_${gate.reason}` };
     }
     if (method === "POST" && candidate.sellerRequestUnpaid?.body) {
       const declared = declaredRequestBody({ bodyText: firstBody, headers: first.headers });
@@ -3976,7 +4032,7 @@ async function purchaseOne(input: {
             declaredBody: declared?.body ?? null,
           }),
         });
-        return { kind: "skipped", settled: false, spent: 0n };
+        return { kind: "skipped", settled: false, spent: 0n, skipReason: "seller_request_body_mismatch" };
       }
     }
   }
@@ -4076,7 +4132,7 @@ async function purchaseOne(input: {
         circleGateway: { reason: gatewayPick.reason },
       }),
     });
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: `gateway_${gatewayPick.reason}` };
   }
   const selection = gatewayPick?.accept
     ? gatewayPick
@@ -4147,7 +4203,8 @@ async function purchaseOne(input: {
             }),
       },
     });
-    return { kind: "skipped", settled: false, spent: 0n };
+    const selectSkipReason = xrplV1Wall || stellarV1Wall ? "x402_v1_unsupported" : (selection.reason ?? "no_eligible_accept");
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: `select_${selectSkipReason}` };
   }
   const accept = selection.accept;
   // XRPL の IOU は "0.01" のような単位の 10 進文字列（selectXrplAccept が 6 桁 units に落とす）。
@@ -4191,12 +4248,19 @@ async function purchaseOne(input: {
   // 行は書かないので、次の回も選ばれ直す。目録が declared なのに 402 が宣言しない出品は 2026-10-29 の実測で 0 件。
   // summary.gatewayPostBodyUnknownSignSkipped が増え続けたら、no_eligible_accept の行を書いて窓から外す形に変える。
   if (isArcGateway && method === "POST" && paidRequestBody?.source !== "declared") {
-    return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", gatewayPostBodyUnknownAtSign: true };
+    return {
+      kind: "skipped",
+      settled: false,
+      spent: 0n,
+      capChain: "arc_gateway",
+      gatewayPostBodyUnknownAtSign: true,
+      skipReason: "gateway_post_body_unknown",
+    };
   }
   // Gateway は GET と POST だけを買う（候補 SQL の gatewayCandidateRequestShapeWhere と同じ規則の二重の守り・2026-10-30）。
   // ここは無払いの最初の要求の後なので、SQL が破れたときは無払いの要求が一度だけ売り手に届く（お金は動かない）。
   if (isArcGateway && method !== "GET" && method !== "POST") {
-    return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+    return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", skipReason: "gateway_method_unsupported" };
   }
   // 支払い付き要求のクエリ（2026-09-20）。売り手が 402 で宣言した input.queryParams を URL に足す
   // （規則は declared-input.ts）。accept の network が許可リストに無ければ（既定）null＝URL も行も従来どおり。
@@ -4214,13 +4278,15 @@ async function purchaseOne(input: {
   });
   if (!budget.allowed) {
     // census / retest の候補は行を書かない（下の予約の daily_budget_exceeded と同じ理由・2026-09-29）。
-    if (candidate.selection && budget.reason === "daily_budget_exceeded") return { kind: "budget_denied", settled: false, spent: 0n };
+    if (candidate.selection && budget.reason === "daily_budget_exceeded") {
+      return { kind: "budget_denied", settled: false, spent: 0n, skipReason: `budget_${budget.reason}` };
+    }
     await record({
       status: "budget_denied",
       amountUnits: amountUnitsText,
       rawResponseMeta: { reason: budget.reason, dailyBudgetUsd: DAILY_BUDGET_USD },
     });
-    return { kind: "budget_denied", settled: false, spent: 0n };
+    return { kind: "budget_denied", settled: false, spent: 0n, skipReason: `budget_${budget.reason}` };
   }
 
   // Solana は署名の材料に blockhash（外部RPC）が要る。予約の後に外部I/Oで
@@ -4234,7 +4300,7 @@ async function purchaseOne(input: {
         status: "request_error",
         rawResponseMeta: { phase: "blockhash", error: redactForLog(error) },
       });
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: "solana_blockhash_error" };
     }
   }
   // XRPL（2026-09-17）: Sequence と validated ledger（LastLedgerSequence の基準）。Solana の blockhash と
@@ -4248,18 +4314,18 @@ async function purchaseOne(input: {
       // しない（書くとスイープ窓のあいだ再選択されず、冷却の streak にも数えられる）。
       logServerErrorSafe("observatory.l1.xrpl_signing_inputs", redactedError(error));
       if (!isXrplPrimary) {
-        return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
+        return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n, skipReason: "xrpl_signing_inputs_error" };
       }
       await record({
         status: "request_error",
         rawResponseMeta: { phase: "xrpl_signing_inputs", error: redactForLog(error) },
       });
       // 主ネットワークが XRPL の行は従来どおり行を残すが、レーンは同じく 1 回目で閉じる（W1）。
-      return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n };
+      return { kind: "xrpl_lane_unavailable", settled: false, spent: 0n, skipReason: "xrpl_signing_inputs_error" };
     }
     // 手数料が上限超（clampFeeDrops → null）。署名せず、行も書かない（payer_unfunded と同じ作法）。
     if (xrplSigningInputs.feeDrops === null) {
-      return { kind: "xrpl_fee_over_cap", settled: false, spent: 0n };
+      return { kind: "xrpl_fee_over_cap", settled: false, spent: 0n, skipReason: "xrpl_fee_over_cap" };
     }
   }
 
@@ -4284,7 +4350,7 @@ async function purchaseOne(input: {
         declaredPayTo: candidate.payTo,
       },
     });
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "payto_operator_self" };
   }
 
   // Arkiv の判定の関門（2026-11-06）。自己取引の関門の直後、予約と署名の前。vet402 が Arkiv に書き、
@@ -4296,14 +4362,14 @@ async function purchaseOne(input: {
   } catch (error) {
     // checkArkivRuling は投げない約束。投げたら（差し替え口・不具合）この 1 件は払わずに飛ばし、バッチは続ける。
     logServerErrorSafe("observatory.l1.arkiv_ruling_threw", redactedError(error));
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "arkiv_ruling_threw" };
   }
   if (arkivRuling.action === "block") {
     logServerWarnSafe(
       "observatory.l1.arkiv_ruling_block",
       `payTo=${accept.payTo.toLowerCase()} verdict=${arkivRuling.verdict} claimId=${arkivRuling.claimId}`,
     );
-    return { kind: "skipped", settled: false, spent: 0n };
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "arkiv_ruling_block" };
   }
   if (arkivRuling.action === "allow_unread") {
     logServerWarnSafe("observatory.l1.arkiv_ruling_unread", `arkiv ruling gate unread, paying as before: ${arkivRuling.error}`);
@@ -4323,7 +4389,7 @@ async function purchaseOne(input: {
       amountUnits: amountUnitsText,
       rawResponseMeta: { phase: "pre_reserve", reason: preReserveHalt.reason },
     });
-    return { kind: "halted", settled: false, spent: 0n, haltReason: preReserveHalt.reason };
+    return { kind: "halted", settled: false, spent: 0n, haltReason: preReserveHalt.reason, skipReason: "pre_reserve_halt" };
   }
 
   // 購入元残高の関門（2026-09-17 Issue #29）。予約と署名の**前**。2026-09-13〜15 に Base の
@@ -4357,13 +4423,20 @@ async function purchaseOne(input: {
         amountUnits: String(amount),
         ...(available === null ? {} : { balanceUnits: String(available) }),
       });
-      return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain: "arc_gateway", retryWithoutGateway: fallback.accept !== null };
+      return {
+        kind: "payer_unfunded",
+        settled: false,
+        spent: 0n,
+        payerChain: "arc_gateway",
+        retryWithoutGateway: fallback.accept !== null,
+        skipReason: "payer_unfunded_arc_gateway",
+      };
     }
   } else {
     const funds = await payerFunds.check(payerChain, payerOwner, amount);
     if (!funds.ok) {
       onPayerUnfunded(payerChain, { ...funds, amountUnits: String(amount) });
-      return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain };
+      return { kind: "payer_unfunded", settled: false, spent: 0n, payerChain, skipReason: `payer_unfunded_${payerChain}` };
     }
   }
 
@@ -4399,28 +4472,32 @@ async function purchaseOne(input: {
     // census の初回購入だけ census の枠（2026-09-29・既定は同じ 120）。retest・主候補・レーンは従来の枠。
     ...(candidate.selection === "census" ? { firstPurchaseQuota: censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA) } : {}),
     // 売り手依頼（2026-10-30 差し戻し2）: 前日以前の未署名の行（402 が取れなかった等）で窓を塞がない。
-    ...(candidate.sellerRequest ? { dupCredentialOnly: true } : {}),
+    ...(candidate.sellerRequest
+      ? { dupCredentialOnly: true, dupSellerRequestId: candidate.sellerRequest.id }
+      : {}),
   });
   if (!reservation.ok) {
     if (reservation.reason === "already_purchased") {
       // A concurrent run got this endpoint first — its row is the record.
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: "reservation_already_purchased" };
     }
     if (reservation.reason === "first_purchase_quota") {
       // その UTC 日の初回購入の枠が尽きた。行を書かない——書くとスイープ窓の
       // あいだ再選択されず、翌日の枠にも戻らない（枠は延期であって除外ではない）。
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: "reservation_first_purchase_quota" };
     }
     if (reservation.reason === "seller_daily_cap") {
       // 売り手ごとの日次上限（2026-09-29 監査 5 周目）。行を書かない——書くとこの出品はスイープ窓のあいだ
       // 再選択されず、正直な売り手の翌日の購入まで止める。翌 UTC 日にまた候補になる。バッチは同じ売り手の
       // 残りの候補を飛ばす（runL1Batch の sellerCapped）。
+      const capScope = reservation.scope ?? "payto";
       return {
         kind: "seller_capped",
         settled: false,
         spent: 0n,
+        skipReason: `reservation_seller_daily_cap_${capScope}`,
         sellerCap: {
-          scope: reservation.scope ?? "payto",
+          scope: capScope,
           payTo: normalizedPayTo(accept.payTo),
           host: censusHostOf(laneHostOf(candidate.resourceUrl)),
           domain: sellerDomainOf(candidate.resourceUrl),
@@ -4430,29 +4507,36 @@ async function purchaseOne(input: {
     if (reservation.reason === "unproven_cap") {
       // 実績のない売り手の上限（2026-11-02 監査 H-1）。行を書かない: 売り手の失敗でも我々の失敗でもなく、書くと掃引の窓のあいだ
       // 再選択されない。翌 UTC 日にまた候補になる。候補 SQL が先に外すので、ここへ来るのは日次合計が尽きた瞬間と、402 の額が宣言と違う形だけ。
-      return { kind: "unproven_capped", settled: false, spent: 0n, unprovenScope: reservation.unprovenScope ?? "pool" };
+      const unprovenScope = reservation.unprovenScope ?? "pool";
+      return {
+        kind: "unproven_capped",
+        settled: false,
+        spent: 0n,
+        unprovenScope,
+        skipReason: `reservation_unproven_cap_${unprovenScope}`,
+      };
     }
     if (reservation.reason === "over_dime_cap") {
       // $0.10 を超える購入全体の日次枠（2026-11-02）。行を書かない: 売り手の失敗ではなく、書くと掃引の窓のあいだ再選択されない。翌 UTC 日にまた候補になる。
-      return { kind: "over_dime_capped", settled: false, spent: 0n };
+      return { kind: "over_dime_capped", settled: false, spent: 0n, skipReason: "reservation_over_dime_cap" };
     }
     if (reservation.reason === "chain_daily_cap") {
       // そのチェーン（Solana・Arc）の別枠に届かなかった。行を書かない——書くとこの売り手は
       // スイープ窓のあいだ再選択されず、掃引が終わらない。翌 UTC 日にまた候補になる。
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: "reservation_chain_daily_cap" };
     }
     // census / retest の候補（2026-09-29）: 日次 $25 に届いたら行を書かない。書くとそのホストに行ができ、census は
     // 「一巡済み」、retest は「最新の行がこちらの落ち度ではない」と読んで、翌日以降に二度と選ばない（買っていないのに）。
     // この扱いは新しい env（OBSERVATORY_L1_CENSUS_MIN_PER_RUN・_FIRST_PURCHASE_QUOTA）に関係なく、census / retest の候補
     // （OBSERVATORY_L1_CENSUS=on の日）すべてに効く。同じホストへ無償の要求を出し直さないよう、日次の残りが無い日・残りより
     // 高い候補は runL1Batch が census / retest の候補の取得の段で外す（金の関門は変えない）。
-    if (candidate.selection) return { kind: "budget_denied", settled: false, spent: 0n };
+    if (candidate.selection) return { kind: "budget_denied", settled: false, spent: 0n, skipReason: "reservation_daily_budget" };
     await record({
       status: "budget_denied",
       amountUnits: amountUnitsText,
       rawResponseMeta: { reason: "daily_budget_exceeded", dailyBudgetUsd: DAILY_BUDGET_USD },
     });
-    return { kind: "budget_denied", settled: false, spent: 0n };
+    return { kind: "budget_denied", settled: false, spent: 0n, skipReason: "reservation_daily_budget" };
   }
 
   if (candidate.sellerRequest) {
@@ -4463,7 +4547,7 @@ async function purchaseOne(input: {
         rawResponseMeta: tagMeta({ phase: "pre_sign", reason: "seller_request_already_claimed", detail: claim.reason }),
       });
       invalidateDecisionCache(candidate.id);
-      return { kind: "skipped", settled: false, spent: 0n };
+      return { kind: "skipped", settled: false, spent: 0n, skipReason: "seller_request_already_claimed" };
     }
   }
 
@@ -4491,7 +4575,7 @@ async function purchaseOne(input: {
       rawResponseMeta: tagMeta({ phase: "pre_sign", reason: preSignHalt.reason }),
     });
     invalidateDecisionCache(candidate.id);
-    return { kind: "halted", settled: false, spent: 0n, haltReason: preSignHalt.reason };
+    return { kind: "halted", settled: false, spent: 0n, haltReason: preSignHalt.reason, skipReason: "pre_sign_halt" };
   }
 
   // ここから先は署名する。このバッチの残高の見積もりから差し引く（決済は非同期なので、
@@ -4549,7 +4633,7 @@ async function purchaseOne(input: {
           })
           .where(eq(x402L1Purchases.id, reservation.rowId));
         invalidateDecisionCache(candidate.id);
-        return { kind: "skipped", settled: false, spent: 0n };
+        return { kind: "skipped", settled: false, spent: 0n, skipReason: "mpp_credential_error" };
       }
       authNonce = cred.memo;
       header = { headerName: cred.headerName, headerValue: cred.headerValue };
@@ -4617,7 +4701,7 @@ async function purchaseOne(input: {
             logServerErrorSafe("observatory.l1.stellar_sign_keep_spend", redactedError(writeError));
           }
           invalidateDecisionCache(candidate.id);
-          return { kind: "stellar_signing_unavailable", settled: false, spent: amount };
+          return { kind: "stellar_signing_unavailable", settled: false, spent: amount, skipReason: "stellar_signing_unavailable" };
         }
         // 署名前（stellar_sign_failed_pre）かつ secondary だけ、未署名の予約を消す。
         // 行が残ると掃引窓の dup が、同じ候補の Base の買い直しを拒む。
@@ -4628,7 +4712,13 @@ async function purchaseOne(input: {
               and(eq(x402L1Purchases.id, reservation.rowId), eq(x402L1Purchases.status, "in_flight"), isNull(x402L1Purchases.authNonce)),
             );
             invalidateDecisionCache(candidate.id);
-            return { kind: "stellar_signing_unavailable", settled: false, spent: 0n, retryBase: true };
+            return {
+              kind: "stellar_signing_unavailable",
+              settled: false,
+              spent: 0n,
+              retryBase: true,
+              skipReason: "stellar_signing_unavailable",
+            };
           } catch (deleteError) {
             logServerErrorSafe("observatory.l1.stellar_sign_release", redactedError(deleteError));
           }
@@ -4638,7 +4728,7 @@ async function purchaseOne(input: {
           rawResponseMeta: tagMeta({ phase: "stellar_sign", error: redactForLog(error) }),
         });
         invalidateDecisionCache(candidate.id);
-        return { kind: "stellar_signing_unavailable", settled: false, spent: 0n };
+        return { kind: "stellar_signing_unavailable", settled: false, spent: 0n, skipReason: "stellar_signing_unavailable" };
       }
       authNonce = createHash("sha256").update(payload.transaction).digest("hex");
       header = encodePaymentHeader({
@@ -4668,14 +4758,14 @@ async function purchaseOne(input: {
             logServerErrorSafe("observatory.l1.arc_gateway_sign_release", redactedError(deleteError));
           }
           invalidateDecisionCache(candidate.id);
-          return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+          return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", skipReason: "gateway_validity_window" };
         }
         await releaseUnsignedReservation(db, reservation.rowId, {
           status: "request_error",
           rawResponseMeta: tagMeta({ phase: "arc_gateway_sign", error: redactForLog(error), circleGatewayRail: "true" }),
         });
         invalidateDecisionCache(candidate.id);
-        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", skipReason: "gateway_sign_error" };
       }
       const nowSec = Math.floor(Date.now() / 1000);
       if (!gatewayAuthWindowOk(gatewaySigned.authorization.validBefore, nowSec)) {
@@ -4687,7 +4777,7 @@ async function purchaseOne(input: {
           logServerErrorSafe("observatory.l1.arc_gateway_window_release", redactedError(deleteError));
         }
         invalidateDecisionCache(candidate.id);
-        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway" };
+        return { kind: "skipped", settled: false, spent: 0n, capChain: "arc_gateway", skipReason: "gateway_validity_window" };
       }
       authNonce = gatewaySigned.authorization.nonce;
       header = gatewaySigned.header;
