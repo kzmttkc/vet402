@@ -100,8 +100,10 @@ if (!TEST_DB) {
           tx: true,
           auth: "n-empty-body",
           payload: false,
-          expected: NOT_DELIVERED_STAGE,
+          expected: "settled",
         },
+        { status: "settled", http: 502, tx: true, auth: "n-empty-502", payload: false, expected: NOT_DELIVERED_STAGE },
+        { status: "settled", http: 307, tx: true, auth: "n-empty-307", payload: false, expected: NOT_DELIVERED_STAGE },
         { status: "settle_claimed", http: 200, tx: true, auth: "n4", expected: "settle_claimed" },
         { status: "settle_failed", http: 503, tx: false, auth: "n5", expected: "signed" },
         {

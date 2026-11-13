@@ -29,6 +29,7 @@ import { isPathTemplate } from "@/lib/observatory/path-template";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 import { purchaseShownAsWithdrawn, WITHDRAWN_FROM_CATALOG, withdrawnFromCatalogSentence, withdrawnL0FailNote } from "@/lib/observatory/l0-verdict";
 import { L2_MATCH_NO_REQUIRED_KEYS_GLOSS } from "@/lib/observatory/l2-check";
+import { STAGE_DEFINITIONS, type PurchaseStageKey } from "@/lib/observatory/purchase-stage";
 
 /**
  * /observatory/e/[id] — one endpoint's full fact history (design §5).
@@ -735,7 +736,14 @@ function RecordTerms({
   purchases,
   held,
 }: {
-  purchases: readonly { status: string; settledTier?: string | null; l2Schema: string | null; l2Reading?: string | null; l2ReadingLabel?: string | null }[];
+  purchases: readonly {
+    status: string;
+    settledTier?: string | null;
+    stage?: string | null;
+    l2Schema: string | null;
+    l2Reading?: string | null;
+    l2ReadingLabel?: string | null;
+  }[];
   held: readonly (string | null)[];
 }) {
   const items: { term: string; gloss: string }[] = [];
@@ -754,6 +762,13 @@ function RecordTerms({
   for (const p of purchases) {
     const l2 = p.l2ReadingLabel ?? p.l2Reading ?? p.l2Schema;
     if (l2) add(`L2 ${l2}`, L2_GLOSS[l2]);
+  }
+  for (const p of purchases) {
+    if (!p.stage) continue;
+    const def = STAGE_DEFINITIONS[p.stage as PurchaseStageKey];
+    if (!def) continue;
+    const gloss = def.endsWith(".") ? def.slice(0, -1) : def;
+    add(`Stage ${p.stage}`, gloss);
   }
   if (items.length === 0) return null;
   return (

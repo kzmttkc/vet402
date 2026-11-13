@@ -19,6 +19,7 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 - Why: vet402 publishes every purchase row in exactly one lifecycle stage or outside box on the state API and on each endpoint record. vet402 keeps uncertain rows visible. vet402 keeps revoked rows in lifecycle totals when a chain re-read correction moves settled to another status.
 - Tests: `tests/purchase-stage.test.ts`, `tests/purchase-stage.pg.test.ts`, updates to `tests/observatory-state-api.test.ts` and `tests/observatory-purchases-api.test.ts`.
 - Impact: vet402 adds `lifecycle` on the state API only. vet402 leaves existing `l1` counts and `disclaimer` text unchanged. vet402 leaves `export.csv` columns frozen.
+- Fix (independent review): vet402 keeps a settled row whose paid request answered HTTP 2xx with a body vet402 recorded as empty in settled, the same box as 202 Accepted and the same rule as accepted_not_delivered on /sellers, in both the JS rule and the SQL rule. An empty 5xx or 3xx stays not_delivered. The not_delivered definition now says the stage does not say whose side the failure is on. The record page lists each Stage shown under Terms in this table. Tests: `tests/purchase-stage.test.ts`, `tests/purchase-stage.pg.test.ts`.
 
 ## 2026-11-13 L2: purchase-time 402 declaration drives conform when catalog output is empty
 

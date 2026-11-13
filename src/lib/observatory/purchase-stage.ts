@@ -8,8 +8,9 @@ import type { E6PublicStage } from "@/lib/observatory/e6-record";
 import type { e4OutcomeForStage } from "@/lib/observatory/trade-dispute";
 import { GATEWAY_NOT_CHARGED_EXPIRED } from "@/lib/observatory/arc-gateway-words";
 import {
-  ACCEPTED_NOT_DONE_HTTP,
   deliveredPredicate,
+  DELIVERED_HTTP_MAX,
+  DELIVERED_HTTP_MIN,
   heldReasonOf,
   inconclusivePredicate,
   isDelivered,
@@ -96,13 +97,13 @@ export const STAGE_DEFINITIONS: Record<PurchaseStageKey, string> = {
   settle_claimed:
     "vet402 recorded a seller asserted settlement receipt. vet402 has not confirmed it on chain yet, or vet402 re-read the chain and the receipt did not match.",
   settled:
-    "vet402 re-read the payment on the chain. The paid request answered 202 Accepted or vet402 has no HTTP status on record, so vet402 does not call it delivered or not_delivered.",
+    "vet402 re-read the payment on the chain. The paid request answered 202 Accepted, or HTTP 2xx with a body vet402 recorded as empty, or vet402 has no HTTP status on record, so vet402 does not call it delivered or not_delivered.",
   delivered:
     "vet402 re-read the payment on the chain and the paid request returned HTTP 2xx other than 202 Accepted with a body vet402 did not record as empty.",
   inconclusive:
-    "vet402 holds the row because the paid HTTP response was 4xx, or vet402's payer wallet was unfunded in a recorded window. vet402 keeps the row public and does not count it as not_delivered.",
+    "vet402 holds the row because the paid HTTP response was 4xx, or vet402's payer wallet was unfunded in a recorded window. vet402 keeps the row public in its own stage, apart from delivered and not_delivered.",
   not_delivered:
-    "vet402 re-read the payment on the chain. The paid request returned 5xx, or HTTP 2xx other than 202 Accepted with a body vet402 recorded as empty, or another HTTP status vet402 does not leave in settled. vet402 counts HTTP 4xx as inconclusive. vet402 leaves 202 Accepted and no HTTP status on record in settled.",
+    "vet402 re-read the payment on the chain. The paid request returned 5xx, or another HTTP status outside 2xx that vet402 does not leave in settled. vet402 counts HTTP 4xx as inconclusive. vet402 leaves 202 Accepted, HTTP 2xx with a body vet402 recorded as empty, and no HTTP status on record in settled. This stage does not say whose side the failure is on. See Whose side.",
   revoked:
     "vet402 recorded a chain re-read correction that moved this purchase out of settled. The row stays in the ledger with its new status.",
   no_402: "vet402's first request did not return HTTP 402.",
@@ -110,7 +111,7 @@ export const STAGE_DEFINITIONS: Record<PurchaseStageKey, string> = {
 };
 
 export const LIFECYCLE_NOTE =
-  "vet402 counts each purchase row once, in one lifecycle stage or one outside box. vet402 never drops a row from the total when a correction moves settled to another status. lifecycle.stages.settled holds only the rows of l1.settled whose paid request answered 202 Accepted or has no HTTP status on record.";
+  "vet402 counts each purchase row once, in one lifecycle stage or one outside box. vet402 never drops a row from the total when a correction moves settled to another status. lifecycle.stages.settled holds only the rows of l1.settled whose paid request answered 202 Accepted, answered HTTP 2xx with a body vet402 recorded as empty, or has no HTTP status on record.";
 
 export type PurchaseLifecycleCounts = {
   stages: Record<PurchaseStage, number>;
@@ -150,7 +151,10 @@ export function purchaseStageOf(row: PurchaseStageRowInput, revokedAt?: string |
   if (heldReasonOf(row) !== null) return INCONCLUSIVE_STAGE;
   if (isDelivered(row)) return "delivered";
   if (row.status === "settled") {
-    if (row.httpStatusPaid === null || row.httpStatusPaid === ACCEPTED_NOT_DONE_HTTP) return "settled";
+    const code = row.httpStatusPaid;
+    if (code === null || (typeof code === "number" && code >= DELIVERED_HTTP_MIN && code <= DELIVERED_HTTP_MAX)) {
+      return "settled";
+    }
     return NOT_DELIVERED_STAGE;
   }
   if ((SETTLE_CLAIMED_STATUSES as readonly string[]).includes(row.status)) return "settle_claimed";
@@ -223,7 +227,7 @@ export function purchaseStageSql(alias = "", revokedAtExpr?: string): string {
     WHEN ${p}status <> 'settled' AND ${revokedAt} IS NOT NULL THEN 'revoked'
     WHEN ${inconclusive} THEN '${INCONCLUSIVE_STAGE}'
     WHEN ${delivered} THEN 'delivered'
-    WHEN ${p}status = 'settled' AND (${p}http_status_paid IS NULL OR ${p}http_status_paid = ${ACCEPTED_NOT_DONE_HTTP}) THEN 'settled'
+    WHEN ${p}status = 'settled' AND (${p}http_status_paid IS NULL OR ${p}http_status_paid BETWEEN ${DELIVERED_HTTP_MIN} AND ${DELIVERED_HTTP_MAX}) THEN 'settled'
     WHEN ${p}status = 'settled' THEN '${NOT_DELIVERED_STAGE}'
     WHEN ${p}status IN (${settleClaimed}) THEN 'settle_claimed'
     WHEN ${p}status IN (${signedStatuses}) THEN 'signed'

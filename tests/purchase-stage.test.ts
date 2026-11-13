@@ -20,6 +20,8 @@ import {
   countPurchaseStages,
   emptyPurchaseLifecycle,
   purchaseStageOf,
+  purchaseStageSql,
+  STAGE_DEFINITIONS,
 } from "@/lib/observatory/purchase-stage";
 
 const row = (partial: {
@@ -194,4 +196,45 @@ test("record rows: the stage reads auth_nonce and the public row does not carry 
     assert.equal("id" in r, false);
     assert.equal("payloadNonEmpty" in r, false);
   }
+});
+
+test("empty 2xx body stays settled like 202, empty 3xx and 5xx stay not_delivered", () => {
+  for (const code of [200, 201, 204, 299]) {
+    assert.equal(
+      purchaseStageOf(row({ status: "settled", httpStatusPaid: code, txHash: "0x1", payloadNonEmpty: false })),
+      "settled",
+      `empty ${code}`,
+    );
+  }
+  assert.equal(
+    purchaseStageOf(row({ status: "settled", httpStatusPaid: 502, txHash: "0x1", payloadNonEmpty: false })),
+    NOT_DELIVERED_STAGE,
+  );
+  assert.equal(
+    purchaseStageOf(row({ status: "settled", httpStatusPaid: 307, txHash: "0x1", payloadNonEmpty: false })),
+    NOT_DELIVERED_STAGE,
+  );
+  assert.equal(
+    purchaseStageOf(row({ status: "settled", httpStatusPaid: 200, txHash: "0x1", payloadNonEmpty: null })),
+    "delivered",
+  );
+  const settledWhen = purchaseStageSql("p").split("\n").find((l) => l.includes("THEN 'settled'"))!;
+  assert.match(settledWhen, /BETWEEN 200 AND 299/, "SQL settled rule takes the whole 2xx range");
+});
+
+test("stage definitions: not_delivered names no side, inconclusive does not read not_delivered as the seller's box", () => {
+  assert.match(STAGE_DEFINITIONS.not_delivered, /does not say whose side the failure is on/);
+  assert.match(STAGE_DEFINITIONS.not_delivered, /empty/);
+  assert.match(STAGE_DEFINITIONS.settled, /empty/);
+  assert.doesNotMatch(STAGE_DEFINITIONS.inconclusive, /count it as not_delivered/);
+  for (const [k, v] of Object.entries(STAGE_DEFINITIONS)) {
+    assert.doesNotMatch(v, /\bwe\b|\bour\b|[\u2013\u2014;]/i, k);
+  }
+});
+
+test("record page Terms in this table defines Stage", () => {
+  const recordPage = readFileSync(join(process.cwd(), "src/app/observatory/e/[id]/page.tsx"), "utf8");
+  const terms = recordPage.slice(recordPage.indexOf("function RecordTerms("));
+  assert.match(terms, /STAGE_DEFINITIONS/, "RecordTerms reads the stage definitions");
+  assert.match(terms, /Stage /, "RecordTerms adds a Stage term");
 });
