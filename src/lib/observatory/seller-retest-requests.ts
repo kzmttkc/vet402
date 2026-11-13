@@ -248,6 +248,18 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     expiresOn: "2026-12-12",
     amountUnits: "1000",
   },
+  /** Prezenti M3 のための Celo の1回（目録の外。売り手の依頼ではない）。cUSD・USDC・USDT・USA₮ を受ける。払うのは USDC だけ。402 は 2026-11-13 10:3x JST に読んで Celo USDC の accept（10000）を照合。 */
+  {
+    id: "landingen24h-2026-11-13-celo-ar-dolar",
+    requestedOn: "2026-11-13",
+    sellerDomain: "landingen24h.com",
+    url: "https://landingen24h.com/celo/ar/dolar",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0xb6d00A148AD63Fd9CCDd484B687c6012bA1561E1",
+    expiresOn: "2026-12-12",
+    amountUnits: "10000",
+  },
 ];
 
 /** テスト専用の短いリスト（本番依頼と同じ規則・模擬ホスト・9 件）。 */

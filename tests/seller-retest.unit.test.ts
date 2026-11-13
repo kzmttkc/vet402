@@ -110,11 +110,13 @@ test("blockscout celo request is on the seller retest list and Base requests sta
     "agent-embassy-2026-11-12-celo-verify",
     "blockscout-2026-11-12-celo-addresses",
     "blockscout-2026-11-13-celo-addresses-noquery",
+    "landingen24h-2026-11-13-celo-ar-dolar",
     "open-rails-2026-11-12-celo-block",
     "paycrawl-2026-11-12-celo-article",
   ]);
   for (const row of SELLER_RETEST_REQUESTS.filter((r) => r.network === CELO_CAIP2)) {
-    assert.ok(BigInt(row.amountUnits ?? "0") <= 2000n, row.id);
+    // Celo の M3 の1回は 1 セント（10000）まで。全体の上限 MAX_PER_PURCHASE_UNITS（$1）とは別の、この表だけの線。
+    assert.ok(BigInt(row.amountUnits ?? "0") <= 10000n, row.id);
     assert.equal(row.expiresOn, "2026-12-12", row.id);
   }
 });

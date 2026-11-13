@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 Celo: one request-lane purchase from landingen24h.com
+
+- What: one entry on the seller request list: GET https://landingen24h.com/celo/ar/dolar on Celo, $0.01 in USDC to the payTo its 402 names. The Celo rows' test line moves from $0.002 to $0.01. Runtime caps are unchanged.
+- Why: one more Celo seller outside the catalogs, checked the same way as the others.
+- Impact: one $0.01 purchase on the next L1 run. Independent review: SHIP.
+
 ## 2026-11-13 SDK: SpendGuard asks onApproval before it signs (D4)
 
 - What: `SpendGuard` takes an optional `onApproval` callback. When a payment needs approval, the guard calls it before signing and signs only on an explicit yes. The approval rate stays outside the SpendRules gate. Tests in `packages/sdk/test/d4-on-approval.test.mjs`.
