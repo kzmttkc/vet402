@@ -53,6 +53,7 @@ export const WEBHOOK_EVENTS = [
   "outcome.recorded",
   "watch.verdict_changed",
   "endpoint.delisted",
+  "ops.digest",
 ] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
@@ -120,6 +121,21 @@ export function isSafeWebhookUrl(raw: string): boolean {
 // and a second copy would be a second thing to keep correct. Re-exported here
 // because this module is where they were born and where callers import them.
 export { isPublicUnicastIp, type AddressResolver };
+
+/** Tests may replace DNS resolution and the HTTPS POST only. SSRF guards stay on. */
+export type WebhookDeliveryTestOverride = {
+  resolve?: AddressResolver;
+  post?: (url: URL, ip: string, body: string, headers: Record<string, string>) => Promise<boolean>;
+} | null;
+
+let webhookDeliveryForTests: WebhookDeliveryTestOverride = null;
+
+export function setWebhookDeliveryForTests(override: WebhookDeliveryTestOverride): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("setWebhookDeliveryForTests is not allowed in production");
+  }
+  webhookDeliveryForTests = override;
+}
 
 /**
  * Resolve `hostname` and return a single verified public IP to pin the
@@ -287,7 +303,10 @@ export async function createWebhook(params: {
   apiKeyId: string;
   url: string;
   events: WebhookEvent[];
-}): Promise<{ id: string; secret: string } | { error: "limit_reached" | "store_unavailable" }> {
+}): Promise<{ id: string; secret: string } | { error: "limit_reached" | "store_unavailable" | "unsafe_url" }> {
+  if (!isSafeWebhookUrl(params.url)) {
+    return { error: "unsafe_url" };
+  }
   const db = getDb();
   if (!db) return { error: "store_unavailable" };
   try {
@@ -419,7 +438,7 @@ async function deliverOne(row: WebhookRow, eventType: WebhookEvent, payload: unk
   // public, and connect to that verified IP literal below. A hostname whose
   // record flipped to a private/metadata IP is dropped here, before any socket
   // opens. This is the invariant enforcement, not a best-effort narrowing.
-  const target = await resolveDeliveryTarget(url.hostname);
+  const target = await resolveDeliveryTarget(url.hostname, webhookDeliveryForTests?.resolve ?? undefined);
   if (!target) {
     return; // unresolvable or resolves to a non-public address → never deliver
   }
@@ -447,11 +466,14 @@ async function deliverOne(row: WebhookRow, eventType: WebhookEvent, payload: unk
   }
   const signature = signWebhookPayload(opened.plain, body, Math.floor(Date.now() / 1000));
 
-  const ok = await postPinned(url, target.ip, body, {
+  const headers = {
     "Content-Type": "application/json",
     "Vouch-Signature": signature,
     "User-Agent": "vouch-webhooks/1",
-  });
+  };
+  const ok = webhookDeliveryForTests?.post
+    ? await webhookDeliveryForTests.post(url, target.ip, body, headers)
+    : await postPinned(url, target.ip, body, headers);
 
   if (!db) return;
   try {

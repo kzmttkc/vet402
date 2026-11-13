@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-13 P3: buyer and seller operations dashboards
+
+- What: `/dashboard/buyer` and `/dashboard/seller` split decision usage, reported payments, and vet402 L1 measurement across sellers for buyers, and revenue, delivered rates, trade disputes, and L0 reputation for sellers after payTo wallet proof. Reputation counts published fail and withdrawn separately, with verdicts parsed like the state API. Dispute checks read up to 1000 latest purchases per wallet and label truncation. Rates share one footnote and a denominator zero message. Webhook event `ops.digest`, email draft template, production guard on test delivery hooks, and tests `tests/ops-dashboard.test.ts` plus `tests/ops-dashboard.pg.test.ts`.
+- Why: PRODUCT P3 asked for one-page operations views without mixing unrelated numbers or hiding held rows from denominators.
+- Impact: No scheduled digest job yet. Seller numbers stay hidden until EIP-191 proof passes. Docs OpenAPI and shell nav unchanged in this commit.
+- Ops copy: dashboard and digest text use "a second read" for held settlement rows. Seller dispute section stays empty until a public dispute stage exists on this wallet's purchases.
 ## 2026-11-13 SDK: the read hook also reads the local decision store (wave1 3.9)
 
 - What: `createVet402ReadHook` gains optional `store` and `readLocalRecords: false`. `getVet402LocalRecords` returns matching rows from the JSONL decision store per request URL without signing or sending funds. `readTimeoutMs` (default 5000 ms) caps `readBeforePay` and local JSONL line scans so payment still proceeds when reads hang. Tests in `packages/sdk/test/fetch-hook.test.mjs`, `tests/pricing-home-lock.test.ts`, and `packages/python-sdk/tests/test_read_only_no_payment.py`.
