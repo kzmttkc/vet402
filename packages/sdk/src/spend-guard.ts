@@ -1,6 +1,12 @@
 import type { PayeeScoreResult } from "./index.js";
 // 判定語と「測れたか」の欄の読み方。`payOrRefuse` と同じ規則を共有する（`./verdict-shape.js`）。
 import { isBlockVerdict, scoreQualityDefect } from "./verdict-shape.js";
+import {
+  evaluateSpendRules,
+  type SpendRecord,
+  type SpendRuleRefusal,
+  type SpendRules,
+} from "./spend-rules.js";
 
 /**
  * Trust posture toward the payee score. BREAKING (0.2.0): the default is
@@ -110,13 +116,61 @@ export type SpendGuardPolicy = {
    * `trustPolicy: "custom"`.
    */
   blockOnRecommendation?: boolean;
+  /**
+   * Human approval before signing. When set, {@link SpendGuard.evaluate} calls
+   * this after local rules, trust rules, and SpendRules pass. The handler sees
+   * the verification phrase, the amount, the payee, and the delivery rate from
+   * the payee score. A false return denies with `human_approval_denied`. The
+   * handler runs on this machine. vet402 does not receive the approval.
+   */
+  onApproval?: SpendApprovalHandler;
+  /**
+   * Optional {@link evaluateSpendRules} limits. A refusal is
+   * {@link SpendDecision.spendRulesRefusedBy}, separate from
+   * `human_approval_denied`. The delivery rate on the approval prompt is not
+   * given to these rules. They read a null delivery rate, so `minDeliveryRate`
+   * stays closed on this path. payChecked keeps the payer decision rate.
+   * Pass records for this call on {@link SpendEvaluateInput.spendHistory}.
+   * This guard does not keep them.
+   */
+  spendRules?: SpendRules;
 };
+
+/** What the human sees before approving a spend. */
+export type SpendApprovalPrompt = {
+  /** Short verification phrase the caller passed on the payment intent. */
+  phrase: string;
+  amountUsd: number;
+  payee: string;
+  /**
+   * Delivery rate from the payee score receiving ledger, or null when that
+   * ledger cannot show one. This is not the payer decision rate.
+   */
+  deliveryRate: number | null;
+};
+
+export type SpendApprovalHandler = (prompt: SpendApprovalPrompt) => boolean | Promise<boolean>;
 
 export type SpendEvaluateInput = {
   /** Payee wallet address (0x...) the agent is about to pay. */
   payee: string;
   /** Payment amount in USD. */
   amountUsd: number;
+  /**
+   * Required when the guard policy sets `onApproval`. Short phrase shown to
+   * the human alongside amount, payee, and delivery rate.
+   */
+  approvalPhrase?: string;
+  /** Hostname for {@link SpendGuardPolicy.spendRules} caps (optional). */
+  host?: string;
+  /** Resource id for {@link SpendGuardPolicy.spendRules} caps (optional). */
+  resourceId?: string;
+  /**
+   * Payments already recorded, read by the caller for this call. Used only
+   * when {@link SpendGuardPolicy.spendRules} is set. The guard does not store
+   * them. Read them from the same DecisionStore payChecked uses.
+   */
+  spendHistory?: SpendRecord[];
 };
 
 export type SpendDenyReason =
@@ -152,12 +206,21 @@ export type SpendDenyReason =
    * The score lookup itself failed for a reason on OUR side or in between:
    * network error, timeout, 5xx, rate limit. Retrying may help.
    */
-  | "payee_trust_unavailable";
+  | "payee_trust_unavailable"
+  /** `onApproval` returned false. Separate from a SpendRules refusal. */
+  | "human_approval_denied"
+  /** `onApproval` is configured but the intent carried no verification phrase. */
+  | "approval_phrase_missing";
 
 export type SpendDecision = {
   allow: boolean;
   /** Empty when allowed; one or more machine-readable codes when denied. */
   reasons: SpendDenyReason[];
+  /**
+   * First SpendRules refusal when {@link SpendGuardPolicy.spendRules} is set,
+   * or null when rules passed or were not configured.
+   */
+  spendRulesRefusedBy: SpendRuleRefusal | null;
   payee: string;
   amountUsd: number;
   /**
@@ -173,7 +236,65 @@ export type SpendDecision = {
    * `trustPolicy: "custom"` with no trust rule set) or failed.
    */
   payeeScore: PayeeScoreResult | null;
+  /** Set when `onApproval` ran and the human was shown this prompt. */
+  approvalPrompt?: SpendApprovalPrompt;
 };
+
+/**
+ * Delivery rate for the approval prompt. Counts come from the payee score
+ * receiving ledger. Conclusive attempts are l1Settled plus
+ * l1PaidNeverSettled. l1PendingVerification stays out of the denominator.
+ * The rate is null when there is no conclusive attempt or the delivery count
+ * is negative. The shown rate stays within 0 and 1. This is not the payer
+ * decision rate in pay-checked, and SpendRules do not read it.
+ */
+function deliveryRateFromPayeeScore(score: PayeeScoreResult | Pick<PayeeScoreResult, "signals"> | null): number | null {
+  const receiving = score?.signals?.receiving;
+  if (!receiving) return null;
+  const delivered =
+    typeof receiving.l1DeliveryCount === "number" && Number.isFinite(receiving.l1DeliveryCount)
+      ? receiving.l1DeliveryCount
+      : 0;
+  const settled =
+    typeof receiving.l1Settled === "number" && Number.isFinite(receiving.l1Settled) && receiving.l1Settled >= 0
+      ? receiving.l1Settled
+      : 0;
+  const nonSettling =
+    typeof receiving.l1PaidNeverSettled === "number" &&
+    Number.isFinite(receiving.l1PaidNeverSettled) &&
+    receiving.l1PaidNeverSettled >= 0
+      ? receiving.l1PaidNeverSettled
+      : 0;
+  const pending =
+    typeof receiving.l1PendingVerification === "number" &&
+    Number.isFinite(receiving.l1PendingVerification) &&
+    receiving.l1PendingVerification >= 0
+      ? receiving.l1PendingVerification
+      : 0;
+  const attempts = settled + nonSettling + pending;
+  return deliveryRateFromConclusiveL1(delivered, attempts, pending);
+}
+
+/** Conclusive denominator. Delivered is capped to that count. The rate stays within 0 and 1. */
+function deliveryRateFromConclusiveL1(
+  delivered: number,
+  attempts: number,
+  inconclusive: number,
+): number | null {
+  if (!Number.isFinite(delivered) || !Number.isFinite(attempts) || delivered < 0 || attempts < 0) {
+    return null;
+  }
+  const inc =
+    typeof inconclusive === "number" && Number.isFinite(inconclusive) && inconclusive >= 0 ? inconclusive : 0;
+  const conclusive = attempts - inc;
+  if (!(conclusive > 0)) return null;
+  const boundedDelivered = Math.min(delivered, conclusive);
+  const rate = boundedDelivered / conclusive;
+  if (!Number.isFinite(rate)) return null;
+  if (rate < 0) return 0;
+  if (rate > 1) return 1;
+  return rate;
+}
 
 const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 
@@ -573,19 +694,82 @@ export class SpendGuard {
       }
     }
 
-    const allow = reasons.length === 0;
-    if (!allow && reserved) {
-      // Trust rules denied after the optimistic reservation — give it back.
-      // rollDayIfNeeded first: if the UTC day flipped while the lookup was in
-      // flight, the counter was already reset and the release must clamp at 0
-      // instead of dragging the fresh day's counter negative.
-      this.rollDayIfNeeded();
-      this.spentTodayMicros = Math.max(0, this.spentTodayMicros - amount);
+    let spendRulesRefusedBy: SpendRuleRefusal | null = null;
+    const spendRules = this.policy.spendRules;
+    if (reasons.length === 0 && spendRules) {
+      const history = input.spendHistory ?? [];
+      const recommendation =
+        payeeScore && payeeScore.degraded !== true ? payeeScore.recommendation : null;
+      const verdict = evaluateSpendRules(
+        spendRules,
+        {
+          payTo: input.payee,
+          host: input.host ?? "",
+          resourceId: input.resourceId ?? "",
+          amountUsd: input.amountUsd,
+          recommendation,
+          // The prompt rate is a different ledger. A null rate keeps
+          // minDeliveryRate closed here instead of opening it.
+          deliveryRate: null,
+        },
+        history,
+        this.now().getTime(),
+      );
+      if (!verdict.allow) spendRulesRefusedBy = verdict.refusedBy;
     }
+
+    let approvalPrompt: SpendApprovalPrompt | undefined;
+    const approvalHandler = this.policy.onApproval;
+    const releaseReservation = () => {
+      if (reserved) {
+        // Trust rules denied after the optimistic reservation. Give it back.
+        // rollDayIfNeeded first: if the UTC day flipped while the lookup was in
+        // flight, the counter was already reset and the release must clamp at 0
+        // instead of dragging the fresh day's counter negative.
+        this.rollDayIfNeeded();
+        this.spentTodayMicros = Math.max(0, this.spentTodayMicros - amount);
+        reserved = false;
+      }
+    };
+    if (reasons.length === 0 && spendRulesRefusedBy === null && approvalHandler) {
+      const phrase = input.approvalPhrase;
+      if (typeof phrase !== "string" || phrase.trim().length === 0) {
+        reasons.push("approval_phrase_missing");
+      } else {
+        // custom skips the trust lookup. The prompt still needs the payee
+        // score so the human can see a delivery rate. A failed read leaves
+        // the rate null. It does not add a trust denial the caller opted out of.
+        let displayScore = payeeScore;
+        if (displayScore === null) {
+          try {
+            displayScore = await this.fetchPayeeScore(input.payee);
+          } catch {
+            displayScore = null;
+          }
+        }
+        approvalPrompt = {
+          phrase: phrase.trim(),
+          amountUsd: input.amountUsd,
+          payee: input.payee,
+          deliveryRate: deliveryRateFromPayeeScore(displayScore),
+        };
+        try {
+          const approved = await approvalHandler(approvalPrompt);
+          if (!approved) reasons.push("human_approval_denied");
+        } catch (error) {
+          releaseReservation();
+          throw error;
+        }
+      }
+    }
+
+    const allow = reasons.length === 0 && spendRulesRefusedBy === null;
+    if (!allow) releaseReservation();
 
     return {
       allow,
       reasons,
+      spendRulesRefusedBy,
       payee: input.payee,
       amountUsd: input.amountUsd,
       spentTodayUsd: this.spentTodayMicros / MICROS_PER_USD,
@@ -594,7 +778,27 @@ export class SpendGuard {
           ? Math.max(0, limitMicros(dailyBudgetUsd) - this.spentTodayMicros) / MICROS_PER_USD
           : null,
       payeeScore,
+      ...(approvalPrompt ? { approvalPrompt } : {}),
     };
+  }
+
+  /**
+   * Runs {@link evaluate} and calls `sign` only when the decision allows.
+   * SpendGuard does not hold keys. `sign` belongs to the wallet stack.
+   */
+  async signIfAllowed(
+    input: SpendEvaluateInput,
+    sign: () => string | Promise<string>,
+  ): Promise<{ signature: string | null; decision: SpendDecision }> {
+    const decision = await this.evaluate(input);
+    if (!decision.allow) return { signature: null, decision };
+    try {
+      const signature = await sign();
+      return { signature, decision };
+    } catch (error) {
+      this.release(input.amountUsd);
+      throw error;
+    }
   }
 
   /**

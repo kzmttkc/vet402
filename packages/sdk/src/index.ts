@@ -9,6 +9,8 @@ export {
   type SpendEvaluateInput,
   type SpendDenyReason,
   type SpendDecision,
+  type SpendApprovalPrompt,
+  type SpendApprovalHandler,
 } from "./spend-guard.js";
 
 // ETHOnline 2026（会期中の新規・WINDOW_PLAN §2）。判定のあと、条件を全部通したときだけ払う。

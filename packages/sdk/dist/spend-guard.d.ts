@@ -1,4 +1,5 @@
 import type { PayeeScoreResult } from "./index.js";
+import { type SpendRecord, type SpendRuleRefusal, type SpendRules } from "./spend-rules.js";
 /**
  * Trust posture toward the payee score. BREAKING (0.2.0): the default is
  * "allow-only" — money moves only on a clean ALLOW unless you explicitly
@@ -105,12 +106,58 @@ export type SpendGuardPolicy = {
      * `trustPolicy: "custom"`.
      */
     blockOnRecommendation?: boolean;
+    /**
+     * Human approval before signing. When set, {@link SpendGuard.evaluate} calls
+     * this after local rules, trust rules, and SpendRules pass. The handler sees
+     * the verification phrase, the amount, the payee, and the delivery rate from
+     * the payee score. A false return denies with `human_approval_denied`. The
+     * handler runs on this machine. vet402 does not receive the approval.
+     */
+    onApproval?: SpendApprovalHandler;
+    /**
+     * Optional {@link evaluateSpendRules} limits. A refusal is
+     * {@link SpendDecision.spendRulesRefusedBy}, separate from
+     * `human_approval_denied`. The delivery rate on the approval prompt is not
+     * given to these rules. They read a null delivery rate, so `minDeliveryRate`
+     * stays closed on this path. payChecked keeps the payer decision rate.
+     * Pass records for this call on {@link SpendEvaluateInput.spendHistory}.
+     * This guard does not keep them.
+     */
+    spendRules?: SpendRules;
 };
+/** What the human sees before approving a spend. */
+export type SpendApprovalPrompt = {
+    /** Short verification phrase the caller passed on the payment intent. */
+    phrase: string;
+    amountUsd: number;
+    payee: string;
+    /**
+     * Delivery rate from the payee score receiving ledger, or null when that
+     * ledger cannot show one. This is not the payer decision rate.
+     */
+    deliveryRate: number | null;
+};
+export type SpendApprovalHandler = (prompt: SpendApprovalPrompt) => boolean | Promise<boolean>;
 export type SpendEvaluateInput = {
     /** Payee wallet address (0x...) the agent is about to pay. */
     payee: string;
     /** Payment amount in USD. */
     amountUsd: number;
+    /**
+     * Required when the guard policy sets `onApproval`. Short phrase shown to
+     * the human alongside amount, payee, and delivery rate.
+     */
+    approvalPhrase?: string;
+    /** Hostname for {@link SpendGuardPolicy.spendRules} caps (optional). */
+    host?: string;
+    /** Resource id for {@link SpendGuardPolicy.spendRules} caps (optional). */
+    resourceId?: string;
+    /**
+     * Payments already recorded, read by the caller for this call. Used only
+     * when {@link SpendGuardPolicy.spendRules} is set. The guard does not store
+     * them. Read them from the same DecisionStore payChecked uses.
+     */
+    spendHistory?: SpendRecord[];
 };
 export type SpendDenyReason = "max_per_tx_exceeded" | "daily_budget_exceeded" | "payee_score_below_min"
 /** Recommendation was WARN or BLOCK under the default "allow-only" policy. */
@@ -141,11 +188,20 @@ export type SpendDenyReason = "max_per_tx_exceeded" | "daily_budget_exceeded" | 
  * The score lookup itself failed for a reason on OUR side or in between:
  * network error, timeout, 5xx, rate limit. Retrying may help.
  */
- | "payee_trust_unavailable";
+ | "payee_trust_unavailable"
+/** `onApproval` returned false. Separate from a SpendRules refusal. */
+ | "human_approval_denied"
+/** `onApproval` is configured but the intent carried no verification phrase. */
+ | "approval_phrase_missing";
 export type SpendDecision = {
     allow: boolean;
     /** Empty when allowed; one or more machine-readable codes when denied. */
     reasons: SpendDenyReason[];
+    /**
+     * First SpendRules refusal when {@link SpendGuardPolicy.spendRules} is set,
+     * or null when rules passed or were not configured.
+     */
+    spendRulesRefusedBy: SpendRuleRefusal | null;
     payee: string;
     amountUsd: number;
     /**
@@ -161,6 +217,8 @@ export type SpendDecision = {
      * `trustPolicy: "custom"` with no trust rule set) or failed.
      */
     payeeScore: PayeeScoreResult | null;
+    /** Set when `onApproval` ran and the human was shown this prompt. */
+    approvalPrompt?: SpendApprovalPrompt;
 };
 /**
  * Default staleness bound (5 min), matching the score API's own cache TTL: a
@@ -203,6 +261,14 @@ export declare class SpendGuard {
     private currentDay;
     constructor(policy: SpendGuardPolicy, fetchPayeeScore: (payee: string) => Promise<PayeeScoreResult>, now?: () => Date);
     evaluate(input: SpendEvaluateInput): Promise<SpendDecision>;
+    /**
+     * Runs {@link evaluate} and calls `sign` only when the decision allows.
+     * SpendGuard does not hold keys. `sign` belongs to the wallet stack.
+     */
+    signIfAllowed(input: SpendEvaluateInput, sign: () => string | Promise<string>): Promise<{
+        signature: string | null;
+        decision: SpendDecision;
+    }>;
     /**
      * Returns a previously reserved amount to today's budget. Call when an
      * allowed payment ultimately did not execute.
