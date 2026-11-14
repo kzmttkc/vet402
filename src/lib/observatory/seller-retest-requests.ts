@@ -187,6 +187,30 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     expiresOn: "2026-12-10",
     amountUnits: "2000",
   },
+  /** Agent402.tools の買い直し（2026-11-14 売り手がメールで依頼。11/13 の WARN の後、出力の宣言を image/png・image/jpeg の binary に直した）。402 は 2026-11-14 15:0x JST に読んで Base USDC の accept を照合。 */
+  {
+    id: "agent402-2026-11-14-qr",
+    requestedOn: "2026-11-14",
+    sellerDomain: "agent402.tools",
+    url: "https://agent402.tools/api/qr?text=https%3A%2F%2Fagent402.tools&size=256",
+    method: "GET",
+    network: BASE_CAIP2,
+    payTo: "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+    expiresOn: "2026-12-14",
+    amountUnits: "1000",
+  },
+  {
+    id: "agent402-2026-11-14-image-convert",
+    requestedOn: "2026-11-14",
+    sellerDomain: "agent402.tools",
+    url: "https://agent402.tools/api/image-convert",
+    method: "POST",
+    body: '{"image":"iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAJUlEQVR4AYXBAQEAIAyAMKSSnUxrJ99AtrXPfXxIkCBBggQJEgZ5JwJ01a+JcwAAAABJRU5ErkJggg==","format":"jpeg","quality":80}',
+    network: BASE_CAIP2,
+    payTo: "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0",
+    expiresOn: "2026-12-14",
+    amountUnits: "5000",
+  },
   /** Prezenti M3 のための Celo の1回。売り手の依頼ではない。402 は 2026-11-12 14:3x JST に読んで照合（accepts は Celo・Arc・Base の3つ）。 */
   {
     id: "blockscout-2026-11-12-celo-addresses",

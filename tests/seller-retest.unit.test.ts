@@ -100,7 +100,15 @@ test("blockscout celo request is on the seller retest list and Base requests sta
     "goldsky-2026-10-30-evm-rpc",
     "goldsky-2026-10-30-feeds-wallets-balances",
     "lupapago-2026-11-10-fx-ar",
+    "agent402-2026-11-14-qr",
+    "agent402-2026-11-14-image-convert",
   ];
+  for (const id of ["agent402-2026-11-14-qr", "agent402-2026-11-14-image-convert"]) {
+    const row = SELLER_RETEST_REQUESTS.find((r) => r.id === id);
+    assert.equal(row?.payTo, "0xaBF4FAbd7c416fB67202E5f9002389Fc75e2a9D0", id);
+    assert.ok(BigInt(row?.amountUnits ?? "0") <= 5000n, id);
+    assert.equal(row?.expiresOn, "2026-12-14", id);
+  }
   for (const id of baseIds) {
     const row = SELLER_RETEST_REQUESTS.find((r) => r.id === id);
     assert.equal(row?.network, BASE_CAIP2, id);
