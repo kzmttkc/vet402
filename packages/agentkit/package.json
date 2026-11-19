@@ -17,7 +17,7 @@
   "dependencies": {
     "@vet402/sdk": "file:../sdk",
     "reflect-metadata": "^0.2.2",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "peerDependencies": {
     "@coinbase/agentkit": ">=0.10.0"
