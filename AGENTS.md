@@ -11,3 +11,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 # Documentation and code
 
 When a repository's documentation and its existing code disagree, follow the conventions used in the existing code, and in your final reply point out each inconsistency you found between the documentation and the code.
+
+## Working copies
+Create a working copy only with `bash ~/vouch/scripts/wt/new.sh <name>` and remove it with `bash ~/vouch/scripts/wt/done.sh <name>` right after its branch is in origin/main. new.sh clones node_modules from ~/vouch (APFS copy, no symlink) so a copy costs about 270MB instead of 1 to 3GB.
