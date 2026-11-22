@@ -28,6 +28,7 @@ import {
   PRIORITY_SWEEP_WINDOW_DAYS,
   SWEEP_WINDOW_DAYS,
 } from "@/lib/observatory/l1-runner";
+import { PINNED_PURCHASES_SOURCE } from "@/lib/observatory/pinned-purchases";
 import {
   getObservatoryStatsCached,
   getUnverifiedBreakdownCached,
@@ -814,6 +815,15 @@ export default async function ObservatoryMethodologyPage() {
           than left for a reader to infer from the timestamps. Until 2026-09-04 this section said
           &ldquo;at most once per {SWEEP_WINDOW_DAYS}-day window&rdquo; with no exception named,
           which was false for these four.
+        </p>
+        <p className="doc-p">
+          <strong>Reserved purchases in a date window.</strong> vet402 may reserve one paid test of a
+          specific catalog listing between two UTC instants. The list is checked in at{" "}
+          <code>{PINNED_PURCHASES_SOURCE}</code>; sellers cannot pay for or request an entry on it.
+          Inside the window, and until the reserved count of settled purchases since the start is
+          reached, that endpoint is placed first among L1 candidates. The per-purchase ceiling, the
+          daily budget, the per-chain lanes, the reservation before signing and the stop switch apply
+          unchanged, as for any other purchase.
         </p>
         <p className="doc-p">
           <strong>Endpoints already proved, and the daily intake limit.</strong> Once an endpoint

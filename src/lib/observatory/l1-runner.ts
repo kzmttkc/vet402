@@ -162,6 +162,13 @@ import {
   type SellerRequestUnpaid,
 } from "./seller-retest";
 import {
+  PINNED_PURCHASE_SELECTION,
+  loadActivePinnedPurchaseTargets,
+  pinnedPurchaseMetaOf,
+  promotePinnedPurchaseCandidates,
+  type PinnedPurchaseMeta,
+} from "./pinned-purchases";
+import {
   notSellerRetestRequestSourceSql,
   resolveSellerRetestUrl,
   sellerRetestLaneEnabled,
@@ -430,6 +437,8 @@ type Candidate = {
   /** 売り手依頼の 1 回きり買い直し（2026-10-30）: 402 照合と sellerRequestId。 */
   sellerRequest?: SellerRequestGate;
   sellerRequestUnpaid?: SellerRequestUnpaid;
+  /** 版管理された予約購入（pinned-purchases.ts）: 台帳の raw_response_meta に残す。 */
+  pinnedPurchaseMeta?: PinnedPurchaseMeta | null;
   /**
    * カタログの raw_accepts が宣言した XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo（2026-09-18）。
    * Base が先頭の行を XRPL の accept で買うとき、壁の payTo はこの宣言と完全一致でなければ払わない
@@ -1359,7 +1368,7 @@ export function sellerDomainOf(resourceUrl: string): string {
 }
 
 /** census 系の候補の出どころ（raw_response_meta.selection の値）。 */
-export type CensusSelection = "census" | "retest" | "seller_request";
+export type CensusSelection = "census" | "retest" | "seller_request" | "pinned_purchase";
 
 /** 宣言本文を送り始めた時刻（正典は request-body.ts・既存の呼び手のための再公開）。 */
 export { DECLARED_BODY_SENT_SINCE } from "./request-body";
@@ -2848,6 +2857,43 @@ export async function runL1Batch(
     candidates = [...head, ...candidates.filter((c) => !headIds.has(c.id))];
   }
 
+  // 版管理された予約購入（pinned-purchases.ts）: 窓の内で settled が足りなければ先頭へ。上限・署名は変えない。
+  if (!onlyEndpointId) {
+    try {
+      const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
+      if (pinTargets.length > 0) {
+        const pinIds = new Set(candidates.map((c) => c.id));
+        for (const t of pinTargets) {
+          if (pinIds.has(t.endpointId)) continue;
+          const pinSql = l1TargetsSqlBuilders({
+            limit: 1,
+            onlyEndpointId: t.endpointId,
+            laneExclusions,
+            firstPurchasesSelectable,
+            censusFirstSelectable,
+            unprovenGate,
+          }).targetsSql;
+          const raw = await withDailyFallback(
+            async () => await db.execute(pinSql(true, undefined, undefined, undefined, primaryExtra)),
+            async () => await db.execute(pinSql(false, undefined, undefined, undefined, primaryExtra)),
+          );
+          const row = rowsOf(raw)[0];
+          if (row) {
+            candidates.push(rowToCandidate(row));
+            pinIds.add(t.endpointId);
+          }
+        }
+        candidates = promotePinnedPurchaseCandidates(candidates, pinTargets, (c, t) => ({
+          ...c,
+          selection: PINNED_PURCHASE_SELECTION,
+          pinnedPurchaseMeta: pinnedPurchaseMetaOf(t.entry),
+        }));
+      }
+    } catch (error) {
+      logServerErrorSafe("observatory.l1.pinned_purchase", redactedError(error));
+    }
+  }
+
   // 購入元残高の関門（2026-09-17 Issue #29）。チェーンごとに 1 バッチ 1 回だけ読み、
   // 読めなければ署名しない側へ倒す。ログはチェーンごとに 1 回。
   const payerFunds = createPayerFunds(options.getPayerUsdcBalance ?? defaultPayerUsdcBalance);
@@ -3891,13 +3937,15 @@ async function purchaseOne(input: {
         ? (stellarAddress ?? "stellar_key_missing")
         : account.address.toLowerCase();
 
-  // census / retest / seller_request の候補（2026-09-28 / 2026-10-30）なら、この候補について書く行の raw_response_meta に selection を残す。
-  const selectionMeta = candidate.selection
-    ? {
-        selection: candidate.selection,
-        ...(candidate.sellerRequest ? { sellerRequestId: candidate.sellerRequest.id } : {}),
-      }
-    : null;
+  // census / retest / seller_request / pinned_purchase の候補なら、この候補について書く行の raw_response_meta に selection を残す。
+  const selectionMeta = candidate.pinnedPurchaseMeta
+    ? { ...candidate.pinnedPurchaseMeta }
+    : candidate.selection
+      ? {
+          selection: candidate.selection,
+          ...(candidate.sellerRequest ? { sellerRequestId: candidate.sellerRequest.id } : {}),
+        }
+      : null;
   const tagMeta = <T,>(meta: T): T | Record<string, unknown> =>
     selectionMeta
       ? { ...(typeof meta === "object" && meta !== null && !Array.isArray(meta) ? (meta as Record<string, unknown>) : {}), ...selectionMeta }

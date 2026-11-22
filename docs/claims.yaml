@@ -1082,6 +1082,13 @@ claims:
     check: null
     why_unverifiable: "公開 GET は購買頻度を返さない。リストは l1-runner の PRIORITY_SELLER_HOSTS から import して描いているので、コードとページが乖離しない（tests/observatory-l1-priority.test.ts がリスト側を固定する）"
     verified_at: 2026-09-04
+  - id: method_pinned_purchase_date_window
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "sellers cannot pay for or request an entry on it."
+    means: "版管理された src/lib/observatory/pinned-purchases.ts の一覧で、UTC の日付窓の内かつ from 以降の settled が maxPurchases に届くまで、その URL を L1 候補の先頭に置く。売り手はリストに載せられない。予算・売り手上限・署名・受取先の照合は他の購入と同じ。"
+    check: null
+    why_unverifiable: "公開 GET は候補の並びを返さない。tests/pinned-purchases.test.ts と tests/l1-pinned-purchase.pg.test.ts が固定する。"
+    verified_at: 2026-11-23
   - id: method_census_one_row_per_seller
     surface: src/app/observatory/methodology/page.tsx
     quote: "the stop switch all apply unchanged, and the result is published like any other"
@@ -2202,6 +2209,13 @@ claims:
     why_unverifiable: "ポリシー上の事実の記述。根拠は keyless-callers-close の削除と keyless_caller_weekly の 3 列のみ。tests/keyless-callers.pg.test.ts が IP/UA 列の不在を固定する"
     verified_at: 2026-11-16
   # 2026-10-21: public/llms.txt を走査に加えた。抽出器は .txt を TSX として読み、バッククォートを文字列の境界にするため、断定は文ではなく断片になる。引用はその断片とファイルの両方にある短い範囲。
+  - id: llms_pinned_purchase_reservation
+    surface: public/llms.txt
+    quote: "vet402 may reserve one paid test of a listing in a UTC date window"
+    means: "L1 で版管理された pinned-purchases.ts の日付窓に従い特定出品へ有料試行を予約できる。売り手はリストに載せられない。"
+    check: null
+    why_unverifiable: "運用ポリシーの説明。tests/pinned-purchases.test.ts がリストの検証と並びを固定する。"
+    verified_at: 2026-11-23
   - id: llms_levels_l0_span
     surface: public/llms.txt
     quote: "anywhere on the site. - **L0 Liveness**: does"
