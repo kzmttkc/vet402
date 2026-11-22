@@ -29,7 +29,7 @@ export const MCP_DOCS_FEED_STALENESS =
   "The feed snapshot is cached in the vet402 process for 300 seconds. HTTP responses use Cache-Control public, s-maxage=300, stale-while-revalidate=600.";
 
 export const MCP_DOCS_FEED_FILTERS =
-  "Filters: network (a chain id vet402 recognizes, for example eip155:8453 or solana). The network filter keeps rows whose catalog network matches or vet402 signed a purchase on that chain in the window. Other filters: min_delivered (integer 0 through 100000), listed_in (bazaar, circle or mpp) and cursor (continuation token). Any other query parameter returns 400.";
+  "Filters: network (a chain id vet402 recognizes, for example eip155:8453 or solana). The network filter keeps rows whose catalog network matches or vet402 signed a purchase on that chain in the window. Other filters: min_delivered (integer 0 through 100000), listed_in (bazaar, circle, mpp or operator) and cursor (continuation token). Any other query parameter returns 400.";
 
 export const MCP_DOCS_FEED_FIELD_URL = "Listing URL (one row per listing).";
 export const MCP_DOCS_FEED_FIELD_METHOD = "HTTP method of the listing.";
@@ -37,7 +37,7 @@ export const MCP_DOCS_FEED_FIELD_NETWORK =
   "CAIP-2 catalog listing network when the catalog stores a known chain. The network query parameter also matches listings vet402 paid on that chain in the window.";
 export const MCP_DOCS_FEED_FIELD_PRICE =
   "Listed price in dollars when the catalog holds a USDC amount with six decimal places.";
-export const MCP_DOCS_FEED_FIELD_LISTED_IN = "Catalog source: bazaar, circle or mpp.";
+export const MCP_DOCS_FEED_FIELD_LISTED_IN = "Catalog source: bazaar, circle or mpp, or operator for a seller vet402 added itself from the checked-in list src/lib/observatory/operator-listings.ts.";
 export const MCP_DOCS_FEED_FIELD_BAZAAR_PAYERS = "Bazaar quality payers in the last 30 days, or null outside Bazaar.";
 export const MCP_DOCS_FEED_FIELD_PAID = "Signed purchase attempts in the last 30 days (same window as check_x402_seller).";
 export const MCP_DOCS_FEED_FIELD_DELIVERED = "Delivered purchases in that window (same rule as check_x402_seller delivery.delivered).";

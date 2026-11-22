@@ -464,7 +464,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/delivery/sellers.json",
-    note: "Delivery feed: one row per active listing with at least one signed purchase in the last 30 days. Key-less, 30/min, process cache 300 seconds. CC-BY-4.0. Filters: network, min_delivered (0 to 100000), listed_in (bazaar | circle | mpp), cursor. See /docs/mcp#feed.",
+    note: "Delivery feed: one row per active listing with at least one signed purchase in the last 30 days. Key-less, 30/min, process cache 300 seconds. CC-BY-4.0. Filters: network, min_delivered (0 to 100000), listed_in (bazaar | circle | mpp | operator), cursor. See /docs/mcp#feed.",
     response: `{
   "as_of": "2026-10-28T12:00:00Z",
   "window_days": 30,

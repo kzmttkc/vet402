@@ -1366,8 +1366,11 @@ paths:
         per page; use next_cursor to continue. License CC-BY-4.0 (`x-vet402-license`, `Link`
         rel=license and rel=describedby). Filters: `network` (chain id vet402 recognizes;
         keeps rows whose catalog network matches or vet402 signed a purchase on that chain
-        in the window), `min_delivered` (0 to 100000), `listed_in` (`bazaar`, `circle`, `mpp`)
-        and `cursor`.
+        in the window), `min_delivered` (0 to 100000), `listed_in` (`bazaar`, `circle`, `mpp`,
+        `operator`) and `cursor`. Besides the catalogs it reads, vet402 also measures a short
+        checked-in list of sellers it adds itself (src/lib/observatory/operator-listings.ts in the
+        vet402 repository, `listed_in` `operator`); each entry names its reason and date, and
+        sellers cannot pay or ask to be added.
         Any other query returns 400. 30 requests per minute per IP. Process cache 300 seconds.
         CDN `Cache-Control`: `public, s-maxage=300, stale-while-revalidate=600`.
       security: []
@@ -1384,7 +1387,7 @@ paths:
           schema: { type: integer, minimum: 0, maximum: 100000 }
         - in: query
           name: listed_in
-          schema: { type: string, enum: [bazaar, circle, mpp] }
+          schema: { type: string, enum: [bazaar, circle, mpp, operator] }
         - in: query
           name: cursor
           schema: { type: string }
@@ -4398,7 +4401,8 @@ paths:
                     type: array
                     description: >-
                       The latest snapshot of each discovery catalog vet402 reads
-                      (cdp_bazaar, circle_discovery, mpp_directory), sorted by source. `complete` says
+                      (cdp_bazaar, circle_discovery, mpp_directory), plus `operator` for the
+                      checked-in list of sellers vet402 adds itself, sorted by source. `complete` says
                       whether the fetch of THAT catalog alone counts as complete; fetchedCount can be
                       below totalCount on a complete fetch.
                     items:

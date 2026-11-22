@@ -11,7 +11,7 @@ export type DeliverySellersQuery = {
   cursor: string | null;
 };
 
-const LISTED_IN_VALUES = new Set<string>(["bazaar", "circle", "mpp"]);
+const LISTED_IN_VALUES = new Set<string>(["bazaar", "circle", "mpp", "operator"]);
 
 export type FeedCursor = { url: string; method: string; network: string | null; endpoint_id: string };
 

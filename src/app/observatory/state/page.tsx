@@ -29,6 +29,7 @@ import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
 import { CIRCLE_DISCOVERY_SOURCE, SNAPSHOT_ONLY_SOURCES } from "@/lib/observatory/listing-sources";
 import { MPP_DIRECTORY_SOURCE } from "@/lib/observatory/mpp-payer";
+import { OPERATOR_SOURCE } from "@/lib/observatory/operator-listings";
 import { WideColumn } from "@/components/site/WideColumn";
 import { publicChainLabel } from "@/lib/observatory/chains";
 
@@ -65,6 +66,7 @@ function catalogSourceLabel(source: string): string {
   if (source === CATALOG_SOURCE) return "Bazaar catalog";
   if (source === MPP_DIRECTORY_SOURCE) return "MPP directory";
   if (source === CIRCLE_DISCOVERY_SOURCE) return "Circle x402 discovery";
+  if (source === OPERATOR_SOURCE) return "vet402 operator list";
   if (SNAPSHOT_ONLY_NAMES[source]) return SNAPSHOT_ONLY_NAMES[source];
   return source;
 }

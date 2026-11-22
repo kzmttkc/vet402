@@ -26,6 +26,7 @@ import { DISPUTE_NO_PURCHASE, RECORD_DISPUTE_ANCHOR, UNDER_RECHECK, WhoseSide } 
 import { formDisputeReprobeOf, recordPageDisputeText } from "@/lib/observatory/dispute-ack";
 import { SUPPORT_EMAIL, SUPPORT_MAILTO } from "@/lib/support";
 import { isPathTemplate } from "@/lib/observatory/path-template";
+import { OPERATOR_LISTINGS_FILE, OPERATOR_LISTINGS_URL, OPERATOR_SOURCE, OPERATOR_SOURCE_NOTE } from "@/lib/observatory/operator-listings";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 import { purchaseShownAsWithdrawn, WITHDRAWN_FROM_CATALOG, withdrawnFromCatalogSentence, withdrawnL0FailNote } from "@/lib/observatory/l0-verdict";
 import { L2_MATCH_NO_REQUIRED_KEYS_GLOSS } from "@/lib/observatory/l2-check";
@@ -261,7 +262,19 @@ export default async function ObservatoryEndpointPage({ params, searchParams }: 
               </tr>
               <tr>
                 <td>Source</td>
-                <td>{endpoint.source}</td>
+                <td>
+                  {endpoint.source}
+                  {endpoint.source === OPERATOR_SOURCE ? (
+                    <>
+                      {" "}
+                      ({OPERATOR_SOURCE_NOTE}{" "}
+                      <a className="doc-link" href={OPERATOR_LISTINGS_URL}>
+                        {OPERATOR_LISTINGS_FILE}
+                      </a>
+                      )
+                    </>
+                  ) : null}
+                </td>
               </tr>
               <tr>
                 <td>Declared method</td>
