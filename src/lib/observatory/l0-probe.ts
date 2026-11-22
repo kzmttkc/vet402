@@ -16,6 +16,8 @@
 //     the handler, so a compliant server answers 402 before parsing. If a
 //     server instead answers 2xx, that fact is recorded (no_402) and the
 //     prober does NOT retry — one accidental execution is one too many.
+//     Exception (2026-11-22, owner approval 22:10): a POST row vet402 added itself
+//     (source = 'operator') carries its example body from operator-listings.ts.
 //
 // Verdict vocabulary is closed: pass | fail | unverified.
 //   fail-closed direction is toward `unverified` — "no proof" ≠ "dead".
@@ -30,6 +32,7 @@ import { parseChallenge, type ChallengeAccept as EnvelopeAccept } from "./x402-p
 import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
 import { MPP_DIRECTORY_SOURCE, TEMPO_MAINNET_CAIP2, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
+import { OPERATOR_SOURCE, operatorExampleBody } from "./operator-listings";
 
 /**
  * MPP の壁が支払いを求める**前に**要求の形を検証した（challenge 無しの 400/422）ときの理由語。
@@ -301,6 +304,8 @@ export async function probeEndpoint(
     // MPP の壁は Accept-Payment を見て challenge を出す（govlaws 実測 2026-09-17: 無いと 200 の HTML）。
     ...(expectMpp ? { "accept-payment": MPP_ACCEPT_PAYMENT } : {}),
   };
+  // vet402 が自分で足した出品（operator-listings.ts）の例の本文。他の出どころ・例の無い行は null（従来どおり `{}`）。
+  const operatorExample = method === "POST" && target.source === OPERATOR_SOURCE ? operatorExampleBody(target.resourceUrl) : null;
   const requestInit = (body: string | null): RequestInit => ({
     method,
     signal: controller.signal,
@@ -316,7 +321,8 @@ export async function probeEndpoint(
   try {
     // Empty JSON body on POST: the x402 wall answers 402 before the handler
     // parses anything, so this cannot trigger work on a compliant server.
-    response = await fetchImpl(target.resourceUrl, requestInit(method === "POST" ? "{}" : null));
+    // 例外（2026-11-22 オーナー承認 22:10）: vet402 が自分で足した行（source = 'operator'）の POST だけ、一覧の例の本文を送る。
+    response = await fetchImpl(target.resourceUrl, requestInit(method === "POST" ? (operatorExample ?? "{}") : null));
   } catch (error) {
     const reason = classifyNetworkError(error);
     clearTimeout(timer);
@@ -370,6 +376,7 @@ export async function probeEndpoint(
     ...(bodyTruncated ? { bodyTruncated: true } : {}),
     client: UA,
     method,
+    ...(operatorExample !== null ? { requestBody: "operator_example" } : {}),
     ...(options.recheck ? { route: "recheck_same_egress" } : {}),
   };
 
@@ -402,6 +409,7 @@ export async function probeEndpoint(
   // 同じ事実を売り手の fail にしていた（jpverify・grov.fun 等）。宣言の本文を組んで送る案は採らない:
   // 2026-09-18 の独立レビューのとおり、ハンドラが受理する本文は、壁が支払いを求めなければ売り手の
   // 処理（sign-up・SMS など）を実行させうる。L0 は 1 要求・副作用なしのまま測れなかったと書く。
+  // 2026-11-22 例外（オーナー承認 22:10）: source = 'operator' の POST だけ一覧の例の本文（公開プロフィールの読み取り）を送る。400/422 なら同じく unverified（売り手の fail にしない）。
   // GET への 400/422 は従来どおり no_402 の fail（GET は本文を持たず、壁は問い合わせの前に立つ）。
   // 支払いの challenge（WWW-Authenticate: Payment / PAYMENT-REQUIRED）を載せた 400 は壁が支払いを
   // 名乗っているので、この扱いに入れない。
@@ -427,7 +435,9 @@ export async function probeEndpoint(
         ...meta,
         detail: expectMpp
           ? "the wall validated the shape of the request before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured"
-          : "the unpaid POST carried an empty JSON body and the endpoint rejected the input before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured",
+          : operatorExample !== null
+            ? "the unpaid POST carried the example body from vet402's own list and the endpoint rejected the input before asking for payment, so this endpoint has not been measured"
+            : "the unpaid POST carried an empty JSON body and the endpoint rejected the input before asking for payment; vet402 does not guess a request body, so this endpoint has not been measured",
       },
     };
   }

@@ -161,6 +161,31 @@ if (!TEST_DB) {
       assert.deepEqual((await metaFor(TT)).map((r) => [r.source, r.request_body]), [["cdp_bazaar", "empty"]]);
     });
 
+    await t.test("L0（probe-runner の経路）: operator の行は例の本文で 402 → pass、cdp_bazaar の行は {} で 400 → unverified", async () => {
+      await seed();
+      await db.execute(sql`TRUNCATE x402_l0_probes`);
+      const sent: { url: string; body: string | null }[] = [];
+      await runL0ProbeBatch({
+        limit: 10,
+        concurrency: 1,
+        fetchImpl: async (url: string, init?: RequestInit) => {
+          const body = typeof init?.body === "string" ? init.body : null;
+          sent.push({ url, body });
+          // usebuy と同じ: 空の本文には 400、例の本文には 402。
+          if (body === null || body === "{}") return new Response('{"error":"invalid_request"}', { status: 400, headers: { "content-type": "application/json" } });
+          return wall402(url);
+        },
+      });
+      assert.deepEqual(sent.filter((x) => x.url === IG).map((x) => x.body), [IG_EXAMPLE]);
+      assert.deepEqual(sent.filter((x) => x.url === TT).map((x) => x.body), ["{}"]);
+      const verdicts = rowsOf(
+        await db.execute(sql`SELECT e.resource_url, p.verdict, p.fail_reason FROM x402_l0_probes p JOIN x402_endpoints e ON e.id = p.endpoint_id`),
+      );
+      const by = new Map(verdicts.map((v) => [String(v.resource_url), [v.verdict, v.fail_reason]]));
+      assert.deepEqual(by.get(IG), ["pass", null]);
+      assert.deepEqual(by.get(TT), ["unverified", "request_shape"]);
+    });
+
     await t.test("上限は今までどおり: 売り手の日次上限 0 なら operator の行にも支払い付きの要求を出さない", async () => {
       await seed();
       process.env.L1_SELLER_DAILY_CAP_USD = "0";

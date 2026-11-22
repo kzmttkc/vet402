@@ -298,7 +298,11 @@ export default async function ObservatoryMethodologyPage() {
           checked an input vet402 did not send, which is how paid requests are already treated
           (section on request bodies below). vet402 chose this over sending the declared body. A body
           the seller&apos;s handler accepts could make it run (a sign-up, a message) if the wall
-          did not ask for payment first, and an L0 probe must not cause work. Earlier probes
+          did not ask for payment first, and an L0 probe must not cause work. One exception since
+          2026-11-22: a <code>POST</code> seller vet402 added itself (source <code>operator</code>,
+          src/lib/observatory/operator-listings.ts) gets the example body written in that list, a
+          read of a public profile, and a <code>400</code> or <code>422</code> to it is still{" "}
+          <code>unverified</code> with this reason. Earlier probes
           recorded those answers as a <code>no_402</code> fail; the rows stay as they were, and
           the endpoint&apos;s page says so next to each one. MPP probes send{" "}
           <code>Accept-Payment: tempo/charge</code>, the header the reference client sends, because
