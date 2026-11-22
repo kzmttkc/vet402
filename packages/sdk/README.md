@@ -196,10 +196,10 @@ const r = await payOrRefuse({
 - Waiving vet402's verdict does not skip matching the 402 to vet402's `verified_terms` (`pay_to`, `amount`).
   Pass `policy.skipVerifiedTermsCheck: true` only when you intend to skip that check.
 - When `verified_terms.network` is another chain than the one the 402 asks you to pay on, the SDK pays only if
-  the `payTo` is in `facts.payees` for the paying chain and both assets are USDC (6 decimals) on chains it knows;
-  then the amount must not exceed the verified amount. On another chain the payee is checked against the
-  listing's payees, not against the address vet402 paid. Otherwise it refuses with `payee_unverified_on_rail` or
-  `price_unverified`.
+  the 402's `(network, payTo)` pair is in `verified_pay_to_by_network` when that field is present (EVM addresses
+  compared lowercase); on older servers without the field it falls back to checking the `payTo` against
+  `facts.payees` for the paying chain. Both assets must be USDC (6 decimals) on chains it knows; then the amount
+  must not exceed the verified amount. Otherwise it refuses with `payee_unverified_on_rail` or `price_unverified`.
 - The 402 must offer `scheme: "exact"`, network `solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp`, asset
   `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` (exact match), x402 v2, and an `extra.feePayer` that is
   neither `payTo` nor your signer. `payTo` must equal `payee` exactly — base58 is case-sensitive.

@@ -799,6 +799,26 @@ function payeesFromFacts(decision: DecisionResult | null): string[] {
   return facts.payees.filter((p): p is string => typeof p === "string");
 }
 
+function verifiedPayToByNetwork(decision: DecisionResult): unknown[] | null {
+  const body = decision as DecisionResult & { verified_pay_to_by_network?: unknown };
+  if (!Object.hasOwn(body, "verified_pay_to_by_network")) return null;
+  const raw = body.verified_pay_to_by_network;
+  if (!Array.isArray(raw)) return [];
+  return raw;
+}
+
+/** 402 の (network, payTo) が verified_pay_to_by_network の行と一致するか。EVM は小文字で比べる。 */
+function acceptInVerifiedPayToList(list: unknown[], accept: X402Accept): boolean {
+  return list.some((row) => {
+    if (!isPlainObject(row)) return false;
+    const network = typeof row.network === "string" ? row.network : null;
+    const payTo = typeof row.pay_to === "string" ? row.pay_to : null;
+    if (network === null || payTo === null) return false;
+    if (network !== accept.network) return false;
+    return payeeMatchesDeclared(payTo, accept.payTo, accept.network);
+  });
+}
+
 /**
  * vet402 が記録した payTo・額と accept を照合する。
  * `verified_terms` があるときは判定語（ALLOW かどうか）や WARN 免除に関わらず照合する（N7）。
@@ -829,10 +849,15 @@ function matchDeclaredPayTerms(
     const vtDecimals = typeof vtRaw.decimals === "number" && Number.isInteger(vtRaw.decimals) ? vtRaw.decimals : null;
 
     if (vtNetwork !== null && vtNetwork !== accept.network) {
-      const payees = payeesFromFacts(decision);
-      if (payees.length === 0) return ["evidence_unavailable"];
-      const inFacts = payees.some((p) => payeeMatchesDeclared(p, accept.payTo, profile.network));
-      if (!inFacts) return ["payee_unverified_on_rail"];
+      const verifiedList = verifiedPayToByNetwork(decision);
+      if (verifiedList !== null) {
+        if (!acceptInVerifiedPayToList(verifiedList, accept)) return ["payee_unverified_on_rail"];
+      } else {
+        const payees = payeesFromFacts(decision);
+        if (payees.length === 0) return ["evidence_unavailable"];
+        const inFacts = payees.some((p) => payeeMatchesDeclared(p, accept.payTo, profile.network));
+        if (!inFacts) return ["payee_unverified_on_rail"];
+      }
       // 両方が網ごとの USDC（6 桁）なら、同じ単位なのでそのまま比べる。それ以外は比べない。
       const bothUsdc =
         isKnownUsdc6(vtNetwork, vtRaw.asset) &&

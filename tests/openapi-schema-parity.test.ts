@@ -113,7 +113,7 @@ const SURFACES: Surface[] = [
     ],
     pendingImpl: {
       "packages/sdk/src/index.ts": {
-        fields: ["l1_basis", "reasons", "evidence_age", "refunds", "verified_pay_to_by_network"],
+        fields: ["l1_basis", "reasons", "evidence_age", "refunds"],
         why: "SDK は凍結中（2026-09-29）。応答の未知のキーは型に無いだけで実行時はそのまま透過する（reason_codes も文字列のまま通す）。凍結が解けたら型に足してこの例外を消す。",
       },
       "packages/mcp-server/src/vouch-client.ts": {

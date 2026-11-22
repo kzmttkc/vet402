@@ -561,6 +561,11 @@ export type DecisionResult = {
   caller_policy?: CallerPolicy;
   /** 最後に配達を確かめた購入の payTo・額・network 等。ALLOW でも無いことがある（XRPL 等）。 */
   verified_terms?: VerifiedTerms | null;
+  /**
+   * vet402 が払って配達を確かめた受取先を網ごとに（2026-11-22・role=payer）。無い古いサーバではキー自体が無い。
+   * 402 の network と payTo の組がここに無ければ、その網の受取先は未確認（`payee_unverified_on_rail`）。
+   */
+  verified_pay_to_by_network?: VerifiedPayTo[];
   rules_version: string;
   registry: { status: "anchored" | "pending" | "off"; tx_hash: string | null };
   scoredAt: string;
@@ -617,6 +622,14 @@ export type VerifiedTerms = {
   protocol?: string;
   verified_at?: string;
   signer_key?: string;
+};
+
+/** vet402 が払って配達を確かめた受取先を網ごとの 1 行（role=payer の `verified_pay_to_by_network`）。 */
+export type VerifiedPayTo = {
+  network: string;
+  pay_to: string;
+  purchase_id: string | null;
+  verified_at: string;
 };
 
 /** §5 Endpoint / Resource の記録（resolve 系の共通形）。 */

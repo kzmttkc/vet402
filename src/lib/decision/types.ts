@@ -130,8 +130,8 @@ export type Freshness = { l0: string | null; l1: string | null; l2: string | nul
  * 配達 = facts.l1.n_delivered と同じ述語（settled・2xx・非空）。呼び手はこれと自分が受け取った 402 を照合し、
  * payTo・asset・network・scheme が違う、または額がこれを超えるなら払わない——ALLOW は「この条件で届いた」
  * 事実であって、別の受取先・別の額への支払いを保証しない（判定の持ち越し・偽装の対策）。
- * 例外（SDK 0.10.3）: network が払う網と違う時は、払う網の facts.payees に payTo があり、両方が SDK の表の USDC（6 桁）
- * なら、額だけをこれと比べて払う。この時の受取先の保証は掲載の payees であって、vet402 が払った住所ではない。
+ * 例外（SDK 0.10.4）: network が払う網と違う時は、`verified_pay_to_by_network` があれば 402 の (network, payTo) が
+ * そこに無いと払わない（無ければ従来どおり facts.payees）。両方が SDK の表の USDC（6 桁）なら、額だけをこれと比べて払う。
  */
 export type VerifiedTerms = {
   /** 公開台帳の購入 id（facts.l1.last_purchase_id と同じ形 `<CAIP-2>:<tx>`）。tx の無い行は null。 */
