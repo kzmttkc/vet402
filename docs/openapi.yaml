@@ -1648,9 +1648,14 @@ paths:
         outages are unverified. CC-BY-4.0.
       security: []
       responses:
-        "200": { description: Latest snapshot with models, tcb_status, gpu, run times }
+        "200":
+          description: |
+            Latest snapshot with models, tcb_status, gpu, and run times when a run
+            exists. Before the first daily run (09:00 UTC cron), HTTP 200 with
+            `{"status":"no_run_yet","next_run_utc":"<ISO>","models":[]}`, not
+            nearai_unavailable.
         "429": { description: Rate limited }
-        "503": { description: nearai_unavailable }
+        "503": { description: nearai_unavailable when the store read fails }
 
   /api/v1/observatory/nearai/anchors:
     get:

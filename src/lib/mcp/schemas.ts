@@ -79,19 +79,23 @@ export const checkNearAiAttestationInput = z.object({}).strict();
 
 export const checkNearAiAttestationOutput = z
   .object({
-    schemaVersion: z.literal(1),
-    description: z.string(),
-    retrievedAt: z.string(),
-    runStartedAt: z.string(),
-    runCompletedAt: z.string(),
-    nearaiModelCount: z.number().int(),
-    gateway: z.object({
-      httpStatus: z.number().int(),
-      tcbStatus: z.string(),
-      advisoryIds: z.array(z.string()),
-      tlsBindingOk: z.boolean().nullable(),
-      status: z.enum(["pass", "advisory", "unverified", "pending_reverify"]),
-    }),
+    status: z.literal("no_run_yet").optional(),
+    next_run_utc: z.string().optional(),
+    schemaVersion: z.literal(1).optional(),
+    description: z.string().optional(),
+    retrievedAt: z.string().optional(),
+    runStartedAt: z.string().optional(),
+    runCompletedAt: z.string().optional(),
+    nearaiModelCount: z.number().int().optional(),
+    gateway: z
+      .object({
+        httpStatus: z.number().int(),
+        tcbStatus: z.string(),
+        advisoryIds: z.array(z.string()),
+        tlsBindingOk: z.boolean().nullable(),
+        status: z.enum(["pass", "advisory", "unverified", "pending_reverify"]),
+      })
+      .optional(),
     models: z.array(
       z.object({
         modelId: z.string(),
@@ -102,9 +106,9 @@ export const checkNearAiAttestationOutput = z
         status: z.enum(["pass", "advisory", "unverified", "pending_reverify"]),
       }),
     ),
-    license: z.string(),
-    licenseUrl: z.string(),
-    cite: z.string(),
+    license: z.string().optional(),
+    licenseUrl: z.string().optional(),
+    cite: z.string().optional(),
   })
   .strict();
 

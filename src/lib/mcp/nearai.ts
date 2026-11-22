@@ -1,11 +1,8 @@
-import { getNearAiStore } from "@/lib/nearai/store";
-import type { NearAiPublicSnapshot } from "@/lib/nearai/read-public";
+import { readNearAiObservatory, type NearAiObservatoryBody } from "@/lib/nearai/observatory-response";
 
-export async function checkNearAiAttestation(): Promise<NearAiPublicSnapshot | "unavailable"> {
+export async function checkNearAiAttestation(): Promise<NearAiObservatoryBody | "unavailable"> {
   try {
-    const snapshot = await getNearAiStore().getLatestPublicSnapshot();
-    if (!snapshot) return "unavailable";
-    return snapshot;
+    return await readNearAiObservatory();
   } catch {
     return "unavailable";
   }

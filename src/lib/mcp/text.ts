@@ -36,7 +36,8 @@ export const TOOL_EMPTY_HINT = {
     "Pass agentId: the ERC-8004 token id. Add client and feedbackIndex when the person names them.",
   check_payment_proof:
     "Pass payment_response, or pass network and transaction together, such as eip155:8453 and a Base transaction hash.",
-  check_nearai_attestation: "No arguments. Returns the latest published NEAR AI TEE attestation snapshot.",
+  check_nearai_attestation:
+    "No arguments. Returns the latest published NEAR AI TEE attestation snapshot, or status no_run_yet before the first daily run.",
 } as const;
 
 export const TOOL_TEXT = {
@@ -104,7 +105,8 @@ export const TOOL_TEXT = {
     title: "NEAR AI TEE attestation snapshot",
     description:
       "Read the latest published NEAR AI Cloud TEE attestation re-verification. Read-only. No API key. " +
-      "The answer lists Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. " +
+      "Before the first daily run the answer is status no_run_yet with next_run_utc (09:00 UTC) and an empty models list. " +
+      "After a run it lists Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. " +
       "Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. " +
       "It changes no data and has no charge. Up to 30 calls per minute per IP.",
   },
@@ -177,7 +179,7 @@ export const ERROR_TEXT = {
   invalid_concordium_agent:
     "Pass agent: a Concordium CIS-8004 agent token id, such as 1350, or the Concordium account that owns it.",
   concordium_unavailable: "The Concordium check could not be read right now. Retry in 30 seconds. Other vet402 tools are not affected.",
-  nearai_unavailable: "The NEAR AI attestation snapshot could not be read right now. Retry in 30 seconds.",
+  nearai_unavailable: "The NEAR AI attestation store could not be read right now. Retry in 30 seconds.",
   chain_unreadable: "The ERC-8004 registry or the feedback URI could not be read right now. Retry in 30 seconds.",
 } as const;
 

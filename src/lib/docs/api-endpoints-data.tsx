@@ -579,8 +579,8 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/nearai",
-    note: "Latest NEAR AI Cloud TEE attestation re-verification: Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. Independent from the L1 purchase ledger. Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. No API key. 30 requests per minute per IP. CC-BY-4.0.",
-    response: `{ "schemaVersion": 1, "runCompletedAt": "…", "nearaiModelCount": 12, "gateway": { "tcbStatus": "UpToDate", "status": "pass" }, "models": […], "cite": "…" }`,
+    note: "Latest NEAR AI Cloud TEE attestation re-verification: Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. Independent from the L1 purchase ledger. Before the first daily run (09:00 UTC), HTTP 200 with status no_run_yet. Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. No API key. 30 requests per minute per IP. CC-BY-4.0.",
+    response: `{ "schemaVersion": 1, … } or { "status": "no_run_yet", "next_run_utc": "…", "models": [] }`,
   },
   {
     method: "GET",

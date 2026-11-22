@@ -2422,3 +2422,31 @@ claims:
       url: https://vet402.com/api/v1/observatory/state
       assert: "l1.endpoints_settled_index_only >= 0"
     verified_at: 2026-11-21
+  - id: nearai_observatory_no_run_yet_llms
+    surface: public/llms.txt
+    quote: "Before the first daily run (09:00 UTC) HTTP 200 with"
+    means: "NEAR AI 観測の初回プローブ前は、ストアが読める限り GET /api/v1/observatory/nearai は 503 ではなく 200 で status no_run_yet を返す。次回実行は vercel.json の nearai-probe cron 0 9 * * *（09:00 UTC）。"
+    check: null
+    why_unverifiable: "応答形は tests/nearai.test.ts と src/lib/nearai/observatory-response.ts が固定する。スケジュールは vercel.json。"
+    verified_at: 2026-11-23
+  - id: nearai_observatory_no_run_yet_api_docs
+    surface: src/lib/docs/api-endpoints-data.tsx
+    quote: "Before the first daily run (09:00 UTC), HTTP 200 with status no_run_yet"
+    means: "同上。初回 run 前の空状態は nearai_unavailable ではない。"
+    check: null
+    why_unverifiable: "tests/nearai.test.ts が GET と MCP を固定する。"
+    verified_at: 2026-11-23
+  - id: nearai_mcp_no_run_yet_input_blurb
+    surface: src/lib/mcp/text.ts
+    quote: "status no_run_yet before the first daily run"
+    means: "MCP check_nearai_attestation は初回 run 前に空状態 JSON を isError ではなく返す。"
+    check: null
+    why_unverifiable: "tests/nearai.test.ts が checkNearAiAttestation を固定する。"
+    verified_at: 2026-11-23
+  - id: nearai_mcp_no_run_yet_tool_desc
+    surface: src/lib/mcp/text.ts
+    quote: "Before the first daily run the answer is status no_run_yet with next_run_utc (09:00 UTC) and an empty models list"
+    means: "同上。next_run_utc は src/lib/nearai/observatory-response.ts の nextNearAiRunUtc が次の 09:00 UTC を ISO で出す。"
+    check: null
+    why_unverifiable: "tests/nearai.test.ts が nextNearAiRunUtc と MCP 応答を固定する。"
+    verified_at: 2026-11-23

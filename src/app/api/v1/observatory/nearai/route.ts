@@ -4,7 +4,7 @@ import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit"
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
 import { withNoindex } from "@/lib/api/public-read-robots";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { getNearAiStore } from "@/lib/nearai/store";
+import { readNearAiObservatory } from "@/lib/nearai/observatory-response";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +20,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
   }
   try {
-    const snapshot = await getNearAiStore().getLatestPublicSnapshot();
-    if (!snapshot) {
-      return NextResponse.json({ error: "nearai_unavailable" }, { status: 503, headers: perCaller });
-    }
-    return NextResponse.json(snapshot, {
+    const body = await readNearAiObservatory();
+    return NextResponse.json(body, {
       status: 200,
       headers: { ...perCaller, "Cache-Control": CACHE, "Content-Type": "application/json; charset=utf-8" },
     });

@@ -36,7 +36,7 @@ The hosted endpoint has its own read-only tools. `check_x402_seller` and
 | `check_payment_proof` | Reads a PAYMENT-RESPONSE header or a network and a transaction on the chains vet402 reads again after a purchase, and returns found, from, to, asset and amount in atomic units |
 | `check_8004_agent` | Same JSON as `GET /api/v1/erc8004/check`: re-read one ERC-8004 Reputation Registry feedback and its proofOfPayment |
 | `check_concordium_agent` | One Concordium testnet CIS-8004 agent: the badge status from the agent registry and vet402's verdict (go, no or unproven) from its payments to that agent, with the transaction behind it |
-| `check_nearai_attestation` | Latest published NEAR AI Cloud TEE attestation snapshot (Gateway, Intel TDX, NVIDIA NRAS). Read-only, no API key |
+| `check_nearai_attestation` | Latest published NEAR AI Cloud TEE attestation snapshot (Gateway, Intel TDX, NVIDIA NRAS), or `no_run_yet` with `next_run_utc` before the first daily run. Read-only, no API key |
 
 The hosted endpoint does not pay and holds no signer. `pay_if_trusted` stays
 in this stdio package only. Limits: 120 requests per minute per IP, plus 30 per
