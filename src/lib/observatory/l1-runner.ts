@@ -103,7 +103,8 @@ import { l1TierWhere } from "./coverage";
 import { censusHostSql, RETEST_L2_STALE_SQL, RETEST_LISTINGS_SQL, RETEST_SELLERS_SQL } from "./retest-sellers-sql";
 import { NO_DOMAIN_TRACK_RECORD_JSON, registeredDomainOf, registeredDomainSql } from "./registered-domain";
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
-import { declaredRequestBody, declaredRequestUrl, type RequestBodySource, type RequestQuerySource } from "./declared-input";
+import { declaredRequestBody, declaredRequestUrl, selectPaidRequestBody, type RequestBodySource, type RequestQuerySource } from "./declared-input";
+import { OPERATOR_SOURCE, operatorExampleBody } from "./operator-listings";
 import { requestBodyRecord } from "./request-body";
 import { deliveredPredicate, isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
@@ -409,6 +410,8 @@ type Candidate = {
   payTo: string | null;
   network: string | null;
   declaredSchema: unknown;
+  /** x402_endpoints.source（2026-11-22）。'operator' の行だけ、402 が本文を宣言しないとき一覧の例の本文を送る。候補 SQL が持たない経路では undefined。 */
+  source?: string | null;
   isPriority: boolean;
   /** 成立が MATURE_SETTLED_MIN 件以上＝証拠が足りている（買い直しは 30 日間隔）。 */
   isMature: boolean;
@@ -2016,7 +2019,7 @@ export function l1TargetsSqlBuilders(ctx: L1TargetsSqlContext) {
     const avalancheLane = avalancheLaneUsesHostSpread(lane, census !== undefined);
     // 主候補（レーン枠でも census でもない文）だけ、重い判定を並びの順に必要な行まで遅らせる（lazyPrimaryTargetsSql）。
     const lazyPrimary = primaryLazyWalk && lane === undefined && census === undefined;
-    const baseColumns = sql`e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema,
+    const baseColumns = sql`e.id, e.resource_url, e.method, e.price_amount, e.pay_to, e.network, e.declared_schema, e.source,
            (e.resource_key ILIKE ANY(${prioritySqlArray()})) AS is_priority,
            (${settledCountSql(sql`e.id`)} >= ${MATURE_SETTLED_MIN}) AS is_mature,
            -- レーンの accept 優先（2026-09-17）: このエンドポイントで決済済み／決済主張のある network と、
@@ -3353,6 +3356,7 @@ function rowToCandidate(r: Record<string, unknown>): Candidate {
     payTo: (r.pay_to as string | null) ?? null,
     network: (r.network as string | null) ?? null,
     declaredSchema: r.declared_schema ?? null,
+    source: typeof r.source === "string" ? r.source : null,
     isPriority: r.is_priority === true,
     isMature: r.is_mature === true,
     settledNetworks: parseTextArray(r.settled_networks),
@@ -3962,8 +3966,11 @@ async function purchaseOne(input: {
   let first: Response;
   let firstBody = "";
   const unpaidUrl = candidate.sellerRequestUnpaid?.url ?? candidate.resourceUrl;
+  // 2026-11-22: vet402 が自分で足した出品（source = 'operator'）は一覧の例の本文を持つ。本文を検証してから 402 を返す
+  // 売り手（usebuy は `{}` に 400）があるので、無払いの最初の要求にも同じ本文を送る。他の出どころは従来どおり `{}`。
+  const operatorExample = method === "POST" && candidate.source === OPERATOR_SOURCE ? operatorExampleBody(candidate.resourceUrl) : null;
   const unpaidBody =
-    candidate.sellerRequestUnpaid?.body ?? (method === "POST" ? "{}" : undefined);
+    candidate.sellerRequestUnpaid?.body ?? (method === "POST" ? (operatorExample ?? "{}") : undefined);
   const firstController = new AbortController();
   const firstTimer = setTimeout(() => firstController.abort(), timeoutMs);
   try {
@@ -4261,11 +4268,14 @@ async function purchaseOne(input: {
               : accept.asset;
   // 支払い付き POST の本文（2026-09-17 Issue #29）。売り手が 402 で宣言した input.body を
   // そのまま送り、無ければ従来どおり `{}`。規則は declared-input.ts。
+  // 2026-11-22（オーナー承認）: 宣言が無いとき、operator の行だけ一覧の例の本文を送る（selectPaidRequestBody の順）。
   const paidRequestBody: { body: string; source: RequestBodySource } | null =
     method === "POST"
-      ? candidate.sellerRequestUnpaid?.body
-        ? { body: candidate.sellerRequestUnpaid.body, source: "declared" }
-        : declaredRequestBody({ bodyText: firstBody, headers: first.headers })
+      ? selectPaidRequestBody({
+          sellerRequestBody: candidate.sellerRequestUnpaid?.body ?? null,
+          declared: declaredRequestBody({ bodyText: firstBody, headers: first.headers }),
+          operatorExample,
+        })
       : null;
   // Gateway の POST で 402 が本文を宣言していなければ、署名・予約の前に見送る（`{}` を送って払わない）。
   // 行は書かないので、次の回も選ばれ直す。目録が declared なのに 402 が宣言しない出品は 2026-10-29 の実測で 0 件。
@@ -4900,7 +4910,7 @@ async function purchaseOne(input: {
           // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
           // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
           // `{}` の要求は従来どおり。
-          ...(paidRequestBody?.source === "declared" ? { crossOriginBody: "refuse" as const } : {}),
+          ...(paidRequestBody?.source === "declared" || paidRequestBody?.source === "operator_example" ? { crossOriginBody: "refuse" as const } : {}),
         },
       );
       // 2026-09-29（監査 6 周目・計器）: 上限を 16,000 バイトから L1_PAID_BODY_CAP_BYTES へ上げた。1 バイト余分に
@@ -5016,7 +5026,7 @@ async function purchaseOne(input: {
             requestBody: requestBodyRecord(paidRequestBody).requestBody,
             declaredSchema: candidate.declaredSchema,
             declaredInput: declaredQuerySource
-              ? { query: declaredQuerySource, body: paidRequestBody?.source ?? "empty" }
+              ? { query: declaredQuerySource, body: paidRequestBody?.source === "declared" ? "declared" : "empty" }
               : null,
             sentQuery: paidRequestUrl?.query ?? null,
             sentBody: paidRequestBody?.body ?? null,

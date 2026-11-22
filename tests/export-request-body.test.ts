@@ -75,8 +75,10 @@ test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の
 });
 
 test("request_body: 記録が無い行は null（empty にも none にも倒さない）", () => {
-  assert.deepEqual([...REQUEST_BODY_KINDS], ["declared", "empty", "none"]);
+  // 2026-11-22: operator_example（vet402 が自分で足した出品の例の本文）を足した。
+  assert.deepEqual([...REQUEST_BODY_KINDS], ["declared", "empty", "none", "operator_example"]);
   assert.equal(requestBodyKindOf({ requestBody: "declared" }), "declared");
+  assert.equal(requestBodyKindOf({ requestBody: "operator_example" }), "operator_example");
   assert.equal(requestBodyKindOf({ requestBody: "empty" }), "empty");
   assert.equal(requestBodyKindOf({ requestBody: "none" }), "none");
   assert.equal(requestBodyKindOf({ phase: "paid" }), null, "2026-09-17 より前の行・GET の旧い行");

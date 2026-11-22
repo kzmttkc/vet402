@@ -382,13 +382,17 @@ export default async function ObservatoryMethodologyPage() {
           origin (a redirect that would carry it to another origin is not followed; the row keeps
           the redirect&apos;s status), and the row records{" "}
           <code>requestBody: declared</code>. Otherwise vet402 sends <code>{"{}"}</code> and records{" "}
-          <code>requestBody: empty</code>. Before that date every paid{" "}
+          <code>requestBody: empty</code>. A seller vet402 added itself from its checked-in list
+          (source <code>operator</code>, src/lib/observatory/operator-listings.ts) can carry an example body
+          vet402 wrote there; when the 402 declares no body, vet402 sends that example (also on the unpaid
+          request) and records <code>requestBody: operator_example</code>. A declared body always comes first.
+          Before that date every paid{" "}
           <code>POST</code> carried <code>{"{}"}</code>, declaration or not. The ledger export
           carries that record as the column <code>request_body</code>: <code>declared</code>,{" "}
-          <code>empty</code>, or <code>none</code> for a paid request formed with no body, which
+          <code>empty</code>, <code>operator_example</code>, or <code>none</code> for a paid request formed with no body, which
           rows record from 2026-09-20. A blank cell means the row holds no record, rows
           before 2026-09-17, bodiless requests before 2026-09-20, and rows that ended before a
-          paid request went out, and is not the same as <code>empty</code>. From 2026-09-20 a <code>declared</code> row also
+          paid request went out, and is not the same as <code>empty</code>. From 2026-09-20 a <code>declared</code> row (and an <code>operator_example</code> row) also
           carries <code>request_body_sha256</code>, the SHA-256 of the exact bytes vet402 sent. vet402
           does not republish the body. It is the seller&apos;s text, and the seller&apos;s own{" "}
           <code>402</code> shows it to anyone who asks. So when a paid request comes back{" "}

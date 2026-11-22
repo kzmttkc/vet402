@@ -27,9 +27,17 @@ import type { DeclaredInputSummary } from "./declared-input-summary";
 /** 宣言本文の上限（UTF-8 バイト）。readBodyCapped の応答上限と同じ桁。 */
 export const DECLARED_BODY_MAX_BYTES = 16 * 1024;
 
-export type RequestBodySource = "declared" | "empty";
+/**
+ * declared = 売り手の 402 が宣言した本文、empty = `{}`、
+ * operator_example = vet402 が自分で足した出品（source = 'operator'）の一覧に書いた例の本文（operator-listings.ts・2026-11-22）。
+ */
+export type RequestBodySource = "declared" | "empty" | "operator_example";
 
-export type DeclaredRequestBody = { body: string; source: RequestBodySource };
+/** 文書（402・カタログ）から取った本文。出どころは declared か empty だけ。 */
+export type DeclaredRequestBody = { body: string; source: "declared" | "empty" };
+
+/** 支払い付き POST に実際に載せる本文（selectPaidRequestBody の結果）。 */
+export type PaidRequestBody = { body: string; source: RequestBodySource };
 
 const EMPTY: DeclaredRequestBody = { body: "{}", source: "empty" };
 
@@ -235,4 +243,23 @@ export function declaredInputSummary(input: { resourceUrl: string; document: unk
     query: declaredRequestUrlFromDoc(input).source,
     body: declaredRequestBodyFromDoc(input.document).source,
   };
+}
+
+/**
+ * 支払い付き POST の本文の出どころの順（2026-11-22・オーナー承認 21:51）。
+ *   ① 売り手依頼の買い直しの本文（sellerRequestUnpaid）
+ *   ② 売り手の 402 が宣言した本文
+ *   ③ operator の一覧の例の本文（呼び手は source = 'operator' の行にだけ渡す）
+ *   ④ `{}`
+ * ③は②が無いときだけ。額・宛先・署名には関わらない（本文だけ）。
+ */
+export function selectPaidRequestBody(input: {
+  sellerRequestBody?: string | null;
+  declared: DeclaredRequestBody;
+  operatorExample: string | null;
+}): PaidRequestBody {
+  if (input.sellerRequestBody) return { body: input.sellerRequestBody, source: "declared" };
+  if (input.declared.source === "declared") return input.declared;
+  if (input.operatorExample !== null && input.operatorExample !== "") return { body: input.operatorExample, source: "operator_example" };
+  return EMPTY;
 }

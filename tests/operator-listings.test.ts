@@ -23,6 +23,11 @@ import {
   type OperatorListing,
 } from "@/lib/observatory/operator-listings";
 import { feedListedIn, LISTED_IN_CASE_SQL } from "@/lib/delivery/listed-in";
+import { selectPaidRequestBody } from "@/lib/observatory/declared-input-rules";
+import { requestBodyRecord, requestBodySha256Of } from "@/lib/observatory/request-body";
+import { inputEvidenceOf } from "@/lib/sellers/fix-modes";
+import { createHash } from "node:crypto";
+import { OPERATOR_EXAMPLE_BODY_MAX_BYTES, operatorExampleBody } from "@/lib/observatory/operator-listings";
 import { parseDeliverySellersQuery } from "@/lib/delivery/sellers-feed-query";
 import { CELO_CHAIN } from "@/lib/observatory/x402-payer";
 
@@ -47,7 +52,24 @@ const fixture = (over: Partial<OperatorListing> = {}): OperatorListing => ({
 test("本番の一覧は規則どおりに読め、ファイルの名前が実物と一致する", () => {
   const items = parseOperatorListings(OPERATOR_LISTINGS);
   assert.equal(items.length, OPERATOR_LISTINGS.length);
-  for (const item of items) assert.equal(item.method, "GET");
+  // 2026-11-22: usebuy の 3 件（Celo の USDC・5000）。POST には例の本文、GET には無い。
+  assert.ok(OPERATOR_LISTINGS.length <= 3);
+  for (const l of OPERATOR_LISTINGS) {
+    assert.equal(l.network, "eip155:42220");
+    assert.equal(l.asset.toLowerCase(), CELO_CHAIN.usdc.toLowerCase());
+    assert.equal(l.amount, "5000");
+    assert.ok(l.reason.length > 20);
+    if (l.method === "POST") assert.notEqual(operatorExampleBody(l.url), null);
+    else assert.equal(l.exampleBody, undefined);
+  }
+  assert.deepEqual(
+    OPERATOR_LISTINGS.map((l) => [l.url, l.exampleBody]),
+    [
+      ["https://gateway.usebuy.ai/v1/social/instagram/profile", '{"username":"instagram"}'],
+      ["https://gateway.usebuy.ai/v1/social/tiktok/profile", '{"username":"tiktok"}'],
+      ["https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-about", '{"queryParams":{"screen_name":"X"}}'],
+    ],
+  );
   assert.ok(readFileSync(join(ROOT, OPERATOR_LISTINGS_FILE), "utf8").includes("export const OPERATOR_LISTINGS"));
   assert.equal(OPERATOR_SOURCE, "operator");
 });
@@ -83,7 +105,12 @@ test("規則に合わない行は例外で止まる", () => {
   const bad: [string, Partial<OperatorListing>][] = [
     ["http", { url: "http://gateway.example/v1/fixture" }],
     ["not a url", { url: "=HYPERLINK(1)" }],
-    ["POST", { method: "POST" as "GET" }],
+    ["POST without exampleBody", { method: "POST" }],
+    ["GET with exampleBody", { exampleBody: '{"a":1}' }],
+    ["POST with non-JSON exampleBody", { method: "POST", exampleBody: "username=instagram" }],
+    ["POST with scalar exampleBody", { method: "POST", exampleBody: '"instagram"' }],
+    ["POST with oversized exampleBody", { method: "POST", exampleBody: JSON.stringify({ a: "x".repeat(OPERATOR_EXAMPLE_BODY_MAX_BYTES) }) }],
+    ["PUT", { method: "PUT" as "GET" }],
     ["testnet", { network: "eip155:11142220" }],
     ["non-EVM", { network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }],
     ["payTo", { payTo: "0x1234" }],
@@ -128,3 +155,33 @@ test("同期は既存の catalog-sync-aux の中で走る（新しい cron は�
   const vercel = readFileSync(join(ROOT, "vercel.json"), "utf8");
   assert.ok(!vercel.includes("operator-listings"));
 });
+
+test("例の本文の引き当て: POST の行だけ・URL の正規化で引く・一覧に無ければ null", () => {
+  const post = fixture({ method: "POST", exampleBody: '{ "username": "instagram" }' });
+  assert.equal(operatorExampleBody("https://GATEWAY.example/v1/fixture/", [post]), '{"username":"instagram"}', "JSON を読み直して詰める");
+  assert.equal(operatorExampleBody("https://gateway.example/v1/other", [post]), null);
+  assert.equal(operatorExampleBody("https://gateway.example/v1/fixture", [fixture()]), null, "GET の行には本文が無い");
+  assert.equal(operatorExampleBody("https://gateway.usebuy.ai/v1/social/instagram/profile"), '{"username":"instagram"}');
+});
+
+test("本文の出どころの順: 売り手依頼 > 402 の宣言 > operator の例 > {}", () => {
+  const declared = { body: '{"d":1}', source: "declared" as const };
+  const empty = { body: "{}", source: "empty" as const };
+  const example = '{"username":"instagram"}';
+  assert.deepEqual(selectPaidRequestBody({ sellerRequestBody: '{"s":1}', declared, operatorExample: example }), { body: '{"s":1}', source: "declared" });
+  assert.deepEqual(selectPaidRequestBody({ declared, operatorExample: example }), declared, "402 の宣言が例より先");
+  assert.deepEqual(selectPaidRequestBody({ declared: empty, operatorExample: example }), { body: example, source: "operator_example" });
+  assert.deepEqual(selectPaidRequestBody({ declared: empty, operatorExample: null }), { body: "{}", source: "empty" }, "operator でない行は従来どおり");
+});
+
+test("記録: operator_example は送った本文の SHA-256 を持ち、売り手の側の根拠（sent）にしない", () => {
+  const body = '{"username":"instagram"}';
+  const sha = createHash("sha256").update(body, "utf8").digest("hex");
+  const rec = requestBodyRecord({ body, source: "operator_example" });
+  assert.deepEqual(rec, { requestBody: "operator_example", requestBodySha256: sha });
+  assert.equal(requestBodySha256Of(rec), sha);
+  const meta = { ...rec, requestQuery: "empty" };
+  const ev = inputEvidenceOf({ meta, schema: null, declaredInput: null, declaresHeaders: false, pathTemplate: false } as unknown as Parameters<typeof inputEvidenceOf>[0]);
+  assert.notEqual(ev.inputs, "sent", "vet402 が選んだ例の本文は、宣言どおりの入力を送ったことにならない");
+});
+
