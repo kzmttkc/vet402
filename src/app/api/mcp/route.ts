@@ -55,6 +55,7 @@ const COUNTED_TOOLS: Record<string, McpUsageRoute> = {
 const ERC8004_CHECK_RL_LIMIT = 30;
 /** check_concordium_agent は外の vet402-concordium を読むので、1 分 30 回の別枠を持つ。 */
 const CONCORDIUM_CHECK_RL_LIMIT = 30;
+const NEARAI_CHECK_RL_LIMIT = 30;
 
 function mcpEnabled(): boolean {
   const v = (process.env.MCP_ENABLED ?? "").trim().toLowerCase();
@@ -196,8 +197,10 @@ async function handlePost(request: NextRequest): Promise<Response> {
       : tool === TOOL_NAMES.check8004
         ? { bucket: "erc8004-check", limit: ERC8004_CHECK_RL_LIMIT }
         : tool === TOOL_NAMES.checkConcordium
-        ? { bucket: "concordium-check", limit: CONCORDIUM_CHECK_RL_LIMIT }
-        : FIND_TOOL_ENABLED && tool === TOOL_NAMES.findSellers
+          ? { bucket: "concordium-check", limit: CONCORDIUM_CHECK_RL_LIMIT }
+          : tool === TOOL_NAMES.checkNearAi
+            ? { bucket: "nearai-check", limit: NEARAI_CHECK_RL_LIMIT }
+            : FIND_TOOL_ENABLED && tool === TOOL_NAMES.findSellers
           ? { bucket: "mcp_find", limit: perMin(process.env.MCP_FIND_RATE_PER_MIN, DEFAULT_FIND_RATE_PER_MIN) }
           : tool === TOOL_NAMES.checkEndpoint
             ? { bucket: "mcp_seller", limit: perMin(process.env.MCP_SELLER_RATE_PER_MIN, DEFAULT_SELLER_RATE_PER_MIN) }

@@ -80,6 +80,7 @@
     "@circle-fin/x402-batching": "^3.5.0",
     "@modelcontextprotocol/server": "2.3.1",
     "@neondatabase/serverless": "^1.1.0",
+    "@phala/dcap-qvl": "^0.7.3",
     "@solana/web3.js": "^1.98.4",
     "@stellar/stellar-sdk": "16.3.1",
     "@vet402/sdk": "file:vendor/vet402-sdk-0.10.2.tgz",

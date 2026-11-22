@@ -1636,6 +1636,52 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Observatory unavailable }
 
+  /api/v1/observatory/nearai:
+    get:
+      operationId: getNearAiAttestationSnapshot
+      tags: [Observatory]
+      summary: Latest NEAR AI Cloud TEE attestation re-verification
+      description: |
+        Independent daily re-verification of NEAR AI public Gateway and private TEE
+        model attestations (Intel TDX, NVIDIA NRAS, TLS binding). No API key. 30/min.
+        Out-of-date TCB with valid cryptography is advisory, not fail. PCCS or NRAS
+        outages are unverified. CC-BY-4.0.
+      security: []
+      responses:
+        "200": { description: Latest snapshot with models, tcb_status, gpu, run times }
+        "429": { description: Rate limited }
+        "503": { description: nearai_unavailable }
+
+  /api/v1/observatory/nearai/anchors:
+    get:
+      operationId: getNearAiAnchorsMeta
+      tags: [Observatory]
+      summary: NEAR AI TEE day-root chain metadata
+      description: |
+        Independent hash chain for NEAR AI public rows (not mixed with L1 ledger).
+        Day payloads at /api/v1/observatory/nearai/anchors/day. No API key. 30/min.
+      security: []
+      responses:
+        "200": { description: Chain metadata }
+        "429": { description: Rate limited }
+
+  /api/v1/observatory/nearai/anchors/day:
+    get:
+      operationId: getNearAiAnchorDay
+      tags: [Observatory]
+      summary: Canonical JSON for one NEAR AI TEE sealed UTC day
+      security: []
+      parameters:
+        - name: day
+          in: query
+          required: true
+          schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+      responses:
+        "200": { description: Day payload and root hash }
+        "400": { description: invalid_request }
+        "429": { description: Rate limited }
+        "503": { description: nearai_unavailable }
+
   /api/v1/observatory/traceable-by-chain:
     get:
       operationId: getTraceablePurchasesByChain
@@ -7414,6 +7460,7 @@ components:
             # 2026-09-29 監査 6 周目: CSV export は全体で同時に 1 本（503・Retry-After）。
             - export_busy
             - observatory_unavailable
+            - nearai_unavailable
             - ledger_corrections_unavailable
             - self_token_invalid
             - self_writes_closed

@@ -1,0 +1,780 @@
+{
+  "schemaVersion": "nearai-probe/v0",
+  "startedAt": "2026-11-22T11:46:26.177Z",
+  "completedAt": "2026-11-22T11:47:37.591Z",
+  "baseUrl": "https://cloud-api.near.ai",
+  "pccsUrl": "https://pccs.phala.network",
+  "keyless": true,
+  "catalogSummary": {
+    "totalModels": 65,
+    "byOwner": {
+      "anthropic": 14,
+      "nearai": 12,
+      "attested 3p": 4,
+      "deepseek": 2,
+      "google": 6,
+      "levanto": 1,
+      "moonshotai": 1,
+      "openai": 22,
+      "typesafe": 1,
+      "x-ai": 2
+    },
+    "nearaiCount": 12,
+    "attested3pCount": 4,
+    "nearaiModels": [
+      "black-forest-labs/FLUX.2-klein-4B",
+      "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated",
+      "openai/privacy-filter",
+      "openai/whisper-large-v3",
+      "Qwen/Qwen3.6-35B-A3B-FP8",
+      "Qwen/Qwen3.8-27B",
+      "Qwen/Qwen3.8-27B-abliterated",
+      "Qwen/Qwen3-Embedding-0.6B",
+      "Qwen/Qwen3-Reranker-0.6B",
+      "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      "z-ai/glm-5.3-flash"
+    ],
+    "attested3pModels": [
+      "deepseek/deepseek-v3.2",
+      "moonshotai/kimi-k2.6",
+      "moonshotai/kimi-k3",
+      "z-ai/glm-5.3"
+    ]
+  },
+  "gateway": {
+    "httpStatus": 200,
+    "peerSpkiSha256Observed": "73862c254372091cc6895b900111503860694f8916ebf0c63b18d245ba8ba5ad",
+    "ok": true,
+    "strictUpToDate": true,
+    "failureClass": null,
+    "tcbStatus": "UpToDate",
+    "advisoryIds": [],
+    "debugEnabled": false,
+    "signingAlgo": "ecdsa",
+    "signingAddress": "0xb98a789cdc4817275f5155593ba73ef2a957e779",
+    "tlsPeerMatches": true,
+    "tlsCertFingerprint": "73862c254372091cc6895b900111503860694f8916ebf0c63b18d245ba8ba5ad",
+    "reportDataMatches": true,
+    "echoedNonceMatches": true,
+    "mrConfigMatches": true,
+    "rtmr3Matches": true,
+    "rtmr3Error": null,
+    "composeSha256": "1787a4af87eaf4bb139b555c3148ea6cffb01442b9fd7db4304e23b24f4db993",
+    "imageDigests": [
+      "otel/opentelemetry-collector-contrib@sha256:85ac41c2db88d0df9bd6145e608a3cb023f5d8443868adbfbbf66efb51087917",
+      "alpine@sha256:4b7ce07002c69e8f3d704a9c5d6fd3053be500b7f1c69fc0d80990c2ad8dd412",
+      "nearaidev/cloud-api@sha256:d996bb08f36f0cc913ed7763f7c42bf4124e386a679e397a9acd8a3e69f3a704",
+      "nearaidev/cvm-ingress@sha256:9e9aacb7866a06aa6959fe1c6064f4c3ed62609af35e955df1b95e7325578435"
+    ],
+    "composeManager": {
+      "present": false,
+      "valid": null
+    },
+    "instanceId": "249acfa6721300bf02472dac05035ae77fedc30d",
+    "mrtd": "7fe60787222bd394cb516abca2435f22f035ab2cc9c0a4b4b3b148e46297f3d931a237b72f359052c6e657d8c1409173",
+    "rtmr3": "fee871fb2c3d2111e6a5191e7f2ee6bb5921bf26fd43708700ca2ced0da8e32e35052079e81b5b78212ef3920a845fe7"
+  },
+  "nearaiModelsProbed": [
+    {
+      "modelId": "black-forest-labs/FLUX.2-klein-4B",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2522,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "black-forest-labs/FLUX.2-klein-4B",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x98a43dfc25d22e12e774c218cc2051f2e480a803",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2859,
+      "candidateCount": 2,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+          "composeSha256": "e3902667a26282dd8b4015a901848c521b20243a155a457148f88acf48a45959",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 89,
+            "actionsHash": "bbe522945d8d941a42e7ac47f4b257cd89b98a5a35850f89e98f3991aef92fba"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        },
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0xfe0071895500a9755c18044948ab4f4e1a7f337e",
+          "composeSha256": "edabf8039210336d90fe966dfc4e48216551dfd8b05d54e96d3f3f0e0da850d4",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 41,
+            "actionsHash": "d1ce163de56a866dc7559bed299372ddf3d2a74fc747ca4eb980589d210bb6ca"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2775,
+      "candidateCount": 2,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0xcc1a41717db31b871950559a41201561716d0c22",
+          "composeSha256": "e3902667a26282dd8b4015a901848c521b20243a155a457148f88acf48a45959",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 89,
+            "actionsHash": "bbe522945d8d941a42e7ac47f4b257cd89b98a5a35850f89e98f3991aef92fba"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        },
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "deepseek-ai/DeepSeek-V4.1-Flash-1017-abliterated",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0xcc1a41717db31b871950559a41201561716d0c22",
+          "composeSha256": "edabf8039210336d90fe966dfc4e48216551dfd8b05d54e96d3f3f0e0da850d4",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 41,
+            "actionsHash": "d1ce163de56a866dc7559bed299372ddf3d2a74fc747ca4eb980589d210bb6ca"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "openai/privacy-filter",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2643,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "openai/privacy-filter",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x17ce5f31b1d911a7416245230a09bad34b04b7cf",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "openai/whisper-large-v3",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2106,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "openai/whisper-large-v3",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x2f50de86d99f04190d952f878d86093bf0f67e4c",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3.6-35B-A3B-FP8",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2837,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3.6-35B-A3B-FP8",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0xfdbd7952498b333206f360d71d97a1e0961e8ddf",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3.8-27B",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2353,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3.8-27B",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x835ab53d20294ef795906dff21ae4c045336aa26",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3.8-27B-abliterated",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 1969,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3.8-27B-abliterated",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x979121f480a3c974b80cb37b81423ddc37093474",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3-Embedding-0.6B",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2046,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3-Embedding-0.6B",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x4addeec6d001cf44501557594c6e8da005fc9fcf",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3-Reranker-0.6B",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 1714,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3-Reranker-0.6B",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x37a30b098e12ad6de49608c05c479aec5814bda2",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 2485,
+      "candidateCount": 1,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x2665cce942fa427ef30d87f4b0bff67fb7645462",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    },
+    {
+      "modelId": "z-ai/glm-5.3-flash",
+      "tier": "private_tee",
+      "httpStatus": 200,
+      "fetchMs": 3057,
+      "candidateCount": 4,
+      "allPassCrypto": true,
+      "allStrictUpToDate": true,
+      "candidates": [
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "z-ai/glm-5.3-flash",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "composeSha256": "fb81c6f2c1eae762ece8912e1f50e80697964cc93a112da03834369fa1ab5b0b",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 60,
+            "actionsHash": "138ee34178b214e2ebf333d6122f62bd82846790decd2e43f3033f289907510d"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        },
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "z-ai/glm-5.3-flash",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "composeSha256": "d7871cce53c04f1ceae14ec277e2c33b83d275ce0ee8158bac3362113d67f19b",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 107,
+            "actionsHash": "b941448e21906f4b7adf60c0b2f6b39cf490d7f641e9763ebb7a92108488679f"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        },
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "z-ai/glm-5.3-flash",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "composeSha256": "e4b83d924284eece9b972d8e18bd88dac4dd529031b00311ef5044eaa60ba8d9",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 12,
+            "actionsHash": "b414fa434a6fe940d43131d2e67959e8217b6bbbfecb73af4e66af30cef6a6a4"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        },
+        {
+          "modelNameMatch": true,
+          "reportedModelName": "z-ai/glm-5.3-flash",
+          "intelOk": true,
+          "strictUpToDate": true,
+          "tcbStatus": "UpToDate",
+          "advisoryIds": [],
+          "failureClass": null,
+          "signingAddress": "0x3b753b4406613c5e70ae640508632b600424fa0c",
+          "composeSha256": "fb81c6f2c1eae762ece8912e1f50e80697964cc93a112da03834369fa1ab5b0b",
+          "imageDigests": [
+            "nearaidev/compose-manager-otelcol@sha256:ac9b349081fc86413c2e25b44558daa14e8b33669f9e50fc0fec92dc77ce768a",
+            "certbot/dns-cloudflare@sha256:742dbd2e61c8709b930712c38958386c3cb3928e09eeb1f1e490600c127e2edb",
+            "nearaidev/compose-manager@sha256:ae4332fdb0bfccf6410bc153a58d0b72a596a989cbb98fd5b6461fe32e079814",
+            "nearaidev/compose-manager-launcher@sha256:69055bd12da3d2f065768a8551e73750f095662212beb4190f3c16859cd7dd9b"
+          ],
+          "composeManager": {
+            "present": true,
+            "valid": true,
+            "actionsCount": 60,
+            "actionsHash": "138ee34178b214e2ebf333d6122f62bd82846790decd2e43f3033f289907510d"
+          },
+          "gpu": {
+            "present": true,
+            "ok": true,
+            "failureClass": null,
+            "verdict": true,
+            "eatNonceMatches": true,
+            "nvidiaVer": "2.0",
+            "gpuCount": 8
+          }
+        }
+      ]
+    }
+  ],
+  "controlProbes": [
+    {
+      "modelId": "deepseek/deepseek-v3.2",
+      "expectedTier": "private_3p_tee",
+      "httpStatus": 200,
+      "attestationSupported": true,
+      "candidateCount": 1,
+      "firstCandidateSummary": {
+        "provider": "chutes",
+        "verified": true,
+        "tcb_status": "UpToDate",
+        "gpu_verdict": "PASS",
+        "has_quote_b64": true,
+        "has_intel_quote": false
+      }
+    },
+    {
+      "modelId": "openai/gpt-4.1",
+      "expectedTier": "incognito",
+      "httpStatus": 503,
+      "attestationSupported": false,
+      "errorMessage": "Provider error: Failed to fetch attestation report: Failed to fetch attestation report: TEE attestation is not supported for external providers. External providers run outside of our Trusted Execution Environment."
+    }
+  ]
+}

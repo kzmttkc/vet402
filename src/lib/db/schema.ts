@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   numeric,
+  serial,
   pgTable,
   primaryKey,
   text,
@@ -1777,3 +1778,63 @@ export const badgeFetchDaily = pgTable(
   },
   (t) => [primaryKey({ columns: [t.day, t.refererHost, t.badgeKind] })],
 );
+
+/** NEAR AI TEE probe runs (keyless daily attestation). SQL: scripts/sql/2026-11-22-nearai-observatory.sql */
+export const nearaiProbeRuns = pgTable("nearai_probe_runs", {
+  id: serial("id").primaryKey(),
+  runUuid: text("run_uuid").notNull().unique(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+  utcDay: date("utc_day", { mode: "string" }).notNull(),
+  pccsUrl: text("pccs_url").notNull(),
+  nearaiModelCount: integer("nearai_model_count").notNull(),
+  gatewayOk: boolean("gateway_ok").notNull(),
+  gatewayTcbStatus: text("gateway_tcb_status"),
+  runStatus: text("run_status").notNull(),
+  summaryJson: jsonb("summary_json").notNull(),
+});
+
+export const nearaiModelProbes = pgTable(
+  "nearai_model_probes",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => nearaiProbeRuns.id),
+    utcDay: date("utc_day", { mode: "string" }).notNull(),
+    modelId: text("model_id").notNull(),
+    candidateCount: integer("candidate_count").notNull(),
+    tcbStatus: text("tcb_status").notNull(),
+    advisoryIdsJson: jsonb("advisory_ids_json").notNull(),
+    gpuPass: boolean("gpu_pass").notNull(),
+    publicStatus: text("public_status").notNull(),
+    failureClass: text("failure_class"),
+    rowSha256: text("row_sha256").notNull(),
+    held: boolean("held").notNull().default(false),
+    probedAt: timestamp("probed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index("nearai_model_probes_utc_day_idx").on(t.utcDay),
+    index("nearai_model_probes_run_id_idx").on(t.runId),
+    check("nearai_model_probes_hash_check", sql`${t.rowSha256} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+export const nearaiDayRoots = pgTable(
+  "nearai_day_roots",
+  {
+    day: date("day", { mode: "string" }).primaryKey(),
+    rootHash: text("root_hash").notNull(),
+    prevRoot: text("prev_root"),
+    entryCount: integer("entry_count").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    sealedAt: timestamp("sealed_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [check("nearai_day_roots_hash_check", sql`${t.rootHash} ~ '^[0-9a-f]{64}$'`)],
+);
+
+export const nearaiHeldTargets = pgTable("nearai_held_targets", {
+  targetKey: text("target_key").primaryKey(),
+  failureClass: text("failure_class").notNull(),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
+});

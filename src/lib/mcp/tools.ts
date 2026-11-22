@@ -31,11 +31,14 @@ import { pct1 } from "@/lib/util/pct";
 import type { FoundListing, HostExtras } from "./reads";
 import { runCheckPaymentProof } from "@/lib/payment-proof/handle";
 import { checkConcordiumAgent, isConcordiumAgent } from "./concordium";
+import { checkNearAiAttestation } from "./nearai";
 import {
   check8004AgentInput,
   check8004AgentOutput,
   checkConcordiumAgentInput,
   checkConcordiumAgentOutput,
+  checkNearAiAttestationInput,
+  checkNearAiAttestationOutput,
   checkEndpointInput,
   checkEndpointOutput,
   checkPaymentProofInput,
@@ -70,6 +73,7 @@ export const TOOL_NAMES = {
   findSellers: "find_x402_sellers",
   check8004: "check_8004_agent",
   checkConcordium: "check_concordium_agent",
+  checkNearAi: "check_nearai_attestation",
 } as const;
 
 const FIND_MIN_DELIVERED_PCT = Math.round(FIND_MIN_DELIVERED_RATE * 100);
@@ -695,6 +699,22 @@ export function registerVet402Tools(server: McpServer, deps: McpDeps, state: Mcp
           if (ERC8004_INPUT_ERRORS.has(out.error)) return fail(out.error as keyof typeof ERROR_TEXT);
           return fail("invalid_agent_id");
         }
+        return ok(out as unknown as Record<string, unknown>);
+      }),
+  );
+  server.registerTool(
+    TOOL_NAMES.checkNearAi,
+    {
+      title: TOOL_TEXT.check_nearai_attestation.title,
+      description: TOOL_TEXT.check_nearai_attestation.description,
+      inputSchema: checkNearAiAttestationInput,
+      outputSchema: checkNearAiAttestationOutput,
+      annotations: { title: TOOL_TEXT.check_nearai_attestation.title, ...CHAIN_READ_ANNOTATIONS },
+    },
+    async () =>
+      guarded(state, TOOL_NAMES.checkNearAi, async () => {
+        const out = await checkNearAiAttestation();
+        if (out === "unavailable") return fail("nearai_unavailable");
         return ok(out as unknown as Record<string, unknown>);
       }),
   );

@@ -75,6 +75,39 @@ export const checkConcordiumAgentInput = z.object({
   agent: z.string().max(64).optional().describe(INPUT_TEXT.concordium_agent),
 });
 
+export const checkNearAiAttestationInput = z.object({}).strict();
+
+export const checkNearAiAttestationOutput = z
+  .object({
+    schemaVersion: z.literal(1),
+    description: z.string(),
+    retrievedAt: z.string(),
+    runStartedAt: z.string(),
+    runCompletedAt: z.string(),
+    nearaiModelCount: z.number().int(),
+    gateway: z.object({
+      httpStatus: z.number().int(),
+      tcbStatus: z.string(),
+      advisoryIds: z.array(z.string()),
+      tlsBindingOk: z.boolean().nullable(),
+      status: z.enum(["pass", "advisory", "unverified", "pending_reverify"]),
+    }),
+    models: z.array(
+      z.object({
+        modelId: z.string(),
+        candidateCount: z.number().int(),
+        tcbStatus: z.string(),
+        advisoryIds: z.array(z.string()),
+        gpuPass: z.boolean(),
+        status: z.enum(["pass", "advisory", "unverified", "pending_reverify"]),
+      }),
+    ),
+    license: z.string(),
+    licenseUrl: z.string(),
+    cite: z.string(),
+  })
+  .strict();
+
 export const checkConcordiumAgentOutput = z
   .object({
     agent: z.string(),

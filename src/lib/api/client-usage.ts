@@ -73,6 +73,7 @@ export const SELF_MONITOR_NAMES: readonly string[] = [
   "vet402-observatory-l0",
   "vet402-observatory-l0-recheck",
   "vet402-observatory-l1",
+  "vet402-observatory-nearai",
   "vet402-observatory-catalog",
   "vet402-verifier",
   "vet402-rwa-page",

@@ -7,28 +7,33 @@ import {
 } from "@/lib/observatory/metrics-rollup";
 import { anchorThrough as defaultAnchorThrough } from "@/lib/observatory/anchors";
 import { sealTradeDisputeDay as defaultSealTradeDisputeDay } from "@/lib/observatory/trade-dispute-store";
+import { sealNearAiDay as defaultSealNearAiDay } from "@/lib/nearai/store";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
 
 let anchorThroughFn: typeof defaultAnchorThrough = defaultAnchorThrough;
 let sealTradeDisputeDayFn: typeof defaultSealTradeDisputeDay = defaultSealTradeDisputeDay;
+let sealNearAiDayFn: typeof defaultSealNearAiDay = defaultSealNearAiDay;
 let metricsRollupCronRollupsFn: typeof defaultMetricsRollupCronRollups = defaultMetricsRollupCronRollups;
 
 export function setMetricsRollupE6DepsForTests(
   deps: {
     anchorThrough?: typeof defaultAnchorThrough;
     sealTradeDisputeDay?: typeof defaultSealTradeDisputeDay;
+    sealNearAiDay?: typeof defaultSealNearAiDay;
     metricsRollupCronRollups?: typeof defaultMetricsRollupCronRollups;
   } | null,
 ): void {
   if (!deps) {
     anchorThroughFn = defaultAnchorThrough;
     sealTradeDisputeDayFn = defaultSealTradeDisputeDay;
+    sealNearAiDayFn = defaultSealNearAiDay;
     metricsRollupCronRollupsFn = defaultMetricsRollupCronRollups;
     return;
   }
   if (deps.anchorThrough) anchorThroughFn = deps.anchorThrough;
   if (deps.sealTradeDisputeDay) sealTradeDisputeDayFn = deps.sealTradeDisputeDay;
+  if (deps.sealNearAiDay) sealNearAiDayFn = deps.sealNearAiDay;
   if (deps.metricsRollupCronRollups) metricsRollupCronRollupsFn = deps.metricsRollupCronRollups;
 }
 
@@ -80,6 +85,17 @@ export async function GET(request: NextRequest) {
       }
     } catch (error) {
       logServerErrorSafe("cron.metrics-rollup.e6-anchor", error);
+    }
+    try {
+      const nearai = await sealNearAiDayFn(shiftDay(utcDayString(), -1));
+      if (nearai.status === "conflict_frozen") {
+        logServerErrorSafe(
+          "cron.metrics-rollup.nearai-anchor",
+          new Error(`NEAR AI day conflict on ${nearai.day}`),
+        );
+      }
+    } catch (error) {
+      logServerErrorSafe("cron.metrics-rollup.nearai-anchor", error);
     }
     return NextResponse.json({
       ok: true,

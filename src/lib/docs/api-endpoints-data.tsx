@@ -578,6 +578,24 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   },
   {
     method: "GET",
+    path: "/api/v1/observatory/nearai",
+    note: "Latest NEAR AI Cloud TEE attestation re-verification: Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. Independent from the L1 purchase ledger. Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. No API key. 30 requests per minute per IP. CC-BY-4.0.",
+    response: `{ "schemaVersion": 1, "runCompletedAt": "…", "nearaiModelCount": 12, "gateway": { "tcbStatus": "UpToDate", "status": "pass" }, "models": […], "cite": "…" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/nearai/anchors",
+    note: "Metadata for the independent NEAR AI TEE day-root hash chain (nearai_day_roots, not mixed with L1 ledger_anchors). Day payloads at /nearai/anchors/day. No API key. 30/min.",
+    response: `{ "chain": "nearai_tee", "dayEndpoint": "/api/v1/observatory/nearai/anchors/day" }`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/observatory/nearai/anchors/day",
+    note: "Canonical JSON for one sealed NEAR AI TEE UTC day. Query day=YYYY-MM-DD. No API key. 30/min.",
+    response: `HTTP 200. day, payload, rootHash, prevRoot, sealed.`,
+  },
+  {
+    method: "GET",
     path: "/api/v1/observatory/ledger-corrections",
     note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). A row that cites citedRowId gets priorRowSha256, the SHA-256 of that row in the day file, read from the ledger. Filing a correction leaves the cited row as it is. CC-BY-4.0.",
     response: `HTTP 200. corrections, counts by kind, license and cite.`,

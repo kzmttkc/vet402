@@ -141,7 +141,14 @@ test("vet402 リポが名乗る `vet402-` の UA は全部、self-monitor か配
     });
   }
   // 計器が見えていること: 毎日この 2 つの口を呼ぶカナリアと、公開している測定の UA を拾えている
-  for (const must of ["vet402-surface-consistency-canary", "vet402-claims-canary", "vet402-observatory-l0", "vet402-observatory-l1", "vet402-sdk"]) {
+  for (const must of [
+    "vet402-surface-consistency-canary",
+    "vet402-claims-canary",
+    "vet402-observatory-l0",
+    "vet402-observatory-l1",
+    "vet402-observatory-nearai",
+    "vet402-sdk",
+  ]) {
     assert.ok(found.has(must), `走査が ${must} を拾えていない`);
   }
   const distributed = DISTRIBUTED_CLIENTS as readonly string[];
