@@ -151,7 +151,7 @@ export function parsePaymentHeader(header: string, nowSec: number = Math.floor(D
     throw new BadPayment("payment_header_not_base64_json");
   }
   if (!p || p.x402Version !== 2 || typeof p.accepted !== "object" || typeof p.payload !== "object" || !p.accepted || !p.payload) {
-    throw new BadPayment("payment_payload_shape");
+    throw new BadPayment("payment_header_shape");
   }
   const a = p.accepted as Record<string, unknown>;
   const want = paymentRequirements();
