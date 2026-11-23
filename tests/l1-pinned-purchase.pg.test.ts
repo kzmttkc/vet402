@@ -50,8 +50,8 @@ if (!TEST_DB) {
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
 
-    const insideMs = Date.parse("2027-01-12T10:00:00.000Z");
-    const outsideMs = Date.parse("2027-01-10T00:00:00.000Z");
+    const insideMs = Date.parse(PINNED_PURCHASES[0]!.from) + 10 * 3600_000;
+    const outsideMs = Date.parse(PINNED_PURCHASES[0]!.from) - 24 * 3600_000;
 
     let tx = 0;
     const challengeFor = (payTo: string) =>
@@ -107,7 +107,7 @@ if (!TEST_DB) {
           quality: { l30DaysTotalCalls: 5000, l30DaysUniquePayers: 500 },
         }),
       ];
-      await syncCatalog({ fetchResult: { items, totalCount: 2, fetchedCount: 2, complete: true }, today: "2027-01-12" });
+      await syncCatalog({ fetchResult: { items, totalCount: 2, fetchedCount: 2, complete: true }, today: new Date(insideMs).toISOString().slice(0, 10) });
       await runL0ProbeBatch({
         limit: 10,
         fetchImpl: async (url: string) =>

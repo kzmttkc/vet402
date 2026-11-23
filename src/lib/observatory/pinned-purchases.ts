@@ -27,11 +27,12 @@ export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
   {
     url: "https://agent402.tools/api/weather-forecast",
     method: "GET",
-    from: "2027-01-11T00:00:00.000Z",
-    to: "2027-01-12T23:59:59.999Z",
-    reason: "FactGate hackathon judging: fresh delivered evidence for this Bazaar listing on 2027-01-12.",
-    requestedBy: "hackathon session for FactGate judging (2027-01-12 to 2027-01-18)",
-    approvedAt: "2026-11-22T22:20:00.000Z",
+    from: "2027-01-10T00:00:00.000Z",
+    to: "2027-01-10T23:59:59.999Z",
+    reason: "FactGate hackathon judging (starts 2027-01-11 18:00 UTC): delivered evidence for this Bazaar listing the day before judging opens.",
+    requestedBy: "hackathon session for FactGate judging (2027-01-11 18:00 UTC to 2027-01-18)",
+    // 2026-11-23 07:20 JST 承認（01-11〜01-12）、09:32 JST に 01-10 へ前倒しを承認（金額・回数・経路は同じ）。
+    approvedAt: "2026-11-23T00:32:00.000Z",
     maxPurchases: 1,
   },
 ];

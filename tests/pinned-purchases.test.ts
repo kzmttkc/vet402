@@ -50,8 +50,14 @@ test("pinned window: inside, outside, and after max conceptually", () => {
   assert.equal(pinnedWindowActive(SAMPLE, inside), true);
   assert.equal(pinnedWindowActive(SAMPLE, before), false);
   assert.equal(pinnedWindowActive(SAMPLE, after), false);
-  assert.ok(pinnedPurchasesActiveAt(inside).some((p) => p.url.includes("weather-forecast")));
-  assert.equal(pinnedPurchasesActiveAt(before).length, 0);
+  // 本物の一覧は、その行の from から時刻を作る（期間を動かしても試験が追従する）。
+  const real = PINNED_PURCHASES.find((p) => p.url.includes("weather-forecast"))!;
+  const realInside = Date.parse(real.from) + 12 * 3600_000;
+  const realBefore = Date.parse(real.from) - 3600_000;
+  const realAfter = Date.parse(real.to) + 1;
+  assert.ok(pinnedPurchasesActiveAt(realInside).some((p) => p.url.includes("weather-forecast")));
+  assert.equal(pinnedPurchasesActiveAt(realBefore).length, 0);
+  assert.equal(pinnedPurchasesActiveAt(realAfter).length, 0);
 });
 
 test("listingMatchesPinned uses canonical https URLs", () => {
