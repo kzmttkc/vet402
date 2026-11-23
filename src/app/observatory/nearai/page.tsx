@@ -9,7 +9,7 @@ import type { NearAiProbeOutput } from "@/lib/nearai/probe-types";
 export const metadata: Metadata = pageMetadata({
   title: "NEAR AI TEE attestation — vet402 re-verification record",
   description:
-    "vet402 re-runs NEAR AI Inference SDK verification (pin 085a304) daily against Cloud attestation endpoints. Gateway keyless ECDSA, Intel PCS TDX, NVIDIA NRAS JWKS. No API key.",
+    "vet402 re-runs NEAR AI Inference SDK verification (pin 085a304) at 09:00 UTC against Cloud attestation endpoints. Gateway keyless ECDSA, Intel PCS TDX, NVIDIA NRAS JWKS. No API key.",
   path: "/observatory/nearai",
 });
 
@@ -56,7 +56,7 @@ export default async function ObservatoryNearAiPage() {
       <p className="mt-3 text-sm leading-relaxed text-neutral-700">
         Out-of-date TCB with valid cryptography is labeled <strong>Advisory</strong> (SDK default also accepts{" "}
         <code className="font-mono">OutOfDate</code> and <code className="font-mono">TDRelaunchAdvised</code>). Missing
-        GPU evidence is <strong>not provided</strong>, never a pass. PCCS or NRAS outages are <strong>Unverified</strong>.
+        GPU evidence is <strong>not provided</strong> and does not count as a pass. PCCS or NRAS outages are <strong>Unverified</strong>.
         Two consecutive serious mismatches are required before a model is confirmed failed; serious mismatches may be held
         for a private report. Known differences from the SDK client: vet402 does not load NEAR&apos;s response signature
         or use ed25519 for gateway probes; model probes use keyless ECDSA; image provenance / deployment verifier hooks
