@@ -37,6 +37,7 @@ import {
 import {
   buildReport,
   compareAll,
+  LEDGER_EXPORT_DAYS,
   listingsForRegistryRecheck,
   recheckSummaryMarkdown,
   type Check,
@@ -160,7 +161,7 @@ async function readGlobals(tally: SurfaceTally) {
   const g = "(global)";
   const sellersCsv = await surface(tally, "sellers", g, async () => parseCsv((await getText("/api/v1/sellers/export.csv")).body));
   const ledgerCsv = await surface(tally, "ledger", g, async () => {
-    const r = await getText("/api/v1/observatory/export.csv?days=90");
+    const r = await getText(`/api/v1/observatory/export.csv?days=${LEDGER_EXPORT_DAYS}`);
     return { rows: parseCsv(r.body), retrievedAt: r.headers.get("x-vet402-retrieved-at") };
   });
   const l0Csv = await surface(tally, "l0", g, async () => parseCsv((await getText("/api/v1/observatory/l0/export.csv")).body));

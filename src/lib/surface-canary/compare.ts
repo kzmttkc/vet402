@@ -467,7 +467,7 @@ export function compareListing(x: ListingInput, reg: Registry): { checks: Check[
         statuses.push({ surface: "ledger", value: `${lr.status}${lr.held_reason ? ` held ${lr.held_reason}` : ""}` });
         st.add(lr.status);
         held.add(lr.held_reason);
-      } else if (sellers.in_ledger_export === "true" && ledger) {
+      } else if (sellers.in_ledger_export === "true" && ledger && withinLedgerWindow(sellers.latest_attempted_at, x.ledgerRetrievedAt)) {
         statuses.push({ surface: "ledger", value: `purchase_id ${sellers.purchase_id} not found` });
         st.add("(missing)");
       }
@@ -892,4 +892,18 @@ export function recheckSummaryMarkdown(r: Pick<Report, "ok" | "failReasons" | "f
   }
   if (r.failReasons.length) out.push("", "Fail reasons:", ...r.failReasons.map((f) => `- ${f}`));
   return `${out.join("\n")}\n`;
+}
+
+/**
+ * 台帳の写し（export.csv?days=90）に、その行が入る時刻か（2026-11-23）。in_ledger_export は状態だけで決まり、
+ * 窓は見ない。売り手の最新の行が 90 日の窓の外に出たばかりだと「not found」と誤って鳴った
+ * （api.sirenic.eu の 2026-08-24 の行・issue #107）。窓の端の 1 日は、読む時刻のずれを見込んで比べない。
+ */
+export const LEDGER_EXPORT_DAYS = 90;
+export function withinLedgerWindow(attemptedAt: string | undefined, ledgerRetrievedAt: string | null, now = Date.now()): boolean {
+  const at = attemptedAt ? Date.parse(attemptedAt) : NaN;
+  if (!Number.isFinite(at)) return true;
+  const ref = ledgerRetrievedAt ? Date.parse(ledgerRetrievedAt) : now;
+  const base = Number.isFinite(ref) ? ref : now;
+  return at >= base - (LEDGER_EXPORT_DAYS - 1) * 86_400_000;
 }

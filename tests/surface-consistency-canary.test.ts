@@ -1117,3 +1117,12 @@ test("workflow: report を赤でも緑でも成果物に残す（版は SHA で�
   assert.match(script, /isRetryableStatus\(res\.status\)/);
   assert.match(script, /recheckDiscrepancies\(/);
 });
+
+test("withinLedgerWindow: a latest row just outside the 90-day ledger copy is not called missing (issue #107, 2026-11-23)", async () => {
+  const { withinLedgerWindow } = await import("@/lib/surface-canary/compare");
+  const read = "2026-11-23T08:49:00Z";
+  assert.equal(withinLedgerWindow("2026-08-24T23:36:49Z", read), false, "91 days before the read: outside");
+  assert.equal(withinLedgerWindow("2026-08-27T00:00:00Z", read), true, "inside the window minus the edge day");
+  assert.equal(withinLedgerWindow("2026-11-22T00:00:00Z", read), true);
+  assert.equal(withinLedgerWindow("", read), true, "no time: keep comparing");
+});
