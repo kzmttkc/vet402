@@ -2416,10 +2416,10 @@ claims:
   - id: ux6_home_sparkline_daily_purchases
     surface: src/components/site/home/HomePurchaseSparkline.tsx
     quote: "Daily paid attempts and settled purchases"
-    means: "ホームのスパークラインが描く系列は observatory state の日次 L1 集計"
+    means: "ホームのスパークラインが描く系列は observatory history の日次 L1 集計（l1Attempts・l1Settled）"
     check:
-      url: https://vet402.com/api/v1/observatory/state
-      assert: "l1.attempts_7d >= 0"
+      url: https://vet402.com/api/v1/observatory/history
+      assert: "days.0.l1Attempts >= 0"
     verified_at: 2026-11-21
   - id: ux6_seller_delivery_calendar_legend
     surface: src/components/site/sellers/SellerDeliveryCalendar.tsx
@@ -2434,7 +2434,7 @@ claims:
     means: "L1 で vet402 の決済索引だけが付いた endpoint 数（methodology の seller receipt 対比）"
     check:
       url: https://vet402.com/api/v1/observatory/state
-      assert: "l1.endpoints_settled_index_only >= 0"
+      assert: "l1.endpointsSettledIndexOnly >= 0"
     verified_at: 2026-11-21
   - id: nearai_observatory_no_run_yet_llms
     surface: public/llms.txt
