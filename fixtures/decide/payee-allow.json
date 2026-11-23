@@ -1,0 +1,14 @@
+{
+  "role": "payee",
+  "now": "2026-09-02T00:00:00Z",
+  "facts": {
+    "settled_count_30d": 12,
+    "unique_payees_30d": 4,
+    "short_interval_payment_rate": 0.05,
+    "retry_burst_rate": 0.05,
+    "sybil": { "multi_agent_owner": false, "shared_funder": false, "cluster_id": null, "unavailable": [] },
+    "erc8004": { "agent_id": null, "feedback_with_payment_proof_ratio": null },
+    "first_seen": "2026-07-01T00:00:00Z",
+    "last_seen": "2026-09-01T00:00:00Z"
+  }
+}

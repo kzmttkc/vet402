@@ -1,0 +1,21 @@
+# Rules-only decision CLI.
+# Build: docker build -f Dockerfile.rules -t vet402-rules .
+# Run:   docker run --network none -i vet402-rules < fixtures/decide/payer-allow.json
+#
+# node:24-slim is pinned by tag (not :latest). tsx is pinned to the version in
+# package-lock.json. Application dependencies are not installed.
+FROM node:24-slim
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN node -e 'const fs=require("fs"); const lock=JSON.parse(fs.readFileSync("package-lock.json","utf8")); const version=lock.packages["node_modules/tsx"]&&lock.packages["node_modules/tsx"].version; if(!version) throw new Error("package-lock.json has no tsx version"); fs.writeFileSync("/tmp/tsx-version", version);' \
+ && mkdir -p /opt/cli \
+ && printf '%s\n' '{"name":"vet402-rules-cli","private":true}' > /opt/cli/package.json \
+ && npm install --no-audit --no-fund --prefix /opt/cli "tsx@$(cat /tmp/tsx-version)"
+
+COPY tsconfig.json ./
+COPY src/lib/decision/rules.ts src/lib/decision/types.ts src/lib/decision/
+COPY scripts/decide-cli.ts scripts/decide-cli.ts
+
+ENTRYPOINT ["/opt/cli/node_modules/.bin/tsx", "/app/scripts/decide-cli.ts"]

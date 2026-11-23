@@ -69,6 +69,7 @@ export const DISTRIBUTED_CLIENTS = ["vet402-hermes", "vet402-sdk", "vet402-mcp"]
  */
 export const SELF_MONITOR_NAMES: readonly string[] = [
   "vet402-surface-consistency-canary",
+  "vet402-observatory-bundle",
   "vet402-claims-canary",
   "vet402-observatory-l0",
   "vet402-observatory-l0-recheck",
