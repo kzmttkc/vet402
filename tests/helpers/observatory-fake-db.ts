@@ -35,6 +35,8 @@ export type FakeAnchorRow = {
   prev_root: string | null;
   entry_count: number;
   anchored_tx: string | null;
+  /** 封印時のバイト列（2026-11-23〜）。無ければ undefined/null。 */
+  sealed_payload?: string | null;
 };
 
 export type FakeObservatoryTables = {
@@ -88,13 +90,22 @@ export function observatoryFakeDb(tables: FakeObservatoryTables): FakeObservator
       const span = Number(params[params.length - 1]);
       return anchors().slice(0, span).map((r) => ({ ...r }));
     }
-    if (/^SELECT day, root_hash, prev_root FROM ledger_anchors WHERE day = /.test(text)) {
+    if (/^SELECT day, root_hash, prev_root, sealed_payload FROM ledger_anchors WHERE day = /.test(text)) {
       const day = dayParam(params);
-      return anchors().filter((r) => r.day === day).map(({ day: d, root_hash, prev_root }) => ({ day: d, root_hash, prev_root }));
+      return anchors()
+        .filter((r) => r.day === day)
+        .map(({ day: d, root_hash, prev_root, sealed_payload }) => ({ day: d, root_hash, prev_root, sealed_payload: sealed_payload ?? null }));
     }
-    if (/^SELECT root_hash, anchored_tx FROM ledger_anchors WHERE day = /.test(text)) {
+    if (/^SELECT root_hash, anchored_tx, \(sealed_payload IS NOT NULL\) AS has_sealed FROM ledger_anchors WHERE day = /.test(text)) {
       const day = dayParam(params);
-      return anchors().filter((r) => r.day === day).map(({ root_hash, anchored_tx }) => ({ root_hash, anchored_tx }));
+      return anchors()
+        .filter((r) => r.day === day)
+        .map(({ root_hash, anchored_tx, sealed_payload }) => ({ root_hash, anchored_tx, has_sealed: sealed_payload != null }));
+    }
+    if (/^SELECT day, root_hash, prev_root FROM ledger_anchors WHERE sealed_payload IS NULL ORDER BY day DESC LIMIT/.test(text)) {
+      return anchors()
+        .filter((r) => r.sealed_payload == null)
+        .map(({ day: d, root_hash, prev_root }) => ({ day: d, root_hash, prev_root }));
     }
     if (/^SELECT day, prev_root FROM ledger_anchors WHERE day > .* ORDER BY day ASC LIMIT 1$/.test(text)) {
       const day = dayParam(params);
@@ -112,17 +123,24 @@ export function observatoryFakeDb(tables: FakeObservatoryTables): FakeObservator
     }
     if (/^INSERT INTO ledger_anchors /.test(text)) {
       writes.push({ sql: text, params });
-      const [day, root_hash, prev_root, entry_count] = params as [string, string, string | null, number];
+      const [day, root_hash, prev_root, entry_count, sealed_payload] = params as [string, string, string | null, number, string | undefined];
       if (!tables.ledger_anchors.some((r) => r.day === day)) {
-        tables.ledger_anchors.push({ day, root_hash, prev_root, entry_count: Number(entry_count), anchored_tx: null });
+        tables.ledger_anchors.push({ day, root_hash, prev_root, entry_count: Number(entry_count), anchored_tx: null, sealed_payload: sealed_payload ?? null });
       }
+      return [];
+    }
+    if (/^UPDATE ledger_anchors SET sealed_payload = /.test(text)) {
+      writes.push({ sql: text, params });
+      const [sealed_payload, day, root_hash] = params as [string, string, string];
+      const row = tables.ledger_anchors.find((r) => r.day === day && r.root_hash === root_hash && r.sealed_payload == null);
+      if (row) row.sealed_payload = sealed_payload;
       return [];
     }
     if (/^UPDATE ledger_anchors /.test(text)) {
       writes.push({ sql: text, params });
-      const [root_hash, prev_root, entry_count, day] = params as [string, string | null, number, string];
+      const [root_hash, prev_root, entry_count, sealed_payload, day] = params as [string, string | null, number, string, string];
       const row = tables.ledger_anchors.find((r) => r.day === day);
-      if (row) Object.assign(row, { root_hash, prev_root, entry_count: Number(entry_count) });
+      if (row) Object.assign(row, { root_hash, prev_root, entry_count: Number(entry_count), sealed_payload });
       return [];
     }
     // 旧の訂正ログ（corrections.ts の recordCorrection）。新しい訂正の口が無い木で、同じ入力を当てるため。

@@ -171,16 +171,37 @@ if (!TEST_DB) {
       assert.equal(res.headers.get("x-vet402-payload-sha256"), createHash("sha256").update(bytes).digest("hex"));
     });
 
-    await t.test("封印の後にその日の行を変えると、day ファイルの検証も GET の検証も落ちる", async () => {
+    await t.test("封印の後にその日の行を変えても、配るのは封印時のバイト列で検算は通り、今の行は ?view=current で食い違いとして出る（2026-11-23）", async () => {
       await db.execute(sql`
         INSERT INTO x402_l1_purchases (endpoint_id, status, network, attempted_at)
         VALUES (${eid}::uuid, 'settled', 'eip155:8453', ${`${d4}T09:00:00Z`}::timestamptz)
       `);
       const res = await dayGet(new NextRequest(`http://localhost/api/v1/observatory/anchors/day?day=${d4}`));
-      assert.equal(res.headers.get("x-vet402-day-verification"), "payload_does_not_match_head");
+      assert.equal(res.headers.get("x-vet402-day-source"), "sealed");
+      assert.equal(res.headers.get("x-vet402-day-verification"), "ok");
+      assert.equal(res.headers.get("x-vet402-current-matches-sealed"), "false");
       const body = await (await anchorsGet(new NextRequest("http://localhost/api/v1/observatory/anchors?days=30"))).json();
-      assert.equal(body.dayVerification.ok, false);
-      assert.equal(body.dayVerification.code, "payload_does_not_match_head");
+      assert.equal(body.dayVerification.ok, true, JSON.stringify(body.dayVerification));
+      const cur = await dayGet(new NextRequest(`http://localhost/api/v1/observatory/anchors/day?day=${d4}&view=current`));
+      assert.equal(cur.headers.get("x-vet402-day-source"), "current");
+      assert.equal(cur.headers.get("x-vet402-day-verification"), "payload_does_not_match_head");
+    });
+
+    await t.test("封印時のバイト列が無い日: 今の行が root に一致すれば残し、一致しなければ残さず current のまま（2026-11-23）", async () => {
+      const { retainSealedPayloads } = await import("@/lib/observatory/anchors");
+      await db.execute(sql`UPDATE ledger_anchors SET sealed_payload = NULL`);
+      // d4 は上で行を足したので root に一致しない。d2 は一致する。
+      const r = await retainSealedPayloads(db);
+      assert.ok(r.drifted.includes(d4), JSON.stringify(r));
+      assert.ok(r.retained.includes(d2), JSON.stringify(r));
+      const res4 = await dayGet(new NextRequest(`http://localhost/api/v1/observatory/anchors/day?day=${d4}`));
+      assert.equal(res4.headers.get("x-vet402-day-source"), "current");
+      assert.equal(res4.headers.get("x-vet402-day-verification"), "payload_does_not_match_head");
+      const res2 = await dayGet(new NextRequest(`http://localhost/api/v1/observatory/anchors/day?day=${d2}`));
+      assert.equal(res2.headers.get("x-vet402-day-source"), "sealed");
+      // 2 回目は何もしない（冪等）。
+      const again = await retainSealedPayloads(db);
+      assert.ok(!again.retained.includes(d2));
     });
 
     await t.test("ヘッドが 3 日遅れたら 200 を返さず、遅れを書く", async () => {

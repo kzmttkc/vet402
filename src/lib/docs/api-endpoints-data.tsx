@@ -573,7 +573,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/anchors/day",
-    note: "The canonical JSON of one sealed day, byte for byte. sha256 of the previous root, a newline and this body equals that day's root in /anchors and the prevRoot of the next sealed day. A day with no sealed root answers 404 no_head_for_day. 10 requests per minute per IP. CC-BY-4.0.",
+    note: "The canonical JSON of one sealed day, byte for byte, as stored when the day was sealed. sha256 of the previous root, a newline and this body equals that day's root in /anchors and the prevRoot of the next sealed day. view=current serves the rows as they are now. A day with no sealed root answers 404 no_head_for_day. 10 requests per minute per IP. CC-BY-4.0.",
     response: `HTTP 200. The day JSON. x-vet402-day-root, x-vet402-prev-root, x-vet402-chain-root and x-vet402-day-verification headers.`,
   },
   {
@@ -597,7 +597,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/observatory/ledger-corrections",
-    note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). A row that cites citedRowId gets priorRowSha256, the SHA-256 of that row in the day file, read from the ledger. Filing a correction leaves the cited row as it is. CC-BY-4.0.",
+    note: "Ledger corrections. Rows are added and not rewritten. Each row is self or third_party. A third_party row carries signerAddress, signature and signedMessage. signatureValid is checked again on each read, so anyone can repeat the check with no key. POST adds a row with a bearer token (self) or a signature from an allowed address (third_party). A row that cites citedRowId gets priorRowSha256, the SHA-256 of that row in the day file with view=current, read from the ledger. Filing a correction leaves the cited row as it is. CC-BY-4.0.",
     response: `HTTP 200. corrections, counts by kind, license and cite.`,
   },
   {
