@@ -28,10 +28,11 @@ export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
     url: "https://agent402.tools/api/weather-forecast",
     method: "GET",
     from: "2027-01-10T00:00:00.000Z",
-    to: "2027-01-10T23:59:59.999Z",
-    reason: "FactGate hackathon judging (starts 2027-01-11 18:00 UTC): delivered evidence for this Bazaar listing the day before judging opens.",
+    to: "2027-01-11T12:30:00.000Z",
+    reason: "FactGate hackathon judging (starts 2027-01-11 18:00 UTC): delivered evidence for this Bazaar listing before judging opens; the 2027-01-11 12:00 UTC run retries once if 2027-01-10 did not buy.",
     requestedBy: "hackathon session for FactGate judging (2027-01-11 18:00 UTC to 2027-01-18)",
     // 2026-11-23 07:20 JST 承認（01-11〜01-12）、09:32 JST に 01-10 へ前倒しを承認（金額・回数・経路は同じ）。
+    // 2026-11-23 17:22 JST: 終わりを 01-11 12:30 UTC へ（12:00 UTC の購入 cron が1回失敗しても審査前にもう1回だけ試す。maxPurchases 1 のまま・承認済みの 01-11〜01-12 の内側）。
     approvedAt: "2026-11-23T00:32:00.000Z",
     maxPurchases: 1,
   },
@@ -111,7 +112,12 @@ function rowsOf(raw: unknown): Record<string, unknown>[] {
   return (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<string, unknown>[];
 }
 
-/** `from` 以降の status=settled の件数（予約の maxPurchases 判定）。 */
+/**
+ * `from` 以降で、払った可能性のある購入の件数（予約の maxPurchases 判定）。
+ * settled だけでなく、受領証の再読み待ち（settle_claimed・settle_claimed_unverifiable）と
+ * 受領証なしで届いた行（delivered_no_receipt）も数える。窓が2回の cron をまたぐので、
+ * 1回目が未確定のまま2回目が二重に払わないようにする（2026-11-23）。
+ */
 export async function countSettledSincePinFrom(
   db: DbLike,
   endpointId: string,
@@ -121,7 +127,7 @@ export async function countSettledSincePinFrom(
     SELECT count(*)::int AS n
     FROM x402_l1_purchases pu
     WHERE pu.endpoint_id = ${endpointId}::uuid
-      AND pu.status = 'settled'
+      AND pu.status IN ('settled', 'settle_claimed', 'settle_claimed_unverifiable', 'delivered_no_receipt')
       AND pu.attempted_at >= ${fromIso}::timestamptz
   `);
   const row = rowsOf(raw)[0];

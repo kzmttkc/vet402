@@ -87,3 +87,12 @@ test("promotePinnedPurchaseCandidates is unchanged outside window (no targets)",
   const list = [{ id: "x", resourceUrl: "https://x", method: "GET", selection: null as string | null }];
   assert.deepEqual(promotePinnedPurchaseCandidates(list, [], (c) => c), list);
 });
+
+test("weather-forecast: the window holds both 12:00 UTC cron runs before judging (01-10 and 01-11) and closes before judging opens", () => {
+  const at = (iso: string) => pinnedPurchasesActiveAt(Date.parse(iso)).some((p) => p.url.includes("weather-forecast"));
+  assert.equal(at("2027-01-10T12:00:00.000Z"), true);
+  assert.equal(at("2027-01-11T12:00:00.000Z"), true);
+  assert.equal(at("2027-01-11T18:00:00.000Z"), false);
+  const wf = PINNED_PURCHASES.find((p) => p.url.includes("weather-forecast"))!;
+  assert.equal(wf.maxPurchases, 1);
+});
