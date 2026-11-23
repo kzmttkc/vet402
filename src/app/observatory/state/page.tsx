@@ -302,6 +302,10 @@ export default async function ObservatoryStatePage() {
               </Link>
             </span>
             <span>
+              <Link href="/observatory/erc8004" className="underline">
+                ERC-8004 match
+              </Link>
+              {" · "}
               <Link href="/observatory/methodology" className="underline">
                 Methodology
               </Link>

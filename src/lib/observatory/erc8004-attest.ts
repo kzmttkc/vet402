@@ -15,6 +15,9 @@ export const REPUTATION_REGISTRY_ABI = parseAbi([
   "function giveFeedback(uint256 agentId, int128 value, uint8 valueDecimals, string tag1, string tag2, string endpoint, string feedbackURI, bytes32 feedbackHash) external",
 ]);
 
+/** On-chain client address for vet402 weekly Reputation Registry attestments (public, docs/runbook/erc8004-attest.md). */
+export const ERC8004_ATTEST_WRITER = "0x2180A4d582B0551c596830320139adb163bd271a" as const;
+
 export const ERC8004_ATTEST_TAG1 = "successRate" as const;
 export const ERC8004_ATTEST_TAG2 = "vet402" as const;
 export const ERC8004_ATTEST_VALUE_DECIMALS = 2;

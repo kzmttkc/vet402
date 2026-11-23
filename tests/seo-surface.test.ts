@@ -34,6 +34,7 @@ test("every public indexable route is in the sitemap", async () => {
     "/leaderboard",
     "/observatory",
     "/observatory/state",
+    "/observatory/erc8004",
     "/observatory/methodology",
     "/payee",
     "/corrections",

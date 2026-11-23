@@ -60,6 +60,12 @@ function coreStaticSitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.6,
     },
+    {
+      url: `${SITE_URL}/observatory/erc8004`,
+      lastModified: REV_2026_10_26,
+      changeFrequency: "daily",
+      priority: 0.7,
+    },
     // 2026-08-13 UX監査R1 [C5]: /payee は LP の主 CTA（"Verify a payee now"）の
     // 行き先で、鍵もアカウントも要らない唯一の公開デモなのに sitemap に
     // 載っていなかった。個々の /payee/:address は無限に生成できるので
