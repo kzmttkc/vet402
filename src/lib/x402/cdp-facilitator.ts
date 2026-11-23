@@ -1,5 +1,5 @@
-import { generateJwt } from "@coinbase/cdp-sdk/auth";
 import { isAddress, getAddress } from "viem";
+import { cdpJwt } from "./cdp-jwt";
 import { paymentRequired, paymentRequirements, type BasePaymentPayload } from "./base-usdc";
 
 const CDP_BASE = "https://api.cdp.coinbase.com/platform/v2/x402";
@@ -20,13 +20,13 @@ export type SettleOutcome =
   | { kind: "failed"; result: SettleResult }
   | { kind: "unknown"; detail: string };
 
-async function bearer(path: "/platform/v2/x402/verify" | "/platform/v2/x402/settle"): Promise<string> {
-  return generateJwt({
-    apiKeyId: process.env.CDP_API_KEY_ID!,
-    apiKeySecret: process.env.CDP_API_KEY_SECRET!,
-    requestMethod: "POST",
-    requestHost: CDP_HOST,
-    requestPath: path,
+function bearer(path: "/platform/v2/x402/verify" | "/platform/v2/x402/settle"): string {
+  return cdpJwt({
+    keyId: process.env.CDP_API_KEY_ID!,
+    keySecret: process.env.CDP_API_KEY_SECRET!,
+    method: "POST",
+    host: CDP_HOST,
+    path,
   });
 }
 
@@ -58,7 +58,7 @@ async function cdpPost<T>(
   fetchImpl: typeof fetch,
 ): Promise<FacilitatorReply<T>> {
   const jwtPath = path === "verify" ? "/platform/v2/x402/verify" : "/platform/v2/x402/settle";
-  const token = await bearer(jwtPath);
+  const token = bearer(jwtPath);
   const merged = mergePayload(payment, resourceUrl);
   const res = await fetchImpl(`${CDP_BASE}/${path}`, {
     method: "POST",
