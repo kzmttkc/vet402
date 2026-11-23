@@ -63,6 +63,7 @@ export const API_ENDPOINT_TOC: readonly ApiEndpointTocItem[] = [
   { method: "GET", path: "/api/v1/observatory/traceable-by-chain" },
   { method: "GET", path: "/api/v1/rwa/facts/:address" },
   { method: "GET", path: "/api/v1/rwa/paid/facts/:address" },
+  { method: "GET", path: "/api/v1/rwa/paid/base/facts/:address" },
   { method: "POST", path: "/api/v1/observatory/endpoints/:id/subscribe" },
   { method: "POST", path: "/api/v1/observatory/subscriptions/confirm" },
   { method: "POST", path: "/api/v1/observatory/subscriptions/unsubscribe" },

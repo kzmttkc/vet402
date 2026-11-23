@@ -619,6 +619,12 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
     response: `HTTP 200 with the facts JSON after a valid payment. HTTP 402 with PAYMENT-REQUIRED when the header is absent.`,
   },
   {
+    method: "GET",
+    path: "/api/v1/rwa/paid/base/facts/:address",
+    note: "The same Robinhood Chain facts JSON as GET /api/v1/rwa/facts/:address with query chain=4663, settled in USDC on Base (eip155:8453) via the Coinbase CDP x402 facilitator. EIP-3009 asset 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913, amount 10000 (0.01 USDC), payTo 0x973cD8a91A771C2C04C6036888F8175D6b4F6227. The 402 includes extensions.bazaar for CDP discovery.",
+    response: `HTTP 200 with the facts JSON after verify and settle. HTTP 402 with PAYMENT-REQUIRED when the header is absent. HTTP 503 facilitator_unconfigured when CDP credentials are missing.`,
+  },
+  {
     method: "POST",
     path: "/api/v1/observatory/endpoints/:id/subscribe",
     note: "Leave an email on one endpoint record. kind notify starts pending until POST /api/v1/observatory/subscriptions/confirm. Opening the confirm link changes nothing by itself. kind dispute records an objection (reason, 20 to 2000 characters) and forwards it to support. website is a honeypot and is left empty. Key-less. 5 requests per hour per IP.",

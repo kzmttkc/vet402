@@ -2958,6 +2958,52 @@ paths:
         "503":
           description: too_busy, feed_unavailable or too_slow_retry, with Retry-After (not charged)
 
+  /api/v1/rwa/paid/base/facts/{address}:
+    get:
+      operationId: getRwaFactsPaidBase
+      tags: [RWA]
+      summary: The same facts JSON, paid per call over x402 v2 in USDC on Base via CDP
+      description: |
+        Same body as getRwaFacts. Robinhood Chain facts (`chain=4663` query) settle in
+        USDC on Base (`eip155:8453`, asset `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,
+        amount `10000`, EIP-3009 `TransferWithAuthorization`). Facilitator is the
+        Coinbase CDP x402 API. The 402 carries `extensions.bazaar` for discovery.
+        Without a `PAYMENT-SIGNATURE` header the answer is 402 with
+        `PAYMENT-REQUIRED` (base64 JSON, also the body). 404, 422 and 503 carry
+        `charged: false`. `X-Payment-Status: settled` comes with `PAYMENT-RESPONSE`.
+        `X-Bazaar-Status` reflects CDP Bazaar indexing when present.
+      security: []
+      parameters:
+        - in: path
+          name: address
+          required: true
+          schema: { type: string, pattern: "^0x[a-fA-F0-9]{40}$" }
+        - in: query
+          name: chain
+          required: false
+          schema: { type: string, example: "4663" }
+        - in: header
+          name: PAYMENT-SIGNATURE
+          required: false
+          schema: { type: string, description: base64 JSON PaymentPayload (x402 v2, EIP-3009) }
+      responses:
+        "200":
+          description: The reconstruction (same body as getRwaFacts). X-Payment-Status is `settled` (with PAYMENT-RESPONSE and optional X-Bazaar-Status) or `unknown`.
+        "400":
+          description: invalid_address
+        "402":
+          description: Payment required, refused, or settle answered success:false (PAYMENT-RESPONSE attached).
+        "404":
+          description: no_stock_token_activity (not charged)
+        "422":
+          description: wallet_too_large (not charged)
+        "429":
+          description: rate_limited
+        "502":
+          description: facilitator_unavailable at verify (not charged)
+        "503":
+          description: facilitator_unconfigured, too_busy, feed_unavailable or too_slow_retry (not charged)
+
   /api/v1/observatory/endpoints/{id}/facts:
     get:
       operationId: getEndpointFacts
@@ -7357,6 +7403,7 @@ components:
             - no_stock_token_activity
             - too_busy
             - facilitator_unavailable
+            - facilitator_unconfigured
             - too_slow_retry
             - invalid_request
             - subscribe_unavailable
