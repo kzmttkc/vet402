@@ -35,12 +35,16 @@ export function replayRtmr3(eventLogRaw: unknown): Buffer {
     }[]) || [];
   for (const event of events) {
     if (event.imr !== 3) continue;
-    if (event.digest === undefined || event.digest === null) {
+    const isRuntime = (event.event_type ?? 0) >>> 0 === DSTACK_RUNTIME_EVENT_TYPE;
+    // 2026-11-23: NEAR Cloud の event_log は dstack の実行時の出来事で digest を空文字で返すようになった。
+    // 実行時の出来事の digest は event_type・名前・payload から決まるので、空なら自分で計算して鎖に入れる
+    // （最後に quote の RTMR3 と照合されるので、信用する物は増えない）。それ以外の出来事は従来どおり digest 必須。
+    if (event.digest === undefined || event.digest === null || (event.digest === "" && !isRuntime)) {
       throw new Error("RTMR3 event missing digest");
     }
     count += 1;
     let digest: Buffer;
-    if ((event.event_type ?? 0) >>> 0 === DSTACK_RUNTIME_EVENT_TYPE) {
+    if (isRuntime) {
       const eventType = Buffer.alloc(4);
       eventType.writeUInt32LE(DSTACK_RUNTIME_EVENT_TYPE);
       const payloadBytes = hexBytes(event.event_payload ?? "");
@@ -51,7 +55,7 @@ export function replayRtmr3(eventLogRaw: unknown): Buffer {
         Buffer.from(":"),
         payloadBytes,
       ]);
-      const given = hexBytes(event.digest);
+      const given = event.digest === "" ? digest : hexBytes(event.digest);
       if (given.length !== 48 || !given.equals(digest)) {
         throw new Error(`RTMR3 digest mismatch on event ${event.event}`);
       }

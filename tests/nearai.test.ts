@@ -338,3 +338,16 @@ test("OutOfDate advisory: not Fail", () => {
   assert.equal(pub.show && pub.status, "advisory");
   if (pub.show) assert.deepEqual(pub.advisoryIds, ["INTEL-SA-123"]);
 });
+test("replayRtmr3: a runtime event with an empty digest (NEAR Cloud since 2026-11) replays to the same RTMR3 as the stated digest", () => {
+  const et = Buffer.alloc(4);
+  et.writeUInt32LE(0x08000001);
+  const d = createHash("sha384").update(et).update(":").update("app-id").update(":").update(Buffer.from("abcd", "hex")).digest();
+  const stated = [{ imr: 3, event_type: 0x08000001, event: "app-id", event_payload: "abcd", digest: d.toString("hex") }];
+  const empty = [{ ...stated[0]!, digest: "" }];
+  assert.deepEqual(replayRtmr3(JSON.stringify(empty)), replayRtmr3(JSON.stringify(stated)));
+  // payload を変えると RTMR3 も変わる（空の digest は検証を飛ばす抜け道にならない）。
+  const tampered = [{ ...empty[0]!, event_payload: "abce" }];
+  assert.notDeepEqual(replayRtmr3(JSON.stringify(tampered)), replayRtmr3(JSON.stringify(stated)));
+  // 実行時でない出来事は、空の digest を受け付けない。
+  assert.throws(() => replayRtmr3(JSON.stringify([{ imr: 3, event_type: 1, event: "x", digest: "" }])), /missing digest/);
+});

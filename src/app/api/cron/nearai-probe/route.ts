@@ -12,9 +12,12 @@ export async function GET(request: NextRequest) {
   if (!authorizeCron(request)) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
-  const allNearai = request.nextUrl.searchParams.get("all") === "1" || request.nextUrl.searchParams.get("all") === "true";
+  // 2026-11-23: 既定で NEAR が attestationSupported を付けた vllm モデルを全部調べる（初回は決め打ちの3つだけで、
+  // 頁の nearaiModelCount が NEAR の 12 ではなく 3 になった）。?all=0 か NEARAI_PROBE_ALL=0 のときだけ3つに絞る。
+  const allParam = request.nextUrl.searchParams.get("all");
+  const narrow = allParam === "0" || allParam === "false" || process.env.NEARAI_PROBE_ALL === "0";
   try {
-    const output = await runNearAiLiveProbe({ allNearai: allNearai || process.env.NEARAI_PROBE_ALL === "1" });
+    const output = await runNearAiLiveProbe({ allNearai: !narrow });
     const store = getNearAiStore();
     const run = await store.ingestProbeOutput(output, utcDayString());
     return NextResponse.json({
