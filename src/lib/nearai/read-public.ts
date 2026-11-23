@@ -43,7 +43,7 @@ export function buildPublicSnapshot(
   return {
     schemaVersion: 1,
     description:
-      "Independent re-verification of NEAR AI Cloud public TEE attestation (Gateway and private TEE models). No API key.",
+      "vet402 re-runs NEAR AI Inference SDK (pin 085a304) verification steps against Cloud attestation endpoints (Gateway keyless ECDSA, vllm models with attestationSupported). No API key.",
     retrievedAt: new Date().toISOString(),
     runStartedAt: output.startedAt,
     runCompletedAt: output.completedAt,

@@ -52,11 +52,14 @@ export type NearAiProbeOutput = {
   baseUrl: string;
   pccsUrl: string;
   keyless: boolean;
+  inferenceSdkPin?: string;
+  signingAlgoGateway?: string;
   catalogSummary: {
     totalModels: number;
     nearaiCount: number;
     attested3pCount: number;
     nearaiModels: string[];
+    attestedModels?: string[];
   };
   gateway: NearAiGatewayProbe;
   nearaiModelsProbed: NearAiModelProbeResult[];

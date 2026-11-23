@@ -2,13 +2,8 @@
 
 export const ACCEPTED_TCB_STRICT = new Set(["UpToDate"]);
 
-export const ACCEPTED_TCB_CRYPTO = new Set([
-  "UpToDate",
-  "OutOfDate",
-  "SWHardeningNeeded",
-  "ConfigurationNeeded",
-  "ConfigurationAndSWHardeningNeeded",
-]);
+/** SDK default policy (`verification.go` AcceptedTCBStatuses). */
+export const ACCEPTED_TCB_CRYPTO = new Set(["UpToDate", "OutOfDate", "TDRelaunchAdvised"]);
 
 /** Counts as NEAR-side serious crypto / integrity — subject to 2-run gate and optional hold. */
 export const SERIOUS_CRYPTO_FAILURES = new Set([
@@ -21,9 +16,13 @@ export const SERIOUS_CRYPTO_FAILURES = new Set([
   "gpu_nras_false",
   "nras_eat_nonce_mismatch",
   "nras_verdict_false",
+  "nras_jwt_invalid_signature",
+  "nras_jwt_key_not_found",
+  "nras_jwt_unsupported_algorithm",
+  "nras_jwt_claims_invalid",
   "compose_actions_mismatch",
   "missing_intel_quote",
-  "not_td10_quote",
+  "unsupported_quote_type",
   "empty_model_attestations",
 ]);
 
@@ -38,6 +37,7 @@ export function isSeriousCryptoFailure(failureClass: string | null | undefined):
   if (!failureClass) return false;
   if (isExternalVerifierUnavailable(failureClass)) return false;
   if (failureClass.startsWith("tcb_rejected:")) return false;
+  if (failureClass === "gpu_evidence_missing") return false;
   if (SERIOUS_CRYPTO_FAILURES.has(failureClass)) return true;
   return failureClass.startsWith("http_");
 }

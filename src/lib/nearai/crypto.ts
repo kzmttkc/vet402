@@ -20,29 +20,50 @@ export function sha384Buf(parts: readonly Buffer[]): Buffer {
   return h.digest();
 }
 
+const DSTACK_RUNTIME_EVENT_TYPE = 0x08000001;
+
 export function replayRtmr3(eventLogRaw: unknown): Buffer {
   let rtmr3 = Buffer.alloc(48);
-  const events = (parseJsonMaybe(eventLogRaw) as { imr?: number; event_type?: number; event?: string; event_payload?: string; digest?: string }[]) || [];
+  let count = 0;
+  const events =
+    (parseJsonMaybe(eventLogRaw) as {
+      imr?: number;
+      event_type?: number;
+      event?: string;
+      event_payload?: string;
+      digest?: string;
+    }[]) || [];
   for (const event of events) {
     if (event.imr !== 3) continue;
-    const eventType = Buffer.alloc(4);
-    eventType.writeUInt32LE((event.event_type ?? 0) >>> 0);
-    const payloadBytes = hexBytes(event.event_payload ?? "");
-    const digest = sha384Buf([
-      eventType,
-      Buffer.from(":"),
-      Buffer.from(event.event ?? "", "utf8"),
-      Buffer.from(":"),
-      payloadBytes,
-    ]);
-    if (event.digest) {
+    if (event.digest === undefined || event.digest === null) {
+      throw new Error("RTMR3 event missing digest");
+    }
+    count += 1;
+    let digest: Buffer;
+    if ((event.event_type ?? 0) >>> 0 === DSTACK_RUNTIME_EVENT_TYPE) {
+      const eventType = Buffer.alloc(4);
+      eventType.writeUInt32LE(DSTACK_RUNTIME_EVENT_TYPE);
+      const payloadBytes = hexBytes(event.event_payload ?? "");
+      digest = sha384Buf([
+        eventType,
+        Buffer.from(":"),
+        Buffer.from(event.event ?? "", "utf8"),
+        Buffer.from(":"),
+        payloadBytes,
+      ]);
       const given = hexBytes(event.digest);
-      if (!given.equals(digest)) {
+      if (given.length !== 48 || !given.equals(digest)) {
         throw new Error(`RTMR3 digest mismatch on event ${event.event}`);
+      }
+    } else {
+      digest = hexBytes(event.digest);
+      if (digest.length !== 48) {
+        throw new Error(`RTMR3 digest wrong length on event ${event.event}`);
       }
     }
     rtmr3 = Buffer.from(sha384Buf([rtmr3, digest]));
   }
+  if (count === 0) throw new Error("RTMR3 no imr=3 events");
   return rtmr3;
 }
 

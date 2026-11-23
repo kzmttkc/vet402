@@ -1,16 +1,21 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, createSign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import { INTEL_PCS_URL } from "@phala/dcap-qvl";
 import { nearAiDayPayload, nearAiDayRootHash } from "@/lib/nearai/anchors";
+import { canonicalActionsJson } from "@/lib/nearai/compose-manager";
+import { ACCEPTED_TCB_CRYPTO } from "@/lib/nearai/failure-class";
 import { canonicalizeJson, replayRtmr3 } from "@/lib/nearai/crypto";
 import { decidePublication } from "@/lib/nearai/publication";
 import { countStrictUpToDateMachines } from "@/lib/nearai/read-public";
 import type { NearAiProbeOutput } from "@/lib/nearai/probe-types";
+import { isSdkAttestedModel } from "@/lib/nearai/live-probe";
 import { nextNearAiRunUtc, readNearAiObservatory } from "@/lib/nearai/observatory-response";
 import { MemoryNearAiStore, setNearAiStoreForTests, type NearAiStore } from "@/lib/nearai/store";
 import { verifyNearReport } from "@/lib/nearai/verify-report";
+import { NVIDIA_ISSUER, verifyNrasJwt, type NvidiaJwks } from "@/lib/nearai/nvidia-jwt";
 import { verifyNvidiaGpu } from "@/lib/nearai/verify-gpu";
 import { checkNearAiAttestation } from "@/lib/mcp/nearai";
 import { NextRequest } from "next/server";
@@ -120,11 +125,25 @@ test("nearAi day roots independent from L1 anchors module", async () => {
   assert.equal(nearAiDayRootHash("genesis", day, rows).length, 64);
 });
 
-test("crypto helpers: canonicalizeJson and replayRtmr3", () => {
+function b64url(buf: Buffer): string {
+  return buf.toString("base64url");
+}
+
+function signEs384Jwt(payload: Record<string, unknown>, privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"], kid: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const full = { ...payload, iss: NVIDIA_ISSUER, iat: now, nbf: now - 1, exp: now + 3600 };
+  const header = b64url(Buffer.from(JSON.stringify({ alg: "ES384", kid, typ: "JWT" })));
+  const body = b64url(Buffer.from(JSON.stringify(full)));
+  const data = `${header}.${body}`;
+  const sig = createSign("sha384").update(data).sign({ key: privateKey, dsaEncoding: "ieee-p1363" });
+  return `${data}.${b64url(sig)}`;
+}
+
+test("crypto helpers: canonicalizeJson and replayRtmr3 (runtime event 0x08000001)", () => {
   assert.equal(canonicalizeJson({ b: 1, a: { d: 4, c: 3 } }), '{"a":{"c":3,"d":4},"b":1}');
-  const events = [{ imr: 3, event_type: 134217729, event: "app-id", event_payload: "abcd" }];
+  const events = [{ imr: 3, event_type: 0x08000001, event: "app-id", event_payload: "abcd" }];
   const et = Buffer.alloc(4);
-  et.writeUInt32LE(134217729);
+  et.writeUInt32LE(0x08000001);
   const d = createHash("sha384")
     .update(et)
     .update(":")
@@ -132,8 +151,112 @@ test("crypto helpers: canonicalizeJson and replayRtmr3", () => {
     .update(":")
     .update(Buffer.from("abcd", "hex"))
     .digest();
+  const eventsWithDigest = [{ ...events[0]!, digest: d.toString("hex") }];
   const expected = createHash("sha384").update(Buffer.alloc(48)).update(d).digest();
-  assert.deepEqual(replayRtmr3(JSON.stringify(events)), expected);
+  assert.deepEqual(replayRtmr3(JSON.stringify(eventsWithDigest)), expected);
+});
+
+test("replayRtmr3: non-runtime imr=3 uses stored digest only", () => {
+  const digest = createHash("sha384").update("legacy-event").digest().toString("hex");
+  const replayed = replayRtmr3(JSON.stringify([{ imr: 3, event_type: 0, event: "legacy", event_payload: "", digest }]));
+  const expected = createHash("sha384").update(Buffer.alloc(48)).update(Buffer.from(digest, "hex")).digest();
+  assert.deepEqual(replayed, expected);
+});
+
+test("ACCEPTED_TCB_CRYPTO matches SDK default three statuses", () => {
+  assert.deepEqual([...ACCEPTED_TCB_CRYPTO].sort(), ["OutOfDate", "TDRelaunchAdvised", "UpToDate"]);
+  assert.equal(ACCEPTED_TCB_CRYPTO.has("SWHardeningNeeded"), false);
+});
+
+test("verifyNearReport defaults to Intel PCS", async () => {
+  const prev = process.env.NEARAI_USE_PHALA_PCCS;
+  const prevUrl = process.env.NEARAI_PCCS_URL;
+  delete process.env.NEARAI_USE_PHALA_PCCS;
+  delete process.env.NEARAI_PCCS_URL;
+  const nonceHex = "11".repeat(32);
+  const res = await verifyNearReport(
+    {
+      intel_quote: "00",
+      signing_algo: "ecdsa",
+      signing_address: "0x" + "22".repeat(20),
+      request_nonce: nonceHex,
+      event_log: "[]",
+      info: { tcb_info: JSON.stringify({ app_compose: "{}" }) },
+    },
+    nonceHex,
+    {
+      verifyQvl: async () => {
+        throw new Error("pccs down");
+      },
+    },
+  );
+  assert.equal(res.pccsUrlUsed, INTEL_PCS_URL);
+  if (prev !== undefined) process.env.NEARAI_USE_PHALA_PCCS = prev;
+  if (prevUrl !== undefined) process.env.NEARAI_PCCS_URL = prevUrl;
+});
+
+test("GPU JWT: bad signature fails; good signature passes", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "secp384r1" });
+  const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
+  const kid = "test-kid";
+  const jwks: NvidiaJwks = { keys: [{ kty: "EC", crv: "P-384", x: jwk.x!, y: jwk.y!, kid, alg: "ES384", use: "sig" }] };
+  const nonce = "ab".repeat(32);
+  const good = signEs384Jwt(
+    { eat_nonce: nonce, "x-nvidia-overall-att-result": true, submods: { gpu0: {} } },
+    privateKey,
+    kid,
+  );
+  verifyNrasJwt(good, jwks);
+  const bad = good.slice(0, -4) + "XXXX";
+  assert.throws(() => verifyNrasJwt(bad, jwks));
+
+  const nrasBody = JSON.stringify([["JWT", good]]);
+  const gpuOk = await verifyNvidiaGpu(JSON.stringify({ nonce }), nonce, {
+    fetchFn: async (url) => {
+      if (String(url).includes("jwks")) return new Response(JSON.stringify(jwks));
+      return new Response(nrasBody, { status: 200 });
+    },
+    jwks,
+  });
+  assert.equal(gpuOk.ok, true);
+  assert.equal(gpuOk.jwtVerified, true);
+
+  const gpuBad = await verifyNvidiaGpu(JSON.stringify({ nonce }), nonce, {
+    fetchFn: async () => new Response(JSON.stringify([["JWT", bad]]), { status: 200 }),
+    jwks,
+  });
+  assert.equal(gpuBad.ok, false);
+  assert.equal(gpuBad.failureClass, "nras_jwt_invalid_signature");
+});
+
+test("missing GPU evidence is not a publication pass", () => {
+  const pub = decidePublication(
+    {
+      targetKey: "m",
+      tcbStatus: "UpToDate",
+      advisoryIds: [],
+      gpuPass: false,
+      rawFailureClass: null,
+      cryptoOk: true,
+      strictUpToDate: true,
+    },
+    null,
+    false,
+  );
+  assert.notEqual(pub.show && pub.status, "pass");
+  assert.equal(pub.show && pub.status, "advisory");
+});
+
+test("model metadata gate: vllm + attestationSupported", () => {
+  assert.equal(isSdkAttestedModel({ modelId: "a", providerType: "vllm", attestationSupported: true }), true);
+  assert.equal(isSdkAttestedModel({ modelId: "a", providerType: "vllm", attestationSupported: false }), false);
+  assert.equal(isSdkAttestedModel({ modelId: "a", providerType: "external", attestationSupported: true }), false);
+});
+
+test("canonicalActionsJson matches SDK lexical action encoding", () => {
+  const json = canonicalActionsJson([{ action: "deploy", timestamp: "2026-01-01T00:00:00Z", image: "nearaidev/x" }]);
+  assert.match(json, /"action":"deploy"/);
+  assert.match(json, /"timestamp":"2026-01-01T00:00:00Z"/);
 });
 
 test("MCP check_nearai_attestation returns latest snapshot", async () => {

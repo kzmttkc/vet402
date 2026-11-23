@@ -1,17 +1,11 @@
 import { createHash } from "node:crypto";
-import { getCollateralAndVerify, PHALA_PCCS_URL } from "@phala/dcap-qvl";
-import {
-  ACCEPTED_TCB_CRYPTO,
-  ACCEPTED_TCB_STRICT,
-} from "./failure-class";
-import {
-  checkComposeManagerActions,
-  extractImageDigests,
-  hexBytes,
-  parseJsonMaybe,
-  replayRtmr3,
-  sha256Buf,
-} from "./crypto";
+import { getCollateralAndVerify, INTEL_PCS_URL, PHALA_PCCS_URL } from "@phala/dcap-qvl";
+import { ACCEPTED_TCB_CRYPTO, ACCEPTED_TCB_STRICT } from "./failure-class";
+import { verifyComposeManagerAttestation, type ComposeManagerVerifyResult } from "./compose-manager";
+import { extractImageDigests, hexBytes, parseJsonMaybe, replayRtmr3, sha256Buf } from "./crypto";
+import { extractTdQuoteFields, type VerifyQvlFn } from "./tdx-quote";
+
+export type { VerifyQvlFn } from "./tdx-quote";
 
 export type NearReportVerifyResult = {
   ok: boolean;
@@ -31,7 +25,9 @@ export type NearReportVerifyResult = {
   rtmr3Error?: string | null;
   composeSha256?: string | null;
   imageDigests?: string[];
-  composeManager?: ReturnType<typeof checkComposeManagerActions>;
+  composeManager?: ComposeManagerVerifyResult;
+  quoteType?: string;
+  pccsUrlUsed?: string;
 };
 
 type ReportLike = {
@@ -43,7 +39,15 @@ type ReportLike = {
   event_log?: unknown;
   info?: { tcb_info?: unknown; instance_id?: string | null };
   nvidia_payload?: unknown;
+  compose_manager_attestation?: unknown;
 };
+
+function defaultPccsUrl(explicit?: string): string {
+  if (explicit) return explicit;
+  if (process.env.NEARAI_PCCS_URL) return process.env.NEARAI_PCCS_URL;
+  if (process.env.NEARAI_USE_PHALA_PCCS === "1") return PHALA_PCCS_URL;
+  return INTEL_PCS_URL;
+}
 
 export async function verifyNearReport(
   report: ReportLike,
@@ -51,43 +55,54 @@ export async function verifyNearReport(
   options: {
     pccsUrl?: string;
     peerSpkiSha256?: string | null;
-    verifyQvl?: (quoteBytes: Buffer) => ReturnType<typeof getCollateralAndVerify>;
+    verifyQvl?: VerifyQvlFn;
   } = {},
 ): Promise<NearReportVerifyResult> {
-  const pccsUrl = options.pccsUrl || PHALA_PCCS_URL;
+  const pccsUrl = defaultPccsUrl(options.pccsUrl);
   const peerSpkiSha256 = options.peerSpkiSha256;
   const verifyQvl = options.verifyQvl ?? ((quoteBytes: Buffer) => getCollateralAndVerify(quoteBytes, pccsUrl));
 
   if (!report?.intel_quote) {
-    return { ok: false, strictUpToDate: false, failureClass: "missing_intel_quote", tcbStatus: "unknown", advisoryIds: [], debugEnabled: false };
+    return {
+      ok: false,
+      strictUpToDate: false,
+      failureClass: "missing_intel_quote",
+      tcbStatus: "unknown",
+      advisoryIds: [],
+      debugEnabled: false,
+      pccsUrlUsed: pccsUrl,
+    };
   }
 
   let verified: Awaited<ReturnType<typeof getCollateralAndVerify>>;
   try {
     verified = await verifyQvl(hexBytes(report.intel_quote));
   } catch {
-    return { ok: false, strictUpToDate: false, failureClass: "pccs_unavailable", tcbStatus: "unknown", advisoryIds: [], debugEnabled: false };
-  }
-
-  if (verified.report?.type !== "td10") {
     return {
       ok: false,
       strictUpToDate: false,
-      failureClass: "not_td10_quote",
+      failureClass: "pccs_unavailable",
+      tcbStatus: "unknown",
+      advisoryIds: [],
+      debugEnabled: false,
+      pccsUrlUsed: pccsUrl,
+    };
+  }
+
+  const quote = extractTdQuoteFields(verified);
+  if (!quote) {
+    return {
+      ok: false,
+      strictUpToDate: false,
+      failureClass: "unsupported_quote_type",
       tcbStatus: verified.status,
       advisoryIds: verified.advisory_ids ?? [],
       debugEnabled: false,
+      quoteType: verified.report.type,
+      pccsUrlUsed: pccsUrl,
     };
   }
-  const quote = verified.report.data as {
-    tdAttributes: Uint8Array;
-    reportData: Uint8Array;
-    mrConfigId: Uint8Array;
-    rtMr3: Uint8Array;
-    mrTd: Uint8Array;
-  };
-  const tdAttributes = Buffer.from(quote.tdAttributes);
-  const debugEnabled = Boolean(tdAttributes[0] & 1);
+  const debugEnabled = Boolean(quote.tdAttributes[0]! & 1);
 
   const signingAlgo = (report.signing_algo || "").toLowerCase();
   const identity = hexBytes(report.signing_address || "");
@@ -100,6 +115,8 @@ export async function verifyNearReport(
       tcbStatus: verified.status,
       advisoryIds: verified.advisory_ids ?? [],
       debugEnabled,
+      quoteType: verified.report.type,
+      pccsUrlUsed: pccsUrl,
     };
   }
 
@@ -116,7 +133,7 @@ export async function verifyNearReport(
     ? sha256Buf([identity, hexBytes(fingerprint)])
     : Buffer.concat([identity, Buffer.alloc(32 - identity.length)]);
   const expectedReportData = Buffer.concat([boundIdentity, hexBytes(nonceHex)]);
-  const reportDataMatches = Buffer.from(quote.reportData).equals(expectedReportData);
+  const reportDataMatches = quote.reportData.equals(expectedReportData);
   const echoedNonceMatches = (report.request_nonce || "").toLowerCase() === nonceHex.toLowerCase();
 
   const tcbInfo = parseJsonMaybe(report.info?.tcb_info) as { app_compose?: string } | null;
@@ -125,18 +142,23 @@ export async function verifyNearReport(
   let mrConfigMatches = false;
   if (composeSha256) {
     const expectedMrConfig = Buffer.concat([Buffer.from([1]), Buffer.from(composeSha256, "hex"), Buffer.alloc(15)]);
-    mrConfigMatches = Buffer.from(quote.mrConfigId).equals(expectedMrConfig);
+    mrConfigMatches = quote.mrConfigId.equals(expectedMrConfig);
   }
 
   let rtmr3Matches = false;
   let rtmr3Error: string | null = null;
   try {
-    rtmr3Matches = replayRtmr3(report.event_log).equals(Buffer.from(quote.rtMr3));
+    rtmr3Matches = replayRtmr3(report.event_log).equals(quote.rtMr3);
   } catch (err) {
     rtmr3Error = err instanceof Error ? err.message : String(err);
   }
 
-  const composeManager = checkComposeManagerActions(report as Record<string, unknown>);
+  const composeManager = await verifyComposeManagerAttestation(
+    report.compose_manager_attestation,
+    appCompose,
+    nonceHex,
+    verifyQvl,
+  );
   const imageDigests = extractImageDigests(appCompose);
 
   const tcbStatus = verified.status;
@@ -180,5 +202,7 @@ export async function verifyNearReport(
     composeSha256,
     imageDigests,
     composeManager,
+    quoteType: verified.report.type,
+    pccsUrlUsed: pccsUrl,
   };
 }

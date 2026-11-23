@@ -37,7 +37,7 @@ export const TOOL_EMPTY_HINT = {
   check_payment_proof:
     "Pass payment_response, or pass network and transaction together, such as eip155:8453 and a Base transaction hash.",
   check_nearai_attestation:
-    "No arguments. Returns the latest published NEAR AI TEE attestation snapshot, or status no_run_yet before the first daily run.",
+    "No arguments. Returns the latest NEAR AI TEE snapshot after vet402 re-runs NEAR AI Inference SDK verification (pin 085a304), or no_run_yet before the first 09:00 UTC daily run.",
 } as const;
 
 export const TOOL_TEXT = {
@@ -104,10 +104,10 @@ export const TOOL_TEXT = {
   check_nearai_attestation: {
     title: "NEAR AI TEE attestation snapshot",
     description:
-      "Read the latest published NEAR AI Cloud TEE attestation re-verification. Read-only. No API key. " +
-      "Before the first daily run the answer is status no_run_yet with next_run_utc (09:00 UTC) and an empty models list. " +
-      "After a run it lists Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. " +
-      "Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. " +
+      "Read the latest NEAR AI Cloud TEE snapshot after vet402 re-runs the published NEAR AI Inference SDK verification steps (pinned commit 085a304). Read-only. No API key. " +
+      "Before the first daily 09:00 UTC run the answer is status no_run_yet with next_run_utc and an empty models list. " +
+      "After a run it lists Gateway keyless ECDSA TLS binding, Intel PCS TDX checks, and NRAS GPU JWKS results for vllm models with attestationSupported. " +
+      "Out-of-date TCB with valid cryptography is advisory (SDK default accepts OutOfDate and TDRelaunchAdvised). Missing GPU evidence is not provided, never pass. PCCS or NRAS outages are unverified. Two consecutive serious mismatches before fail. " +
       "It changes no data and has no charge. Up to 30 calls per minute per IP.",
   },
   check_payment_proof: {
