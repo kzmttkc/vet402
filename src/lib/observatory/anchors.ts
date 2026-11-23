@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { utcDayStartOf } from "@/lib/db/utc-day";
+import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -119,7 +120,53 @@ async function hasLaterAnchor(db: Db, day: string): Promise<boolean> {
  */
 export async function anchorThrough(to: string): Promise<AnchorResult[]> {
   if (!DAY_RE.test(to)) throw new Error(`anchorThrough: not a YYYY-MM-DD day: ${to}`);
-  return [await anchorDay(to)];
+  const result = [await anchorDay(to)];
+  const db = getDb();
+  // 封印は済んでいる。古い日のバイト列を残す処理が落ちても、cron の後続（他の日次の仕事）を止めない。
+  if (db) {
+    try {
+      await retainSealedPayloads(db);
+    } catch (error) {
+      logServerErrorSafe("anchorThrough.retainSealedPayloads", error);
+    }
+  }
+  return result;
+}
+
+/**
+ * 封印時のバイト列を持っていない日のうち、今の行がまだ封印した root に一致する日について、そのバイト列を残す
+ * （2026-11-23）。一致するなら今のバイト列は封印時のものと同じなので、後で行が変わっても検算できるようになる。
+ * 一致しない日は何もしない（当時のバイト列は作り直せない。null のまま公開し、その旨を書く）。
+ */
+export async function retainSealedPayloads(db: Pick<Db, "execute">, limit = 400): Promise<{ retained: string[]; drifted: string[] }> {
+  const raw = await db.execute(sql`
+    SELECT day, root_hash, prev_root FROM ledger_anchors WHERE sealed_payload IS NULL ORDER BY day DESC LIMIT ${limit}
+  `);
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+    day: string;
+    root_hash: string;
+    prev_root: string | null;
+  }[];
+  const retained: string[] = [];
+  const drifted: string[] = [];
+  for (const r of rows) {
+    const day = String(r.day);
+    const { payload } = await canonicalDayPayload(db, day);
+    const recomputed = createHash("sha256")
+      .update(r.prev_root ?? "genesis")
+      .update("\n")
+      .update(payload)
+      .digest("hex");
+    if (recomputed !== r.root_hash) {
+      drifted.push(day);
+      continue;
+    }
+    await db.execute(sql`
+      UPDATE ledger_anchors SET sealed_payload = ${payload} WHERE day = ${day} AND root_hash = ${r.root_hash} AND sealed_payload IS NULL
+    `);
+    retained.push(day);
+  }
+  return { retained, drifted };
 }
 
 export async function anchorDay(day: string): Promise<AnchorResult> {
@@ -139,13 +186,14 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
     .digest("hex");
 
   const existingRaw = await db.execute(sql`
-    SELECT root_hash, anchored_tx FROM ledger_anchors WHERE day = ${day}
+    SELECT root_hash, anchored_tx, (sealed_payload IS NOT NULL) AS has_sealed FROM ledger_anchors WHERE day = ${day}
   `);
   const existing = (Array.isArray(existingRaw)
     ? existingRaw
     : (existingRaw as { rows?: unknown[] }).rows ?? []) as {
     root_hash: string;
     anchored_tx: string | null;
+    has_sealed: boolean;
   }[];
 
   const laterExists = await hasLaterAnchor(db, day);
@@ -155,13 +203,19 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
       throw new Error(`anchorDay: ${day} より後の日が封印済み——過去の穴は埋めない（no_head_for_day として公開する）`);
     }
     await db.execute(sql`
-      INSERT INTO ledger_anchors (day, root_hash, prev_root, entry_count)
-      VALUES (${day}, ${rootHash}, ${prevRoot}, ${count})
+      INSERT INTO ledger_anchors (day, root_hash, prev_root, entry_count, sealed_payload)
+      VALUES (${day}, ${rootHash}, ${prevRoot}, ${count}, ${payload})
       ON CONFLICT (day) DO NOTHING
     `);
     return { day, rootHash, entryCount: count, status: "created" };
   }
   if (existing[0].root_hash === rootHash) {
+    // root が一致する今のバイト列は、封印したときのバイト列そのもの。まだ残していなければここで残す。
+    if (!existing[0].has_sealed) {
+      await db.execute(sql`
+        UPDATE ledger_anchors SET sealed_payload = ${payload} WHERE day = ${day} AND root_hash = ${rootHash} AND sealed_payload IS NULL
+      `);
+    }
     return { day, rootHash, entryCount: count, status: "unchanged" };
   }
   if (existing[0].anchored_tx || laterExists) {
@@ -177,7 +231,7 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
   }
   // 鎖の先頭（後ろに日が無い）で未刻印なら、同日中の遅延到着行を取り込んで更新する。
   await db.execute(sql`
-    UPDATE ledger_anchors SET root_hash = ${rootHash}, prev_root = ${prevRoot}, entry_count = ${count}
+    UPDATE ledger_anchors SET root_hash = ${rootHash}, prev_root = ${prevRoot}, entry_count = ${count}, sealed_payload = ${payload}
     WHERE day = ${day}
   `);
   return { day, rootHash, entryCount: count, status: "updated" };
@@ -221,7 +275,11 @@ export async function getAnchors(days: number): Promise<AnchorRow[]> {
  */
 export type DayVerificationInputs = {
   day: string;
+  /** 配るバイト列。封印時のバイト列があればそれ、無ければ今の行から作ったもの（payloadSource で区別）。 */
   payload: string;
+  payloadSource: "sealed" | "current";
+  /** 今の行から作ったバイト列（封印の後の変化を見るため）。 */
+  currentPayload: string;
   entryCount: number;
   head: { day: string; rootHash: string; prevRoot: string | null } | null;
   chainRoot: string | null;
@@ -231,11 +289,12 @@ export type DayVerificationInputs = {
 export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: string): Promise<DayVerificationInputs> {
   if (!DAY_RE.test(day)) throw new Error(`readDayVerificationInputs: not a YYYY-MM-DD day: ${day}`);
   const { payload, count } = await canonicalDayPayload(db, day);
-  const headRaw = await db.execute(sql`SELECT day, root_hash, prev_root FROM ledger_anchors WHERE day = ${day}`);
+  const headRaw = await db.execute(sql`SELECT day, root_hash, prev_root, sealed_payload FROM ledger_anchors WHERE day = ${day}`);
   const headRows = (Array.isArray(headRaw) ? headRaw : (headRaw as { rows?: unknown[] }).rows ?? []) as {
     day: string;
     root_hash: string;
     prev_root: string | null;
+    sealed_payload: string | null;
   }[];
   const nextRaw = await db.execute(sql`
     SELECT day, prev_root FROM ledger_anchors WHERE day > ${day} ORDER BY day ASC LIMIT 1
@@ -252,9 +311,12 @@ export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: st
       }
     : null;
   const next = nextRows[0];
+  const sealed = headRows[0]?.sealed_payload ?? null;
   return {
     day,
-    payload,
+    payload: sealed ?? payload,
+    payloadSource: sealed !== null ? "sealed" : "current",
+    currentPayload: payload,
     entryCount: count,
     head,
     chainRoot: next && next.prev_root !== null ? String(next.prev_root) : null,
@@ -272,7 +334,8 @@ export function ledgerRowFingerprint(row: unknown): string {
 }
 
 /**
- * 訂正が指す台帳の行を、その日の正規化ペイロードから読み、指紋を返す。行が無ければ null。
+ * 訂正が指す台帳の行を、その日の正規化ペイロード（今の行。封印時のバイト列ではない）から読み、指紋を返す。行が無ければ null。
+ * 公開では /anchors/day?view=current の同じ行と一致する。
  * 呼び手（訂正の POST）が渡した値ではなく、台帳そのものから取る。行は読むだけで変えない。
  */
 export async function readLedgerRowFingerprint(

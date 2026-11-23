@@ -1235,6 +1235,12 @@ export const ledgerAnchors = pgTable(
     prevRoot: text("prev_root"),
     entryCount: integer("entry_count").notNull(),
     anchoredTx: text("anchored_tx"),
+    /**
+     * 封印したときの正規化ペイロード（root を計算したバイト列そのもの・2026-11-23）。
+     * 封印の後に行が変わっても（決済の後追いの確定など）、この列から配れば誰でも root を検算できる。
+     * 2026-11-23 より前に封印し、その後に行が変わった日は null（当時のバイト列は残っていない）。
+     */
+    sealedPayload: text("sealed_payload"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
 );

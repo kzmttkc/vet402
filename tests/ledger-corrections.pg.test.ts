@@ -121,7 +121,7 @@ if (!TEST_DB) {
         const { anchorDay } = await import("@/lib/observatory/anchors");
         await db.execute(sql`TRUNCATE ledger_anchors`);
         await anchorDay("2026-11-02");
-        const fileRes = await dayGet(new NextRequest("http://localhost/api/v1/observatory/anchors/day?day=2026-11-02"));
+        const fileRes = await dayGet(new NextRequest("http://localhost/api/v1/observatory/anchors/day?day=2026-11-02&view=current"));
         assert.equal(fileRes.status, 200);
         const row = (JSON.parse(await fileRes.text()) as { rows: { id: string }[] }).rows.find((r) => r.id === pid);
         assert.ok(row, "the cited row is in the day file");

@@ -14,7 +14,10 @@ import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-no
  * 本文は anchorDay が root を計算したのと同じ正規化 JSON（canonicalDayPayload）を、1 バイトも変えずに返す。
  * 鍵なしで検算できる: sha256((prevRoot ?? "genesis") + "\n" + 本文) が、/anchors のその日の rootHash と、
  * 次に封印した日の prevRoot の両方に一致すれば、その日の中身は封印したときのままである。
- * 封印の後に行が変わった日（決済の後追いの確定など）は一致しない。その理由は /observatory/corrections に残る。
+ * 2026-11-23 から、本文は封印したときに root を計算したバイト列（ledger_anchors.sealed_payload）を返す。
+ * 封印の後に行が変わっても（決済の後追いの確定など）検算は通る。今の行は ?view=current で読め、
+ * x-vet402-current-matches-sealed が封印の後に変わったかを示す。封印時のバイト列を残していない日
+ * （2026-11-23 より前に封印し、その後に行が変わった日）は今の行を返し、x-vet402-day-source: current になる。
  * ヘッドが無い日は 404 no_head_for_day を返し、後から root を作らない。
  */
 
@@ -46,13 +49,16 @@ export async function GET(request: NextRequest) {
         { status: 404, headers: { ...headers, "Cache-Control": "no-store" } },
       );
     }
+    const wantCurrent = request.nextUrl.searchParams.get("view") === "current";
+    const served = wantCurrent ? inputs.currentPayload : inputs.payload;
+    const source = wantCurrent ? "current" : inputs.payloadSource;
     const verification = verifyPublishedDayTriple({
       day,
-      payloadBytes: inputs.payload,
+      payloadBytes: served,
       publishedHead: inputs.head,
       chainRoot: inputs.chainRoot,
     });
-    const body = Buffer.from(inputs.payload, "utf8");
+    const body = Buffer.from(served, "utf8");
     return new Response(body, {
       status: 200,
       headers: {
@@ -66,6 +72,8 @@ export async function GET(request: NextRequest) {
         "x-vet402-chain-root-day": inputs.chainRootDay ?? "",
         "x-vet402-payload-sha256": createHash("sha256").update(body).digest("hex"),
         "x-vet402-day-verification": verification.ok ? "ok" : (verification.code ?? "failed"),
+        "x-vet402-day-source": source,
+        "x-vet402-current-matches-sealed": inputs.payloadSource === "sealed" ? String(inputs.currentPayload === inputs.payload) : "unknown",
         "x-vet402-license": "CC-BY-4.0",
       },
     });

@@ -1593,8 +1593,8 @@ paths:
         `signatureValid` is checked again on each read. Anyone can repeat that check
         with EIP-191 recovery and no key. A row may cite one ledger row with
         `citedRowId`. Its `priorRowSha256` is the SHA-256 of JSON.stringify of that
-        row in /api/v1/observatory/anchors/day, read from the ledger when the
-        correction was filed. Filing a correction leaves the cited row as it is. CC-BY-4.0.
+        row in /api/v1/observatory/anchors/day?view=current (the rows as they are
+        now), read from the ledger when the correction was filed. Filing a correction leaves the cited row as it is. CC-BY-4.0.
       security: []
       responses:
         "200":
@@ -1622,13 +1622,23 @@ paths:
         The exact bytes the day root was computed from. sha256((prevRoot or "genesis")
         + newline + body) must equal that day's rootHash in /api/v1/observatory/anchors
         and the prevRoot of the next sealed day. Headers carry the roots and the result
-        of that check. A day with no sealed root answers 404 no_head_for_day. CC-BY-4.0.
+        of that check. Since 2026-11-23 the body is the byte string stored when the day
+        was sealed, so the check holds after a late settlement confirmation changes the
+        rows. view=current serves the rows as they are now, and
+        x-vet402-current-matches-sealed says whether they changed. A day sealed earlier
+        whose rows changed afterwards has no stored bytes (x-vet402-day-source: current).
+        A day with no sealed root answers 404 no_head_for_day. CC-BY-4.0.
       security: []
       parameters:
         - name: day
           in: query
           required: true
           schema: { type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$" }
+        - name: view
+          in: query
+          required: false
+          description: current serves the rows as they are now instead of the sealed bytes.
+          schema: { type: string, enum: [current] }
       responses:
         "200": { description: Canonical day JSON }
         "400": { description: invalid_day }

@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
         missingHeadDays: noHeadDays,
         dayVerification,
         recompute:
-          "root = sha256((prevRoot ?? 'genesis') + '\\n' + canonical day JSON of all L1 rows, pk-ascending). The day JSON is served byte for byte at /api/v1/observatory/anchors/day?day=YYYY-MM-DD. Projection: src/lib/observatory/anchors.ts (open source). A day verifies when the root recomputed from that file equals the published root and equals the prevRoot of the next sealed day. A day with no sealed root is listed in missingHeadDays and is never filled later.",
+          "root = sha256((prevRoot ?? 'genesis') + '\\n' + canonical day JSON of all L1 rows, pk-ascending). The day JSON is served byte for byte at /api/v1/observatory/anchors/day?day=YYYY-MM-DD. Projection: src/lib/observatory/anchors.ts (open source). A day verifies when the root recomputed from that file equals the published root and equals the prevRoot of the next sealed day. A day with no sealed root is listed in missingHeadDays and is never filled later. Since 2026-11-23 the day file is the byte string the root was computed from (stored at sealing), so a day still verifies after a late settlement confirmation changes its rows. ?view=current serves the rows as they are now. Days sealed earlier whose rows changed afterwards have no stored bytes and do not recompute (x-vet402-day-source: current).",
         humanReadable: "https://vet402.com/observatory/state",
         license: "CC-BY-4.0",
         licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
