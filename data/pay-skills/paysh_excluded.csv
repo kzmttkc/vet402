@@ -3,6 +3,7 @@ order,tranche,provider_fqn,host,endpoint,method,quoted_usd,cumulative_usd,reason
 2,T1,agentres/reservations,agentres.dev,/api/book,POST,0.01,0.02,keyword:book
 5,T1,brij/travel,travel.brij.fi,/air/book,POST,0.001,0.026,keyword:book
 8,T1,paysponge/2captcha,2captcha.x402.paysponge.com,/createTask,POST,0.01,0.047,keyword:create
+16,T1,paysponge/textbelt,api.paysponge.com,/text,POST,0.02,0.192,side_effect:sms_send
 39,T1,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request,POST,0.001,0.5394,keyword:execute
 140,T2g,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request-ml,POST,0.001,0.8789,keyword:execute
 141,T2g,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request-sg,POST,0.001,0.8799,keyword:execute

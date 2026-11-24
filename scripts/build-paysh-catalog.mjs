@@ -64,6 +64,22 @@ function postCreateEndpoint(method, endpoint) {
   return false;
 }
 
+/**
+ * Calls whose catalog description says they act outside vet402 but whose path has no verb
+ * (2026-11-25: solana-paysh found paysponge/textbelt POST /text, "Send outbound SMS", by reading
+ * every openapi summary). Keyed by provider and method and path.
+ */
+export const SIDE_EFFECT_LISTINGS = [
+  { provider: "paysponge/textbelt", method: "POST", endpoint: "/text", reason: "side_effect:sms_send" },
+];
+
+export function sideEffectReason(provider, method, endpoint) {
+  const hit = SIDE_EFFECT_LISTINGS.find(
+    (x) => x.provider === provider && x.method === String(method).toUpperCase() && x.endpoint === String(endpoint).toLowerCase(),
+  );
+  return hit ? hit.reason : null;
+}
+
 export function excludeReason(method, endpoint) {
   if (postCreateEndpoint(method, endpoint)) return "keyword:create";
   const segs = endpointSegments(endpoint);
@@ -174,7 +190,7 @@ async function main() {
   for (const row of plan) {
     const { order, tranche, provider_fqn, host, method, quoted_usd, cumulative_usd } = row;
     const endpoint = normalizeEndpoint(row.endpoint);
-    const reason = excludeReason(method, endpoint);
+    const reason = sideEffectReason(provider_fqn, method, endpoint) ?? excludeReason(method, endpoint);
     if (reason) {
       excluded.push({ ...row, reason });
       continue;

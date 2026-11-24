@@ -20,7 +20,7 @@ import { parseDeliverySellersQuery } from "@/lib/delivery/sellers-feed-query";
 import { selectPaidRequestBody } from "@/lib/observatory/declared-input-rules";
 import { SOLANA_DAILY_CAP_USD_DEFAULT, solanaDailyCapUnits } from "@/lib/observatory/budget";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
-import { parseCsvRows, excludeReason } from "../scripts/build-paysh-catalog.mjs";
+import { parseCsvRows, excludeReason, sideEffectReason } from "../scripts/build-paysh-catalog.mjs";
 
 const ROOT = process.cwd();
 const EXCLUDED_CSV = join(ROOT, "data/pay-skills/paysh_excluded.csv");
@@ -40,7 +40,7 @@ test("一覧は規則どおりに読め、件数が purchase_plan の残りと�
   const items = parsePaySkillsListings(PAY_SKILLS_LISTINGS);
   assert.equal(items.length, PAY_SKILLS_LISTINGS.length);
   assert.equal(PAYSH_PINNED_PURCHASES.length, PAY_SKILLS_LISTINGS.length);
-  assert.equal(items.length, 350);
+  assert.equal(items.length, 349); // 2026-11-25: 350 → 349, paysponge/textbelt POST /text (SMS) left out
   assert.equal(PAY_SKILLS_SOURCE, "pay_skills");
   assert.ok(readFileSync(join(ROOT, PAY_SKILLS_LISTINGS_FILE), "utf8").includes("export const PAY_SKILLS_LISTINGS"));
 });
@@ -130,4 +130,12 @@ test("同期は catalog-sync-aux に載る", () => {
   assert.ok(route.includes("await syncPaySkillsListings()"));
   const openapi = readFileSync(join(ROOT, "docs/openapi.yaml"), "utf8");
   assert.ok(openapi.includes("enum: [bazaar, circle, mpp, operator, pay_skills]"));
+});
+test("SMS を送る口（paysponge/textbelt POST /text）は除外され、予約にも出品にも無い", async () => {
+  assert.equal(sideEffectReason("paysponge/textbelt", "POST", "/text"), "side_effect:sms_send");
+  assert.equal(sideEffectReason("paysponge/textbelt", "GET", "/text"), null);
+  const { PAYSH_PINNED_PURCHASES } = await import("../src/lib/observatory/pay-skills-pinned-data");
+  const { PAY_SKILLS_LISTINGS } = await import("../src/lib/observatory/pay-skills-listings");
+  assert.ok(!PAYSH_PINNED_PURCHASES.some((p) => p.url === "https://api.paysponge.com/text"));
+  assert.ok(!PAY_SKILLS_LISTINGS.some((l) => l.url === "https://api.paysponge.com/text"));
 });
