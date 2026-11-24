@@ -37,6 +37,12 @@ if (!TEST_DB) {
     const { Keypair } = await import("@solana/web3.js");
     const pin = PAYSH_PINNED_PURCHASES.find((p) => p.reason === "presign-gate-2611")!;
     const listing = PAY_SKILLS_LISTINGS.find((l) => l.url === pin.url)!;
+    // 2026-11-24: the day's Solana spend is pre-filled on a different listing. A row on the target
+    // itself counts as its one pinned purchase, so the batch never picked it (CI: attempted 0, seen []).
+    const filler = PAY_SKILLS_LISTINGS.find(
+      (l) => l.network === listing.network && l.payTo !== listing.payTo && new URL(l.url).host !== new URL(listing.url).host,
+    )!;
+    assert.ok(filler, "a second Solana pay.sh listing with another host and payTo exists");
     assert.equal(listing.network, SOLANA_MAINNET_CAIP2);
     const listingAmount = BigInt(listing.amount);
     const solKeypair = Keypair.fromSeed(new Uint8Array(32).fill(9));
@@ -72,7 +78,7 @@ if (!TEST_DB) {
     await db.execute(
       sql`TRUNCATE x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_payee_watchers, x402_l1_purchases`,
     );
-    await syncPaySkillsListings({ listings: [listing], today: "2026-11-27" });
+    await syncPaySkillsListings({ listings: [listing, filler], today: "2026-11-27" });
   await runL0ProbeBatch({
       limit: 5,
       fetchImpl: async () =>
@@ -101,8 +107,8 @@ if (!TEST_DB) {
     assert.ok(prefillUnits > 0n && prefillUnits < cap, "prefill leaves room in lane SQL but not for this purchase");
     await db.execute(sql`
       INSERT INTO x402_l1_purchases (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units, attempted_at)
-      SELECT id, 'settled', 'FakePayer', ${listing.network}, ${listing.asset}, ${listing.payTo}, '1', ${String(prefillUnits)}, now()
-      FROM x402_endpoints WHERE resource_url = ${listing.url}
+      SELECT id, 'settled', 'FakePayer', ${filler.network}, ${filler.asset}, ${filler.payTo}, '1', ${String(prefillUnits)}, now()
+      FROM x402_endpoints WHERE resource_url = ${filler.url}
     `);
 
     let tx = 0;
