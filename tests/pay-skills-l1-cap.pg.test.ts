@@ -47,6 +47,8 @@ if (!TEST_DB) {
     const listingAmount = BigInt(listing.amount);
     const solKeypair = Keypair.fromSeed(new Uint8Array(32).fill(9));
     const BLOCKHASH = "EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k";
+    // Solana x402 needs extra.feePayer. Without it the runner records no_fee_payer before reserveSpend (CI 2026-11-24).
+    const FEE_PAYER = Keypair.fromSeed(new Uint8Array(32).fill(7)).publicKey.toBase58();
 
     const insideMs = Date.parse("2026-11-27T12:00:00.000Z");
     const saved = {
@@ -93,6 +95,7 @@ if (!TEST_DB) {
                 asset: listing.asset,
                 payTo: listing.payTo,
                 maxTimeoutSeconds: 300,
+                extra: { feePayer: FEE_PAYER },
               },
             ],
           }),
@@ -136,7 +139,7 @@ if (!TEST_DB) {
         return new Response(
           JSON.stringify({
             x402Version: 2,
-            accepts: [{ scheme: "exact", network: listing.network, amount: listing.amount, asset: listing.asset, payTo: listing.payTo }],
+            accepts: [{ scheme: "exact", network: listing.network, amount: listing.amount, asset: listing.asset, payTo: listing.payTo, maxTimeoutSeconds: 60, extra: { feePayer: FEE_PAYER } }],
           }),
           { status: 402, headers: { "content-type": "application/json" } },
         );
