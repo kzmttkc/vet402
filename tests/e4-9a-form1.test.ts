@@ -379,13 +379,14 @@ test("9a-2 p2-live: E4 public testnet green follows allPass and void or reclaim 
   assert.equal(isE4Form1PublicTestnetGreen(), true);
 });
 
-test("export.csv の列は 19 列のまま（この変更で列・順番を変えない）", () => {
+test("export.csv の列は 21 列のまま（この変更で列・順番を変えない）", () => {
   assert.deepEqual(
     [...EXPORT_CSV_COLUMNS],
     [
       "attempted_at", "resource_key", "network", "status", "amount_units", "spent_units", "tx_hash", "http_status_paid",
       "latency_ms", "l2_schema", "held_reason", "request_body", "request_body_sha256", "settlement_source", "request_query",
       "request_query_sha256", "confirmed_units", "purchase_id", "l2_reading",
+      "response_sha256", "response_bytes",
     ],
   );
 });

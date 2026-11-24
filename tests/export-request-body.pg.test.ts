@@ -104,14 +104,14 @@ if (!TEST_DB) {
       assert.equal(
         lines[0],
         "attempted_at,resource_key,network,status,amount_units,spent_units,tx_hash,http_status_paid,latency_ms,l2_schema,held_reason," +
-          "request_body,request_body_sha256,settlement_source,request_query,request_query_sha256,confirmed_units,purchase_id,l2_reading",
+          "request_body,request_body_sha256,settlement_source,request_query,request_query_sha256,confirmed_units,purchase_id,l2_reading,response_sha256,response_bytes",
       );
       // 2026-09-29: 取り違えやすい spent_units / confirmed_units の意味をヘッダで運ぶ。
       assert.match(res.headers.get("x-vet402-column-notes") ?? "", /not units shown to have moved/);
       assert.equal(lines.length - 1, seeds.length, "budget_denied は出ない");
       for (const [i, s] of seeds.entries()) {
         const cells = lines[i + 1].split(",");
-        assert.equal(cells.length, 19, s.label);
+        assert.equal(cells.length, 21, s.label);
         assert.equal(cells[3], s.status, `${s.label}: 既存列の位置は動いていない`);
         assert.equal(cells[5], "1000", `${s.label}: spent_units は署名額のまま（意味を変えない）`);
         assert.equal(cells[6], s.txHash ?? "", s.label);
@@ -120,6 +120,8 @@ if (!TEST_DB) {
         assert.equal(cells[16], s.status === "settled" ? "1000" : "0", `${s.label}: confirmed_units`);
         // 2026-09-29 監査 5 周目: purchase_id（訂正ログの subject_id と結ぶ鍵）を末尾に。
         assert.match(cells[17], /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, `${s.label}: purchase_id`);
+        assert.equal(cells[19], "", `${s.label}: response_sha256（種データに無い）`);
+        assert.equal(cells[20], "", `${s.label}: response_bytes`);
       }
       const ids = lines.slice(1).map((l) => l.split(",")[17]);
       assert.equal(new Set(ids).size, ids.length, "purchase_id は行ごとに違う");

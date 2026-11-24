@@ -425,11 +425,12 @@ test("[guard] 公平-2: settled の 2 段は別の数で、和が settled、弱�
   assert.match(reader, /settledAmountPayeeOnly: Number\(l1List\[0\]\.settled_amount_payee_only/);
 });
 
-test("[guard] 公平-2: export.csv の列は凍結のまま（19 列・順番）", () => {
+test("[guard] 公平-2: export.csv の列は凍結のまま（21 列・順番）", () => {
   assert.deepEqual([...EXPORT_CSV_COLUMNS], [
     "attempted_at", "resource_key", "network", "status", "amount_units", "spent_units", "tx_hash",
     "http_status_paid", "latency_ms", "l2_schema", "held_reason", "request_body", "request_body_sha256",
     "settlement_source", "request_query", "request_query_sha256", "confirmed_units", "purchase_id", "l2_reading",
+    "response_sha256", "response_bytes",
   ]);
 });
 

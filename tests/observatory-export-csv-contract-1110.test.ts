@@ -40,13 +40,15 @@ const FROZEN_CSV_COLUMNS = [
   "confirmed_units",
   "purchase_id",
   "l2_reading",
+  "response_sha256",
+  "response_bytes",
 ] as const;
 
 const FROZEN_CSV_HEADER_LINE = FROZEN_CSV_COLUMNS.join(",");
 const EXPORT_CONTENT_TYPE = "text/csv; charset=utf-8";
 
-test("凍結: 列名と順序は 19 列・export-columns.ts の EXPORT_CSV_COLUMNS と同じ", () => {
-  assert.equal(FROZEN_CSV_COLUMNS.length, 19);
+test("凍結: 列名と順序は 21 列・export-columns.ts の EXPORT_CSV_COLUMNS と同じ", () => {
+  assert.equal(FROZEN_CSV_COLUMNS.length, 21);
   assert.deepEqual([...EXPORT_CSV_COLUMNS], [...FROZEN_CSV_COLUMNS]);
   assert.equal(FROZEN_CSV_HEADER_LINE, EXPORT_CSV_COLUMNS.join(","));
 });
@@ -64,7 +66,7 @@ test("凍結: OpenAPI は security: []（鍵なしの公開読み取り）", () 
   const openapi = read("docs/openapi.yaml");
   const start = openapi.indexOf("operationId: exportObservatoryLedgerCsv");
   assert.ok(start >= 0, "exportObservatoryLedgerCsv");
-  const slice = openapi.slice(start, start + 12_000);
+  const slice = openapi.slice(start, start + 16_000);
   assert.match(slice, /security: \[\]/);
   assert.match(slice, /text\/csv:/);
 });

@@ -12,6 +12,7 @@ import {
   EXPORT_CSV_QUERY_ALLOWED,
   ledgerExportCsvShape,
 } from "@/lib/observatory/export-csv-ledger-shape";
+import { responseBytesSql, responseSha256Sql } from "@/lib/observatory/paid-response-fingerprint";
 import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
 import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
 import { settlementSourceSql } from "@/lib/observatory/settlement-source";
@@ -60,6 +61,10 @@ import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-no
  *   purchase_id           購入の id（UUID）。訂正ログ（/api/v1/observatory/corrections）の subject_id と結ぶ鍵。
  *
  * 2026-11-17（段階 B）: `?include=` で任意の末尾列を足せる（export-csv-ledger-shape.ts）。既定の 19 列は変えない。
+ *
+ * 2026-11-24（F3）: さらに末尾に 2 列。既存の 19 列は変えていない。
+ *   response_sha256  支払い付き応答として読んだバイト列の SHA-256（小文字 hex 64）。
+ *   response_bytes     そのバイト数。空本文は 0。本文を最後まで読めた行だけ hash あり。
  *
  * 2026-09-29（監査 6 周目）: クエリは `days` と任意の `include`（知らない名前・重複は 400——`?cb=<乱数>` で CDN を迂回させない）。
  * days は 10 進の整数だけ（`90.5`・`1e2` は 400）。1..366 の外と先頭の 0 は正規の値へ 308 で送る（キャッシュのキーを
@@ -131,7 +136,9 @@ export async function GET(request: NextRequest) {
              (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256,
              (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units,
              pu.id::text AS purchase_id,
-             ${sql.raw(l2ReadingColumnsSql("pu"))}
+             ${sql.raw(l2ReadingColumnsSql("pu"))},
+             (${sql.raw(responseSha256Sql("pu"))}) AS response_sha256,
+             (${sql.raw(responseBytesSql("pu"))}) AS response_bytes
              ${sql.raw(extraSelectSql)},
              CASE WHEN pu.l2_schema = 'mismatch' THEN e.declared_schema END AS l2_declared_schema
       FROM x402_l1_purchases pu

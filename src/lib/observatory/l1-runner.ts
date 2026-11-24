@@ -106,6 +106,7 @@ import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, selectPaidRequestBody, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { OPERATOR_SOURCE, operatorExampleBody } from "./operator-listings";
 import { PAY_SKILLS_SOURCE, paySkillsExampleBody } from "./pay-skills-listings";
+import { paidResponseFingerprintRecord } from "./paid-response-fingerprint";
 import { requestBodyRecord } from "./request-body";
 import { deliveredPredicate, isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
@@ -4923,6 +4924,7 @@ async function purchaseOne(input: {
     let paidErrorRaw: unknown = null;
     // 2026-09-29: 受け取った本文の生のバイト数と、本文の読み取りの失敗（途中まで受け取っていても例外にしない）。
     let paidBodyBytes = 0;
+    let paidBodyRaw: Uint8Array | null = null;
     let paidBodyFailure: unknown | null = null;
     // Same 2026-08-22 fix as the unpaid leg: the timer covers the body read too.
     // On the PAID leg an aborted body is not a lost measurement — the settlement
@@ -4975,6 +4977,7 @@ async function purchaseOne(input: {
       const read = await readBodyCappedDetailed(paid, L1_PAID_BODY_CAP_BYTES + 1);
       paidBody = read.text;
       paidBodyBytes = read.bytes;
+      paidBodyRaw = read.raw;
       if (read.error !== null) {
         paidBodyFailure = read.error;
         paidError = String(read.error).slice(0, 300);
@@ -5228,6 +5231,8 @@ async function purchaseOne(input: {
       // 読んだ本文のバイト数（上限で頭打ち）と、上限を超えて切ったか（2026-09-29）。
       ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
       ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
+      // 支払い付き応答の本文の指紋（2026-11-24・F3・paid-response-fingerprint.ts）。
+      ...(paidResponseFingerprintRecord(paid !== null, paidBodyRaw, paidBodyFailure) ?? {}),
       // どの URL で払ったか（2026-09-20）。"declared" は売り手の 402 が宣言した input.queryParams を
       // 足した URL。"empty"（売り手が宣言していない）と "refused"（宣言は在ったが我々の規則で使わなかった）は
       // カタログの URL のまま。許可リストに無い network の行には付けない。
@@ -5371,6 +5376,7 @@ async function purchaseOne(input: {
               // 本文の読んだバイト数と切った印も L2 の証拠（2026-09-29・小さいので残す）。
               ...(paid ? { bodyBytes: paidBodyRead.bytes, bodyCapBytes: L1_PAID_BODY_CAP_BYTES } : {}),
               ...(paidBodyRead.incomplete === L1_BODY_OVER_CAP_REASON ? { bodyTruncated: true } : {}),
+              ...(paidResponseFingerprintRecord(paid !== null, paidBodyRaw, paidBodyFailure) ?? {}),
               ...requestBodyRecord(paidRequestBody),
               ...(selectionMeta ?? {}),
               ...(gatewayMeta ?? {}),

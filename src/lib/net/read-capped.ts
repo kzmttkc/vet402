@@ -73,15 +73,16 @@ export async function readBodyCapped(response: Response, maxBytes: number): Prom
 export async function readBodyCappedDetailed(
   response: Response,
   maxBytes: number,
-): Promise<{ text: string; bytes: number; error: unknown | null }> {
-  if (maxBytes <= 0) return { text: "", bytes: 0, error: null };
+): Promise<{ text: string; bytes: number; raw: Uint8Array; error: unknown | null }> {
+  if (maxBytes <= 0) return { text: "", bytes: 0, raw: new Uint8Array(0), error: null };
   const body = response.body as ReadableStream<Uint8Array> | null | undefined;
   if (!body || typeof body.getReader !== "function") {
     try {
       const whole = new Uint8Array(await response.arrayBuffer());
-      return { text: new TextDecoder("utf-8").decode(whole.subarray(0, maxBytes)), bytes: whole.byteLength, error: null };
+      const raw = whole.subarray(0, maxBytes);
+      return { text: new TextDecoder("utf-8").decode(raw), bytes: whole.byteLength, raw, error: null };
     } catch (error) {
-      return { text: "", bytes: 0, error };
+      return { text: "", bytes: 0, raw: new Uint8Array(0), error };
     }
   }
   const reader = body.getReader();
@@ -114,5 +115,5 @@ export async function readBodyCappedDetailed(
     merged.set(chunk.subarray(0, take), offset);
     offset += take;
   }
-  return { text: new TextDecoder("utf-8").decode(merged), bytes: total, error };
+  return { text: new TextDecoder("utf-8").decode(merged), bytes: total, raw: merged, error };
 }

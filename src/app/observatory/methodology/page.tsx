@@ -1032,7 +1032,12 @@ export default async function ObservatoryMethodologyPage() {
           The CSV response carries both definitions in its <code>x-vet402-column-notes</code> header.
           The column <code>l2_reading</code> (since 2026-09-29) is <code>l2_schema</code> read again with
           today&apos;s rules, the value the record page and the decision use; <code>l2_schema</code> keeps
-          the value recorded at the time.
+          the value recorded at the time. The columns <code>response_sha256</code> and{" "}
+          <code>response_bytes</code> (since 2026-11-24) are the SHA-256 and byte length of the paid response
+          body vet402 read (the bytes as received, not the body text republished). Blank means the row holds
+          no record; <code>0</code> on <code>response_bytes</code> means an empty body was read completely.
+          Filled only when vet402 read the paid response body through to the end (not when the read hit the cap or
+          stopped partway).
         </p>
         <p className="doc-p">
           <strong>Answer check (since 2026-11-17).</strong>{" "}
@@ -1285,7 +1290,7 @@ export default async function ObservatoryMethodologyPage() {
           <code>erc8004_agent</code> column (since 2026-11-17) as the last column when requested with{" "}
           <code>?include=erc8004_agent</code>; it carries the CAIP agent id for that rule on each
           purchase row, empty when there is no match. The default export without that query keeps the
-          frozen 19 columns. Off-chain feedback
+          frozen 21 columns. Off-chain feedback
           JSON for matched purchases is at{" "}
           <code>/api/v1/observatory/erc8004/feedback/&#123;purchase_id&#125;</code> (schema{" "}
           <code>ars-evidence/0.1</code>); weekly rollups at{" "}

@@ -325,7 +325,7 @@ if (!TEST_DB) {
     assert.equal(rE.status, 200);
     const eHeader = (await rE.text()).split("\n")[0];
     assert.equal(eHeader, EXPORT_CSV_COLUMNS.join(","));
-    assert.equal(EXPORT_CSV_COLUMNS.length, 19);
+    assert.equal(EXPORT_CSV_COLUMNS.length, 21);
     assert.ok(!eHeader!.includes("body_bytes"));
     assert.equal(rE.headers.get("x-vet402-buyer"), null);
     assert.equal(rE.headers.get("x-vet402-as-of"), null);

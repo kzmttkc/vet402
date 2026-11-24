@@ -1,4 +1,4 @@
-// GET /api/v1/observatory/export.csv の列構成（既定 19 列 + 任意の末尾列）。
+// GET /api/v1/observatory/export.csv の列構成（既定 21 列 + 任意の末尾列）。
 import { EXPORT_CSV_COLUMNS, EXPORT_CSV_COLUMNS_SINCE_2026_11_17 } from "@/lib/observatory/export-columns";
 import { erc8004AgentColumnSql } from "@/lib/observatory/erc8004-export-agent";
 

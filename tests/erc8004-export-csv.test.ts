@@ -1,6 +1,6 @@
 // ============================================================
 // export.csv の任意列 erc8004_agent（段階 B 修正版）。
-// 既定は 19 列のまま。`?include=erc8004_agent` のときだけ末尾に 20 列目。
+// 既定は 21 列のまま。`?include=erc8004_agent` のときだけ末尾に 22 列目。
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,22 +19,22 @@ import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 const ROOT = join(__dirname, "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
-test("既定の EXPORT_CSV_COLUMNS は 19 列・末尾は l2_reading", () => {
-  assert.equal(EXPORT_CSV_COLUMNS.length, 19);
+test("既定の EXPORT_CSV_COLUMNS は 21 列・末尾は response_bytes", () => {
+  assert.equal(EXPORT_CSV_COLUMNS.length, 21);
   assert.deepEqual([...EXPORT_CSV_OPTIONAL_COLUMNS], [...EXPORT_CSV_COLUMNS_SINCE_2026_11_17]);
-  assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 1], "l2_reading");
+  assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 1], "response_bytes");
   assert.equal((EXPORT_CSV_COLUMNS as readonly string[]).includes("erc8004_agent"), false);
 });
 
-test("ledgerExportCsvShape: include なしは 19 列・SQL 追記なし", () => {
+test("ledgerExportCsvShape: include なしは 21 列・SQL 追記なし", () => {
   const s = ledgerExportCsvShape(false);
   assert.deepEqual([...s.columns], [...EXPORT_CSV_COLUMNS]);
   assert.equal(s.extraSelectSql, "");
 });
 
-test("ledgerExportCsvShape: include ありは 20 列・末尾 erc8004_agent", () => {
+test("ledgerExportCsvShape: include ありは 22 列・末尾 erc8004_agent", () => {
   const s = ledgerExportCsvShape(true);
-  assert.equal(s.columns.length, 20);
+  assert.equal(s.columns.length, 22);
   assert.equal(s.columns[s.columns.length - 1], "erc8004_agent");
   assert.match(s.extraSelectSql, /AS erc8004_agent/);
 });
@@ -75,7 +75,7 @@ if (!TEST_DB) {
   assertTestDatabaseIsNotProduction(TEST_DB);
   process.env.DATABASE_URL = TEST_DB;
 
-  test("?include=erc8004_agent: 20 列・一致行だけ値あり", async () => {
+  test("?include=erc8004_agent: 22 列・一致行だけ値あり", async () => {
     const { getDb } = await import("@/lib/db/client");
     const schema = await import("@/lib/db/schema");
     const { sql } = await import("drizzle-orm");
@@ -133,7 +133,7 @@ if (!TEST_DB) {
     assert.equal(base.status, 200);
     const baseLines = (await base.text()).split("\n").filter((l) => l.length > 0);
     assert.equal(baseLines[0], EXPORT_CSV_COLUMNS.join(","));
-    assert.equal(baseLines[0]!.split(",").length, 19);
+    assert.equal(baseLines[0]!.split(",").length, 21);
 
     const ext = await GET(
       new NextRequest("https://vet402.com/api/v1/observatory/export.csv?days=90&include=erc8004_agent", {

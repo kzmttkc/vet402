@@ -66,7 +66,8 @@ test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(11, 14), ["request_body", "request_body_sha256", "settlement_source"]);
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(14, 16), ["request_query", "request_query_sha256"]);
   assert.deepEqual(EXPORT_CSV_COLUMNS.slice(16, 18), ["confirmed_units", "purchase_id"]);
-  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(18), ["l2_reading"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(18, 19), ["l2_reading"]);
+  assert.deepEqual(EXPORT_CSV_COLUMNS.slice(19), ["response_sha256", "response_bytes"]);
   assert.deepEqual([...EXPORT_CSV_OPTIONAL_COLUMNS], ["erc8004_agent"]);
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_20], EXPORT_CSV_COLUMNS.slice(11, 14));
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], EXPORT_CSV_COLUMNS.slice(14, 16));
@@ -230,7 +231,7 @@ const SCRIPT = join(ROOT, "scripts/declared-body-before-after.mjs");
 const HEADER = EXPORT_CSV_COLUMNS.join(",");
 type Row = { at: string; key: string; status: string; http: number | ""; shape?: string; held?: string; tx?: string; src?: string };
 const line = (r: Row) =>
-  [r.at, r.key, "eip155:8453", r.status, "1000", "1000", r.tx ?? "", r.http, "120", "", r.held ?? "", r.shape ?? "", "", r.src ?? "", "", ""].join(",");
+  [r.at, r.key, "eip155:8453", r.status, "1000", "1000", r.tx ?? "", r.http, "120", "", r.held ?? "", r.shape ?? "", "", r.src ?? "", "", "", "", "", ""].join(",");
 function runScript(csv: string, extra: string[] = []) {
   const dir = __tmp(mkdtempSync(join(tmpdir(), "vet402-before-after-")));
   const file = join(dir, "ledger.csv");
