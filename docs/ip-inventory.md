@@ -16,7 +16,7 @@
 | 4 | npm `@vet402/mcp-server` | **v0.1.1 公開済み**（同上実測） | 同上 | 同上 |
 | 5 | npm org/scope `@vet402` | **未取得**（2026-08-20 実測: `registry.npmjs.org/@vet402/…` は404＝スコープ配下パッケージ無し。org頁は403でorg存在自体は未確定）。**取得はTakeshi手番（TODO）** | — | 取得後: npm orgの管理画面＋`npm org ls vet402`。取得前に第三者に取られるリスクがある点に注意（squatting） |
 | 6 | X (Twitter) アカウント `@vet_402` | 運用中（製品公式） | KIZUNA Creation（ペルソナ運用） | アカウントへのログイン実演／プロフィールからvet402.comへの相互リンク（サイト側フッターに逆リンクがあること） |
-| 7 | GitHub リポジトリ `kzmttkc/vet402` | 稼働中（このリポの origin。`git remote -v` 実測: `https://github.com/kzmttkc/vet402.git`） | GitHubアカウント `kzmttkc` | リポのAdmin画面実演／`kzmttkc` としての署名付きコミット。コミット履歴の連続性がそのまま開発事実の証明になる |
+| 7 | GitHub リポジトリ `vet402/vet402` | 稼働中（このリポの origin。`git remote -v` 実測: `https://github.com/vet402/vet402.git`） | GitHubアカウント `kzmttkc` | リポのAdmin画面実演／`kzmttkc` としての署名付きコミット。コミット履歴の連続性がそのまま開発事実の証明になる |
 | 8 | ソースコード著作権 | 本リポ全体。**MIT License, Copyright (c) 2026 KIZUNA Creation**（`LICENSE` 実測） | KIZUNA Creation | `LICENSE` ファイル＋git履歴（初コミットからの authorship）。外部コントリビューション分は `CLA.md`（2026-08-20制定）でライセンス付与を担保 |
 | 9 | 商標「vet402」 | **未出願**（日本・米国とも）。現時点はコモンロー上の使用実績のみ | — | 出願後: 出願番号／登録番号。現状の使用実績証明: サイトのWayback Machineスナップショット・X投稿履歴・npm公開日時（`npm view … time`） |
 | 10 | 観測データベース（x402カタログ日次スナップショット・L0/L1測定結果・ライフサイクルイベント） | 本番DBに蓄積中（2026-08-20時点: 17,722エンドポイント・L1 845試行/341 settle・snapshots日次） | KIZUNA Creation（DBアクセス権保持者） | 公開API（`/api/v1/observatory/state`・`/history`・`export.csv`）の提供者であること＝ドメイン管理（#1）に帰着。データ自体の真正性はオンチェーンtx hashで第三者検証可能 |
@@ -30,5 +30,5 @@
 
 ## この表にないもの（誤解防止）
 
-- `vouch-phase2` はローカルディレクトリ名であり資産名ではない（正式名は vet402、リポは `kzmttkc/vet402`）。
+- `vouch-phase2` はローカルディレクトリ名であり資産名ではない（正式名は vet402、リポは `vet402/vet402`）。
 - 課金・契約の全社台帳は `~/Takeshi_Automation/ASSET_REGISTRY.md`（正典）。本表はvet402の知財に限る。

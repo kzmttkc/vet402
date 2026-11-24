@@ -27,7 +27,7 @@ dependencies = ["httpx>=0.24"]
 [project.urls]
 Homepage = "https://vet402.com"
 Documentation = "https://vet402.com/docs/api"
-Source = "https://github.com/kzmttkc/vet402"
+Source = "https://github.com/vet402/vet402"
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]

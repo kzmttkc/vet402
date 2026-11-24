@@ -79,7 +79,7 @@ test("judgeChallenge attaches how_to_fix and retest", () => {
   assert.equal(block.verdict, "BLOCK");
   assert.notEqual(block.retest, null);
   assert.ok(block.retest!.rerun_url.includes(encodeURIComponent(SELLER)));
-  assert.ok(block.retest!.request_url.startsWith("https://github.com/kzmttkc/vet402/issues/new"));
+  assert.ok(block.retest!.request_url.startsWith("https://github.com/vet402/vet402/issues/new"));
   const failCheck = block.checks.find((c) => c.status === "fail");
   assert.ok(failCheck);
   assert.equal(failCheck!.how_to_fix, howToFix(failCheck!.id, "fail"));

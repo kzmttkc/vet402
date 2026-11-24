@@ -9,7 +9,7 @@ Try it live: <https://vet402.com/tokyo?name=seller-a.eth>. vet402 and `@vet402/s
 ## Check it yourself (one line)
 
 ```
-git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
+git clone --depth 1 --branch tokyo-2026-submission https://github.com/vet402/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
 ```
 
 `verify` only reads. It signs nothing and sends nothing. It needs Node 22.18 or later and no keys. It prints the seven steps and ends with `VALID` or `REFUSE <reason>`. The attester address it trusts comes from `trusted-attesters.json` in this folder. The two Sepolia RPCs default to public endpoints; `ENS_SEPOLIA_RPC_URL` and `ENS_SEPOLIA_RPC_URL_2` override them, and they must be two different providers.

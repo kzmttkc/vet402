@@ -176,7 +176,7 @@ export default async function ApiDocsPage() {
           </TrackedLink>{" "}
           (also on{" "}
           <TrackedLink
-            href="https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml"
+            href="https://github.com/vet402/vet402/blob/main/docs/openapi.yaml"
             event="openapi_click_github"
             className="underline"
           >

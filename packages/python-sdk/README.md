@@ -187,7 +187,7 @@ block in this README compiles.
 ## Links
 
 - [API key](https://vet402.com/dashboard/keys): `VOUCH_API_KEY`
-- [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
+- [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/vet402/vet402/blob/main/docs/openapi.yaml)
 - [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk): TypeScript twin of this package
 - [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware): seller side (x402 request gate)
 - [`@vet402/mcp-server`](https://www.npmjs.com/package/@vet402/mcp-server): MCP tool

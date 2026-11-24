@@ -38,6 +38,6 @@ Attestations are verified on-chain before they count: `POST /v1/payments/x402` r
 | score `breakdown` of 4 components | shipped in every score response (N-21) |
 | `examples/x402-trust-gate` | present in repo |
 | signup open, no invite code | `/signup` (invite gate removed) |
-| site / repo | `https://vet402.com` · `https://github.com/kzmttkc/vet402` |
+| site / repo | `https://vet402.com` · `https://github.com/vet402/vet402` |
 | observatory facts, key-less | `GET /api/v1/observatory/state` |
 | `getPayeeScore` in SDK | `@vet402/sdk` (shipped) |

@@ -2,7 +2,7 @@
 
 対外発信の**実行は Takeshi 手番**（このリポの自動化は投稿しない）。週次 facts の自動は owner 側 `Takeshi_Automation`（[`../hackathons/DISTRIBUTION.md`](../hackathons/DISTRIBUTION.md)）。投稿前に各原稿末尾の主張マップで実装と突合する。
 
-正典: **vet402** · https://vet402.com · https://github.com/kzmttkc/vet402 · npm `@vet402/*` · X `@vet_402`
+正典: **vet402** · https://vet402.com · https://github.com/vet402/vet402 · npm `@vet402/*` · X `@vet_402`
 
 ## 出すもの一覧
 
@@ -27,7 +27,7 @@
 - **招待コードをどこにも書かない**（signup は開放済み）
 - **未実装機能に言及しない**。`payOrRefuse` / ENS 支払い / Registry 本書き込み / 保証引受は出さない
 - SDK 名は **`@vet402/sdk`** / MCP は **`@vet402/mcp-server`**（`@vouchscore/*` は deprecated ポインタ）
-- 本番 URL は `https://vet402.com`、リポは `github.com/kzmttkc/vet402`
+- 本番 URL は `https://vet402.com`、リポは `github.com/vet402/vet402`
 - 公開の事実面（`/observatory/state`、`/payee/{addr}` HTML）は key-less。スコア API（`/api/v1/wallets` / `/api/v1/payees`）はキー必須
 - スコア閾値を書くなら実装値: ALLOW≥70 / WARN 40–69 / BLOCK<40、x402重み10%
 - ALLOW が今日カタログに出ない事実を、売り文句にしない（聞かれたら fixtures の数字で答える）

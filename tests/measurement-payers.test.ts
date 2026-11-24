@@ -1,4 +1,4 @@
-// 公開の測定 payer 一覧（kzmttkc/vet402#43）と、backfill が test を残すこと。
+// 公開の測定 payer 一覧（vet402/vet402#43）と、backfill が test を残すこと。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -26,7 +26,7 @@ test("一覧は Crosspeel と Mizan だけ。汎用 node の2住所は無い", (
     assert.equal(p.addedOn, "2026-10-24");
     assert.ok(p.sourceUrl.startsWith("https://"));
     assert.ok(p.sourceQuote.length > 20);
-    assert.ok(p.basis.includes("kzmttkc/vet402 issue 43"));
+    assert.ok(p.basis.includes("vet402/vet402 issue 43"));
   }
   assert.equal(MEASUREMENT_PAYERS[0].name, "Crosspeel");
   assert.equal(MEASUREMENT_PAYERS[0].sourceUrl, "https://crosspeel.com/method");

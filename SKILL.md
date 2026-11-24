@@ -88,7 +88,7 @@ route the Claude Code plugin uses, so what a judge runs is the code in this comm
 
 ```bash
 # live: skip clones the repo — it cannot run inside a checkout of the repo it clones
-git clone https://github.com/kzmttkc/vet402.git
+git clone https://github.com/vet402/vet402.git
 cd vet402/packages/sdk        && npm install && npm run build
 cd ../mcp-server              && npm install && npm run build
 ```

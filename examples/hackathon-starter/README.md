@@ -13,7 +13,7 @@ fail-closed default decide: no clean `ALLOW`, no payment.
 ## Quickstart
 
 ```bash
-git clone https://github.com/kzmttkc/vet402.git && cd vet402/examples/hackathon-starter
+git clone https://github.com/vet402/vet402.git && cd vet402/examples/hackathon-starter
 npm install
 npx tsx index.ts
 ```

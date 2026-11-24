@@ -81,7 +81,7 @@ function assertPartition(body: DiagnoseBody): void {
   else {
     assert.ok(body.retest);
     assert.ok(body.retest.rerun_url.includes(encodeURIComponent(SELLER)));
-    assert.ok(body.retest.request_url.startsWith("https://github.com/kzmttkc/vet402/issues/new"));
+    assert.ok(body.retest.request_url.startsWith("https://github.com/vet402/vet402/issues/new"));
   }
 }
 

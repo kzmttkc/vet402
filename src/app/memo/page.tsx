@@ -843,7 +843,7 @@ export default async function Memo() {
           </TrackedLink>{" "}
           and{" "}
           <TrackedLink
-            href="https://github.com/kzmttkc/vet402"
+            href="https://github.com/vet402/vet402"
             event="follow_click"
             props={{ channel: "github" }}
             className="doc-link"

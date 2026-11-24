@@ -1,5 +1,5 @@
 // ============================================================
-// 公開の測定・点検 payer 一覧（kzmttkc/vet402#43）。
+// 公開の測定・点検 payer 一覧（vet402/vet402#43）。
 //
 // settlement_30d_test は vet402 自身が払うウォレットだけを指す、と公開契約に
 // 書いてある。他社の測定サービスを同じ旗に入れると、その数字の意味が変わる。
@@ -57,7 +57,7 @@ export const MEASUREMENT_PAYERS: readonly MeasurementPayer[] = [
       "The method looks for those agreements, measures how many of them hold, and compares the prices of the endpoints that hold them.",
     addedOn: "2026-10-24",
     basis:
-      "Seller report in kzmttkc/vet402 issue 43. The method page says the method measures how many agreements hold, and that the wallet pays for probes. " +
+      "Seller report in vet402/vet402 issue 43. The method page says the method measures how many agreements hold, and that the wallet pays for probes. " +
       "On 2026-10-25 vet402 read the 24 settlement transactions the seller listed on Base: each is a USDC transfer from this address to that seller.",
   },
   {
@@ -69,7 +69,7 @@ export const MEASUREMENT_PAYERS: readonly MeasurementPayer[] = [
     sourceQuote: "Ten measurement errors have been found and fixed so far",
     addedOn: "2026-10-24",
     basis:
-      "Seller report in kzmttkc/vet402 issue 43. The field station page calls the work a field record of knocks and paid buys, and names measurement errors in that record. " +
+      "Seller report in vet402/vet402 issue 43. The field station page calls the work a field record of knocks and paid buys, and names measurement errors in that record. " +
       "On 2026-10-25 vet402 read the 1 settlement transaction the seller listed on Base: a USDC transfer from this address to that seller.",
   },
 ];

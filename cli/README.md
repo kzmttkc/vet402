@@ -4,7 +4,7 @@ Reproduce vet402's measurements yourself, with the exact same code the
 production Observatory runs. No API key, no account.
 
 ```bash
-git clone https://github.com/kzmttkc/vet402 && cd vet402 && npm install
+git clone https://github.com/vet402/vet402 && cd vet402 && npm install
 
 # 1. Probe a payment wall (same L0 code, SSRF guard included)
 npx tsx cli/probe.ts https://api.example.com/paid --method POST

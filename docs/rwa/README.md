@@ -47,7 +47,7 @@ held. It does not trade, hold funds, issue a token, or give advice. Specificatio
 5. Check the anchor yourself. No key, no account, no `npm ci`, only Node 18 or later:
 
    ```bash
-   git clone https://github.com/kzmttkc/vet402 && cd vet402
+   git clone https://github.com/vet402/vet402 && cd vet402
    node packages/rwa/scripts/verify-record.mjs \
      --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
      --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
@@ -102,7 +102,7 @@ Robinhood Chain RPC and to nothing run by vet402.
 From a clone:
 
 ```bash
-git clone https://github.com/kzmttkc/vet402 && cd vet402
+git clone https://github.com/vet402/vet402 && cd vet402
 node packages/rwa/scripts/verify-record.mjs \
   --record fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
   --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
@@ -111,9 +111,9 @@ node packages/rwa/scripts/verify-record.mjs \
 Without a clone, two files over HTTPS:
 
 ```bash
-curl -LO https://raw.githubusercontent.com/kzmttkc/vet402/main/packages/rwa/scripts/verify-record.mjs
+curl -LO https://raw.githubusercontent.com/vet402/vet402/main/packages/rwa/scripts/verify-record.mjs
 node verify-record.mjs \
-  --record https://raw.githubusercontent.com/kzmttkc/vet402/main/fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
+  --record https://raw.githubusercontent.com/vet402/vet402/main/fixtures/rwa/anchors/rwa-recon-0.3-76177721.json \
   --tx 0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f
 ```
 

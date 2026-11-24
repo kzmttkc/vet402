@@ -7,7 +7,7 @@
 | 製品名 | **vet402** |
 | タグライン | We buy. We settle. We publish the measurements. |
 | 本番 | https://vet402.com |
-| GitHub | https://github.com/kzmttkc/vet402 |
+| GitHub | https://github.com/vet402/vet402 |
 | npm | `@vet402/sdk` · `@vet402/mcp-server` · `@vet402/middleware` |
 | X | `@vet_402` |
 | 招待コード | **書かない**（`/signup` は開放） |
@@ -32,7 +32,7 @@ vet402 buys what x402 endpoints sell, publishes successes and failures
 with the same weight, and exposes ALLOW / WARN / BLOCK to agents.
 
 https://vet402.com
-https://github.com/kzmttkc/vet402
+https://github.com/vet402/vet402
 ```
 
 ## チェックリスト（Takeshi）

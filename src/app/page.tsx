@@ -94,7 +94,7 @@ const FOOT_MAIN = [
   { label: "State", href: "/observatory/state" },
   { label: "Docs", href: "/docs/api" },
   { label: "The memo", href: "/memo" },
-  { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
+  { label: "GitHub", href: "https://github.com/vet402/vet402" },
 ] as const;
 
 const FOOT_LEGAL = [{ label: "Privacy", href: "/legal/privacy" }] as const;

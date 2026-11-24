@@ -109,7 +109,7 @@ export function retestFor(
     "What changed:",
     "",
   ].join("\n");
-  const request_url = `https://github.com/kzmttkc/vet402/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
+  const request_url = `https://github.com/vet402/vet402/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
   const how =
     "After you fix the endpoint, open the free diagnose link again for another unpaid check. To ask vet402 to purchase again and confirm delivery, open the GitHub issue link and fill in the network, payTo, and what you changed.";
   return { rerun_url, request_url, how };

@@ -1,5 +1,5 @@
 {
-  // One click for a judge: https://codespaces.new/kzmttkc/vet402?quickstart=1
+  // One click for a judge: https://codespaces.new/vet402/vet402?quickstart=1
   // Opens the repo on Node 24 with SKILL.md's build order already done, so
   // `npm run judge-check` and every block in SKILL.md run as written. No API key,
   // no secret, nothing live — the only network is the npm registry.

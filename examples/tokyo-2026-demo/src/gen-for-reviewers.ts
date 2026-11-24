@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO_URL = 'https://github.com/kzmttkc/vet402';
+const REPO_URL = 'https://github.com/vet402/vet402';
 const SUBMISSION_TAG = 'tokyo-2026-submission';
 const LIVE_URL = 'https://vet402.com/tokyo?name=seller-a.eth';
 const ONE_LINE =

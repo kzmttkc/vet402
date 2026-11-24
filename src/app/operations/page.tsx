@@ -104,7 +104,7 @@ export default async function OperationsPage() {
             API reference
           </Link>
           {" · "}
-          <a className="underline" href="https://github.com/kzmttkc/vet402">
+          <a className="underline" href="https://github.com/vet402/vet402">
             source
           </a>
           .

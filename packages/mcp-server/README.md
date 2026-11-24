@@ -163,15 +163,15 @@ vet402 can count calls per client version. Sellers are not sent it.
 ## Building from the repo (contributors)
 
 ```bash
-git clone https://github.com/kzmttkc/vet402.git
+git clone https://github.com/vet402/vet402.git
 cd vet402/packages/mcp-server && npm install && npm run build
 # then point your client at "command": "node", "args": ["<abs>/dist/index.js"]
 ```
 
 ## Links
 
-- [MCP setup guide](https://github.com/kzmttkc/vet402/blob/main/docs/mcp-setup.md)
-- [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/kzmttkc/vet402/blob/main/docs/openapi.yaml)
+- [MCP setup guide](https://github.com/vet402/vet402/blob/main/docs/mcp-setup.md)
+- [API docs](https://vet402.com/docs/api) · [OpenAPI spec](https://github.com/vet402/vet402/blob/main/docs/openapi.yaml)
 - [`@vet402/sdk`](https://www.npmjs.com/package/@vet402/sdk) — buyer side (SpendGuard)
 - [`@vet402/middleware`](https://www.npmjs.com/package/@vet402/middleware) — seller side (x402 request gate)
 

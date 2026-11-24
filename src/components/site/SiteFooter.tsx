@@ -82,7 +82,7 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       // 2026-09-02: LP §5 末尾の「Follow the build」箱を段落へ畳んだぶん、外部の 2 本は
       // サイト全頁から辿れる奥付にも置く。
       { label: "X @vet402_com", href: "https://x.com/vet402_com" },
-      { label: "GitHub", href: "https://github.com/kzmttkc/vet402" },
+      { label: "GitHub", href: "https://github.com/vet402/vet402" },
     ],
   },
 ];

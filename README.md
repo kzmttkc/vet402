@@ -1,6 +1,6 @@
 # vet402
 
-[![ci](https://github.com/kzmttkc/vet402/actions/workflows/ci.yml/badge.svg)](https://github.com/kzmttkc/vet402/actions/workflows/ci.yml)
+[![ci](https://github.com/vet402/vet402/actions/workflows/ci.yml/badge.svg)](https://github.com/vet402/vet402/actions/workflows/ci.yml)
 
 **Independent Verification of the x402 Agent-Payment Economy**
 
@@ -73,7 +73,7 @@ Paste a Robinhood Chain wallet and see its Stock Token track record rebuilt from
 For Tokyo, an agent pays an x402 seller only while vet402's draft ENSIP-29 attestation in the seller's ENSv2 name still matches the seller's offer. Check it with one line (Node 22.18 or later, no key):
 
 ```bash
-git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
+git clone --depth 1 --branch tokyo-2026-submission https://github.com/vet402/vet402 && cd vet402/examples/tokyo-2026-demo && npm ci && npm run verify -- seller-a.eth
 ```
 
 - Page from the event, where a judge could change one character of a seller's offer on-chain and watch the agent refuse: <https://vet402.com/tokyo?name=seller-a.eth>
@@ -86,7 +86,7 @@ git clone --depth 1 --branch tokyo-2026-submission https://github.com/kzmttkc/ve
 
 ```bash
 # Node 24.x (package.json engines; Node 22 cancels the timeout tests)
-git clone https://github.com/kzmttkc/vet402 && cd vet402
+git clone https://github.com/vet402/vet402 && cd vet402
 npm run judge-check   # sdk → mcp-server → demo → root → ab: builds, tests, mutation runs. No key, nothing live. About 25–30 s on a clean clone (24–27 s across three measurements on 2026-09-07, warm npm cache)
 GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kronossignals.com/api/v1/price/btc
 ```
@@ -100,7 +100,7 @@ GRAPH_API_KEY=… node examples/ethonline-2026-demo/src/run.ts judge https://kro
 
 vet402 buys from x402 endpoints, re-reads each payment on-chain, records what came back, checks it against the seller's output declaration when there is one, and publishes the results.
 
-> **Formerly Vouch.** The repository is <https://github.com/kzmttkc/vet402> (renamed 2026-08-18). The npm scope is `@vet402/*`; the API key prefix (`vouch_`) and some internal identifiers retain the old name for backward compatibility — renaming them would break every key already issued.
+> **Formerly Vouch.** The repository is <https://github.com/vet402/vet402> (renamed 2026-08-18). The npm scope is `@vet402/*`; the API key prefix (`vouch_`) and some internal identifiers retain the old name for backward compatibility — renaming them would break every key already issued.
 
 **Site:** <https://vet402.com> · **Live demo:** <https://vet402.com/playground> · **API reference:** <https://vet402.com/docs/api> · **Accuracy ledger:** <https://vet402.com/accuracy>
 
@@ -144,7 +144,7 @@ Who wrote the code, by area and representative file — and what I did: [`AI_USA
 
 - <https://vet402.com/ethonline> — the judge's landing page: one command to run, what to read in which order, the continuity disclosure, The Graph.
 - [`docs/ethonline-2026/COMMITS_EN.md`](./docs/ethonline-2026/COMMITS_EN.md) — every commit in the window in English, derived from `git log pre-ethonline-2026..main` by [`scripts/ethonline-commits-en.mjs`](./scripts/ethonline-commits-en.mjs) (✔ marks what I claim; `--check` fails if the file is not what the script produces).
-- [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kzmttkc/vet402?quickstart=1) — one click: Node 24 with SKILL.md's build order already run ([`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json)), so `npm run judge-check` works as written.
+- [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/vet402/vet402?quickstart=1) — one click: Node 24 with SKILL.md's build order already run ([`.devcontainer/devcontainer.json`](./.devcontainer/devcontainer.json)), so `npm run judge-check` works as written.
 - [`skills/pay-or-refuse/SKILL.md`](./skills/pay-or-refuse/SKILL.md) (Agent Skill) and [`.claude-plugin/plugin.json`](./.claude-plugin/plugin.json) (Claude Code plugin) — the same gate, packaged the way The Graph's own skills repositories are.
 
 **Try it** (clean clone; the first line needs no API key):

@@ -120,7 +120,7 @@ const CORRECTIONS: Correction[] = [
     wrong:
       "settlement_30d_real counted a payment as a real buyer when the row was not self_deal, not circular, and not a wallet vet402 pays from. " +
       "The seller of api.ozdreamtools.de reported in public that two payers on that route describe themselves as measurement or inspection services " +
-      "(github.com/kzmttkc/vet402/issues/43). Those payments sat in settlement_30d_real. " +
+      "(github.com/vet402/vet402/issues/43). Those payments sat in settlement_30d_real. " +
       "Two further payers on the same route sent a generic node User-Agent. Nothing public names what those two are, so they stay in the real count.",
     action:
       "Changed on 2026-10-24. A payer on the published measurement list is stored as wash_flag measurement and leaves settlement_30d_real. " +
@@ -187,7 +187,7 @@ const CORRECTIONS: Correction[] = [
       "266 settled attempts answered with a 4xx. Part of the cause was ours in a second way: we sent {} on a POST " +
       "even when the seller's 402 declared the body it expects in extensions.bazaar.info.input.body, and our " +
       "methodology said a listing does not tell us the body. A seller, api.insumermodel.com, reported both in " +
-      "public, with its own 2026-09-12 row as the example (github.com/kzmttkc/vet402/issues/29).",
+      "public, with its own 2026-09-12 row as the example (github.com/vet402/vet402/issues/29).",
     action:
       "Changed on 2026-09-17. A paid attempt answered with a 4xx other than 402 and no settlement receipt is now held " +
       "as inconclusive (reason unsettled_4xx), beside the settled case (settled_4xx): it does not count toward a " +

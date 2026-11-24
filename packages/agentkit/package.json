@@ -33,7 +33,7 @@
   "homepage": "https://vet402.com",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/kzmttkc/vet402.git",
+    "url": "git+https://github.com/vet402/vet402.git",
     "directory": "packages/agentkit"
   },
   "keywords": [

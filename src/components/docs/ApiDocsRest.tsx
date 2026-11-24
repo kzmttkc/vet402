@@ -264,7 +264,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
           <code className="text-brand-deep">@vet402/middleware</code> so one install covers buyer and seller entry
           points (<code>vet402/buyer</code>, <code>vet402/seller</code>). Scoped packages below install separately. Each comes from{" "}
           <a
-            href="https://github.com/kzmttkc/vet402"
+            href="https://github.com/vet402/vet402"
             target="_blank"
             rel="noopener noreferrer"
             className="doc-link"

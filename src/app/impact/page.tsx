@@ -353,7 +353,7 @@ export default async function ImpactPage() {
           All measurement surfaces above are key-less and public. The verification stack is MIT and
           self-hostable (<code>docker compose up</code>), and anyone can reproduce a probe or see
           exactly what a buyer would sign without signing anything —{" "}
-          <a className="underline" href="https://github.com/kzmttkc/vet402">
+          <a className="underline" href="https://github.com/vet402/vet402">
             source
           </a>{" "}
           (<code>cli/</code>). The TypeScript SDK (<code>@vet402/sdk</code>) and the MCP server

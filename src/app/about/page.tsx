@@ -184,7 +184,7 @@ export default async function AboutPage() {
               methodology
             </Link>
             , or the{" "}
-            <a className="doc-link" href="https://github.com/kzmttkc/vet402" rel="noopener noreferrer">
+            <a className="doc-link" href="https://github.com/vet402/vet402" rel="noopener noreferrer">
               code on GitHub
             </a>
             .

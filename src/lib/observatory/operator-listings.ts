@@ -38,7 +38,7 @@ export const OPERATOR_SOURCE = "operator";
 export const OPERATOR_LISTINGS_FILE = "src/lib/observatory/operator-listings.ts";
 
 /** 公開リポジトリ上のこのファイル。記録ページの Source 欄がリンクする。 */
-export const OPERATOR_LISTINGS_URL = `https://github.com/kzmttkc/vet402/blob/main/${OPERATOR_LISTINGS_FILE}`;
+export const OPERATOR_LISTINGS_URL = `https://github.com/vet402/vet402/blob/main/${OPERATOR_LISTINGS_FILE}`;
 
 /** 記録ページの Source 欄に 'operator' と並べる 1 文。 */
 export const OPERATOR_SOURCE_NOTE =

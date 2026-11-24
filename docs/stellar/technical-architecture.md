@@ -338,10 +338,10 @@ Read back on 2026-11-02 09:51 UTC: `get_root` for days 20744 through 20757 retur
 
 ## 7. Links
 
-- Source (MIT): https://github.com/kzmttkc/vet402/tree/main/contracts
-- Root contract README: https://github.com/kzmttkc/vet402/blob/main/contracts/stellar-roots/README.md
-- Escrow README: https://github.com/kzmttkc/vet402/blob/main/contracts/stellar-escrow/README.md
-- Who wrote and who checked the contracts: https://github.com/kzmttkc/vet402/blob/main/contracts/AI_USAGE.md
+- Source (MIT): https://github.com/vet402/vet402/tree/main/contracts
+- Root contract README: https://github.com/vet402/vet402/blob/main/contracts/stellar-roots/README.md
+- Escrow README: https://github.com/vet402/vet402/blob/main/contracts/stellar-escrow/README.md
+- Who wrote and who checked the contracts: https://github.com/vet402/vet402/blob/main/contracts/AI_USAGE.md
 - Root contract on testnet: https://stellar.expert/explorer/testnet/contract/CCWWBZ2GBKDPRSUMT32CPB7LBUGHHKL37R5YNQC6RAWRV6PVIEKOBKRB
 - Escrow on testnet: https://stellar.expert/explorer/testnet/contract/CBWZJ6IF25ZCPBSEP4YGZOJL4MS43Q2QDWN7PWRDP6AQKOXEXURUS7BG
 - Example mainnet purchase: https://stellar.expert/explorer/public/tx/696f385519afc5474747c5c95d4d68d2d598faba53dfe349f6ba4cd6b118131e

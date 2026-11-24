@@ -51,7 +51,7 @@ const r = await payOrRefuse({ payee, resource, amountUsd: 0.01, fetch, account, 
 
 `vet402/buyer` re-exports everything public from `@vet402/sdk` (`payOrRefuse`, `SpendGuard`,
 `createVouchClient`, ...) plus `check`. The full `payOrRefuse` contract is in the
-[`@vet402/sdk` README](https://github.com/kzmttkc/vet402/tree/main/packages/sdk#readme).
+[`@vet402/sdk` README](https://github.com/vet402/vet402/tree/main/packages/sdk#readme).
 
 ## Seller: gate a paid route
 

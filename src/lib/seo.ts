@@ -41,7 +41,7 @@ export const OG_IMAGE_ALT =
 
 export const ORG_SAME_AS = [
   "https://x.com/vet402_com",
-  "https://github.com/kzmttkc/vet402",
+  "https://github.com/vet402/vet402",
   "https://www.npmjs.com/package/@vet402/sdk",
   "https://www.npmjs.com/package/@vet402/middleware",
   "https://www.npmjs.com/package/@vet402/mcp-server",

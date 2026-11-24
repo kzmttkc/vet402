@@ -113,4 +113,4 @@ export const MIN_VALID = 1;
 export const MAX_AGE_SECONDS = 604_800;
 
 export const EXPLORER = "https://sepolia.etherscan.io" as const;
-export const REPO_DEMO = "https://github.com/kzmttkc/vet402/tree/tokyo-2026-submission/examples/tokyo-2026-demo" as const;
+export const REPO_DEMO = "https://github.com/vet402/vet402/tree/tokyo-2026-submission/examples/tokyo-2026-demo" as const;
