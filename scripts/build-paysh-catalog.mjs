@@ -3,10 +3,12 @@
  * purchase_plan.csv + catalog_l0.csv → pay-skills-listings-data.ts, pay-skills-pinned-data.ts, paysh_excluded.csv
  * Reads only; writes under worktree + one external excluded CSV.
  */
-import { createReadStream, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
-import { createInterface } from "node:readline";
-import { join, dirname } from "node:path";
+import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseCsvRecords, parseCsvRows, readCsvSync } from "./rfc4180-csv.mjs";
+
+export { parseCsvRows, parseCsvRecords, readCsvSync };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PLAN = "/Users/takeshi/Takeshi_Automation/output/1124/solana_ai/work/p3/purchase_plan.csv";
@@ -16,14 +18,10 @@ const OPENAPI_DIR = "/Users/takeshi/Takeshi_Automation/output/1124/solana_ai/raw
 const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-/** Path segments that indicate mutating / outbound actions (not nouns like wallet, transfer). */
+/** Endpoint path segments for state-changing verbs only (not resource nouns like orders, email). */
 const KEYWORDS = [
   "book",
-  "order",
   "send",
-  "email",
-  "mail",
-  "sms",
   "post",
   "create",
   "signup",
@@ -33,7 +31,6 @@ const KEYWORDS = [
   "swap",
   "execute",
   "trade",
-  "pods",
 ];
 
 function segmentMatchesKeyword(seg, kw) {
@@ -41,7 +38,6 @@ function segmentMatchesKeyword(seg, kw) {
   if (kw === "execute" && seg.startsWith("execute-")) return true;
   if (kw === "trade" || kw === "swap") return false;
   if (seg.startsWith(`${kw}-`)) return true;
-  if (kw === "order" && (seg === "orders" || seg.startsWith("orders-"))) return true;
   if (
     (kw === "create" || kw === "signup" || kw === "register") &&
     seg.startsWith(kw) &&
@@ -52,54 +48,24 @@ function segmentMatchesKeyword(seg, kw) {
   return false;
 }
 
-function parseCsvLine(line) {
-  const out = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQ) {
-      if (c === '"') inQ = false;
-      else cur += c;
-    } else if (c === '"') inQ = true;
-    else if (c === ",") {
-      out.push(cur);
-      cur = "";
-    } else cur += c;
-  }
-  out.push(cur);
-  return out;
-}
-
-async function readCsv(path) {
-  const rows = [];
-  const rl = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
-  let headers = null;
-  for await (const line of rl) {
-    if (!line.trim()) continue;
-    const cols = parseCsvLine(line);
-    if (!headers) {
-      headers = cols;
-      continue;
-    }
-    const row = {};
-    headers.forEach((h, i) => {
-      row[h] = cols[i] ?? "";
-    });
-    rows.push(row);
-  }
-  return rows;
-}
-
-function segments(provider, endpoint) {
+function endpointSegments(endpoint) {
   const s = [];
-  for (const part of provider.split("/")) if (part) s.push(part.toLowerCase());
   for (const part of endpoint.split("/")) if (part) s.push(part.toLowerCase());
   return s;
 }
 
-function excludeReason(provider, endpoint) {
-  const segs = segments(provider, endpoint);
+function postCreateEndpoint(method, endpoint) {
+  if (method.toUpperCase() !== "POST") return false;
+  const ep = endpoint.toLowerCase();
+  if (ep === "/v0/pods" || ep.startsWith("/v0/pods/")) return true;
+  if (ep === "/v0/webhooks" || ep.startsWith("/v0/webhooks/")) return true;
+  if (ep.startsWith("/v0/lists/")) return true;
+  return false;
+}
+
+export function excludeReason(method, endpoint) {
+  if (postCreateEndpoint(method, endpoint)) return "keyword:create";
+  const segs = endpointSegments(endpoint);
   const ep = endpoint.toLowerCase();
   for (const kw of KEYWORDS) {
     for (const seg of segs) {
@@ -174,12 +140,17 @@ function esc(s) {
   return JSON.stringify(s);
 }
 
+/** Quoted CSV fields may embed a newline between path segments; URLs must not. */
+function normalizeEndpoint(endpoint) {
+  return endpoint.replace(/\r?\n/g, "");
+}
+
 async function main() {
-  const plan = await readCsv(PLAN);
-  const l0rows = await readCsv(L0);
+  const plan = readCsvSync(PLAN, readFileSync);
+  const l0rows = readCsvSync(L0, readFileSync);
   const l0map = new Map();
   for (const r of l0rows) {
-    const key = `${r.provider_fqn}\t${r.method.toUpperCase()}\t${r.endpoint}\t${r.host}`;
+    const key = `${r.provider_fqn}\t${r.method.toUpperCase()}\t${normalizeEndpoint(r.endpoint)}\t${r.host}`;
     const arr = l0map.get(key) ?? [];
     arr.push(r);
     l0map.set(key, arr);
@@ -200,8 +171,9 @@ async function main() {
   };
 
   for (const row of plan) {
-    const { order, tranche, provider_fqn, host, endpoint, method, quoted_usd, cumulative_usd } = row;
-    const reason = excludeReason(provider_fqn, endpoint);
+    const { order, tranche, provider_fqn, host, method, quoted_usd, cumulative_usd } = row;
+    const endpoint = normalizeEndpoint(row.endpoint);
+    const reason = excludeReason(method, endpoint);
     if (reason) {
       excluded.push({ ...row, reason });
       continue;
@@ -352,7 +324,10 @@ async function main() {
   );
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
+}

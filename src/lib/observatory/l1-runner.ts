@@ -4962,7 +4962,11 @@ async function purchaseOne(input: {
           // 2026-09-17（Issue #29 独立検証）: 宣言本文は売り手のオリジンから出さない。別オリジンへ
           // 本文を運ぶ転送には従わず 3xx をそのまま記録する（safe-fetch.ts の crossOriginBody）。
           // `{}` の要求は従来どおり。
-          ...(paidRequestBody?.source === "declared" || paidRequestBody?.source === "operator_example" ? { crossOriginBody: "refuse" as const } : {}),
+          ...(paidRequestBody?.source === "declared" ||
+          paidRequestBody?.source === "operator_example" ||
+          paidRequestBody?.source === "pay_skills_example"
+            ? { crossOriginBody: "refuse" as const }
+            : {}),
         },
       );
       // 2026-09-29（監査 6 周目・計器）: 上限を 16,000 バイトから L1_PAID_BODY_CAP_BYTES へ上げた。1 バイト余分に

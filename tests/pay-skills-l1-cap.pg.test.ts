@@ -122,6 +122,9 @@ if (!TEST_DB) {
       (p) => (p.rawResponseMeta as Record<string, unknown> | null)?.pinnedPurchaseReason === "presign-gate-2611",
     );
     assert.equal(pinRows.length, 0, `expected no new presign buy, skipped=${summary.skipped}`);
-    assert.ok(summary.skipped > 0 || summary.chainDailyCap >= 0);
+    assert.equal(tx, 0, "Solana 別枠を使い切った日は支払い付きを出さない");
+    assert.ok(summary.skipped > 0, "別枠で買えない候補は skipped に数える");
+    const solRows = purchases.filter((p) => p.network === listing.network);
+    assert.equal(solRows.length, 1, "台帳の Solana 行は当日枠を埋めた 1 件だけ");
   });
 }

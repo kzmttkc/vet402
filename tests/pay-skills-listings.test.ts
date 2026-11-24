@@ -20,15 +20,27 @@ import { parseDeliverySellersQuery } from "@/lib/delivery/sellers-feed-query";
 import { selectPaidRequestBody } from "@/lib/observatory/declared-input-rules";
 import { SOLANA_DAILY_CAP_USD_DEFAULT, solanaDailyCapUnits } from "@/lib/observatory/budget";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
+import { parseCsvRows, excludeReason } from "../scripts/build-paysh-catalog.mjs";
 
 const ROOT = process.cwd();
 const EXCLUDED_CSV = "/Users/takeshi/Takeshi_Automation/output/1124/moat/paysh_excluded.csv";
+
+test("parseCsvRows: 引用符内の改行は1レコードとして読む", () => {
+  const rows = parseCsvRows('order,endpoint,method\n42,"/v1/x\n/y",POST\n');
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows[1], ["42", "/v1/x\n/y", "POST"]);
+});
+
+test("除外: POST /v0/pods と GET /air/orders", () => {
+  assert.equal(excludeReason("POST", "/v0/pods"), "keyword:create");
+  assert.equal(excludeReason("GET", "/air/orders/ord_x"), null);
+});
 
 test("一覧は規則どおりに読め、件数が purchase_plan の残りと一致する", () => {
   const items = parsePaySkillsListings(PAY_SKILLS_LISTINGS);
   assert.equal(items.length, PAY_SKILLS_LISTINGS.length);
   assert.equal(PAYSH_PINNED_PURCHASES.length, PAY_SKILLS_LISTINGS.length);
-  assert.equal(items.length, 344);
+  assert.equal(items.length, 350);
   assert.equal(PAY_SKILLS_SOURCE, "pay_skills");
   assert.ok(readFileSync(join(ROOT, PAY_SKILLS_LISTINGS_FILE), "utf8").includes("export const PAY_SKILLS_LISTINGS"));
 });
@@ -48,13 +60,21 @@ test("除外規則: 残す読み取り系（3件）は一覧に含まれる", ()
   assert.ok(urls.some((u) => u.includes("/v4/wallets/batch/token-balances")), "vybe batch token-balances");
 });
 
-test("除外規則: 変更系（3件）は paysh_excluded に載る", () => {
+test("除外規則: 変更系は paysh_excluded に載る（pods は create）", () => {
   const ex = readFileSync(EXCLUDED_CSV, "utf8");
   assert.ok(ex.includes("/v4/wallets/util/close-token-accounts") && ex.includes("keyword:close-"), "close-token-accounts");
   assert.ok(ex.includes("/v4/wallets/util/withdraw-mev") && ex.includes("keyword:withdraw"), "withdraw-mev");
   assert.ok(ex.includes("/api/book") && ex.includes("keyword:book"), "book");
   assert.ok(ex.includes("createTask") && ex.includes("keyword:create"), "create");
-  assert.ok(ex.includes("agentmail/email") && ex.includes("/v0/pods") && ex.includes("keyword:email"), "agentmail pods");
+  assert.ok(ex.includes("/v0/pods") && ex.includes("keyword:create"), "pods as create");
+  assert.ok(!ex.includes("keyword:email"), "no noun email keyword");
+  assert.ok(!ex.includes("keyword:order"), "no noun order keyword");
+});
+
+test("除外規則: contactcenterai（CSV 改行1行）と GET /air/orders は一覧に残る", () => {
+  const urls = PAY_SKILLS_LISTINGS.map((l) => l.url);
+  assert.ok(urls.some((u) => u.includes("contactcenterai") && u.includes("/ccai/app/")), "contactcenterai");
+  assert.ok(urls.some((u) => u.includes("/air/orders/")), "air orders GET");
 });
 
 test("FactGate の予約は先頭のまま（weather-forecast）", () => {
@@ -90,7 +110,7 @@ test("取得は常に完全・listed_in pay_skills", () => {
   assert.match(LISTED_IN_CASE_SQL, /WHEN 'pay_skills' THEN 'pay_skills'/);
   const q = parseDeliverySellersQuery(new URLSearchParams("listed_in=pay_skills"));
   assert.notEqual(q, "invalid");
-  assert.equal(q.listedIn, "pay_skills");
+  assert.equal(q !== "invalid" && q.listedIn, "pay_skills");
 });
 
 test("POST 本文: pay_skills_example は operator の次", () => {
