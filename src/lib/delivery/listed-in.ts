@@ -6,8 +6,9 @@
 import { CATALOG_SOURCE } from "@/lib/observatory/catalog-source";
 import { CIRCLE_DISCOVERY_SOURCE } from "@/lib/observatory/listing-sources";
 import { OPERATOR_SOURCE } from "@/lib/observatory/operator-listings";
+import { PAY_SKILLS_SOURCE } from "@/lib/observatory/pay-skills-listings";
 
-export type FeedListedIn = "bazaar" | "circle" | "mpp" | "operator";
+export type FeedListedIn = "bazaar" | "circle" | "mpp" | "operator" | "pay_skills";
 
 const MPP_DIRECTORY_SOURCE = "mpp_directory";
 
@@ -16,6 +17,7 @@ export function feedListedIn(source: string): FeedListedIn | null {
   if (source === CIRCLE_DISCOVERY_SOURCE) return "circle";
   if (source === MPP_DIRECTORY_SOURCE) return "mpp";
   if (source === OPERATOR_SOURCE) return "operator";
+  if (source === PAY_SKILLS_SOURCE) return "pay_skills";
   return null;
 }
 
@@ -25,5 +27,6 @@ export const LISTED_IN_CASE_SQL = `CASE e.source
   WHEN '${CIRCLE_DISCOVERY_SOURCE}' THEN 'circle'
   WHEN '${MPP_DIRECTORY_SOURCE}' THEN 'mpp'
   WHEN '${OPERATOR_SOURCE}' THEN 'operator'
+  WHEN '${PAY_SKILLS_SOURCE}' THEN 'pay_skills'
   ELSE NULL
 END`;

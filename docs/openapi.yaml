@@ -1077,7 +1077,9 @@ paths:
           sent unedited; since 2026-09-17), `empty` (`{}`), `operator_example`
           (since 2026-11-22: a seller vet402 added itself, source `operator`, whose
           402 declares no body; vet402 sent the example body written in
-          src/lib/observatory/operator-listings.ts), `none` (a request
+          src/lib/observatory/operator-listings.ts), `pay_skills_example`
+          (since 2026-11-24: pay.sh delivery targets, source `pay_skills`,
+          src/lib/observatory/pay-skills-listings-data.ts), `none` (a request
           formed with no body, whether or not it reached the seller; recorded
           since 2026-09-20). Blank means the row
           holds no record: rows before 2026-09-17, bodiless requests before
@@ -1390,7 +1392,7 @@ paths:
           schema: { type: integer, minimum: 0, maximum: 100000 }
         - in: query
           name: listed_in
-          schema: { type: string, enum: [bazaar, circle, mpp, operator] }
+          schema: { type: string, enum: [bazaar, circle, mpp, operator, pay_skills] }
         - in: query
           name: cursor
           schema: { type: string }

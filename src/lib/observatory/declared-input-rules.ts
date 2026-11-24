@@ -30,8 +30,9 @@ export const DECLARED_BODY_MAX_BYTES = 16 * 1024;
 /**
  * declared = 売り手の 402 が宣言した本文、empty = `{}`、
  * operator_example = vet402 が自分で足した出品（source = 'operator'）の一覧に書いた例の本文（operator-listings.ts・2026-11-22）。
+ * pay_skills_example = pay.sh 配達用一覧（source = 'pay_skills'）の例の本文（pay-skills-listings-data.ts・2026-11-24）。
  */
-export type RequestBodySource = "declared" | "empty" | "operator_example";
+export type RequestBodySource = "declared" | "empty" | "operator_example" | "pay_skills_example";
 
 /** 文書（402・カタログ）から取った本文。出どころは declared か empty だけ。 */
 export type DeclaredRequestBody = { body: string; source: "declared" | "empty" };
@@ -257,9 +258,13 @@ export function selectPaidRequestBody(input: {
   sellerRequestBody?: string | null;
   declared: DeclaredRequestBody;
   operatorExample: string | null;
+  paySkillsExample?: string | null;
 }): PaidRequestBody {
   if (input.sellerRequestBody) return { body: input.sellerRequestBody, source: "declared" };
   if (input.declared.source === "declared") return input.declared;
   if (input.operatorExample !== null && input.operatorExample !== "") return { body: input.operatorExample, source: "operator_example" };
+  if (input.paySkillsExample !== null && input.paySkillsExample !== undefined && input.paySkillsExample !== "") {
+    return { body: input.paySkillsExample, source: "pay_skills_example" };
+  }
   return EMPTY;
 }

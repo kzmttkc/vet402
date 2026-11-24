@@ -105,6 +105,7 @@ import { NO_DOMAIN_TRACK_RECORD_JSON, registeredDomainOf, registeredDomainSql } 
 import { isPathTemplate, notPathTemplateSql } from "./path-template";
 import { declaredRequestBody, declaredRequestUrl, selectPaidRequestBody, type RequestBodySource, type RequestQuerySource } from "./declared-input";
 import { OPERATOR_SOURCE, operatorExampleBody } from "./operator-listings";
+import { PAY_SKILLS_SOURCE, paySkillsExampleBody } from "./pay-skills-listings";
 import { requestBodyRecord } from "./request-body";
 import { deliveredPredicate, isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
@@ -4017,8 +4018,10 @@ async function purchaseOne(input: {
   // 2026-11-22: vet402 が自分で足した出品（source = 'operator'）は一覧の例の本文を持つ。本文を検証してから 402 を返す
   // 売り手（usebuy は `{}` に 400）があるので、無払いの最初の要求にも同じ本文を送る。他の出どころは従来どおり `{}`。
   const operatorExample = method === "POST" && candidate.source === OPERATOR_SOURCE ? operatorExampleBody(candidate.resourceUrl) : null;
+  const paySkillsExample = method === "POST" && candidate.source === PAY_SKILLS_SOURCE ? paySkillsExampleBody(candidate.resourceUrl) : null;
   const unpaidBody =
-    candidate.sellerRequestUnpaid?.body ?? (method === "POST" ? (operatorExample ?? "{}") : undefined);
+    candidate.sellerRequestUnpaid?.body ??
+    (method === "POST" ? (operatorExample ?? paySkillsExample ?? "{}") : undefined);
   const firstController = new AbortController();
   const firstTimer = setTimeout(() => firstController.abort(), timeoutMs);
   try {
@@ -4323,6 +4326,7 @@ async function purchaseOne(input: {
           sellerRequestBody: candidate.sellerRequestUnpaid?.body ?? null,
           declared: declaredRequestBody({ bodyText: firstBody, headers: first.headers }),
           operatorExample,
+          paySkillsExample,
         })
       : null;
   // Gateway の POST で 402 が本文を宣言していなければ、署名・予約の前に見送る（`{}` を送って払わない）。

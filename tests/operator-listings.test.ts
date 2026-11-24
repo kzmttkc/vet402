@@ -146,7 +146,7 @@ test("公開の文面がこのファイルを名指しし、売り手は払っ�
   const openapi = readFileSync(join(ROOT, "docs/openapi.yaml"), "utf8");
   assert.ok(openapi.includes(OPERATOR_LISTINGS_FILE));
   assert.ok(openapi.includes("sellers cannot pay or ask to be added"));
-  assert.ok(openapi.includes("enum: [bazaar, circle, mpp, operator]"));
+  assert.ok(openapi.includes("enum: [bazaar, circle, mpp, operator, pay_skills]"));
 });
 
 test("同期は既存の catalog-sync-aux の中で走る（新しい cron は無い）", () => {

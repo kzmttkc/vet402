@@ -33,6 +33,7 @@ import { toCaip2 } from "./chains";
 import { PATH_TEMPLATE_REASON, isPathTemplate } from "./path-template";
 import { MPP_DIRECTORY_SOURCE, TEMPO_MAINNET_CAIP2, mppChallengeToAccept, parseMppChallengesFromHeaders } from "./mpp-payer";
 import { OPERATOR_SOURCE, operatorExampleBody } from "./operator-listings";
+import { PAY_SKILLS_SOURCE, paySkillsExampleBody } from "./pay-skills-listings";
 
 /**
  * MPP の壁が支払いを求める**前に**要求の形を検証した（challenge 無しの 400/422）ときの理由語。
@@ -306,6 +307,7 @@ export async function probeEndpoint(
   };
   // vet402 が自分で足した出品（operator-listings.ts）の例の本文。他の出どころ・例の無い行は null（従来どおり `{}`）。
   const operatorExample = method === "POST" && target.source === OPERATOR_SOURCE ? operatorExampleBody(target.resourceUrl) : null;
+  const paySkillsExample = method === "POST" && target.source === PAY_SKILLS_SOURCE ? paySkillsExampleBody(target.resourceUrl) : null;
   const requestInit = (body: string | null): RequestInit => ({
     method,
     signal: controller.signal,
@@ -322,7 +324,7 @@ export async function probeEndpoint(
     // Empty JSON body on POST: the x402 wall answers 402 before the handler
     // parses anything, so this cannot trigger work on a compliant server.
     // 例外（2026-11-22 オーナー承認 22:10）: vet402 が自分で足した行（source = 'operator'）の POST だけ、一覧の例の本文を送る。
-    response = await fetchImpl(target.resourceUrl, requestInit(method === "POST" ? (operatorExample ?? "{}") : null));
+    response = await fetchImpl(target.resourceUrl, requestInit(method === "POST" ? (operatorExample ?? paySkillsExample ?? "{}") : null));
   } catch (error) {
     const reason = classifyNetworkError(error);
     clearTimeout(timer);
