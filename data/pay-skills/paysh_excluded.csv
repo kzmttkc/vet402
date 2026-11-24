@@ -1,0 +1,15 @@
+order,tranche,provider_fqn,host,endpoint,method,quoted_usd,cumulative_usd,reason
+1,T1,agentmail/email,x402.api.agentmail.to,/v0/pods,POST,0.01,0.01,keyword:create
+2,T1,agentres/reservations,agentres.dev,/api/book,POST,0.01,0.02,keyword:book
+5,T1,brij/travel,travel.brij.fi,/air/book,POST,0.001,0.026,keyword:book
+8,T1,paysponge/2captcha,2captcha.x402.paysponge.com,/createTask,POST,0.01,0.047,keyword:create
+39,T1,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request,POST,0.001,0.5394,keyword:execute
+140,T2g,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request-ml,POST,0.001,0.8789,keyword:execute
+141,T2g,solana-foundation/alibaba/saf,saf.alibaba.gateway-402.com,/execute-request-sg,POST,0.001,0.8799,keyword:execute
+230,T2o,agentmail/email,x402.api.agentmail.to,/v0/webhooks,POST,0.01,1.1619,keyword:create
+231,T2o,agentmail/email,x402.api.agentmail.to,/v0/lists/test/test,POST,0.01,1.1719,keyword:create
+232,T2o,agentmail/email,x402.api.agentmail.to,/v0/pods/test/lists/test/test,POST,0.01,1.1819,keyword:create
+307,T2o,vybenetwork/solana-analytics,x402-api.vybenetwork.xyz,/v4/trading/swap,POST,0.012,1.9639,keyword:swap
+313,T2o,vybenetwork/solana-analytics,x402-api.vybenetwork.xyz,/v4/wallets/util/close-token-accounts,POST,0.012,2.0359,keyword:close-
+314,T2o,vybenetwork/solana-analytics,x402-api.vybenetwork.xyz,/v4/wallets/util/withdraw-mev,POST,0.012,2.0479,keyword:withdraw
+331,,,screenshotone.x402.paysponge.com,/take,POST,,,duplicate_url

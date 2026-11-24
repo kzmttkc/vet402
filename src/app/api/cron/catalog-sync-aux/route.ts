@@ -3,6 +3,7 @@ import { authorizeCron } from "@/lib/cron/auth";
 import { syncCircleDiscovery } from "@/lib/observatory/circle-discovery";
 import { syncMppDirectory } from "@/lib/observatory/mpp-directory";
 import { syncOperatorListings } from "@/lib/observatory/operator-sync";
+import { syncPaySkillsListings } from "@/lib/observatory/pay-skills-sync";
 import { syncRail402Discovery } from "@/lib/observatory/snapshot-only-catalogs";
 import { refreshSolanaDiscoveryPayees } from "@/lib/settlements/discovery-payees";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
@@ -53,6 +54,14 @@ export async function GET(request: NextRequest) {
     logServerErrorSafe("cron.catalog-sync-aux.operator-listings", error);
     operatorListings = { error: "operator_listings_failed" };
   }
+  let paySkillsListings: unknown = null;
+  try {
+    const p = await syncPaySkillsListings();
+    paySkillsListings = { totalCount: p.totalCount, complete: p.complete, upserted: p.upserted, skipped: p.skipped, delisted: p.events.filter((e) => e.eventType === "delisted").length };
+  } catch (error) {
+    logServerErrorSafe("cron.catalog-sync-aux.pay-skills-listings", error);
+    paySkillsListings = { error: "pay_skills_listings_failed" };
+  }
   let rail402Discovery: unknown = null;
   try {
     rail402Discovery = await syncRail402Discovery();
@@ -60,7 +69,7 @@ export async function GET(request: NextRequest) {
     logServerErrorSafe("cron.catalog-sync-aux.rail402-discovery", error);
     rail402Discovery = { error: "rail402_discovery_failed" };
   }
-  return NextResponse.json({ ok: true, discoveryPayees, mppDirectory, circleDiscovery, operatorListings, rail402Discovery });
+  return NextResponse.json({ ok: true, discoveryPayees, mppDirectory, circleDiscovery, operatorListings, paySkillsListings, rail402Discovery });
 }
 const __disallowed = exportDisallowedMethodHandlers(["GET"]);
 export const { POST, PUT, PATCH, DELETE, OPTIONS } = __disallowed;

@@ -13,6 +13,7 @@
 //   request_body_sha256  declared の行の、**送ったバイト列**の SHA-256（小文字 hex 64 桁）。
 //   operator_example     （2026-11-22）vet402 が自分で足した出品（operator-listings.ts）に、402 が本文を宣言しない
 //                        ので一覧の例の本文を送った行。売り手の宣言ではない。hash も残す（本文は公開リポジトリにある）。
+//   pay_skills_example   （2026-11-24）pay.sh 配達用一覧（pay-skills-listings-data.ts）の例の本文。同上。
 //
 // 何を出し、何を出さないか:
 //   - 出す: 分類と hash。分類は数え直しに要る。hash は「売り手のいまの宣言と同じ本文か」「行の間で宣言が
@@ -37,7 +38,7 @@ import type { PaidRequestBody } from "./declared-input";
 import { declaredInputBodySql, declaredInputSendsBody } from "./declared-input-summary";
 
 /** raw_response_meta.requestBody の語彙＝公開 export の request_body の値。 */
-export const REQUEST_BODY_KINDS = ["declared", "empty", "none", "operator_example"] as const;
+export const REQUEST_BODY_KINDS = ["declared", "empty", "none", "operator_example", "pay_skills_example"] as const;
 export type RequestBodyKind = (typeof REQUEST_BODY_KINDS)[number];
 
 const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
@@ -45,6 +46,7 @@ const SHA256_HEX_RE = /^[0-9a-f]{64}$/;
 export type RequestBodyRecord =
   | { requestBody: "declared"; requestBodySha256: string }
   | { requestBody: "operator_example"; requestBodySha256: string }
+  | { requestBody: "pay_skills_example"; requestBodySha256: string }
   | { requestBody: "empty" }
   | { requestBody: "none" };
 
@@ -61,6 +63,10 @@ export function requestBodyRecord(paid: PaidRequestBody | null): RequestBodyReco
   if (paid.source === "operator_example") {
     return { requestBody: "operator_example", requestBodySha256: createHash("sha256").update(paid.body, "utf8").digest("hex") };
   }
+  // 2026-11-24: pay.sh 配達用一覧の例の本文（pay-skills-listings-data.ts）。同上。
+  if (paid.source === "pay_skills_example") {
+    return { requestBody: "pay_skills_example", requestBodySha256: createHash("sha256").update(paid.body, "utf8").digest("hex") };
+  }
   return { requestBody: "empty" };
 }
 
@@ -74,10 +80,10 @@ export function requestBodyKindOf(meta: unknown): RequestBodyKind | null {
   return typeof v === "string" && (REQUEST_BODY_KINDS as readonly string[]).includes(v) ? (v as RequestBodyKind) : null;
 }
 
-/** declared・operator_example の行の SHA-256（小文字 hex 64 桁）。それ以外・記録なし・形が違えば null。 */
+/** declared・operator_example・pay_skills_example の行の SHA-256（小文字 hex 64 桁）。それ以外・記録なし・形が違えば null。 */
 export function requestBodySha256Of(meta: unknown): string | null {
   const m = asMeta(meta);
-  if (m?.requestBody !== "declared" && m?.requestBody !== "operator_example") return null;
+  if (m?.requestBody !== "declared" && m?.requestBody !== "operator_example" && m?.requestBody !== "pay_skills_example") return null;
   const h = m.requestBodySha256;
   return typeof h === "string" && SHA256_HEX_RE.test(h) ? h : null;
 }
@@ -106,7 +112,7 @@ export function requestBodySha256Sql(alias = ""): string {
   const p = assertAlias("requestBodySha256Sql", alias);
   return (
     `CASE WHEN jsonb_typeof(${p}raw_response_meta->'requestBody') = 'string'` +
-    ` AND ${p}raw_response_meta->>'requestBody' IN ('declared', 'operator_example')` +
+    ` AND ${p}raw_response_meta->>'requestBody' IN ('declared', 'operator_example', 'pay_skills_example')` +
     ` AND jsonb_typeof(${p}raw_response_meta->'requestBodySha256') = 'string'` +
     ` AND ${p}raw_response_meta->>'requestBodySha256' ~ '^[0-9a-f]{64}$'` +
     ` THEN ${p}raw_response_meta->>'requestBodySha256' END`

@@ -51,7 +51,7 @@ export type AnswerShapeSortRow = {
   bodyHead: string;
   /** "declared" だけが、宣言のクエリを送った記録。null は記録が無い（送っていない）。 */
   requestQuery: "declared" | "empty" | "refused" | null;
-  requestBody: "declared" | "empty" | "none" | "operator_example" | null;
+  requestBody: "declared" | "empty" | "none" | "operator_example" | "pay_skills_example" | null;
   /** 出品の declared_input。無い行は null。 */
   declaredInput: { query: "declared" | "empty" | "refused"; body: "declared" | "empty" } | null;
   /** 宣言の必須項目（クエリ名と本文のフィールド名）。 */
@@ -436,7 +436,7 @@ export function sortAnswerShapeFromRun(input: {
   answerShape: AnswerShape;
   bodyHead: string;
   requestQuery: "declared" | "empty" | "refused" | null;
-  requestBody: "declared" | "empty" | "none" | "operator_example" | null;
+  requestBody: "declared" | "empty" | "none" | "operator_example" | "pay_skills_example" | null;
   declaredSchema: unknown;
   declaredInput?: { query: "declared" | "empty" | "refused"; body: "declared" | "empty" } | null;
   sentQuery?: string | null;

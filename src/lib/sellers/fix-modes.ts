@@ -781,7 +781,7 @@ export function inputEvidenceOf(r: SellerRowFacts): { inputs: InputEvidence; gap
   if (body === null) unrecorded = true;
   // 2026-11-22: operator_example は vet402 が自分で選んだ例の本文で、売り手が宣言した入力ではない。「宣言どおりの入力を
   // 送った」とは言えないので sent に数えない（売り手の側に置く根拠にしない）。
-  else if (body === "operator_example") unrecorded = true;
+  else if (body === "operator_example" || body === "pay_skills_example") unrecorded = true;
   // 2026-09-29 独立レビュー（BLOCK）: 本文を宣言している出品へ `{}`（empty）を送った行も「送っていない」。
   // 宣言の見本が無く空の本文で済ませたのは vet402 の側の不足で、売り手の失敗の根拠にならない。
   else if ((body === "none" || body === "empty") && declaresBodyForSending({ declaredSchema: r.schema, declaredInput: r.declaredInput ?? null })) gaps.push("body");

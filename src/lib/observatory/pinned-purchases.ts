@@ -20,10 +20,11 @@ export type PinnedPurchase = {
   maxPurchases: number;
 };
 
+import { PAYSH_PINNED_PURCHASES } from "./pay-skills-pinned-data";
+
 export const PINNED_PURCHASE_SELECTION = "pinned_purchase" as const;
 
-/** 正典リスト（版管理）。FactGate 審査用の最初の予約（2026-11-23 承認）。 */
-export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
+const FACTGATE_PINNED_PURCHASES: readonly PinnedPurchase[] = [
   {
     url: "https://agent402.tools/api/weather-forecast",
     method: "GET",
@@ -37,6 +38,9 @@ export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
     maxPurchases: 1,
   },
 ];
+
+/** 正典リスト（版管理）。FactGate のあとに pay.sh delivery（presign-gate-2611）の予約。 */
+export const PINNED_PURCHASES: readonly PinnedPurchase[] = [...FACTGATE_PINNED_PURCHASES, ...PAYSH_PINNED_PURCHASES];
 
 function parseUtcMs(iso: string): number {
   const ms = Date.parse(iso);

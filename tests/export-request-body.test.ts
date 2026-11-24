@@ -76,9 +76,11 @@ test("列: 既存 11 列はそのまま、追加は末尾だけ（2026-09-20 の
 
 test("request_body: 記録が無い行は null（empty にも none にも倒さない）", () => {
   // 2026-11-22: operator_example（vet402 が自分で足した出品の例の本文）を足した。
-  assert.deepEqual([...REQUEST_BODY_KINDS], ["declared", "empty", "none", "operator_example"]);
+  // 2026-11-24: pay_skills_example（pay.sh 配達用一覧の例の本文）を足した。
+  assert.deepEqual([...REQUEST_BODY_KINDS], ["declared", "empty", "none", "operator_example", "pay_skills_example"]);
   assert.equal(requestBodyKindOf({ requestBody: "declared" }), "declared");
   assert.equal(requestBodyKindOf({ requestBody: "operator_example" }), "operator_example");
+  assert.equal(requestBodyKindOf({ requestBody: "pay_skills_example" }), "pay_skills_example");
   assert.equal(requestBodyKindOf({ requestBody: "empty" }), "empty");
   assert.equal(requestBodyKindOf({ requestBody: "none" }), "none");
   assert.equal(requestBodyKindOf({ phase: "paid" }), null, "2026-09-17 より前の行・GET の旧い行");
@@ -100,6 +102,8 @@ test("requestBodyRecord: ランナーが行に残す形——POST は source、�
   const body = JSON.stringify({ wallet: "0x01", n: [1, 2] });
   const sha = createHash("sha256").update(body, "utf8").digest("hex");
   assert.deepEqual(requestBodyRecord({ body, source: "declared" }), { requestBody: "declared", requestBodySha256: sha });
+  assert.deepEqual(requestBodyRecord({ body, source: "operator_example" }), { requestBody: "operator_example", requestBodySha256: sha });
+  assert.deepEqual(requestBodyRecord({ body, source: "pay_skills_example" }), { requestBody: "pay_skills_example", requestBodySha256: sha });
   assert.deepEqual(requestBodyRecord({ body: "{}", source: "empty" }), { requestBody: "empty" });
   assert.deepEqual(requestBodyRecord(null), { requestBody: "none" });
   // 記録したものを export の分類がそのまま読める。
