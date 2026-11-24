@@ -34,25 +34,37 @@ if (!TEST_DB) {
     const { sql } = await import("drizzle-orm");
     const schema = await import("@/lib/db/schema");
 
+    const { Keypair } = await import("@solana/web3.js");
     const pin = PAYSH_PINNED_PURCHASES.find((p) => p.reason === "presign-gate-2611")!;
     const listing = PAY_SKILLS_LISTINGS.find((l) => l.url === pin.url)!;
     assert.equal(listing.network, SOLANA_MAINNET_CAIP2);
+    const listingAmount = BigInt(listing.amount);
+    const solKeypair = Keypair.fromSeed(new Uint8Array(32).fill(9));
+    const BLOCKHASH = "EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k";
 
     const insideMs = Date.parse("2026-11-27T12:00:00.000Z");
     const saved = {
       l1: process.env.OBSERVATORY_L1_ENABLED,
       sol: process.env.OBSERVATORY_SOLANA_L1_ENABLED,
+      solKey: process.env.OBSERVATORY_SOLANA_SECRET_KEY,
       pk: process.env.OBSERVATORY_WALLET_PRIVATE_KEY,
       cap: process.env.L1_SOLANA_DAILY_CAP_USD,
     };
     t.after(() => {
-      for (const [k, v] of Object.entries({ OBSERVATORY_L1_ENABLED: saved.l1, OBSERVATORY_SOLANA_L1_ENABLED: saved.sol, OBSERVATORY_WALLET_PRIVATE_KEY: saved.pk, L1_SOLANA_DAILY_CAP_USD: saved.cap })) {
+      for (const [k, v] of Object.entries({
+        OBSERVATORY_L1_ENABLED: saved.l1,
+        OBSERVATORY_SOLANA_L1_ENABLED: saved.sol,
+        OBSERVATORY_SOLANA_SECRET_KEY: saved.solKey,
+        OBSERVATORY_WALLET_PRIVATE_KEY: saved.pk,
+        L1_SOLANA_DAILY_CAP_USD: saved.cap,
+      })) {
         if (v === undefined) delete process.env[k];
         else process.env[k] = v;
       }
     });
     process.env.OBSERVATORY_L1_ENABLED = "true";
     process.env.OBSERVATORY_SOLANA_L1_ENABLED = "true";
+    process.env.OBSERVATORY_SOLANA_SECRET_KEY = Buffer.from(solKeypair.secretKey).toString("base64");
     process.env.OBSERVATORY_WALLET_PRIVATE_KEY = TEST_PK;
     delete process.env.L1_SOLANA_DAILY_CAP_USD;
 
@@ -82,20 +94,28 @@ if (!TEST_DB) {
         ),
     });
 
+  // 別枠ちょうど埋めると候補 SQL が Solana を丸ごと外し purchaseOne まで届かない（l1-runner.ts 2633–2655）。
+  // 1 件分足りない残りにして reserveSpend の chain_daily_cap 経路（4608–4611・1660–1661）を踏む。
     const cap = solanaDailyCapUnits();
+    const prefillUnits = cap - listingAmount + 1n;
+    assert.ok(prefillUnits > 0n && prefillUnits < cap, "prefill leaves room in lane SQL but not for this purchase");
     await db.execute(sql`
       INSERT INTO x402_l1_purchases (endpoint_id, status, payer, network, asset, pay_to, amount_units, spent_units, attempted_at)
-      SELECT id, 'settled', 'FakePayer', ${listing.network}, ${listing.asset}, ${listing.payTo}, '1', ${String(cap)}, now()
+      SELECT id, 'settled', 'FakePayer', ${listing.network}, ${listing.asset}, ${listing.payTo}, '1', ${String(prefillUnits)}, now()
       FROM x402_endpoints WHERE resource_url = ${listing.url}
     `);
 
     let tx = 0;
+    const seen: { url: string; paid: boolean }[] = [];
     const summary = await runL1Batch({
       limit: 3,
       now: () => insideMs,
       getPayerUsdcBalance: FUNDED_PAYER,
+      getSolanaBlockhash: async () => BLOCKHASH,
       fetchImpl: async (url, init) => {
-        if (init?.headers && (new Headers(init.headers).has("PAYMENT-SIGNATURE") || new Headers(init.headers).has("X-PAYMENT"))) {
+        const paid = !!(init?.headers && (new Headers(init.headers).has("PAYMENT-SIGNATURE") || new Headers(init.headers).has("X-PAYMENT")));
+        seen.push({ url, paid });
+        if (paid) {
           tx++;
           return new Response(JSON.stringify({ ok: true }), {
             status: 200,
@@ -124,6 +144,21 @@ if (!TEST_DB) {
     assert.equal(pinRows.length, 0, `expected no new presign buy, skipped=${summary.skipped}`);
     assert.equal(tx, 0, "Solana 別枠を使い切った日は支払い付きを出さない");
     assert.ok(summary.skipped > 0, "別枠で買えない候補は skipped に数える");
+    assert.ok(
+      seen.some((s) => s.url === listing.url && !s.paid),
+      "予約枠の内側で 402 を取りに行き、支払い付きには進まない",
+    );
+    assert.ok(!seen.some((s) => s.paid), "chain_daily_cap で署名しない");
+    const solSpent = await db.execute(sql`
+      SELECT coalesce(sum(spent_units::numeric), 0)::text AS s
+      FROM x402_l1_purchases
+      WHERE network = ${listing.network} AND attempted_at >= (date_trunc('day', now() AT TIME ZONE 'utc') AT TIME ZONE 'utc')
+    `);
+    const spentToday = (
+      (Array.isArray(solSpent) ? solSpent : (solSpent as { rows?: unknown[] }).rows ?? []) as { s: string }[]
+    )[0]!.s;
+    assert.ok(BigInt(spentToday.split(".")[0]) <= cap, `Solana 当日 spent ${spentToday} must stay <= ${cap}`);
+    assert.equal(BigInt(spentToday.split(".")[0]), prefillUnits, "新しい Solana 支出は無い");
     const solRows = purchases.filter((p) => p.network === listing.network);
     assert.equal(solRows.length, 1, "台帳の Solana 行は当日枠を埋めた 1 件だけ");
   });

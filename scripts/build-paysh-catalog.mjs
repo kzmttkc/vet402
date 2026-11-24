@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * purchase_plan.csv + catalog_l0.csv → pay-skills-listings-data.ts, pay-skills-pinned-data.ts, paysh_excluded.csv
- * Reads only; writes under worktree + one external excluded CSV.
+ * Reads/writes under data/pay-skills/ and generated TS under src/lib/observatory/.
  */
 import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
@@ -11,10 +11,11 @@ import { parseCsvRecords, parseCsvRows, readCsvSync } from "./rfc4180-csv.mjs";
 export { parseCsvRows, parseCsvRecords, readCsvSync };
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const PLAN = "/Users/takeshi/Takeshi_Automation/output/1124/solana_ai/work/p3/purchase_plan.csv";
-const L0 = "/Users/takeshi/Takeshi_Automation/output/1124/solana_ai/work/p2/catalog_l0.csv";
-const EXCLUDED_OUT = "/Users/takeshi/Takeshi_Automation/output/1124/moat/paysh_excluded.csv";
-const OPENAPI_DIR = "/Users/takeshi/Takeshi_Automation/output/1124/solana_ai/raw/openapi";
+const DATA = join(ROOT, "data/pay-skills");
+const PLAN = join(DATA, "purchase_plan.csv");
+const L0 = join(DATA, "catalog_l0.csv");
+const EXCLUDED_OUT = join(DATA, "paysh_excluded.csv");
+const OPENAPI_DIR = join(DATA, "openapi");
 const SOLANA_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 

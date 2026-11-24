@@ -23,7 +23,7 @@ import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { parseCsvRows, excludeReason } from "../scripts/build-paysh-catalog.mjs";
 
 const ROOT = process.cwd();
-const EXCLUDED_CSV = "/Users/takeshi/Takeshi_Automation/output/1124/moat/paysh_excluded.csv";
+const EXCLUDED_CSV = join(ROOT, "data/pay-skills/paysh_excluded.csv");
 
 test("parseCsvRows: 引用符内の改行は1レコードとして読む", () => {
   const rows = parseCsvRows('order,endpoint,method\n42,"/v1/x\n/y",POST\n');
