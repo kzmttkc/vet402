@@ -48,3 +48,29 @@ Replace `example.invalid/vet402-rules` with the registry repository. Record the 
 ```bash
 docker pull example.invalid/vet402-rules@sha256:<digest>
 ```
+
+## Reproduce verdicts from the published image (GHCR)
+
+GitHub Actions workflow `.github/workflows/rules-image.yml` builds `Dockerfile.rules` and pushes to `ghcr.io/vet402/vet402-rules` with tag `DECISION_RULES_VERSION` and `sha-<commit>`. After a green run, copy the digest from the job summary into this section (replace `<digest>` below).
+
+Pull the immutable image:
+
+```bash
+docker pull ghcr.io/vet402/vet402-rules@sha256:<digest>
+```
+
+Run offline with the same stdin shape as the unit tests (`fixtures/decide/*.json`). Example with `payer-allow.json`:
+
+```bash
+docker run --rm --network none ghcr.io/vet402/vet402-rules@sha256:<digest> < fixtures/decide/payer-allow.json
+```
+
+Expected stdout (single JSON line):
+
+```json
+{"recommendation":"ALLOW","reason_codes":["l0_pass","l1_delivered","l2_undeclared"],"rulesVersion":"2026-11-13.1"}
+```
+
+The other five fixtures under `fixtures/decide/` must match the host CLI (`scripts/decide-cli.ts`) the same way; CI runs all six inside the pushed image with `--network none`.
+
+**Where to set the digest after build:** replace `<digest>` in the `docker pull` and `docker run` commands in this section only (the `sha256:` prefix stays; paste the hex digest from the workflow job summary, without the `sha256:` prefix if the summary already includes it on the `@sha256:...` line, use the full `ghcr.io/vet402/vet402-rules@sha256:...` reference as printed).

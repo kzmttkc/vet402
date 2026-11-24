@@ -1,0 +1,94 @@
+name: rules-image
+
+# Build and publish the rules-only decision CLI image (Dockerfile.rules).
+# Reviewers can reproduce verdicts with docker run --network none and fixtures/decide/*.json.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile.rules
+      - scripts/decide-cli.ts
+      - src/lib/decision/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: docker/setup-buildx-action@bf8388060db527dff14f48b6a5fdbe70763c1213 # v4.4.1
+
+      - uses: docker/login-action@d0b8297dd55199249f38268efae35fcb03f75aab # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rules version and image tags
+        id: meta
+        run: |
+          version=$(grep -E '^export const DECISION_RULES_VERSION' src/lib/decision/rules.ts | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@562e51947939164e4fe808a6eab5101977e509e0 # v7.4.0
+        with:
+          context: .
+          file: Dockerfile.rules
+          push: true
+          tags: |
+            ghcr.io/vet402/vet402-rules:${{ steps.meta.outputs.version }}
+            ghcr.io/vet402/vet402-rules:sha-${{ steps.meta.outputs.short_sha }}
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install tsx (host oracle for fixture checks)
+        run: npm ci
+
+      - name: Verify fixtures in image (--network none)
+        env:
+          IMAGE: "ghcr.io/vet402/vet402-rules@${{ steps.build.outputs.digest }}"
+        run: |
+          set -euo pipefail
+          for f in fixtures/decide/*.json; do
+            name=$(basename "$f")
+            echo "== $name =="
+            expected=$(mktemp)
+            actual=$(mktemp)
+            env -u DATABASE_URL node --import tsx scripts/decide-cli.ts < "$f" > "$expected"
+            docker run --rm --network none "$IMAGE" < "$f" > "$actual"
+            node --input-type=module -e "
+              import assert from 'node:assert/strict';
+              import { readFileSync } from 'node:fs';
+              const e = JSON.parse(readFileSync(process.env.EXPECTED, 'utf8'));
+              const a = JSON.parse(readFileSync(process.env.ACTUAL, 'utf8'));
+              assert.deepEqual(a, e, process.env.FIXTURE);
+            " EXPECTED="$expected" ACTUAL="$actual" FIXTURE="$name"
+            rm -f "$expected" "$actual"
+          done
+
+      - name: Job summary (digest)
+        run: |
+          {
+            echo "## vet402-rules image"
+            echo ""
+            echo "Published tags:"
+            echo "- \`ghcr.io/vet402/vet402-rules:${{ steps.meta.outputs.version }}\`"
+            echo "- \`ghcr.io/vet402/vet402-rules:sha-${{ steps.meta.outputs.short_sha }}\`"
+            echo ""
+            echo "Immutable digest (record in docs/decide-cli.md):"
+            echo "\`\`\`"
+            echo "ghcr.io/vet402/vet402-rules@${{ steps.build.outputs.digest }}"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
