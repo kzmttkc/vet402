@@ -1419,11 +1419,19 @@ export default async function ObservatoryMethodologyPage() {
           are may reuse them on exactly the same terms as anyone measuring vet402.
         </p>
         <h3 className="doc-p font-semibold" id="anchors">
-          アンカー
+          Anchors on Base
         </h3>
         <p className="doc-p">
-          2026-11-24 から、各日の root を Base に自分宛ての tx として刻みます。
-          calldata を読めば誰でも照合できます。
+          Each sealed day&apos;s root is written to Base as a 0 ETH self-send from one signer, with
+          calldata <code>vet402-anchor:v1:&lt;day&gt;:&lt;root&gt;</code>. On 2026-11-24 the roots of all
+          101 days sealed from 2026-08-14 to 2026-11-22 were written this way, and each new day is
+          written within an hour of being sealed. A root that changes after its anchor no longer
+          matches Base. <code>/api/v1/observatory/anchors</code> lists each day&apos;s transaction with a
+          one-line <code>cast</code> command that prints its calldata. Sealing bytes are kept from
+          2026-11-23. For earlier days they are kept only where the current rows recomputed to
+          the stored root.{" "}
+          <code>/api/v1/observatory/anchors/day?day=YYYY-MM-DD&amp;view=current</code> recomputes a day
+          from the current rows and reports a mismatch if there is one.
         </p>
         <p className="doc-p">
           Every number here moves, so a measurement without its retrieval date is not a
