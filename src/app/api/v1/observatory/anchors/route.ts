@@ -5,6 +5,7 @@ import {
   ipRateLimitHeaders,
   sharedCacheRateLimitHeaders,
 } from "@/lib/api/ip-rate-limit";
+import { enrichAnchorRow } from "@/lib/observatory/anchor-base";
 import { chainContinuity, getAnchors, readDayVerificationInputs } from "@/lib/observatory/anchors";
 import { evaluateHeadFreshness, missingHeadDays } from "@/lib/observatory/ledger-head-freshness";
 import { verifyPublishedDayTriple, type DayTripleResult } from "@/lib/observatory/ledger-day-verify";
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "invalid_days" }, { status: 400, headers: perCaller });
   }
   try {
-    const anchors = await getAnchors(days);
+    const anchors = (await getAnchors(days)).map(enrichAnchorRow);
     const continuity = chainContinuity(anchors);
     const headDay = anchors[0]?.day ?? null;
     const publishedUtcDay = utcDayString();

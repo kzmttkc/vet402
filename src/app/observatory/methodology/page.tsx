@@ -1418,6 +1418,13 @@ export default async function ObservatoryMethodologyPage() {
           No permission is needed and none is granted selectively: an operator whose numbers these
           are may reuse them on exactly the same terms as anyone measuring vet402.
         </p>
+        <h3 className="doc-p font-semibold" id="anchors">
+          アンカー
+        </h3>
+        <p className="doc-p">
+          2026-11-24 から、各日の root を Base に自分宛ての tx として刻みます。
+          calldata を読めば誰でも照合できます。
+        </p>
         <p className="doc-p">
           Every number here moves, so a measurement without its retrieval date is not a
           measurement. Cite it as:{" "}
