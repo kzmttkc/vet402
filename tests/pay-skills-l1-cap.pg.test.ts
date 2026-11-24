@@ -147,7 +147,11 @@ if (!TEST_DB) {
     const pinRows = purchases.filter(
       (p) => (p.rawResponseMeta as Record<string, unknown> | null)?.pinnedPurchaseReason === "presign-gate-2611",
     );
-    assert.equal(pinRows.length, 0, `expected no new presign buy, skipped=${summary.skipped}`);
+    const pinDbg = JSON.stringify(
+      { tx, seen, pinRows: pinRows.map((r) => ({ status: r.status, spent: r.spentUnits, http: r.httpStatusPaid, meta: r.rawResponseMeta })), skipped: summary.skipped, attempted: summary.attempted },
+      (_k, v) => (typeof v === "bigint" ? v.toString() : v),
+    );
+    assert.equal(pinRows.length, 0, `expected no new presign buy ${pinDbg}`);
     assert.equal(tx, 0, "Solana 別枠を使い切った日は支払い付きを出さない");
     const dbg = JSON.stringify({ summary, seen }, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
     assert.ok(summary.skipped > 0, `別枠で買えない候補は skipped に数える ${dbg}`);
