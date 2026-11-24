@@ -136,6 +136,21 @@ export function observatoryFakeDb(tables: FakeObservatoryTables): FakeObservator
       if (row) row.sealed_payload = sealed_payload;
       return [];
     }
+    if (/^UPDATE ledger_anchors SET anchored_tx = /.test(text)) {
+      writes.push({ sql: text, params });
+      const [anchored_tx, day] = params as [string, string];
+      const row = tables.ledger_anchors.find((r) => r.day === day && r.anchored_tx == null);
+      if (row) {
+        row.anchored_tx = anchored_tx;
+        return [{ day }];
+      }
+      return [];
+    }
+    if (/^SELECT root_hash, anchored_tx FROM ledger_anchors WHERE day = /.test(text)) {
+      const day = dayParam(params);
+      const row = tables.ledger_anchors.find((r) => r.day === day);
+      return row ? [{ root_hash: row.root_hash, anchored_tx: row.anchored_tx }] : [];
+    }
     if (/^UPDATE ledger_anchors /.test(text)) {
       writes.push({ sql: text, params });
       const [root_hash, prev_root, entry_count, sealed_payload, day] = params as [string, string | null, number, string, string];

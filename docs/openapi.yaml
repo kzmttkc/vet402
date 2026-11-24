@@ -1562,6 +1562,17 @@ paths:
                         prevRoot: { type: string, nullable: true }
                         entryCount: { type: integer }
                         anchoredTx: { type: string, nullable: true }
+                        anchoredChain:
+                          type: string
+                          description: Present when anchoredTx is set (Base mainnet).
+                          example: "eip155:8453"
+                        anchoredTxUrl:
+                          type: string
+                          format: uri
+                          description: Block explorer link when anchoredTx is set.
+                        verify:
+                          type: string
+                          description: Shell one-liner to read the etched calldata when anchoredTx is set.
                   chainContinuity: { type: object }
                   headFreshness: { type: object }
                   missingHeadDays:
@@ -1580,6 +1591,37 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "429": { description: Rate limited }
         "503": { description: Store unavailable, or anchors_head_stale with the full body }
+
+  /api/v1/observatory/anchors/tx:
+    post:
+      operationId: postLedgerAnchorTx
+      tags: [Observatory]
+      summary: Register a Base transaction that etches a sealed day root
+      description: |
+        After scripts/anchor-base.mjs broadcasts a 0-value self-transaction on Base mainnet
+        (chainId 8453) with calldata `vet402-anchor:v1:YYYY-MM-DD:<rootHash>`, this route
+        fetches the tx from RPC, checks receipt status, self-send, signer and calldata, then
+        stores the tx hash in ledger_anchors.anchored_tx when it was still null. Bearer
+        ANCHOR_POST_SECRET. Returns 503 when the secret or ANCHOR_BASE_SIGNER is unset.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [day, txHash, chainId]
+              properties:
+                day: { type: string, format: date }
+                txHash: { type: string, pattern: "^0x[0-9a-fA-F]{64}$" }
+                chainId: { type: integer, enum: [8453] }
+      responses:
+        "200": { description: Registered }
+        "400": { description: invalid_request or invalid_tx_hash }
+        "403": { description: anchor_post_unauthorized }
+        "409": { description: anchor_tx_already_set }
+        "422": { description: Verification failed (receipt, self-send, signer, or calldata) }
+        "503": { description: anchor_post_unconfigured or observatory_unavailable }
 
   /api/v1/observatory/ledger-corrections:
     get:
@@ -7528,6 +7570,15 @@ components:
             - self_writes_closed
             - anchors_head_stale
             - no_head_for_day
+            - anchor_post_unconfigured
+            - anchor_post_unauthorized
+            - anchor_tx_already_set
+            - anchor_day_not_sealed
+            - anchor_tx_receipt_failed
+            - anchor_tx_not_found
+            - anchor_tx_not_self_send
+            - anchor_tx_signer_mismatch
+            - anchor_tx_calldata_mismatch
             - endpoint_not_found
             - frame_unavailable
             - graph_unavailable

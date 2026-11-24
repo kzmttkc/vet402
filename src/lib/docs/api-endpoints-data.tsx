@@ -577,6 +577,12 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
     response: `HTTP 200. The day JSON. x-vet402-day-root, x-vet402-prev-root, x-vet402-chain-root and x-vet402-day-verification headers.`,
   },
   {
+    method: "POST",
+    path: "/api/v1/observatory/anchors/tx",
+    note: "Register a Base mainnet self-transaction that etched a sealed day root (vet402-anchor:v1 calldata). Bearer ANCHOR_POST_SECRET. Verifies receipt, self-send, signer and calldata on RPC before UPDATE. Closed when ANCHOR_POST_SECRET is unset.",
+    response: `HTTP 200 { ok, day, txHash, chainId: 8453 }. 409 anchor_tx_already_set. 422 when RPC verification fails.`,
+  },
+  {
     method: "GET",
     path: "/api/v1/observatory/nearai",
     note: "Latest NEAR AI Cloud TEE attestation re-verification: Gateway TLS binding, Intel TDX TCB status, and NVIDIA NRAS GPU results per private TEE model. Independent from the L1 purchase ledger. Before the first daily run (09:00 UTC), HTTP 200 with status no_run_yet. Out-of-date TCB with valid cryptography is advisory. PCCS or NRAS outages are unverified. No API key. 30 requests per minute per IP. CC-BY-4.0.",

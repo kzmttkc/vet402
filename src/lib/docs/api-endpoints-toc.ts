@@ -56,6 +56,7 @@ export const API_ENDPOINT_TOC: readonly ApiEndpointTocItem[] = [
   { method: "GET", path: "/api/v1/graph/payto/:address" },
   { method: "GET", path: "/api/v1/observatory/anchors" },
   { method: "GET", path: "/api/v1/observatory/anchors/day" },
+  { method: "POST", path: "/api/v1/observatory/anchors/tx" },
   { method: "GET", path: "/api/v1/observatory/nearai" },
   { method: "GET", path: "/api/v1/observatory/nearai/anchors" },
   { method: "GET", path: "/api/v1/observatory/nearai/anchors/day" },
