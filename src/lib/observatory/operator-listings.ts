@@ -107,6 +107,64 @@ export const OPERATOR_LISTINGS: readonly OperatorListing[] = [
     reason: USEBUY_REASON,
     addedOn: "2026-11-22",
   },
+  // gateway.usebuy.ai/v1/catalog capability monid.x.tikhub.api-v1-twitter-web-fetch-user-post-tweet（2026-11-25 取得・inputSchema は queryParams 必須・読むだけ）。
+  {
+    url: "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-post-tweet",
+    method: "POST",
+    ...USEBUY_CELO,
+    extra: {
+      name: "USDC",
+      version: "2",
+      gateway: { capability: "monid.x.tikhub.api-v1-twitter-web-fetch-user-post-tweet", provider: "tikhub", pricingModel: "per_call" },
+    },
+    exampleBody: '{"queryParams":{"screen_name":"X"}}',
+    reason: USEBUY_REASON,
+    addedOn: "2026-11-25",
+  },
+  // gateway.usebuy.ai/v1/catalog capability monid.x.tikhub.api-v1-twitter-web-fetch-post-comments（2026-11-25 取得・inputSchema は queryParams 必須・読むだけ）。
+  {
+    url: "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-post-comments",
+    method: "POST",
+    ...USEBUY_CELO,
+    extra: {
+      name: "USDC",
+      version: "2",
+      gateway: { capability: "monid.x.tikhub.api-v1-twitter-web-fetch-post-comments", provider: "tikhub", pricingModel: "per_call" },
+    },
+    exampleBody: '{"queryParams":{"tweet_id":"2123175312129134936"}}',
+    reason: USEBUY_REASON,
+    addedOn: "2026-11-25",
+  },
+  // gateway.usebuy.ai/v1/catalog capability monid.instagram.tikhub.api-v1-instagram-v2-fetch-user-posts（2026-11-25 取得・inputSchema は queryParams 必須・読むだけ）。
+  {
+    url: "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-user-posts",
+    method: "POST",
+    ...USEBUY_CELO,
+    amount: "7000",
+    extra: {
+      name: "USDC",
+      version: "2",
+      gateway: { capability: "monid.instagram.tikhub.api-v1-instagram-v2-fetch-user-posts", provider: "tikhub", pricingModel: "per_call" },
+    },
+    exampleBody: '{"queryParams":{"username":"instagram"}}',
+    reason: USEBUY_REASON,
+    addedOn: "2026-11-25",
+  },
+  // gateway.usebuy.ai/v1/catalog capability monid.instagram.tikhub.api-v1-instagram-v2-fetch-post-comments（2026-11-25 取得・inputSchema は queryParams 必須・読むだけ）。
+  {
+    url: "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-post-comments",
+    method: "POST",
+    ...USEBUY_CELO,
+    amount: "7000",
+    extra: {
+      name: "USDC",
+      version: "2",
+      gateway: { capability: "monid.instagram.tikhub.api-v1-instagram-v2-fetch-post-comments", provider: "tikhub", pricingModel: "per_call" },
+    },
+    exampleBody: '{"queryParams":{"code_or_url":"Df-eXldGxRb"}}',
+    reason: USEBUY_REASON,
+    addedOn: "2026-11-25",
+  },
 ];
 
 /** exampleBody の上限（UTF-8 バイト）。 */

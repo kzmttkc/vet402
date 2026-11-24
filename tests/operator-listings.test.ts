@@ -29,7 +29,8 @@ import { inputEvidenceOf } from "@/lib/sellers/fix-modes";
 import { createHash } from "node:crypto";
 import { OPERATOR_EXAMPLE_BODY_MAX_BYTES, operatorExampleBody } from "@/lib/observatory/operator-listings";
 import { parseDeliverySellersQuery } from "@/lib/delivery/sellers-feed-query";
-import { CELO_CHAIN } from "@/lib/observatory/x402-payer";
+import { CELO_CAIP2, CELO_CHAIN, selectAccept } from "@/lib/observatory/x402-payer";
+import { PINNED_PURCHASES, listingMatchesPinned } from "@/lib/observatory/pinned-purchases";
 
 const ROOT = process.cwd();
 
@@ -52,12 +53,24 @@ const fixture = (over: Partial<OperatorListing> = {}): OperatorListing => ({
 test("本番の一覧は規則どおりに読め、ファイルの名前が実物と一致する", () => {
   const items = parseOperatorListings(OPERATOR_LISTINGS);
   assert.equal(items.length, OPERATOR_LISTINGS.length);
-  // 2026-11-22: usebuy の 3 件（Celo の USDC・5000）。POST には例の本文、GET には無い。
-  assert.ok(OPERATOR_LISTINGS.length <= 3);
+  // 2026-11-22 の 3 件 + 2026-11-25 の 4 件 = usebuy operator 7 件（Celo USDC・5000 または 7000）。POST には例の本文。
+  assert.equal(OPERATOR_LISTINGS.length, 7);
+  const amountByTail = new Map(
+    [
+      ["/profile", "5000"],
+      ["fetch-user-about", "5000"],
+      ["fetch-user-post-tweet", "5000"],
+      ["fetch-post-comments", "5000"],
+      ["instagram-v2-fetch-user-posts", "7000"],
+      ["instagram-v2-fetch-post-comments", "7000"],
+    ].map(([tail, amt]) => [tail, amt]),
+  );
   for (const l of OPERATOR_LISTINGS) {
     assert.equal(l.network, "eip155:42220");
     assert.equal(l.asset.toLowerCase(), CELO_CHAIN.usdc.toLowerCase());
-    assert.equal(l.amount, "5000");
+    const tail = [...amountByTail.keys()].sort((a, b) => b.length - a.length).find((k) => l.url.includes(k));
+    assert.ok(tail, l.url);
+    assert.equal(l.amount, amountByTail.get(tail));
     assert.ok(l.reason.length > 20);
     if (l.method === "POST") assert.notEqual(operatorExampleBody(l.url), null);
     else assert.equal(l.exampleBody, undefined);
@@ -68,6 +81,10 @@ test("本番の一覧は規則どおりに読め、ファイルの名前が実�
       ["https://gateway.usebuy.ai/v1/social/instagram/profile", '{"username":"instagram"}'],
       ["https://gateway.usebuy.ai/v1/social/tiktok/profile", '{"username":"tiktok"}'],
       ["https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-about", '{"queryParams":{"screen_name":"X"}}'],
+      ["https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-post-tweet", '{"queryParams":{"screen_name":"X"}}'],
+      ["https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-post-comments", '{"queryParams":{"tweet_id":"2123175312129134936"}}'],
+      ["https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-user-posts", '{"queryParams":{"username":"instagram"}}'],
+      ["https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-post-comments", '{"queryParams":{"code_or_url":"Df-eXldGxRb"}}'],
     ],
   );
   assert.ok(readFileSync(join(ROOT, OPERATOR_LISTINGS_FILE), "utf8").includes("export const OPERATOR_LISTINGS"));
@@ -172,6 +189,37 @@ test("本文の出どころの順: 売り手依頼 > 402 の宣言 > operator �
   assert.deepEqual(selectPaidRequestBody({ declared, operatorExample: example }), declared, "402 の宣言が例より先");
   assert.deepEqual(selectPaidRequestBody({ declared: empty, operatorExample: example }), { body: example, source: "operator_example" });
   assert.deepEqual(selectPaidRequestBody({ declared: empty, operatorExample: null }), { body: "{}", source: "empty" }, "operator でない行は従来どおり");
+});
+
+test("prezenti-m2 の 4 予約は Celo operator 出品と一致し、selectAccept が eip155:42220 を通す（L0 pass は他出どころと同じ・operator-listings.pg.test.ts）", () => {
+  const savedCelo = process.env.OBSERVATORY_CELO_L1_ENABLED;
+  process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+  try {
+  const pins = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m2-usebuy-2611");
+  assert.equal(pins.length, 4);
+  const insideMs = Date.parse("2026-11-26T12:00:00.000Z");
+  for (const pin of pins) {
+    const listing = OPERATOR_LISTINGS.find((l) => l.url === pin.url);
+    assert.ok(listing, pin.url);
+    assert.equal(listing.method, "POST");
+    assert.equal(listing.network, CELO_CAIP2);
+    assert.equal(listingMatchesPinned(pin, listing.url, listing.method), true);
+    const [parsed] = parseOperatorListings([listing]);
+    const accepts = parsed.rawAccepts as { scheme: string; network: string; amount: string; asset: string; payTo: string }[];
+    const accept = accepts[0]!;
+    const chosen = selectAccept([accept], {
+      declaredAmount: listing.amount,
+      declaredPayTo: listing.payTo.toLowerCase(),
+      declaredNetwork: CELO_CAIP2,
+    });
+    assert.ok(chosen.accept, pin.url);
+    assert.equal(chosen.accept.network, CELO_CAIP2);
+    assert.equal(Date.parse(pin.from) <= insideMs && insideMs <= Date.parse(pin.to), true);
+  }
+  } finally {
+    if (savedCelo === undefined) delete process.env.OBSERVATORY_CELO_L1_ENABLED;
+    else process.env.OBSERVATORY_CELO_L1_ENABLED = savedCelo;
+  }
 });
 
 test("記録: operator_example は送った本文の SHA-256 を持ち、売り手の側の根拠（sent）にしない", () => {
