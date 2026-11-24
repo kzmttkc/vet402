@@ -62,7 +62,7 @@ docker pull ghcr.io/vet402/vet402-rules@sha256:<digest>
 Run offline with the same stdin shape as the unit tests (`fixtures/decide/*.json`). Example with `payer-allow.json`:
 
 ```bash
-docker run --rm --network none ghcr.io/vet402/vet402-rules@sha256:<digest> < fixtures/decide/payer-allow.json
+docker run --rm -i --network none ghcr.io/vet402/vet402-rules@sha256:<digest> < fixtures/decide/payer-allow.json
 ```
 
 Expected stdout (single JSON line):

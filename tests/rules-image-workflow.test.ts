@@ -29,7 +29,7 @@ test("rules-image workflow: permissions are contents read and packages write onl
 
 test("rules-image workflow: fixture verification uses --network none", () => {
   const yml = readFileSync(YML, "utf8");
-  assert.match(yml, /docker run --rm --network none/);
+  assert.match(yml, /docker run --rm -i --network none/); // -i: without it stdin never reaches the container (2026-11-25 first run)
   assert.match(yml, /fixtures\/decide\/\*\.json/);
   assert.match(yml, /GITHUB_STEP_SUMMARY/);
 });

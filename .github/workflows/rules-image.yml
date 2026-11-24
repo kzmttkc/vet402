@@ -67,7 +67,7 @@ jobs:
             expected=$(mktemp)
             actual=$(mktemp)
             env -u DATABASE_URL node --import tsx scripts/decide-cli.ts < "$f" > "$expected"
-            docker run --rm --network none "$IMAGE" < "$f" > "$actual"
+            docker run --rm -i --network none "$IMAGE" < "$f" > "$actual"
             node --input-type=module -e "
               import assert from 'node:assert/strict';
               import { readFileSync } from 'node:fs';
