@@ -1879,10 +1879,17 @@ claims:
   - id: method_snapshot_copies_doi
     surface: src/app/observatory/methodology/page.tsx
     quote: "Dated copies of the purchase ledger, the aggregate JSON and the daily series are kept at"
-    means: "台帳 CSV・state・history の日付つきの写しを github.com/kzmttkc/vet402-observatory-data に置き、Zenodo に保存している。概念 DOI 10.5281/zenodo.24195171 は最新のスナップショットへ解決する"
+    means: "台帳 CSV・state・history の日付つきの写しを github.com/kzmttkc/vet402-observatory-data に置き、Zenodo に保存している。vet402 リポの .github/workflows/observatory-snapshot.yml が毎週月曜 02:00 UTC に bundle を取り直して data/YYYY-MM-DD へ push し、同じ日付の GitHub Release で Zenodo に新版を載せる。概念 DOI 10.5281/zenodo.24195171 は最新のスナップショットへ解決する"
     check: null
     why_unverifiable: "Zenodo の記録は外部の面で、Accept を付けない fetch には HTML を返すため、カナリアの式では読めない。2026-11-13 に curl で zenodo.org/api/records/24195172 の conceptdoi = 10.5281/zenodo.24195171 と、doi.org の 302 → records/24195172 を確かめた"
     verified_at: 2026-11-13
+  - id: method_snapshot_weekly_monday_utc
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "A new dated copy is published every Monday at 02:00 UTC"
+    means: "公開スナップショットの写しは毎週月曜 02:00 UTC に vet402 リポの observatory-snapshot ワークフローが取り直し、kzmttkc/vet402-observatory-data の data/YYYY-MM-DD と同名タグの GitHub Release へ載せる"
+    check: null
+    why_unverifiable: "次回の発火時刻は GitHub Actions の実行履歴に依存し、公開 GET の JSON 式では固定できない。スケジュール文字列は .github/workflows/observatory-snapshot.yml の cron と tests/observatory-snapshot.test.ts が固定する"
+    verified_at: 2026-11-24
   - id: method_every_number_moves_cite_with_retrieval_date
     surface: src/app/observatory/methodology/page.tsx
     quote: "Every number here moves, so a measurement without its retrieval date is not a"

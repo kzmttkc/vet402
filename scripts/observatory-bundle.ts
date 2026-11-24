@@ -1,7 +1,7 @@
 // ============================================================
 // 公開観測データだけの再計算バンドル（鍵なし・DB なし）。
 //
-//   npx tsx scripts/observatory-bundle.ts --fetch --out public/data/observatory-bundle/YYYY-MM-DD
+//   npx tsx scripts/observatory-bundle.ts --fetch --out public/data/observatory-bundle/YYYY-MM-DD [--prev-manifest path/to/manifest.json]
 //
 // --fetch のときだけ https://vet402.com へ平文の GET を出す。環境変数は読まない。
 // 日次ファイルは 7 秒空けて取る（anchors/day は 10 回/分）。429 は Retry-After を待ってやり直す。
@@ -109,7 +109,10 @@ Attribute the source as: KIZUNA Creation. vet402 observatory. Dataset, retrieved
 - \`anchors.json\` is GET /api/v1/observatory/anchors?days=366, saved as the server sent it. Each row has \`day\`, \`rootHash\`, and \`prevRoot\`.
 - \`days/<YYYY-MM-DD>.json\` is GET /api/v1/observatory/anchors/day?day=YYYY-MM-DD, saved byte for byte.
 - \`days/index.json\` records the response headers \`x-vet402-day-source\` and \`x-vet402-day-verification\` for each day file.
+- \`state.json\` is GET /api/v1/observatory/state, saved as the server sent it.
+- \`history.json\` is GET /api/v1/observatory/history with default parameters, saved as the server sent it.
 - \`SHA256SUMS\` is the SHA-256 of every file in this directory except \`SHA256SUMS\` itself. Two spaces separate the digest and the relative path.
+- \`manifest.json\` lists every other file with sha256, byte count and line count, and links to the previous snapshot's manifest when \`--prev-manifest\` is passed.
 - \`verify.mjs\` checks \`SHA256SUMS\`, recomputes each day root, and checks that each later day's \`prevRoot\` matches the previous day's \`rootHash\`.
 - \`README.md\` is this note.
 
@@ -196,7 +199,7 @@ const VERIFY_MJS = [
   "    checksumsOk = false;",
   "  }",
   "}",
-  "for (const rel of walk(root, []).filter((p) => p !== \"SHA256SUMS\").sort()) {",
+  "for (const rel of walk(root, []).filter((p) => p !== \"SHA256SUMS\" && p !== \"manifest.json\").sort()) {",
   "  if (!listed.has(rel)) {",
   "    console.log(\"FAIL \" + rel);",
   "    checksumsOk = false;",
@@ -259,16 +262,125 @@ export function listBundleFiles(outDir: string): string[] {
   return out;
 }
 
-export function writeBundleSidecars(outDir: string): void {
+export type ManifestFileEntry = { path: string; sha256: string; bytes: number; lines: number };
+
+export type ObservatoryManifest = {
+  retrieved: string | null;
+  prev_manifest_sha256: string | null;
+  chain_length: number;
+  files: ManifestFileEntry[];
+};
+
+const MANIFEST_NAME = "manifest.json";
+
+export function sha256Buffer(buf: Buffer): string {
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+export function sha256FilePath(absPath: string): string {
+  return sha256Buffer(readFileSync(absPath));
+}
+
+/** Line count = LF-separated records; a final line without LF still counts. */
+export function lineCountOf(buf: Buffer): number {
+  if (buf.length === 0) return 0;
+  let lines = 0;
+  for (let i = 0; i < buf.length; i++) {
+    if (buf[i] === 0x0a) lines++;
+  }
+  if (buf[buf.length - 1] !== 0x0a) lines++;
+  return lines;
+}
+
+export function manifestFileEntry(outDir: string, rel: string): ManifestFileEntry {
+  const abs = join(outDir, ...rel.split("/"));
+  const buf = readFileSync(abs);
+  return { path: rel, sha256: sha256Buffer(buf), bytes: buf.length, lines: lineCountOf(buf) };
+}
+
+export function bundlePathsForManifest(outDir: string): string[] {
+  return listBundleFiles(outDir)
+    .filter((rel) => rel !== MANIFEST_NAME)
+    .sort();
+}
+
+export function readObservatoryManifest(manifestPath: string): ObservatoryManifest {
+  const doc = JSON.parse(readFileSync(manifestPath, "utf8")) as ObservatoryManifest;
+  if (!doc || !Array.isArray(doc.files)) throw new Error("manifest.json has no files array");
+  return doc;
+}
+
+export function chainLengthFromPrev(prev: ObservatoryManifest | null): number {
+  if (!prev) return 1;
+  const n = prev.chain_length;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 1) throw new Error("previous manifest has no valid chain_length");
+  return n + 1;
+}
+
+export function buildObservatoryManifest(outDir: string, prevManifestPath?: string): ObservatoryManifest {
+  const base = basename(outDir);
+  let prev: ObservatoryManifest | null = null;
+  let prevManifestSha: string | null = null;
+  if (prevManifestPath) {
+    prevManifestSha = sha256FilePath(prevManifestPath);
+    prev = readObservatoryManifest(prevManifestPath);
+  }
+  const files = bundlePathsForManifest(outDir).map((rel) => manifestFileEntry(outDir, rel));
+  return {
+    retrieved: DAY_RE.test(base) ? base : null,
+    prev_manifest_sha256: prevManifestSha,
+    chain_length: chainLengthFromPrev(prev),
+    files,
+  };
+}
+
+export function writeObservatoryManifest(outDir: string, prevManifestPath?: string): ObservatoryManifest {
+  const doc = buildObservatoryManifest(outDir, prevManifestPath);
+  writeFileSync(join(outDir, MANIFEST_NAME), `${JSON.stringify(doc, null, 2)}\n`);
+  return doc;
+}
+
+/** Throws when the manifest's prev link does not match the file at prevManifestPath. */
+export function verifyManifestChain(manifestPath: string, prevManifestPath: string): void {
+  const doc = readObservatoryManifest(manifestPath);
+  const got = sha256FilePath(prevManifestPath);
+  if (doc.prev_manifest_sha256 !== got) {
+    throw new Error(`manifest chain broken: prev_manifest_sha256 does not match ${prevManifestPath}`);
+  }
+  const prev = readObservatoryManifest(prevManifestPath);
+  if (doc.chain_length !== chainLengthFromPrev(prev)) {
+    throw new Error(
+      `manifest chain_length ${doc.chain_length} is not one more than the previous manifest (${prev.chain_length})`,
+    );
+  }
+}
+
+/** Re-read each file in the manifest and confirm sha256, bytes and lines. */
+export function verifyManifestFileStats(outDir: string, manifestPath = join(outDir, MANIFEST_NAME)): void {
+  const doc = readObservatoryManifest(manifestPath);
+  for (const entry of doc.files) {
+    const abs = join(outDir, ...entry.path.split("/"));
+    const buf = readFileSync(abs);
+    const sha256 = sha256Buffer(buf);
+    const bytes = buf.length;
+    const lines = lineCountOf(buf);
+    if (sha256 !== entry.sha256 || bytes !== entry.bytes || lines !== entry.lines) {
+      throw new Error(`manifest entry stale for ${entry.path}`);
+    }
+  }
+}
+
+export function writeBundleSidecars(outDir: string, prevManifestPath?: string): void {
   const base = basename(outDir);
   writeFileSync(join(outDir, "README.md"), bundleReadme(DAY_RE.test(base) ? base : null));
   writeFileSync(join(outDir, "verify.mjs"), VERIFY_MJS);
-  const files = listBundleFiles(outDir).filter((rel) => rel !== "SHA256SUMS");
+  const files = listBundleFiles(outDir).filter((rel) => rel !== "SHA256SUMS" && rel !== MANIFEST_NAME);
   const lines = files.map((rel) => {
-    const digest = createHash("sha256").update(readFileSync(join(outDir, ...rel.split("/")))).digest("hex");
+    const digest = sha256Buffer(readFileSync(join(outDir, ...rel.split("/"))));
     return `${digest}  ${rel}`;
   });
   writeFileSync(join(outDir, "SHA256SUMS"), `${lines.join("\n")}\n`);
+  writeObservatoryManifest(outDir, prevManifestPath);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -328,7 +440,7 @@ function anchorRows(body: Buffer): AnchorRow[] {
   return rows;
 }
 
-async function fetchBundle(outDir: string): Promise<void> {
+async function fetchBundle(outDir: string, prevManifestPath?: string): Promise<void> {
   mkdirSync(join(outDir, "days"), { recursive: true });
 
   const exportUrl = publicUrl("/api/v1/observatory/export.csv?days=366");
@@ -337,6 +449,24 @@ async function fetchBundle(outDir: string): Promise<void> {
   assertExportHeaderSafe(headerLineOf(exported.body));
   writeFileSync(join(outDir, "export.csv"), exported.body);
 
+  await sleep(DAY_REQUEST_GAP_MS);
+  const stateUrl = publicUrl("/api/v1/observatory/state");
+  const state = await getBytes(stateUrl);
+  requireOk(stateUrl, state.status, state.body);
+  writeFileSync(join(outDir, "state.json"), state.body);
+
+  await sleep(DAY_REQUEST_GAP_MS);
+  const historyUrl = publicUrl("/api/v1/observatory/history");
+  const history = await getBytes(historyUrl);
+  if (history.status === 200) {
+    writeFileSync(join(outDir, "history.json"), history.body);
+  } else if (history.status === 404) {
+    console.error("history endpoint absent; not included in bundle");
+  } else {
+    requireOk(historyUrl, history.status, history.body);
+  }
+
+  await sleep(DAY_REQUEST_GAP_MS);
   const anchorsUrl = publicUrl("/api/v1/observatory/anchors?days=366");
   const anchors = await getBytes(anchorsUrl);
   requireOk(anchorsUrl, anchors.status, anchors.body);
@@ -360,7 +490,7 @@ async function fetchBundle(outDir: string): Promise<void> {
     console.error(`saved ${day} source=${res.headers.get("x-vet402-day-source") ?? ""}`);
   }
   writeFileSync(join(outDir, "days", "index.json"), dayIndexJson(index));
-  writeBundleSidecars(outDir);
+  writeBundleSidecars(outDir, prevManifestPath);
   console.error(`wrote ${outDir}`);
 }
 
@@ -370,15 +500,33 @@ function runningAsCli(): boolean {
   return pathToFileURL(entry).href === import.meta.url;
 }
 
+function cliArg(flag: string): string | undefined {
+  const index = process.argv.indexOf(flag);
+  if (index < 0) return undefined;
+  return process.argv[index + 1];
+}
+
 async function main(): Promise<void> {
   const fetch = process.argv.includes("--fetch");
-  const outIndex = process.argv.indexOf("--out");
-  const out = outIndex >= 0 ? process.argv[outIndex + 1] : undefined;
+  const out = cliArg("--out");
+  const prevManifest = cliArg("--prev-manifest");
+  const checkChain = process.argv.includes("--check-chain");
+  const manifest = cliArg("--manifest");
+  if (checkChain) {
+    if (!manifest || !prevManifest) {
+      console.error("usage: npx tsx scripts/observatory-bundle.ts --check-chain --manifest dir/manifest.json --prev-manifest prev/manifest.json");
+      process.exit(1);
+    }
+    verifyManifestChain(manifest, prevManifest);
+    return;
+  }
   if (!fetch || !out) {
-    console.error("usage: npx tsx scripts/observatory-bundle.ts --fetch --out public/data/observatory-bundle/YYYY-MM-DD");
+    console.error(
+      "usage: npx tsx scripts/observatory-bundle.ts --fetch --out public/data/observatory-bundle/YYYY-MM-DD [--prev-manifest path]",
+    );
     process.exit(1);
   }
-  await fetchBundle(out);
+  await fetchBundle(out, prevManifest);
 }
 
 if (runningAsCli()) {

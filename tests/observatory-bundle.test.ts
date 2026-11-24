@@ -10,10 +10,15 @@ import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import {
   DAY_REQUEST_GAP_MS,
   assertExportHeaderSafe,
+  buildObservatoryManifest,
   dayIndexJson,
   headerLineOf,
   retryAfterMs,
+  sha256FilePath,
+  verifyManifestChain,
+  verifyManifestFileStats,
   writeBundleSidecars,
+  writeObservatoryManifest,
 } from "../scripts/observatory-bundle";
 
 function dayRoot(prevRoot: string | null, bytes: Buffer): string {
@@ -73,6 +78,8 @@ function writeSynthetic(dir: string, breakSealed: boolean): void {
     ]),
   );
   writeFileSync(join(dir, "export.csv"), `${EXPORT_CSV_COLUMNS.join(",")}\n`);
+  writeFileSync(join(dir, "state.json"), '{"l1":{"attempts":1}}\n');
+  writeFileSync(join(dir, "history.json"), '{"days":[]}\n');
   writeBundleSidecars(dir);
 }
 
@@ -112,6 +119,57 @@ test("合成バンドル: 封印 2 日は再計算と連結が通り、current �
       ].join("\n"),
     );
     assert.equal(result.status, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("manifest: 前回 manifest の sha256 を繋ぎ、1 バイト変えると検査が赤", () => {
+  const root = mkdtempSync(join(tmpdir(), "obs-manifest-"));
+  const prevDir = join(root, "2026-11-12");
+  const nextDir = join(root, "2026-11-19");
+  try {
+    mkdirSync(prevDir, { recursive: true });
+    mkdirSync(join(nextDir, "days"), { recursive: true });
+    writeFileSync(join(prevDir, "state.json"), '{"v":1}\n');
+    const prevManifest = writeObservatoryManifest(prevDir);
+    assert.equal(prevManifest.chain_length, 1);
+    assert.equal(prevManifest.prev_manifest_sha256, null);
+
+    writeFileSync(join(nextDir, "state.json"), '{"v":2}\n');
+    writeFileSync(join(nextDir, "export.csv"), `${EXPORT_CSV_COLUMNS.join(",")}\n`);
+    writeObservatoryManifest(nextDir, join(prevDir, "manifest.json"));
+    const nextManifest = JSON.parse(readFileSync(join(nextDir, "manifest.json"), "utf8")) as {
+      prev_manifest_sha256: string;
+      chain_length: number;
+    };
+    assert.equal(nextManifest.prev_manifest_sha256, sha256FilePath(join(prevDir, "manifest.json")));
+    assert.equal(nextManifest.chain_length, 2);
+    verifyManifestChain(join(nextDir, "manifest.json"), join(prevDir, "manifest.json"));
+    verifyManifestFileStats(nextDir);
+
+    writeFileSync(join(nextDir, "state.json"), '{"v":3}\n');
+    assert.throws(() => verifyManifestFileStats(nextDir), /stale/);
+    writeFileSync(join(nextDir, "state.json"), '{"v":2}\n');
+    verifyManifestFileStats(nextDir);
+    const prevManifestPath = join(prevDir, "manifest.json");
+    writeFileSync(prevManifestPath, `${readFileSync(prevManifestPath, "utf8").trimEnd()} \n`);
+    assert.throws(() => verifyManifestChain(join(nextDir, "manifest.json"), prevManifestPath), /chain broken/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("manifest: state.json と history.json が束のファイル一覧に入る", () => {
+  const dir = mkdtempSync(join(tmpdir(), "obs-bundle-"));
+  try {
+    writeSynthetic(dir, false);
+    const manifest = buildObservatoryManifest(dir);
+    const paths = manifest.files.map((f) => f.path);
+    assert.ok(paths.includes("state.json"));
+    assert.ok(paths.includes("history.json"));
+    assert.ok(paths.includes("manifest.json") === false);
+    assert.ok(paths.includes("export.csv"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

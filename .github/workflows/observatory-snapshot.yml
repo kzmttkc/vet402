@@ -1,0 +1,100 @@
+name: observatory-snapshot
+
+# Weekly dated copy of public observatory files → kzmttkc/vet402-observatory-data.
+# Zenodo's GitHub integration mints a new version from each GitHub Release on that repo.
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # Monday 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      SNAPSHOT_REPO:
+        description: "Owner/repo for dated snapshots (default vet402-observatory-data)"
+        required: false
+        default: kzmttkc/vet402-observatory-data
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Skip when SNAPSHOT_REPO_TOKEN is unset
+        id: gate
+        env:
+          TOKEN: ${{ secrets.SNAPSHOT_REPO_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "skipped: no token"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: End skipped run successfully
+        if: steps.gate.outputs.run != 'true'
+        run: echo "skipped: no token"
+
+      - name: Install dependencies
+        if: steps.gate.outputs.run == 'true'
+        run: npm ci
+
+      - name: Build dated bundle and push to snapshot repo
+        if: steps.gate.outputs.run == 'true'
+        env:
+          SNAPSHOT_REPO_TOKEN: ${{ secrets.SNAPSHOT_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.SNAPSHOT_REPO_TOKEN }}
+          SNAPSHOT_REPO: ${{ inputs.SNAPSHOT_REPO || 'kzmttkc/vet402-observatory-data' }}
+        run: |
+          set -euo pipefail
+          DAY=$(date -u +%Y-%m-%d)
+          BUNDLE="$RUNNER_TEMP/bundle"
+          SNAPSHOT="$RUNNER_TEMP/snapshot"
+          mkdir -p "$BUNDLE"
+
+          git clone "https://x-access-token:${SNAPSHOT_REPO_TOKEN}@github.com/${SNAPSHOT_REPO}.git" "$SNAPSHOT"
+          PREV_MANIFEST=""
+          if PREV=$(ls -1 "$SNAPSHOT/data" 2>/dev/null | sort | tail -n 1); then
+            CAND="$SNAPSHOT/data/$PREV/manifest.json"
+            if [ -f "$CAND" ]; then
+              PREV_MANIFEST="$CAND"
+            fi
+          fi
+
+          ARGS=(npx tsx scripts/observatory-bundle.ts --fetch --out "$BUNDLE")
+          if [ -n "$PREV_MANIFEST" ]; then
+            ARGS+=(--prev-manifest "$PREV_MANIFEST")
+          fi
+          "${ARGS[@]}"
+
+          if [ -n "$PREV_MANIFEST" ]; then
+            npx tsx scripts/observatory-bundle.ts --check-chain --manifest "$BUNDLE/manifest.json" --prev-manifest "$PREV_MANIFEST"
+          fi
+
+          DEST="$SNAPSHOT/data/$DAY"
+          rm -rf "$DEST"
+          mkdir -p "$(dirname "$DEST")"
+          cp -a "$BUNDLE/." "$DEST/"
+
+          cd "$SNAPSHOT"
+          git config user.name "vet402 observatory snapshot"
+          git config user.email "snapshot@vet402.com"
+          git add "data/$DAY"
+          git commit -m "observatory snapshot ${DAY}"
+          git push origin HEAD
+          git tag -a "$DAY" -m "Observatory public snapshot ${DAY}"
+          git push origin "$DAY"
+
+          gh release create "$DAY" \
+            --repo "$SNAPSHOT_REPO" \
+            --title "Observatory snapshot ${DAY}" \
+            --notes "Automated weekly copy from vet402 public GET endpoints. Concept DOI 10.5281/zenodo.24195171."
