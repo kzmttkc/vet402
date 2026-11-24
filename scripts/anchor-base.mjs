@@ -52,7 +52,12 @@ function loadKey() {
 }
 
 async function pendingDays() {
-  const res = await fetch(`${apiBase}/api/v1/observatory/anchors?days=366`);
+  // The public GET is CDN-cached. A stale list re-sent an already anchored day on 2026-11-24
+  // (2026-08-14, second tx 0xc01f7b90…, register 409). Read past the cache every time.
+  const res = await fetch(`${apiBase}/api/v1/observatory/anchors?days=366&fresh=${Date.now()}`, {
+    cache: "no-store",
+    headers: { "cache-control": "no-cache" },
+  });
   if (!res.ok) {
     console.error(`anchors GET failed: HTTP ${res.status}`);
     process.exit(2);
