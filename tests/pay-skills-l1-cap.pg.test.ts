@@ -143,10 +143,11 @@ if (!TEST_DB) {
     );
     assert.equal(pinRows.length, 0, `expected no new presign buy, skipped=${summary.skipped}`);
     assert.equal(tx, 0, "Solana 別枠を使い切った日は支払い付きを出さない");
-    assert.ok(summary.skipped > 0, "別枠で買えない候補は skipped に数える");
+    const dbg = JSON.stringify({ summary, seen }, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
+    assert.ok(summary.skipped > 0, `別枠で買えない候補は skipped に数える ${dbg}`);
     assert.ok(
       seen.some((s) => s.url === listing.url && !s.paid),
-      "予約枠の内側で 402 を取りに行き、支払い付きには進まない",
+      `予約枠の内側で 402 を取りに行き、支払い付きには進まない ${dbg}`,
     );
     assert.ok(!seen.some((s) => s.paid), "chain_daily_cap で署名しない");
     const solSpent = await db.execute(sql`
