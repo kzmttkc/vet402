@@ -42,7 +42,7 @@ jobs:
 
       - name: End skipped run successfully
         if: steps.gate.outputs.run != 'true'
-        run: echo "skipped: no token"
+        run: 'echo "skipped: no token"'
 
       - name: Install dependencies
         if: steps.gate.outputs.run == 'true'
