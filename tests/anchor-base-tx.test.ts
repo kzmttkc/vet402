@@ -63,28 +63,32 @@ test("verify rejects failed receipt, non-self send, signer mismatch, calldata mi
   const input = buildAnchorCalldata(day, root);
 
   const failed = rpcFromTx({ from: SIGNER, to: SIGNER, input, status: "reverted" });
-  assert.equal(
-    (await verifyAnchorBaseTx(failed.hash, day, root, SIGNER, failed.rpc)).error,
-    "anchor_tx_receipt_failed",
-  );
+  const failedResult = await verifyAnchorBaseTx(failed.hash, day, root, SIGNER, failed.rpc);
+  assert.equal(failedResult.ok, false);
+  if (!failedResult.ok) {
+    assert.equal(failedResult.error, "anchor_tx_receipt_failed");
+  }
 
   const notSelf = rpcFromTx({ from: SIGNER, to: OTHER, input });
-  assert.equal(
-    (await verifyAnchorBaseTx(notSelf.hash, day, root, SIGNER, notSelf.rpc)).error,
-    "anchor_tx_not_self_send",
-  );
+  const notSelfResult = await verifyAnchorBaseTx(notSelf.hash, day, root, SIGNER, notSelf.rpc);
+  assert.equal(notSelfResult.ok, false);
+  if (!notSelfResult.ok) {
+    assert.equal(notSelfResult.error, "anchor_tx_not_self_send");
+  }
 
   const wrongSigner = rpcFromTx({ from: OTHER, to: OTHER, input });
-  assert.equal(
-    (await verifyAnchorBaseTx(wrongSigner.hash, day, root, SIGNER, wrongSigner.rpc)).error,
-    "anchor_tx_signer_mismatch",
-  );
+  const wrongSignerResult = await verifyAnchorBaseTx(wrongSigner.hash, day, root, SIGNER, wrongSigner.rpc);
+  assert.equal(wrongSignerResult.ok, false);
+  if (!wrongSignerResult.ok) {
+    assert.equal(wrongSignerResult.error, "anchor_tx_signer_mismatch");
+  }
 
   const wrongDay = rpcFromTx({ from: SIGNER, to: SIGNER, input: buildAnchorCalldata("2026-11-23", root) });
-  assert.equal(
-    (await verifyAnchorBaseTx(wrongDay.hash, day, root, SIGNER, wrongDay.rpc)).error,
-    "anchor_tx_calldata_mismatch",
-  );
+  const wrongDayResult = await verifyAnchorBaseTx(wrongDay.hash, day, root, SIGNER, wrongDay.rpc);
+  assert.equal(wrongDayResult.ok, false);
+  if (!wrongDayResult.ok) {
+    assert.equal(wrongDayResult.error, "anchor_tx_calldata_mismatch");
+  }
 });
 
 test("registerLedgerAnchorTx updates anchored_tx on success and 409 when already set", async () => {
