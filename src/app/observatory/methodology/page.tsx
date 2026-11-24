@@ -1460,9 +1460,8 @@ export default async function ObservatoryMethodologyPage() {
           <a href={OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL} className="underline" rel="noopener noreferrer" target="_blank">
             10.5281/zenodo.24195171
           </a>{" "}
-          resolves to the latest snapshot. A new dated copy is published every Monday at 02:00 UTC
-          through vet402&apos;s automated snapshot workflow; each copy is tagged and released on
-          GitHub so Zenodo can archive it. Each snapshot also has its own DOI, listed in the
+          resolves to the latest snapshot. A new dated copy is published every Monday by an
+          automated job. Each copy is tagged and released on GitHub so Zenodo can archive it. Each snapshot also has its own DOI, listed in the
           repository&apos;s README and <code>CITATION.cff</code>.
         </p>
         <p className="doc-p">

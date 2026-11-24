@@ -1885,10 +1885,24 @@ claims:
     verified_at: 2026-11-13
   - id: method_snapshot_weekly_monday_utc
     surface: src/app/observatory/methodology/page.tsx
-    quote: "A new dated copy is published every Monday at 02:00 UTC"
-    means: "公開スナップショットの写しは毎週月曜 02:00 UTC に vet402 リポの observatory-snapshot ワークフローが取り直し、kzmttkc/vet402-observatory-data の data/YYYY-MM-DD と同名タグの GitHub Release へ載せる"
+    quote: "A new dated copy is published every Monday by an"
+    means: "公開スナップショットの写しは毎週月曜に自動で取り直し、kzmttkc/vet402-observatory-data の data/YYYY-MM-DD と同名タグの GitHub Release へ載せる。2026-11-24 時点の実行役は運用機の launchd（毎週月曜 02:30 UTC）。リポの observatory-snapshot ワークフローは SNAPSHOT_REPO_TOKEN が無い間は skipped で終わる"
     check: null
-    why_unverifiable: "次回の発火時刻は GitHub Actions の実行履歴に依存し、公開 GET の JSON 式では固定できない。スケジュール文字列は .github/workflows/observatory-snapshot.yml の cron と tests/observatory-snapshot.test.ts が固定する"
+    why_unverifiable: "実行役は運用機の launchd で、公開 GET の JSON 式では固定できない。誰でも https://github.com/kzmttkc/vet402-observatory-data/releases の日付つき Release で週ごとの発行を確かめられる（初回 2026-11-24、Zenodo 10.5281/zenodo.24487926）"
+    verified_at: 2026-11-24
+  - id: method_anchors_all_101_days_and_within_an_hour
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "On 2026-11-24 the roots of all"
+    means: "2026-11-24 に 2026-08-14〜2026-11-22 の封印済み 101 日すべての root を Base の自分宛て tx（calldata vet402-anchor:v1:<day>:<root>）で刻んだ。以後は運用機の launchd が毎日 11:15 UTC（封印 10:30 UTC の 45 分後）に新しい日を刻む"
+    check: null
+    why_unverifiable: "件数と時刻は公開 GET の単一 JSON 式では固定できない。誰でも /api/v1/observatory/anchors?days=366 の anchoredTx を数え（2026-11-24 実測 101/101）、各行の verify の cast 1 行で Base の calldata を読める"
+    verified_at: 2026-11-24
+  - id: method_sealing_bytes_kept_only_where_recomputed
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "For earlier days they are kept only where the current rows recomputed to the stored root"
+    means: "ledger_anchors.sealed_payload は 2026-11-23 からの封印で必ず書き、それより前の日は retainSealedPayloads が今の行から再計算した root が既存の root_hash と一致した日にだけ書いた（src/lib/observatory/anchors.ts の retainSealedPayloads）"
+    check: null
+    why_unverifiable: "日ごとの保存の有無は /api/v1/observatory/anchors/day?day=YYYY-MM-DD の応答で一日ずつ読めるが、全日を1つの JSON 式で固定できない。コードの条件は tests/observatory-anchors.test.ts が固定する"
     verified_at: 2026-11-24
   - id: method_every_number_moves_cite_with_retrieval_date
     surface: src/app/observatory/methodology/page.tsx
