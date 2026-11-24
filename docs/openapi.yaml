@@ -1043,7 +1043,8 @@ paths:
         `settlement_source` (since 2026-09-20), `request_query`,
         `request_query_sha256` (since 2026-09-21), `confirmed_units`
         (since 2026-09-29), `purchase_id` (since 2026-09-29), `l2_reading`
-        (since 2026-09-29). With `?include=erc8004_agent`, one more column is appended:
+        (since 2026-09-29), `response_sha256`, `response_bytes` (since 2026-11-24).
+        With `?include=erc8004_agent`, one more column is appended:
         `erc8004_agent` (since 2026-11-17).
 
         vet402 keeps `auth_nonce` on purchase rows for purchases it signs
@@ -1155,6 +1156,19 @@ paths:
           output now, and `not_checked` when no missing key was recorded and its
           JSON body ran past the stored start. `l2_schema` keeps the value
           recorded at the time.
+        - `response_sha256` — since 2026-11-24, on rows where vet402 read a
+          paid response body, the lowercase hex SHA-256 of the exact byte
+          sequence read (UTF-8 bytes as received, before any decode for L2).
+          The body itself is not republished. Blank when the row holds no
+          record: rows before 2026-11-24 and rows where no paid response body
+          was read. Filled only when vet402 read the paid response body
+          through to the end (not when the read hit the cap or stopped
+          partway).
+        - `response_bytes` — on rows with `response_sha256`, the length in
+          bytes of that same sequence. `0` means an empty body was read
+          completely. Blank when the row holds no record. Blank is not `0`.
+          Filled only when vet402 read the paid response body through to the
+          end (not when the read hit the cap or stopped partway).
         - `erc8004_agent` — only when `?include=erc8004_agent` is set: when the
           row's `pay_to` exactly matches the owner or `agentWallet` of an agent
           in vet402's Base ERC-8004 Identity Registry index, the CAIP id
@@ -1177,7 +1191,7 @@ paths:
             enum: [erc8004_agent]
           description: |
             When set to `erc8004_agent`, appends that column after `l2_reading` on every row.
-            The default export without this parameter keeps the frozen 19 columns.
+            The default export without this parameter keeps the frozen 21 columns.
       responses:
         "200":
           description: CSV, oldest attempt first

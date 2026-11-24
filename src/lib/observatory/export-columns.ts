@@ -59,13 +59,21 @@ export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29 = ["confirmed_units", "purchase
 export const EXPORT_CSV_COLUMNS_SINCE_2026_09_29_B = ["l2_reading"] as const;
 
 /**
+ * 2026-11-24（F3）: 支払い付き応答の本文の指紋（paid-response-fingerprint.ts）。
+ *   response_sha256  vet402 が支払い付き応答として読んだバイト列の SHA-256（小文字 hex 64）。
+ *                      本文そのものは出さない。
+ *   response_bytes     そのバイト数。空本文は 0（記録なしと区別）。読み切れなかった行は空。
+ */
+export const EXPORT_CSV_COLUMNS_SINCE_2026_11_24 = ["response_sha256", "response_bytes"] as const;
+
+/**
  * 2026-11-17（段階 B）: ERC-8004 Identity Registry の agent 番号（CAIP）。
  * 既定の export には含めない。`?include=erc8004_agent` のときだけ末尾に付く。
  * payTo と owner / agentWallet の完全一致があった行だけ。形式は eip155:8453:94639。
  */
 export const EXPORT_CSV_COLUMNS_SINCE_2026_11_17 = ["erc8004_agent"] as const;
 
-/** クエリでだけ付く列（既定の 19 列の契約には入れない）。 */
+/** クエリでだけ付く列（既定の 21 列の契約には入れない）。 */
 export const EXPORT_CSV_OPTIONAL_COLUMNS = [...EXPORT_CSV_COLUMNS_SINCE_2026_11_17] as const;
 
 /** 列を足したら openapi・methodology・llms.txt の説明にも名前で出す（tests/export-request-body.test.ts）。 */
@@ -74,6 +82,7 @@ export const EXPORT_CSV_COLUMNS_ADDED = [
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_21,
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_29,
   ...EXPORT_CSV_COLUMNS_SINCE_2026_09_29_B,
+  ...EXPORT_CSV_COLUMNS_SINCE_2026_11_24,
 ] as const;
 
 export const EXPORT_CSV_COLUMNS = [...COLUMNS_UNTIL_2026_09_17, ...EXPORT_CSV_COLUMNS_ADDED] as const;

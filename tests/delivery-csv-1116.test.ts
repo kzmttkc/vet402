@@ -131,7 +131,7 @@ test("body_bytes の意味は 1 か所の定数で、上限の扱いまで書く
 });
 
 test("既定の export.csv は不変: 新しい列もヘッダも足さない", () => {
-  assert.equal(EXPORT_CSV_COLUMNS.length, 19);
+  assert.equal(EXPORT_CSV_COLUMNS.length, 21);
   assert.ok(!(EXPORT_CSV_COLUMNS as readonly string[]).includes("body_bytes"));
   const route = read("src/app/api/v1/observatory/export.csv/route.ts");
   for (const h of ["x-vet402-buyer", "x-vet402-as-of", "x-vet402-generated-at"]) assert.ok(!route.includes(h), h);

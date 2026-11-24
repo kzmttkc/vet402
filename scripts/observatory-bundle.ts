@@ -88,6 +88,10 @@ const COLUMN_NOTES: Record<(typeof EXPORT_CSV_COLUMNS)[number], string> = {
     "the purchase id (a UUID). It carries no payer, payee, or amount. It is the subject_id of that purchase in /api/v1/observatory/corrections.",
   l2_reading:
     "l2_schema read again with today's rules. The record page and the decision use this value. l2_schema keeps the value recorded at the time.",
+  response_sha256:
+    "lowercase hex SHA-256 of the paid response body bytes vet402 read. The body itself is not published. Blank when the row holds no record. Filled only when vet402 read the paid response body through to the end (not when the read hit the cap or stopped partway).",
+  response_bytes:
+    "byte length of that same body sequence. 0 means an empty body was read. Blank when the row holds no record. Filled only when vet402 read the paid response body through to the end (not when the read hit the cap or stopped partway).",
 };
 
 export function bundleReadme(retrievedDay: string | null): string {
