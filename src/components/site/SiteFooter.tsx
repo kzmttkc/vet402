@@ -43,6 +43,8 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       { label: "Check a seller", href: "/#lp-paste-url" },
       { label: "x402 by chain", href: "/x402/chains" },
       { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
+      { label: "What is ERC-8004", href: "/erc-8004" },
+      { label: "Glossary", href: "/x402/glossary" },
     ],
   },
   {

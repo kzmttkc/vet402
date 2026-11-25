@@ -5,9 +5,10 @@ import sitemap from "@/app/sitemap";
 import { getAllPosts } from "@/lib/blog";
 import { SITE_URL } from "@/lib/site-url";
 
-test("robots lists three sitemap URLs", () => {
+test("robots lists four sitemap URLs", () => {
   const maps = Array.isArray(robots().sitemap) ? robots().sitemap! : [robots().sitemap];
-  assert.equal(maps.length, 3);
+  assert.equal(maps.length, 4);
+  assert.ok(maps.includes(`${SITE_URL}/sitemap-erc8004.xml`));
   assert.ok(maps.includes(`${SITE_URL}/sitemap.xml`));
   assert.ok(maps.includes(`${SITE_URL}/sitemap-observatory.xml`));
   assert.ok(maps.includes(`${SITE_URL}/sitemap-sellers.xml`));
@@ -17,6 +18,8 @@ test("sitemap includes the observatory entry points", async () => {
   const urls = (await sitemap()).map((entry) => entry.url);
   assert.ok(urls.includes("https://vet402.com/observatory"), "missing /observatory");
   assert.ok(urls.includes("https://vet402.com/observatory/state"), "missing /observatory/state");
+  assert.ok(urls.includes("https://vet402.com/erc-8004"), "missing /erc-8004 (2026-11-24)");
+  assert.ok(urls.includes("https://vet402.com/x402/glossary"), "missing /x402/glossary (2026-11-24)");
   assert.ok(
     urls.includes("https://vet402.com/observatory/methodology"),
     "missing /observatory/methodology",

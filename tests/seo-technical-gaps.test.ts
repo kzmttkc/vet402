@@ -117,7 +117,8 @@ test("robots は静的 sitemap と endpoint sitemap の両方を指す", () => {
   assert.ok(sitemaps.includes(`${SITE_URL}/sitemap.xml`));
   assert.ok(sitemaps.includes(`${SITE_URL}/sitemap-observatory.xml`));
   assert.ok(sitemaps.includes(`${SITE_URL}/sitemap-sellers.xml`), "売り手評判頁の sitemap（2026-11-16 pmf85 r3）");
-  assert.equal(sitemaps.length, 3);
+  assert.ok(sitemaps.includes(`${SITE_URL}/sitemap-erc8004.xml`), "ERC-8004 agent pages (2026-11-24)");
+  assert.equal(sitemaps.length, 4);
 });
 
 test("公開の読み取り API は * と AI クローラに名指しで開け、書き込みと配下は閉じたまま（2026-10-26）", () => {

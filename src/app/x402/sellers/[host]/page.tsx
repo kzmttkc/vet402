@@ -35,10 +35,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const allowed = await getReputationHostsCached().catch(() => null);
   if (!allowed?.includes(host)) redirect(sellerPath(host));
   const detail = await getSellerDetailCached(host).catch(() => null);
-  const title =
-    detail && reputationPageEligible(detail)
-      ? `${reputationHeadline(host, detail)} x402 purchase record | vet402`
-      : `Does ${host} deliver? x402 purchase record | vet402`;
+  // 2026-11-24 SEO: the stale headline ("... Latest delivery is older than 30 days") made titles of
+  // 90+ characters that search engines cut. The H1 keeps the full sentence. The title keeps the
+  // question and only the word "still" for the stale case.
+  const stale = detail && reputationPageEligible(detail) ? reputationHostEvidence(detail).allListingsStale : false;
+  const title = stale
+    ? `Does ${host} still deliver? x402 purchase record | vet402`
+    : `Does ${host} deliver? x402 purchase record | vet402`;
   return {
     ...pageMetadata({
       title,

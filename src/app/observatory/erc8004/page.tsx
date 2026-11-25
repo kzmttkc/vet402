@@ -60,6 +60,10 @@ export default async function ObservatoryErc8004Page() {
               <Link href="/observatory" className="underline">
                 Full register
               </Link>
+              {" · "}
+              <Link href="/erc-8004" className="underline">
+                What is ERC-8004?
+              </Link>
             </span>
           </div>
         </div>

@@ -55,6 +55,8 @@ test("every public indexable route is in the sitemap", async () => {
     "/x402/chains/arbitrum-one",
     "/x402/chains/bnb-chain",
     "/x402/chains/avalanche-c-chain",
+    "/erc-8004",
+    "/x402/glossary",
     "/signup",
     "/legal/terms",
     "/legal/privacy",
