@@ -145,6 +145,7 @@ const sampleObservatoryStats: ObservatoryStats = {
     awaitingRereadOldestAttemptAt: null,
     lastAttemptAt: "2026-11-07T10:00:00.000Z",
     byChain: [],
+    byFacilitator: [],
     answerCheck: {
       windowDays: 30,
       settled: 40,

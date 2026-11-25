@@ -9,6 +9,7 @@ import { scoreAgentById } from "@/lib/scoring/engine";
 import { hasUnavailableInput } from "@/lib/scoring/verdict";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
+import { PUBLIC_RULES_VERSION } from "@/lib/decision/rules-version-public";
 
 /**
  * GET /api/demo/score — the one unauthenticated score on the site.
@@ -86,6 +87,7 @@ type DemoPayload = {
   // `degraded`. Only meaningful when `live` is true — a `{ live: false }`
   // response is the absence of a verdict, not a degraded one.
   degraded: boolean;
+  rules_version: string;
 };
 
 let cached: { payload: DemoPayload; expiresAt: number } | null = null;
@@ -152,6 +154,7 @@ export async function GET(request: NextRequest) {
       cacheExpiresAt: result.cacheExpiresAt,
       disclaimer: result.disclaimer,
       degraded,
+      rules_version: PUBLIC_RULES_VERSION,
     };
     // A degraded verdict (some input could not be read) is deliberately NOT
     // pinned. The engine already refuses to cache one; this route used to pin

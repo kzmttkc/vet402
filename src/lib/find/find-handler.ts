@@ -9,6 +9,8 @@ import { pct1 } from "@/lib/util/pct";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { NextResponse } from "next/server";
 import { FIND_POOL_SIZE, FIND_WINDOW_DAYS, rankFindAlternatives } from "./rank";
+import { PUBLIC_RULES_VERSION } from "@/lib/decision/rules-version-public";
+import { DELIVERY_RATE_FORMULA } from "@/lib/delivery/delivery-rate";
 import { termsOfUrl } from "./terms";
 
 const ALLOWED_QUERY = ["url", "q"] as const;
@@ -114,6 +116,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
         rule: FIND_RULE,
         method_url: FIND_METHOD_URL,
         window_days: FIND_WINDOW_DAYS,
+        rate_formula: DELIVERY_RATE_FORMULA,
+        rules_version: PUBLIC_RULES_VERSION,
         as_of: asOf,
         license: FIND_LICENSE,
       },
@@ -135,6 +139,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
           rule: FIND_RULE,
           method_url: FIND_METHOD_URL,
           window_days: FIND_WINDOW_DAYS,
+          rate_formula: DELIVERY_RATE_FORMULA,
+          rules_version: PUBLIC_RULES_VERSION,
           as_of: asOf,
           license: FIND_LICENSE,
         },
@@ -168,6 +174,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
         rule: FIND_RULE,
         method_url: FIND_METHOD_URL,
         window_days: FIND_WINDOW_DAYS,
+        rate_formula: DELIVERY_RATE_FORMULA,
+        rules_version: PUBLIC_RULES_VERSION,
         as_of: asOf,
         license: FIND_LICENSE,
       },

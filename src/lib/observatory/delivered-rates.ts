@@ -8,7 +8,12 @@
 // ============================================================
 import { pct1 } from "@/lib/util/pct";
 
+/** l1Rates の3列は pct1 の単純比。Wilson 下限は find・sellers フィード（v1.0-wilson95）だけ。 */
+export const L1_DELIVERED_SHARE_FORMULA = "ratio-pct1-v1" as const;
+
 export type DeliveredRates = {
+  /** 単純比の式（pct1・小数 1 桁）。 */
+  rate_formula: typeof L1_DELIVERED_SHARE_FORMULA;
   /** l1.delivered / l1.attempts（保留も照合待ちも分母に入る）。 */
   deliveredOfAttemptsPct: number | null;
   /** l1.delivered / (l1.attempts - l1.inconclusive)（保留を除く・照合待ちは分母に残る）。 */
@@ -26,6 +31,7 @@ export function deliveredRates(l1: { attempts: number; delivered: number; inconc
   const notHeld = Math.max(0, attempts - l1.inconclusive);
   const finalOutcome = Math.max(0, notHeld - l1.awaitingReread);
   return {
+    rate_formula: L1_DELIVERED_SHARE_FORMULA,
     deliveredOfAttemptsPct: pct1(l1.delivered, attempts),
     deliveredOfNotHeldPct: pct1(l1.delivered, notHeld),
     deliveredOfFinalOutcomePct: pct1(l1.delivered, finalOutcome),

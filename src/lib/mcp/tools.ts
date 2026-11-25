@@ -24,6 +24,8 @@ import { diagnoseUrlFor } from "@/lib/api/diagnose-url";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { FindListing } from "@/lib/find/reads";
 import { FIND_POOL_SIZE, FIND_WINDOW_DAYS, FIND_MIN_DELIVERED_RATE, rankFindAlternatives, wilsonLower } from "@/lib/find/rank";
+import { PUBLIC_RULES_VERSION } from "@/lib/decision/rules-version-public";
+import { DELIVERY_RATE_FORMULA } from "@/lib/delivery/delivery-rate";
 import type { Erc8004CheckInput, Erc8004CheckDeps, Erc8004CheckError } from "@/lib/erc8004-check/run-check";
 import type { Erc8004CheckResult } from "@/lib/erc8004-check/types";
 import { getErc8004CheckCached } from "@/lib/erc8004-check/cache";
@@ -193,6 +195,7 @@ export function emptyCheckSellerHint(asOf: string): CheckSellerOutput {
     as_of: asOf,
     truncated: false,
     next_action: null,
+    rules_version: PUBLIC_RULES_VERSION,
   };
 }
 
@@ -244,6 +247,7 @@ export async function checkSeller(deps: CheckSellerDeps, input: { url: string; m
         as_of: now.toISOString(),
         truncated: false,
         next_action: null,
+        rules_version: PUBLIC_RULES_VERSION,
       },
       ["same_host_listings"],
     );
@@ -313,6 +317,7 @@ export async function checkSeller(deps: CheckSellerDeps, input: { url: string; m
     as_of: decision.scoredAt,
     truncated: false,
     next_action: verdictNextStep(decision.recommendation, decision.reason_codes),
+    rules_version: decision.rules_version,
   };
   fitBudget(out, ["reasons"]);
   if (Buffer.byteLength(JSON.stringify(out), "utf8") > MAX_STRUCTURED_BYTES) {
@@ -510,6 +515,8 @@ export async function findSellers(
       untested: [],
       note: TOOL_EMPTY_HINT.find_x402_sellers,
       method_url: METHOD_URL,
+      rate_formula: DELIVERY_RATE_FORMULA,
+      rules_version: PUBLIC_RULES_VERSION,
       as_of: (deps.now?.() ?? new Date()).toISOString(),
       truncated: false,
     };
@@ -549,6 +556,8 @@ export async function findSellers(
         record_url: recordUrlOf(s.observatoryId),
       })),
       method_url: METHOD_URL,
+      rate_formula: DELIVERY_RATE_FORMULA,
+      rules_version: PUBLIC_RULES_VERSION,
       as_of: pool.fetchedAt,
       truncated: false,
     },

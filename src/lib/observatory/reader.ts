@@ -52,6 +52,11 @@ import type { ObservatoryQuery, ObservatoryVerdict } from "./query";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { pct1 } from "@/lib/util/pct";
 import {
+  l1FacilitatorIdSql,
+  withUnknownFacilitatorBucket,
+  type L1FacilitatorBucket,
+} from "./l1-facilitator";
+import {
   attachPurchaseStageFields,
   emptyPurchaseLifecycle,
   getPurchaseLifecycleCounts,
@@ -964,6 +969,8 @@ export type ObservatoryStats = {
      * 落とすと和が l1.settled と合わなくなり、分母として使えなくなる。
      */
     byChain: L1ChainStats[];
+    /** facilitator 識別子別の L1 集計（規則は l1-facilitator.ts）。識別できない行は facilitator=unknown。 */
+    byFacilitator: L1FacilitatorBucket[];
     /**
      * 直近 windowDays の settled 購入のうち、保存済みの答えチェック（raw_response_meta.answerCheck）で
      * checked=true と記録された行の割合。cron がネットワーク無しで verdict を書いた結果を数える。
@@ -1102,6 +1109,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       awaitingRereadOldestAttemptAt: null,
       lastAttemptAt: null,
       byChain: [],
+      byFacilitator: withUnknownFacilitatorBucket([]),
       answerCheck: emptyL1AnswerCheckStats(),
     },
     operatorEndpointsExcluded: 0,
@@ -1233,6 +1241,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       awaitingRereadOldestAttemptAt: null as string | null,
       lastAttemptAt: null as string | null,
       byChain: [] as L1ChainStats[],
+      byFacilitator: withUnknownFacilitatorBucket([]),
       answerCheck: emptyL1AnswerCheckStats(),
     };
     try {
@@ -1379,6 +1388,34 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       }
       l1.byChain = [...folded.values()].sort((a, b) => b.attempts - a.attempts);
 
+      const facRaw = await db.execute(sql`
+        SELECT ${sql.raw(l1FacilitatorIdSql("pu"))} AS facilitator,
+               count(*)::int AS attempts,
+               count(*) FILTER (WHERE pu.status = 'settled')::int AS settled,
+               count(*) FILTER (WHERE ${sql.raw(deliveredPredicate("pu"))})::int AS delivered,
+               count(*) FILTER (WHERE ${sql.raw(inconclusiveSettledPredicate("pu"))})::int AS inconclusive_settled
+        FROM x402_l1_purchases pu
+        WHERE pu.status IN ('settled', 'settle_failed', 'delivered_no_receipt', 'settle_claimed_unverifiable', 'settle_claimed', 'settle_claim_refuted')
+        GROUP BY 1
+        ORDER BY attempts DESC
+      `);
+      const facRows = (Array.isArray(facRaw) ? facRaw : (facRaw as { rows?: unknown[] }).rows ?? []) as {
+        facilitator: string;
+        attempts: number;
+        settled: number;
+        delivered: number;
+        inconclusive_settled: number;
+      }[];
+      l1.byFacilitator = withUnknownFacilitatorBucket(
+        facRows.map((r) => ({
+          facilitator: String(r.facilitator),
+          attempts: Number(r.attempts ?? 0),
+          settled: Number(r.settled ?? 0),
+          delivered: Number(r.delivered ?? 0),
+          inconclusiveSettled: Number(r.inconclusive_settled ?? 0),
+        })),
+      );
+
       // 鮮度。上の集計と違って status で絞らない——署名前に終わった試行
       // （no_eligible_accept / over_cap / halted …）も「最後に見に行った時刻」ではある。
       // 件数の分母と鮮度の分母を混ぜないため、別の 1 文で取る。
@@ -1464,6 +1501,8 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
     const freshness = await getCdpBazaarIngestFreshness();
     const cdpSnap = latestBySource.get(CATALOG_SOURCE);
     if (cdpSnap) cdpSnap.cursorPassCompleted = freshness.passCompleted;
+
+    l1.byFacilitator = withUnknownFacilitatorBucket(l1.byFacilitator);
 
     return {
       l1,

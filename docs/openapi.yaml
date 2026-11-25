@@ -2184,6 +2184,8 @@ paths:
                   - rule
                   - method_url
                   - window_days
+                  - rate_formula
+                  - rules_version
                   - as_of
                   - license
                 properties:
@@ -2216,6 +2218,12 @@ paths:
                   rule: { type: string }
                   method_url: { type: string, format: uri }
                   window_days: { type: integer }
+                  rate_formula:
+                    type: string
+                    description: "Wilson 95% lower-bound formula version (v1.0-wilson95)."
+                  rules_version:
+                    type: string
+                    description: "Decision rules version (DECISION_RULES_VERSION) for the ranking cutoff."
                   as_of: { type: string, format: date-time }
                   license: { type: string }
         "400":
@@ -4387,6 +4395,24 @@ paths:
                                 denominator of the chain's delivery rate.
                             settledNonceBound: { type: integer }
                             settledAmountPayeeOnly: { type: integer }
+                      byFacilitator:
+                        type: array
+                        description: >-
+                          L1 purchase rows grouped by facilitator id from row evidence
+                          (l1-facilitator.ts): circle_gateway (Circle Gateway batch), xrpl_t54
+                          (xrpl:0), tempo_mpp (eip155:4217), stellar_facilitator (stellar:pubnet).
+                          Solana and other rows where the seller-side facilitator cannot be read
+                          from published ledger columns are unknown. The unknown bucket is always
+                          present.
+                        items:
+                          type: object
+                          required: [facilitator, attempts, settled, delivered, inconclusiveSettled]
+                          properties:
+                            facilitator: { type: string }
+                            attempts: { type: integer }
+                            settled: { type: integer }
+                            delivered: { type: integer }
+                            inconclusiveSettled: { type: integer }
                   byChain:
                     type: array
                     description: >-
@@ -4448,6 +4474,9 @@ paths:
                       awaitingReread. The denominators are in `denominators`. Since
                       2026-09-29.
                     properties:
+                      rate_formula:
+                        type: string
+                        description: "Simple ratio formula for l1.delivered shares (pct1, one decimal, null when denominator is 0). Version ratio-pct1-v1."
                       deliveredOfAttemptsPct: { type: number, nullable: true }
                       deliveredOfNotHeldPct: { type: number, nullable: true }
                       deliveredOfFinalOutcomePct: { type: number, nullable: true }
@@ -5496,7 +5525,7 @@ components:
       description: |
         Carried by every 0–100 score response since 2026-09-29. The score
         itself is unchanged; this says it is deprecated and what to call instead.
-      required: [deprecated, deprecation]
+      required: [deprecated, deprecation, rules_version]
       properties:
         deprecated:
           type: boolean
@@ -5509,6 +5538,9 @@ components:
             use_instead: { type: string }
             find_resource_id: { type: string }
             message: { type: string }
+        rules_version:
+          type: string
+          description: Decision rules version (DECISION_RULES_VERSION) for the deprecated score.
     Recommendation:
       type: string
       enum: [ALLOW, WARN, BLOCK]
@@ -5951,7 +5983,7 @@ components:
         Structured content of MCP `check_x402_seller` and key-less GET
         `/api/v1/check`. Matches src/lib/mcp/schemas.ts `checkSellerOutput`.
       required:
-        [not_in_catalog, recommendation, reason_codes, reasons, same_host_listings, listing_sources, method_url, as_of, truncated, next_action]
+        [not_in_catalog, recommendation, reason_codes, reasons, same_host_listings, listing_sources, method_url, as_of, truncated, next_action, rules_version]
       properties:
         evidence_age:
           nullable: true
@@ -6021,6 +6053,9 @@ components:
           type: string
           nullable: true
           description: Plain-language next step after ALLOW, WARN, or BLOCK (verdictNextStep).
+        rules_version:
+          type: string
+          description: Decision rules version (DECISION_RULES_VERSION) for recommendation.
 
     VerifiedPayTo:
       type: object
