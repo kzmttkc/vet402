@@ -4,6 +4,7 @@
 // ============================================================
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
 
@@ -178,7 +179,7 @@ if (!TEST_DB) {
         authNonce: "0x01",
         payer: "0x2222222222222222222222222222222222222222",
         payTo: "0x1111111111111111111111111111111111111111",
-        txHash: "0x" + "a".repeat(64),
+        txHash: "0x" + randomBytes(32).toString("hex"),
         amountUnits: "1000",
         spentUnits: "1000",
         asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
@@ -193,7 +194,7 @@ if (!TEST_DB) {
         authNonce: "0x02",
         payer: "0x2222222222222222222222222222222222222222",
         payTo: "0x1111111111111111111111111111111111111111",
-        txHash: "0x" + "b".repeat(64),
+        txHash: "0x" + randomBytes(32).toString("hex"),
         amountUnits: "1000",
         spentUnits: "1000",
         asset: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
