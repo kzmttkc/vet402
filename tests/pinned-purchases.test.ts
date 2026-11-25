@@ -35,13 +35,9 @@ test("PINNED_PURCHASES validates at load and includes weather-forecast", () => {
   assert.equal(wf.maxPurchases, 1);
 });
 
-test("prezenti-m2 usebuy: 4 reservations window and gateway URLs", () => {
-  const rows = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m2-usebuy-2611");
-  assert.equal(rows.length, 4);
-  assert.ok(rows.every((p) => p.url.startsWith("https://gateway.usebuy.ai/") && p.method === "POST" && p.maxPurchases === 1));
-  const inside = Date.parse("2026-11-26T12:00:00.000Z");
-  assert.ok(pinnedPurchasesActiveAt(inside).filter((p) => p.reason === "prezenti-m2-usebuy-2611").length === 4);
-  assert.equal(pinnedPurchasesActiveAt(Date.parse("2026-11-25T11:59:59.999Z")).filter((p) => p.reason === "prezenti-m2-usebuy-2611").length, 0);
+test("prezenti-m2 usebuy reservations were removed on 2026-11-25", () => {
+  assert.equal(PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m2-usebuy-2611").length, 0);
+  assert.equal(PINNED_PURCHASES.filter((p) => p.url.startsWith("https://gateway.usebuy.ai/")).length, 0);
 });
 
 test("validatePinnedPurchase rejects bad rows", () => {

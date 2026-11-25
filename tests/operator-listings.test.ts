@@ -30,7 +30,6 @@ import { createHash } from "node:crypto";
 import { OPERATOR_EXAMPLE_BODY_MAX_BYTES, operatorExampleBody } from "@/lib/observatory/operator-listings";
 import { parseDeliverySellersQuery } from "@/lib/delivery/sellers-feed-query";
 import { CELO_CAIP2, CELO_CHAIN, selectAccept } from "@/lib/observatory/x402-payer";
-import { PINNED_PURCHASES, listingMatchesPinned } from "@/lib/observatory/pinned-purchases";
 
 const ROOT = process.cwd();
 
@@ -191,19 +190,21 @@ test("本文の出どころの順: 売り手依頼 > 402 の宣言 > operator �
   assert.deepEqual(selectPaidRequestBody({ declared: empty, operatorExample: null }), { body: "{}", source: "empty" }, "operator でない行は従来どおり");
 });
 
-test("prezenti-m2 の 4 予約は Celo operator 出品と一致し、selectAccept が eip155:42220 を通す（L0 pass は他出どころと同じ・operator-listings.pg.test.ts）", () => {
+test("Celo の usebuy operator 出品 4 本は selectAccept が eip155:42220 を通す（予約は 11/25 に外した・L0 pass は他出どころと同じ）", () => {
   const savedCelo = process.env.OBSERVATORY_CELO_L1_ENABLED;
   process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
   try {
-  const pins = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m2-usebuy-2611");
-  assert.equal(pins.length, 4);
-  const insideMs = Date.parse("2026-11-26T12:00:00.000Z");
+  const pins = [
+    "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-post-tweet",
+    "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-post-comments",
+    "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-user-posts",
+    "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-post-comments",
+  ].map((url) => ({ url }));
   for (const pin of pins) {
     const listing = OPERATOR_LISTINGS.find((l) => l.url === pin.url);
     assert.ok(listing, pin.url);
     assert.equal(listing.method, "POST");
     assert.equal(listing.network, CELO_CAIP2);
-    assert.equal(listingMatchesPinned(pin, listing.url, listing.method), true);
     const [parsed] = parseOperatorListings([listing]);
     const accepts = parsed.rawAccepts as { scheme: string; network: string; amount: string; asset: string; payTo: string }[];
     const accept = accepts[0]!;
@@ -214,7 +215,6 @@ test("prezenti-m2 の 4 予約は Celo operator 出品と一致し、selectAccep
     });
     assert.ok(chosen.accept, pin.url);
     assert.equal(chosen.accept.network, CELO_CAIP2);
-    assert.equal(Date.parse(pin.from) <= insideMs && insideMs <= Date.parse(pin.to), true);
   }
   } finally {
     if (savedCelo === undefined) delete process.env.OBSERVATORY_CELO_L1_ENABLED;

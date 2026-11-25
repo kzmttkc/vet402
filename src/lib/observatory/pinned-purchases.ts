@@ -39,54 +39,11 @@ const FACTGATE_PINNED_PURCHASES: readonly PinnedPurchase[] = [
   },
 ];
 
-// Prezenti M2（gateway.usebuy.ai・Celo USDC）: operator-listings.ts の 4 出品へ各 1 回（2026-11-25 オーナー承認）。
-const PREZENTI_M2_USEBUY_PINNED_PURCHASES: readonly PinnedPurchase[] = [
-  {
-    url: "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-user-post-tweet",
-    method: "POST",
-    from: "2026-11-25T12:00:00.000Z",
-    to: "2026-12-04T23:59:59.999Z",
-    reason: "prezenti-m2-usebuy-2611",
-    requestedBy: "grants strategy session (Prezenti M2: Celo usebuy capabilities used by souzolliveira/celo-x402)",
-    approvedAt: "2026-11-24T21:40:00.000Z",
-    maxPurchases: 1,
-  },
-  {
-    url: "https://gateway.usebuy.ai/v1/social/x/tools/tikhub-api-v1-twitter-web-fetch-post-comments",
-    method: "POST",
-    from: "2026-11-25T12:00:00.000Z",
-    to: "2026-12-04T23:59:59.999Z",
-    reason: "prezenti-m2-usebuy-2611",
-    requestedBy: "grants strategy session (Prezenti M2: Celo usebuy capabilities used by souzolliveira/celo-x402)",
-    approvedAt: "2026-11-24T21:40:00.000Z",
-    maxPurchases: 1,
-  },
-  {
-    url: "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-user-posts",
-    method: "POST",
-    from: "2026-11-25T12:00:00.000Z",
-    to: "2026-12-04T23:59:59.999Z",
-    reason: "prezenti-m2-usebuy-2611",
-    requestedBy: "grants strategy session (Prezenti M2: Celo usebuy capabilities used by souzolliveira/celo-x402)",
-    approvedAt: "2026-11-24T21:40:00.000Z",
-    maxPurchases: 1,
-  },
-  {
-    url: "https://gateway.usebuy.ai/v1/social/instagram/tools/tikhub-api-v1-instagram-v2-fetch-post-comments",
-    method: "POST",
-    from: "2026-11-25T12:00:00.000Z",
-    to: "2026-12-04T23:59:59.999Z",
-    reason: "prezenti-m2-usebuy-2611",
-    requestedBy: "grants strategy session (Prezenti M2: Celo usebuy capabilities used by souzolliveira/celo-x402)",
-    approvedAt: "2026-11-24T21:40:00.000Z",
-    maxPurchases: 1,
-  },
-];
+// 2026-11-25: Prezenti M2 usebuy の 4 予約は目的が無くなったので外した（オーナー 14:58「現時点では外部開発者を巻き込まない。M2 の直接の打診は行わない」）。出品は operator の通常の巡回で測る。
 
-/** 正典リスト（版管理）。FactGate → Prezenti M2 usebuy → pay.sh delivery（presign-gate-2611）の予約。 */
+/** 正典リスト（版管理）。FactGate → pay.sh delivery（presign-gate-2611）の予約。 */
 export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
   ...FACTGATE_PINNED_PURCHASES,
-  ...PREZENTI_M2_USEBUY_PINNED_PURCHASES,
   ...PAYSH_PINNED_PURCHASES,
 ];
 
