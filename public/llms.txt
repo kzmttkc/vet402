@@ -22,6 +22,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 - [How a seller check works](https://vet402.com/x402/check-a-seller): read the purchases vet402 made and the ALLOW, WARN or BLOCK decision they support.
 - [Check by URL, no key](https://vet402.com/docs/api): `GET https://vet402.com/api/v1/check?url=` followed by the URL-encoded x402 URL
+- [Response signatures](https://github.com/vet402/vet402/blob/main/docs/response-signatures.md): Ed25519 over JCS on check, find, observatory state, anchors, and delivery sellers JSON. Response header carries the signature. Public keys live at https://vet402.com/.well-known/vet402-keys.json
 - [Hosted MCP server](https://vet402.com/docs/mcp): `https://vet402.com/mcp` (streamable HTTP). Tools: check_x402_seller, check_my_x402_endpoint, find_x402_sellers, check_payment_proof, check_8004_agent.
 - [Check an ERC-8004 feedback](https://vet402.com/docs/api): `GET https://vet402.com/api/v1/erc8004/check`
 

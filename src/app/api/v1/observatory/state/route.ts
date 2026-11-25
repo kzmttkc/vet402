@@ -1,5 +1,6 @@
 import { EIP3009_CHAINS_TEXT, PINNED_ASSETS_WITH_ISSUER_TEXT } from "@/lib/observatory/settlement-assets";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { signedJson } from "@/lib/signing/response-signature";
 import { rejectUnknownQuery } from "@/lib/api/export-guard";
 import { getClientIp } from "@/lib/api/client-ip";
 import {
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
   const perCaller = withNoindex(ipRateLimitHeaders(limited));
   const shared = withNoindex(sharedCacheRateLimitHeaders(limited));
   if (!limited.allowed) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
+    return signedJson(request, { error: "rate_limited" }, { status: 429, headers: perCaller });
   }
 
   const badQuery = rejectUnknownQuery(request.nextUrl.searchParams, [], perCaller);
@@ -97,9 +98,10 @@ export async function GET(request: NextRequest) {
     const tierInvariant = validateL1SettledTwoTier(stats.l1);
     if (!tierInvariant.ok) {
       logServerErrorSafe("observatory_state_tier_invariant", new Error(tierInvariant.reason));
-      return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+      return signedJson(request, { error: "observatory_unavailable" }, { status: 503, headers: perCaller });
     }
-    return NextResponse.json(
+    return signedJson(
+      request,
       {
         ...stats,
         catalogSnapshots: publicCatalogSnapshots(stats.catalogSnapshots),
@@ -165,10 +167,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     logServerErrorSafe("observatory_state", error);
-    return NextResponse.json(
-      { error: "observatory_unavailable" },
-      { status: 503, headers: perCaller },
-    );
+    return signedJson(request, { error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }
 const __disallowed = exportDisallowedMethodHandlers(["GET"]);

@@ -7,7 +7,7 @@ import type { FindListing } from "@/lib/find/reads";
 import { searchLikePattern } from "@/lib/observatory/reader";
 import { pct1 } from "@/lib/util/pct";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { NextResponse } from "next/server";
+import { signedJson } from "@/lib/signing/response-signature";
 import { FIND_POOL_SIZE, FIND_WINDOW_DAYS, rankFindAlternatives } from "./rank";
 import { PUBLIC_RULES_VERSION } from "@/lib/decision/rules-version-public";
 import { DELIVERY_RATE_FORMULA } from "@/lib/delivery/delivery-rate";
@@ -28,12 +28,17 @@ export type FindDeps = {
 export const FIND_RULE =
   "Listings match the one use word from the later part of the pasted URL path, or from a host label when the path has none, in their URL or seller description. Each needs at least one vet402 paid test in the last 30 days and a delivered rate of at least 80%. Order is the 95% Wilson lower bound on the delivered share, then deliveries, then the latest paid test. The pasted URL is left out. At most three are returned.";
 
-function json(status: number, body: Record<string, unknown>, headers: Record<string, string>): Response {
+function json(
+  request: Request,
+  status: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+): Response {
   const h = withNoindex({
     ...headers,
     "Cache-Control": status === 200 ? CACHE_OK : CACHE_ERR,
   });
-  return NextResponse.json(body, { status, headers: h });
+  return signedJson(request, body, { status, headers: h });
 }
 
 function successHeaders(retrievedAt: string, extra: Record<string, string> = {}): Record<string, string> {
@@ -58,7 +63,7 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
   const badQuery = rejectUnknownQuery(url.searchParams, [...ALLOWED_QUERY], baseHeaders);
   if (badQuery) {
     const body = await badQuery.json();
-    return json(400, { ...body, documentation: FIND_DOCS }, baseHeaders);
+    return json(request, 400, { ...body, documentation: FIND_DOCS }, baseHeaders);
   }
 
   const urlRaw = url.searchParams.get("url");
@@ -67,6 +72,7 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
   const hasQ = qRaw !== null;
   if ((hasUrl && hasQ) || (!hasUrl && !hasQ)) {
     return json(
+      request,
       400,
       { error: "invalid_query", allowed: [...ALLOWED_QUERY], documentation: FIND_DOCS },
       baseHeaders,
@@ -81,6 +87,7 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
   if (hasUrl) {
     if (!urlRaw || !isHttpsAbsoluteUrl(urlRaw)) {
       return json(
+        request,
         400,
         { error: "invalid_url", message: ERROR_TEXT.invalid_url, documentation: FIND_DOCS },
         baseHeaders,
@@ -95,6 +102,7 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
     const q = (qRaw ?? "").trim();
     if (q.length < 3 || q.length > 80) {
       return json(
+        request,
         400,
         { error: "invalid_query", allowed: [...ALLOWED_QUERY], documentation: FIND_DOCS },
         baseHeaders,
@@ -107,7 +115,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
 
   if (queryTerms.length === 0) {
     const asOf = new Date().toISOString();
-    return NextResponse.json(
+    return signedJson(
+      request,
       {
         basis,
         input,
@@ -130,7 +139,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
     const like0 = searchLikePattern(term0);
     if (!like0) {
       const asOf = new Date().toISOString();
-      return NextResponse.json(
+      return signedJson(
+        request,
         {
           basis,
           input,
@@ -154,7 +164,8 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
 
     const ranked = rankFindAlternatives(pool, excludeUrl);
 
-    return NextResponse.json(
+    return signedJson(
+      request,
       {
         basis,
         input,
@@ -183,6 +194,6 @@ export async function handleFind(request: Request, deps: FindDeps): Promise<Resp
     );
   } catch (error) {
     logServerErrorSafe("find", error);
-    return json(503, { error: "temporarily_unavailable" }, baseHeaders);
+    return json(request, 503, { error: "temporarily_unavailable" }, baseHeaders);
   }
 }

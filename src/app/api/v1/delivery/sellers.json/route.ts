@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { signedJson } from "@/lib/signing/response-signature";
 import { getClientIp } from "@/lib/api/client-ip";
 import { exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
 import { consumeIpRateLimit, ipRateLimitHeaders } from "@/lib/api/ip-rate-limit";
@@ -32,7 +33,8 @@ export async function GET(request: NextRequest) {
   const perCaller = ipRateLimitHeaders(limited);
   if (!limited.allowed) {
     const status = limited.unavailable ? 503 : 429;
-    return NextResponse.json(
+    return signedJson(
+      request,
       { error: limited.unavailable ? "temporarily_unavailable" : "rate_limited" },
       { status, headers: perCaller },
     );
@@ -43,17 +45,17 @@ export async function GET(request: NextRequest) {
 
   const parsed = parseDeliverySellersQuery(request.nextUrl.searchParams);
   if (parsed === "invalid") {
-    return NextResponse.json({ error: "invalid_query", allowed: [...ALLOWED_QUERY] }, { status: 400, headers: perCaller });
+    return signedJson(request, { error: "invalid_query", allowed: [...ALLOWED_QUERY] }, { status: 400, headers: perCaller });
   }
 
   if (!getDb()) {
-    return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+    return signedJson(request, { error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 
   try {
     const body = await getDeliverySellersFeedCached(parsed);
     const retrievedAt = body.as_of;
-    return NextResponse.json(body, {
+    return signedJson(request, body, {
       headers: {
         ...perCaller,
         "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
@@ -71,7 +73,7 @@ export async function GET(request: NextRequest) {
       return exportBusyResponse(error, perCaller);
     }
     logServerErrorSafe("delivery.sellers", error);
-    return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+    return signedJson(request, { error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }
 const __disallowed = exportDisallowedMethodHandlers(["GET"]);

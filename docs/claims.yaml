@@ -2492,3 +2492,11 @@ claims:
     check: null
     why_unverifiable: "tests/nearai.test.ts が nextNearAiRunUtc と MCP 応答を固定する。"
     verified_at: 2026-11-23
+  - id: response_signatures_ed25519_jcs
+    surface: public/llms.txt
+    quote: "Public keys live at https://vet402.com/.well-known/vet402-keys.json"
+    means: "判定と公開数字の一部 JSON 応答に Vet402-Signature ヘッダ（JCS + Ed25519）。鍵は /.well-known/vet402-keys.json"
+    check:
+      url: https://vet402.com/.well-known/vet402-keys.json
+      assert: "keys != null"
+    verified_at: 2026-11-25

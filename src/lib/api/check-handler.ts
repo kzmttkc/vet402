@@ -9,7 +9,7 @@ import { getCheckSellerCached } from "@/lib/api/check-seller-cache";
 import type { CheckSellerDeps } from "@/lib/mcp/tools";
 import { attachVerdictReceipt, checkCanonicalInput, receiptVerdictOf } from "@/lib/receipts/verdict-receipt";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
-import { NextResponse } from "next/server";
+import { signedJson } from "@/lib/signing/response-signature";
 
 const ALLOWED_QUERY = ["url", "method"] as const;
 const CHECK_DOCS = "https://vet402.com/docs/api#endpoints";
@@ -19,12 +19,17 @@ const CACHE_OK = "public, s-maxage=60, stale-while-revalidate=300";
 const CACHE_ERR = "no-store";
 
 
-function json(status: number, body: Record<string, unknown>, headers: Record<string, string>): Response {
+function json(
+  request: Request,
+  status: number,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+): Response {
   const h = withNoindex({
     ...headers,
     "Cache-Control": status === 200 ? CACHE_OK : CACHE_ERR,
   });
-  return NextResponse.json(body, { status, headers: h });
+  return signedJson(request, body, { status, headers: h });
 }
 
 function successHeaders(retrievedAt: string, extra: Record<string, string> = {}): Record<string, string> {
@@ -45,12 +50,13 @@ export async function handleCheck(request: Request, deps: CheckSellerDeps): Prom
   const badQuery = rejectUnknownQuery(url.searchParams, [...ALLOWED_QUERY], baseHeaders);
   if (badQuery) {
     const body = await badQuery.json();
-    return json(400, { ...body, documentation: CHECK_DOCS }, baseHeaders);
+    return json(request, 400, { ...body, documentation: CHECK_DOCS }, baseHeaders);
   }
 
   const urlRaw = url.searchParams.get("url");
   if (!urlRaw || !isHttpsAbsoluteUrl(urlRaw)) {
     return json(
+      request,
       400,
       {
         error: "invalid_url",
@@ -64,6 +70,7 @@ export async function handleCheck(request: Request, deps: CheckSellerDeps): Prom
   const methodRaw = url.searchParams.get("method");
   if (methodRaw !== null && !/^[A-Za-z]{1,10}$/.test(methodRaw)) {
     return json(
+      request,
       400,
       {
         error: "invalid_method",
@@ -87,14 +94,14 @@ export async function handleCheck(request: Request, deps: CheckSellerDeps): Prom
       verdict ? { canonicalInput: checkCanonicalInput(urlRaw, method), verdict, asOf: out.as_of } : null,
     );
     const retrievedAt = out.as_of;
-    const res = NextResponse.json(body, {
+    const res = signedJson(request, body, {
       headers: withNoindex(successHeaders(retrievedAt, baseHeaders)),
     });
     res.headers.set("Server-Timing", `check;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;
   } catch (error) {
     logServerErrorSafe("check", error);
-    const res = json(503, { error: "temporarily_unavailable" }, baseHeaders);
+    const res = json(request, 503, { error: "temporarily_unavailable" }, baseHeaders);
     res.headers.set("Server-Timing", `check;dur=${(performance.now() - t0).toFixed(1)}`);
     return res;
   }

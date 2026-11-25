@@ -52,7 +52,7 @@ test("[fix] 3.8-6a-1: the state GET checks the tiers before it answers 200", () 
   const src = readFileSync("src/app/api/v1/observatory/state/route.ts", "utf8");
   const check = src.indexOf("validateL1SettledTwoTier(stats.l1)");
   assert.ok(check > 0, "state route calls the tier check on stats.l1");
-  const answer = src.indexOf("return NextResponse.json(\n      {\n        ...stats,");
+  const answer = src.indexOf("return signedJson(\n      request,\n      {\n        ...stats,");
   assert.ok(answer > check, "the check runs before the 200 body");
   assert.match(src.slice(check, answer), /status: 503/);
 });

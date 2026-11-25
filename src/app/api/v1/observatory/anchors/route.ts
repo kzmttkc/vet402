@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { signedJson } from "@/lib/signing/response-signature";
 import { getClientIp } from "@/lib/api/client-ip";
 import {
   consumeIpRateLimit,
@@ -35,12 +36,12 @@ export async function GET(request: NextRequest) {
   const perCaller = ipRateLimitHeaders(limited);
   const shared = sharedCacheRateLimitHeaders(limited);
   if (!limited.allowed) {
-    return NextResponse.json({ error: "rate_limited" }, { status: 429, headers: perCaller });
+    return signedJson(request, { error: "rate_limited" }, { status: 429, headers: perCaller });
   }
   const daysParam = request.nextUrl.searchParams.get("days");
   const days = daysParam === null ? 30 : Number(daysParam);
   if (!Number.isFinite(days)) {
-    return NextResponse.json({ error: "invalid_days" }, { status: 400, headers: perCaller });
+    return signedJson(request, { error: "invalid_days" }, { status: 400, headers: perCaller });
   }
   try {
     const anchors = (await getAnchors(days)).map(enrichAnchorRow);
@@ -73,7 +74,8 @@ export async function GET(request: NextRequest) {
     const cite = `KIZUNA Creation. vet402 observatory ledger anchors, retrieved ${retrievedAt}. https://vet402.com/api/v1/observatory/anchors`;
     // 遅れたヘッドを 200 の成功として返さない。本文は同じ形で返し、遅れの理由を headFreshness に書く。
     const ok = headFreshness.ok;
-    return NextResponse.json(
+    return signedJson(
+      request,
       {
         ...(ok ? {} : { error: "anchors_head_stale" }),
         anchors,
@@ -98,7 +100,7 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     logServerErrorSafe("observatory_anchors", error);
-    return NextResponse.json({ error: "observatory_unavailable" }, { status: 503, headers: perCaller });
+    return signedJson(request, { error: "observatory_unavailable" }, { status: 503, headers: perCaller });
   }
 }
 const __disallowed = exportDisallowedMethodHandlers(["GET"]);
