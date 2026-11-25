@@ -11,6 +11,7 @@
 //   本文    deprecated: true と deprecation（いつから・何を使うか・なぜか）。既存のキーは触らない
 // ============================================================
 import type { NextResponse } from "next/server";
+import { PUBLIC_RULES_VERSION } from "@/lib/decision/rules-version-public";
 
 /** 判定 API が正式な統合になった日（llms.txt / docs の「canonical integration since 2026-09-02」）。 */
 export const SCORE_DEPRECATED_SINCE = "2026-09-02";
@@ -29,10 +30,10 @@ export const SCORE_DEPRECATION_NOTICE = {
 } as const;
 
 /** 本文の先頭に 2 キーを足す（読み手が最初に目にする位置）。既存キーの値は上書きしない。 */
-type ScoreDeprecationFields = { deprecated: true; deprecation: typeof SCORE_DEPRECATION_NOTICE };
+type ScoreDeprecationFields = { deprecated: true; deprecation: typeof SCORE_DEPRECATION_NOTICE; rules_version: string };
 
 export function withScoreDeprecationBody<T extends object>(body: T): Omit<ScoreDeprecationFields, keyof T> & T {
-  return { deprecated: true as const, deprecation: SCORE_DEPRECATION_NOTICE, ...body };
+  return { deprecated: true as const, deprecation: SCORE_DEPRECATION_NOTICE, rules_version: PUBLIC_RULES_VERSION, ...body };
 }
 
 /** ヘッダに Deprecation と Link を足す（既存の Link があれば後ろへ連ねる）。 */

@@ -1,6 +1,7 @@
 // M5a: /api/v1/check の checkSeller 読み取りを 60 秒サーバキャッシュする（2026-11-18）。
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
+import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
 import { verdictNextStep } from "@/lib/decision/verdict-next-step";
 import { readFileSync } from "node:fs";
 import { NextRequest } from "next/server";
@@ -131,6 +132,7 @@ function staleAfterFirstFill(staleReadAt: string) {
         as_of: "2026-11-18T09:00:00.000Z",
         truncated: false,
         next_action: null,
+        rules_version: DECISION_RULES_VERSION,
       });
       return { out: payload, cacheReadAt: staleReadAt };
     };
@@ -253,6 +255,7 @@ test("stale refresh failure returns 503 without stale body", async () => {
       as_of: "2026-11-18T09:00:00.000Z",
       truncated: false,
       next_action: verdictNextStep("ALLOW"),
+      rules_version: DECISION_RULES_VERSION,
     }),
     cacheReadAt: new Date(Date.now() - (CHECK_SELLER_CACHE_SECONDS + 30) * 1000).toISOString(),
   };
@@ -305,6 +308,7 @@ test("spending_halted change is visible after cacheReadAt ages out", async () =>
           as_of: asOf,
           truncated: false,
           next_action: verdictNextStep("ALLOW"),
+          rules_version: DECISION_RULES_VERSION,
         }),
         cacheReadAt: staleAt,
       };
@@ -578,6 +582,7 @@ test("checkSellerFreezeForCache round-trips output", () => {
     as_of: "2026-11-18T10:00:00.000Z",
     truncated: false,
     next_action: verdictNextStep("ALLOW"),
+    rules_version: DECISION_RULES_VERSION,
   };
   const frozen = checkSellerFreezeForCache(sample);
   assert.deepEqual(frozen, sample);

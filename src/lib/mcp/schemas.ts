@@ -264,6 +264,7 @@ export const checkSellerOutput = z
     as_of: iso,
     truncated: z.boolean(),
     next_action: z.string().nullable(),
+    rules_version: z.string(),
   })
   .strict();
 
@@ -372,6 +373,8 @@ export const findSellersOutput = z
         .strict(),
     ),
     method_url: z.string(),
+    rate_formula: z.string(),
+    rules_version: z.string(),
     as_of: iso,
     truncated: z.boolean(),
   })

@@ -972,7 +972,12 @@ export default async function ObservatoryMethodologyPage() {
           ) : null}
           The split is live at <code>/api/v1/observatory/state</code> as{" "}
           <code>l1.settledNonceBound</code> and <code>l1.settledAmountPayeeOnly</code>, which sum
-          to <code>l1.settled</code>, and per chain in <code>l1.byChain</code>.
+          to <code>l1.settled</code>, and per chain in <code>l1.byChain</code>.{" "}
+          <code>l1.byFacilitator</code> groups attempts, settled, delivered, and{" "}
+          inconclusiveSettled by facilitator id read from each purchase row (Circle Gateway meta,
+          XRPL network, Solana feePayer, Tempo/Stellar network). <code>unknown</code> is rows where
+          the seller-side facilitator cannot be read from the row, listed with an explicit count
+          including zero.
         </p>
         <p className="doc-p">
           <strong>Why the older rows keep the label.</strong> Demoting them would assert
@@ -1563,7 +1568,9 @@ export default async function ObservatoryMethodologyPage() {
           not appear as alternatives. The term matches listings that already have a paid test in the
           window. The description is the
           seller&apos;s text. The price is the listing price. The catalog rows carry no tags, so tags are
-          not used. GET /api/v1/find returns the same rule.
+          not used. GET /api/v1/find returns the same rule. Responses name
+          rate_formula (v1.0-wilson95) and rules_version (DECISION_RULES_VERSION) so the ranking
+          formula and verdict rules are traceable.
         </p>
 
         {/* 2026-09-05 AEO: 語彙の正典は src/lib/observatory/vocabulary.ts。
