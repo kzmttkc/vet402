@@ -43,6 +43,8 @@ export const API_ENDPOINT_TOC: readonly ApiEndpointTocItem[] = [
   { method: "GET", path: "/api/v1/sellers/export.csv" },
   { method: "GET", path: "/api/v1/judgments/:file" },
   { method: "GET", path: "/api/v1/delivery/sellers.json" },
+  { method: "GET", path: "/api/v1/delivery/by-resource?url=" },
+  { method: "POST", path: "/api/v1/delivery/annotate" },
   { method: "POST", path: "/api/v1/events/:trustEventId/outcome" },
   { method: "DELETE", path: "/api/v1/webhooks/:id" },
   { method: "DELETE", path: "/api/v1/watchlist/:id" },

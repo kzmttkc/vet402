@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vet402.com/docs/schemas/bazaar-delivery-field.schema.json",
+  "title": "BazaarDeliveryField",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "paidAttempts30d",
+    "delivered30d",
+    "settledNotDelivered30d",
+    "deliveryRateLowerBps30d",
+    "deliveryRateBand30d",
+    "lastAttemptAt30d",
+    "lastDeliveredAt30d",
+    "recordUrl",
+    "network"
+  ],
+  "properties": {
+    "paidAttempts30d": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Signed paid purchase attempts in window_days (same as sellers.json paid_attempts_30d)."
+    },
+    "delivered30d": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Delivered purchases in the window (same as sellers.json delivered_30d)."
+    },
+    "settledNotDelivered30d": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Settled but not delivered in the window (same as sellers.json settled_not_delivered_30d)."
+    },
+    "deliveryRateLowerBps30d": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "maximum": 10000,
+      "description": "95% Wilson lower bound in basis points (same as sellers.json delivery_rate_lower_bps_30d)."
+    },
+    "deliveryRateBand30d": {
+      "type": "string",
+      "enum": ["insufficient", "provisional", "established"],
+      "description": "Sample size band (same as sellers.json delivery_rate_band_30d)."
+    },
+    "lastAttemptAt30d": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Latest signed attempt in the window."
+    },
+    "lastDeliveredAt30d": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Latest delivery in the window."
+    },
+    "recordUrl": {
+      "type": "string",
+      "format": "uri",
+      "description": "Observatory record page for the matched endpoint."
+    },
+    "network": {
+      "type": ["string", "null"],
+      "description": "Listing network (CAIP-2 when known)."
+    }
+  }
+}

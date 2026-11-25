@@ -2500,3 +2500,17 @@ claims:
       url: https://vet402.com/.well-known/vet402-keys.json
       assert: "keys != null"
     verified_at: 2026-11-25
+  - id: bazaar_delivery_by_resource_public
+    surface: src/app/api/v1/delivery/by-resource/route.ts
+    quote: "GET /api/v1/delivery/by-resource"
+    means: "鍵なしで Bazaar の resource URL に delivery 欄を返す。値は sellers.json と同じスナップショット行の写し。一致する行が無ければ delivery は null。"
+    check: null
+    why_unverifiable: "契約は docs/bazaar-delivery-field.md・tests/bazaar-delivery.test.ts と tests/bazaar-delivery.pg.test.ts が固定する"
+    verified_at: 2026-11-25
+  - id: bazaar_delivery_annotate_batch
+    surface: src/app/api/v1/delivery/annotate/route.ts
+    quote: "POST /api/v1/delivery/annotate"
+    means: "Bazaar discovery の item 配列（最大 100 件）に delivery 欄を付ける鍵なし API。sellers.json スナップショットを 1 回読み、by-resource と同じ行の写しを付ける。"
+    check: null
+    why_unverifiable: "契約は docs/bazaar-delivery-field.md・tests/bazaar-delivery.test.ts と tests/bazaar-delivery.pg.test.ts が固定する"
+    verified_at: 2026-11-25
