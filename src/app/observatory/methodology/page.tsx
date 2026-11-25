@@ -974,10 +974,10 @@ export default async function ObservatoryMethodologyPage() {
           <code>l1.settledNonceBound</code> and <code>l1.settledAmountPayeeOnly</code>, which sum
           to <code>l1.settled</code>, and per chain in <code>l1.byChain</code>.{" "}
           <code>l1.byFacilitator</code> groups attempts, settled, delivered, and{" "}
-          inconclusiveSettled by facilitator id read from each purchase row (Circle Gateway meta,
-          XRPL network, Solana feePayer, Tempo/Stellar network). <code>unknown</code> is rows where
-          the seller-side facilitator cannot be read from the row, listed with an explicit count
-          including zero.
+          inconclusiveSettled by facilitator id read from each purchase row (Circle Gateway
+          settlement source, XRPL network, Tempo/Stellar network). <code>unknown</code> is rows where
+          the seller-side facilitator cannot be read from the row (including Solana), listed with an
+          explicit count including zero.
         </p>
         <p className="doc-p">
           <strong>Why the older rows keep the label.</strong> Demoting them would assert

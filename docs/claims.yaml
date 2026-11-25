@@ -1054,7 +1054,7 @@ claims:
   - id: state_l1_by_facilitator_sums
     surface: src/app/api/v1/observatory/state/route.ts
     quote: "l1.byFacilitator"
-    means: "facilitator 別の attempts・settled・delivered・inconclusiveSettled の合計は l1 の対応列と一致する（unknown を含む）"
+    means: "facilitator 別の attempts・settled・delivered・inconclusiveSettled の合計は l1 の対応列と一致する（unknown を含む）。名前付きバケットは Circle Gateway の settlement source・XRPL・Tempo・Stellar レーンのみ。Solana は unknown"
     check: null
     why_unverifiable: "byFacilitator の合計一致と unknown バケットは tests/f8-version-facilitator.test.ts と tests/f8-version-facilitator.pg.test.ts が固定する。本番 canary の式エンジンは配列の型を assert できない"
     verified_at: 2026-11-25

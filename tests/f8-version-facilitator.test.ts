@@ -26,13 +26,14 @@ test("l1FacilitatorIdSql maps unknown EVM rows to unknown", () => {
   assert.match(sql, /circle_gateway/);
 });
 
-test("l1FacilitatorIdSql branches xrpl, tempo, stellar and feePayer without lower()", () => {
+test("l1FacilitatorIdSql branches xrpl, tempo, stellar; Solana rows map to unknown", () => {
   const sql = l1FacilitatorIdSql("pu");
   assert.match(sql, /network = 'xrpl:0' THEN 'xrpl_t54'/);
   assert.match(sql, /network = 'eip155:4217' THEN 'tempo_mpp'/);
   assert.match(sql, /network = 'stellar:pubnet' THEN 'stellar_facilitator'/);
-  assert.match(sql, /'solana:' \|\| \(.*feePayer'\)/);
-  assert.doesNotMatch(sql, /lower\(.*feePayer/);
+  assert.doesNotMatch(sql, /feePayer/);
+  assert.doesNotMatch(sql, /challenge_402|payment_payload|challenge402/);
+  assert.doesNotMatch(sql, /solana:/);
 });
 
 test("GET /api/v1/observatory/state exposes l1.byFacilitator and l1Rates.rate_formula", async () => {

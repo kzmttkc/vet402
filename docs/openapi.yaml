@@ -4399,8 +4399,11 @@ paths:
                         type: array
                         description: >-
                           L1 purchase rows grouped by facilitator id from row evidence
-                          (l1-facilitator.ts). Unknown when the seller-side facilitator
-                          cannot be read from the row. The unknown bucket is always present.
+                          (l1-facilitator.ts): circle_gateway (Circle Gateway batch), xrpl_t54
+                          (xrpl:0), tempo_mpp (eip155:4217), stellar_facilitator (stellar:pubnet).
+                          Solana and other rows where the seller-side facilitator cannot be read
+                          from published ledger columns are unknown. The unknown bucket is always
+                          present.
                         items:
                           type: object
                           required: [facilitator, attempts, settled, delivered, inconclusiveSettled]

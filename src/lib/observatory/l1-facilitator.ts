@@ -6,13 +6,11 @@
 //                      （settlement-source.ts の circle_gateway と同じ規則）
 //   xrpl_t54           network が xrpl:0 の行。vet402 が支払う XRPL 封筒は
 //                      t54 互換の accept だけ（xrpl402-payer.ts）
-//   solana:<feePayer>  challenge の selectedAccept.extra.feePayer（Solana exact）
 //   tempo_mpp          network eip155:4217（mpp-payer.ts）
 //   stellar_facilitator network stellar:pubnet（Stellar レーン）
-//   unknown            上記以外（Base 等の EVM EIP-3009 で売り手側の facilitator URL
-//                      は台帳に残っていない）
+//   unknown            上記以外（Solana・Base 等の EVM EIP-3009 で売り手側の facilitator
+//                      は台帳の非公開列にしか残っていない）
 // ============================================================
-import { x402L1Purchases } from "@/lib/db/schema";
 import { settlementSourceSql } from "./settlement-source";
 
 export const L1_FACILITATOR_UNKNOWN = "unknown" as const;
@@ -20,14 +18,9 @@ export const L1_FACILITATOR_UNKNOWN = "unknown" as const;
 /** SQL: facilitator id 文字列。識別できない行は 'unknown'（null にしない）。 */
 export function l1FacilitatorIdSql(alias = "pu"): string {
   const p = alias === "" ? "" : `${alias}.`;
-  const ch = `${p}${x402L1Purchases.challenge402.name}`;
   return `CASE
     WHEN (${settlementSourceSql(alias)}) = 'circle_gateway' THEN 'circle_gateway'
     WHEN ${p}network = 'xrpl:0' THEN 'xrpl_t54'
-    WHEN ${p}network LIKE 'solana:%'
-         AND jsonb_typeof(${ch}) = 'object'
-         AND coalesce(${ch}->'selectedAccept'->'extra'->>'feePayer', '') <> ''
-      THEN 'solana:' || (${ch}->'selectedAccept'->'extra'->>'feePayer')
     WHEN ${p}network = 'eip155:4217' THEN 'tempo_mpp'
     WHEN ${p}network = 'stellar:pubnet' THEN 'stellar_facilitator'
     ELSE '${L1_FACILITATOR_UNKNOWN}'
