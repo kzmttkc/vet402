@@ -31,6 +31,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 - [Purchase ledger CSV](https://vet402.com/api/v1/observatory/export.csv?days=366): paid attempts in the chosen window (up to 366 days), with chain, outcome, and a transaction when one exists.
 - [L0 probe CSV](https://vet402.com/api/v1/observatory/l0/export.csv)
 - [Seller delivery feed JSON](https://vet402.com/api/v1/delivery/sellers.json)
+- [Bazaar delivery by resource URL](https://vet402.com/api/v1/delivery/by-resource): copy the matching row from the same snapshot as [seller delivery feed JSON](https://vet402.com/api/v1/delivery/sellers.json) onto a CDP Bazaar item `resource` (`GET ?url=` or `POST /api/v1/delivery/annotate` for up to 100 items). Spec: https://github.com/vet402/vet402/blob/main/docs/bazaar-delivery-field.md
 - [Fixed snapshots with DOI](https://doi.org/10.5281/zenodo.24195171) and [snapshot repository](https://github.com/vet402/vet402-observatory-data)
 - [Monthly report: State of x402](https://vet402.com/x402/report/2026-11)
 - [Corrections log](https://vet402.com/corrections)

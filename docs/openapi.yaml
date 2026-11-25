@@ -1485,6 +1485,115 @@ paths:
         "503":
           description: Store unavailable
 
+  /api/v1/delivery/by-resource:
+    get:
+      operationId: getBazaarDeliveryByResource
+      tags: [Observatory]
+      summary: Bazaar delivery field for one resource URL
+      description: |
+        Key-less read of vet402 L1 delivery facts for a Bazaar `resource` URL in the last
+        30 days. The `url` query is normalized the same way vet402 keys its catalog (HTTPS, lowercase
+        host, trailing slash on the path removed, volatile query keys stripped). Optional
+        `method` narrows to one HTTP verb from the Bazaar listing, otherwise GET then POST.
+        `delivery` is null when no matching sellers.json snapshot row exists for that resource,
+        not a zero object. Values are copied from the same snapshot as `GET /api/v1/delivery/sellers.json`.
+        30 requests per minute per IP. Response includes `rules_version`, `rate_formula`
+        (`v1.0-wilson95`), `window_days`, and `as_of`. Spec:
+        https://github.com/vet402/vet402/blob/main/docs/bazaar-delivery-field.md
+      security: []
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string, format: uri }
+          description: Bazaar item `resource` URL (HTTPS).
+        - in: query
+          name: method
+          schema: { type: string }
+          description: HTTP method from the Bazaar listing (for example GET or POST).
+      responses:
+        "200":
+          description: Delivery field or null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url, delivery, rules_version, rate_formula, window_days, as_of]
+                properties:
+                  url: { type: string, format: uri, description: Canonical resource URL vet402 matched. }
+                  delivery:
+                    oneOf:
+                      - type: "null"
+                      - $ref: "#/components/schemas/BazaarDeliveryField"
+                  rules_version: { type: string }
+                  rate_formula: { type: string, enum: [v1.0-wilson95] }
+                  window_days: { type: integer, enum: [30] }
+                  as_of: { type: string, format: date-time }
+                  disclaimer: { type: string }
+        "400":
+          description: invalid_url, invalid_method, or invalid_query
+        "429":
+          description: Rate limited
+        "503":
+          description: observatory_unavailable
+
+  /api/v1/delivery/annotate:
+    post:
+      operationId: postBazaarDeliveryAnnotate
+      tags: [Observatory]
+      summary: Add delivery field to Bazaar discovery items
+      description: |
+        Key-less batch read. Body is JSON `{ "items": [ … ] }` where each element is one
+        Bazaar discovery item (same shape the CDP Bazaar returns). At most 100 items. Body
+        limit 2 MiB. Each returned item is the input object plus `delivery` (object or null).
+        URL and method are taken from `resource` and `extensions.bazaar.info.input.method`.
+        Network disambiguation uses `accepts[0].network` when several feed rows share URL and method.
+        30 requests per minute per IP. Response includes `rules_version`, `rate_formula`,
+        `window_days`, and `as_of`. Spec: https://github.com/vet402/vet402/blob/main/docs/bazaar-delivery-field.md
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: object }
+      responses:
+        "200":
+          description: Annotated items
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, rules_version, rate_formula, window_days, as_of]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        delivery:
+                          oneOf:
+                            - type: "null"
+                            - $ref: "#/components/schemas/BazaarDeliveryField"
+                  rules_version: { type: string }
+                  rate_formula: { type: string, enum: [v1.0-wilson95] }
+                  window_days: { type: integer, enum: [30] }
+                  as_of: { type: string, format: date-time }
+                  disclaimer: { type: string }
+        "400":
+          description: invalid_request (malformed JSON, empty batch, more than 100 items, or body too large)
+        "429":
+          description: Rate limited
+        "503":
+          description: observatory_unavailable
+
   /api/v1/judgments/{file}:
     get:
       operationId: getJudgmentFile
@@ -7499,6 +7608,57 @@ components:
           type: string
           enum: [unavailable, rate_limited]
         disclaimer: { type: string }
+
+    BazaarDeliveryField:
+      type: object
+      additionalProperties: false
+      required:
+        - paidAttempts30d
+        - delivered30d
+        - settledNotDelivered30d
+        - deliveryRateLowerBps30d
+        - deliveryRateBand30d
+        - lastAttemptAt30d
+        - lastDeliveredAt30d
+        - recordUrl
+        - network
+      properties:
+        paidAttempts30d:
+          type: integer
+          minimum: 1
+          description: Same as sellers.json paid_attempts_30d for the matched endpoint row.
+        delivered30d:
+          type: integer
+          minimum: 0
+          description: Same as sellers.json delivered_30d.
+        settledNotDelivered30d:
+          type: integer
+          minimum: 0
+          description: Same as sellers.json settled_not_delivered_30d.
+        deliveryRateLowerBps30d:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 10000
+          description: Same as sellers.json delivery_rate_lower_bps_30d.
+        deliveryRateBand30d:
+          type: string
+          enum: [insufficient, provisional, established]
+          description: Same as sellers.json delivery_rate_band_30d.
+        lastAttemptAt30d:
+          type: string
+          format: date-time
+          nullable: true
+        lastDeliveredAt30d:
+          type: string
+          format: date-time
+          nullable: true
+        recordUrl:
+          type: string
+          format: uri
+        network:
+          type: string
+          nullable: true
 
     ErrorResponse:
       type: object

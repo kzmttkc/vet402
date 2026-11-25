@@ -493,6 +493,45 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   }]
 }`,
   },
+  {
+    method: "GET",
+    path: "/api/v1/delivery/by-resource?url=",
+    note: "Bazaar delivery field for one resource URL (canonicalUrl rules). Key-less, 30/min. Values match one row from the same snapshot as sellers.json. `delivery` is null when no feed row matches. Optional `method`. Spec: /docs/bazaar-delivery-field.md.",
+    response: `{
+  "url": "https://api.example.com/v1/data",
+  "delivery": {
+    "paidAttempts30d": 3,
+    "delivered30d": 2,
+    "settledNotDelivered30d": 0,
+    "deliveryRateLowerBps30d": 3423,
+    "deliveryRateBand30d": "insufficient",
+    "lastAttemptAt30d": "2026-11-20T00:00:00.000Z",
+    "lastDeliveredAt30d": "2026-11-19T00:00:00.000Z",
+    "recordUrl": "https://vet402.com/observatory/e/00000000-0000-0000-0000-000000000001",
+    "network": "eip155:8453"
+  },
+  "rules_version": "2026-11-13.1",
+  "rate_formula": "v1.0-wilson95",
+  "window_days": 30,
+  "as_of": "2026-11-25T00:00:00.000Z"
+}`,
+  },
+  {
+    method: "POST",
+    path: "/api/v1/delivery/annotate",
+    note: "Add `delivery` to up to 100 Bazaar discovery items per request. Key-less, 30/min. Body limit 2 MiB. Same counts as by-resource for each item `resource` URL.",
+    request: `{ "items": [{ "resource": "https://api.example.com/v1/data", "extensions": { "bazaar": { "info": { "input": { "method": "GET" } } } } }] }`,
+    response: `{
+  "items": [{
+    "resource": "https://api.example.com/v1/data",
+    "delivery": null
+  }],
+  "rules_version": "2026-11-13.1",
+  "rate_formula": "v1.0-wilson95",
+  "window_days": 30,
+  "as_of": "2026-11-25T00:00:00.000Z"
+}`,
+  },
   // 2026-10-24: paths: にある公開窓口で、上のカードに path が無かったもの。
   // /api/v1/guarantee/quote は paths に無い（休眠中の金融商品）。ここにも載せない。
   {
