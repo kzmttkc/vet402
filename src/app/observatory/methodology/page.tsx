@@ -585,7 +585,9 @@ export default async function ObservatoryMethodologyPage() {
           {(L1_CELO_PAID_TIMEOUT_MS / 1000).toString()} seconds, since {L1_CELO_PAID_TIMEOUT_SINCE}, because some Celo facilitators answer only after the on-chain receipt. A paid request on XRPL waits{" "}
           {(L1_XRPL_PAID_TIMEOUT_MS / 1000).toString()} seconds, since {L1_XRPL_PAID_TIMEOUT_SINCE}, because some sellers answer only after the ledger settlement is confirmed. A transfer that lands later is found by vet402&apos;s index of on-chain
           settlements if it falls between {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes
-          before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt. The index reads transfers
+          before and {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after the attempt. On Stellar the
+          on-chain read for late settlement looks from fifteen seconds before the attempt, using the ledger
+          confirmed time. The index reads transfers
           to the receiving addresses in the catalog as it goes, so a transfer to an address that joined the catalog
           later is not in it; for such a row vet402 reads that payer&apos;s transfers to that address on-chain directly.
           When several purchases with the same payer, address and price have the same number of matching transfers
@@ -1002,8 +1004,9 @@ export default async function ObservatoryMethodologyPage() {
           2026-09-04 vet402&apos;s own index of on-chain settlements looks for that transfer: from vet402&apos;s
           payer, to the endpoint&apos;s payee, for the exact amount, between{" "}
           {LATE_SETTLEMENT_BACKDATE_MINUTES.toString()} minutes before the attempt and{" "}
-          {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after it, and not already tied to
-          another purchase. Since 2026-09-19 it is attached to a row only when that row is its
+          {LATE_SETTLEMENT_WINDOW_MINUTES.toString()} minutes after it. On Stellar the same read starts
+          fifteen seconds before the attempt because the ledger stores confirmation time to the second. The
+          index attaches a transfer only when it is not already tied to another purchase. Since 2026-09-19 it is attached to a row only when that row is its
           single candidate, and on XRPL only when it is the hash of the blob vet402 signed. Since
           2026-09-29, when two or more of vet402&apos;s rows on an EVM chain are candidates for the same
           transfer (the same payee and price a few seconds apart), vet402 reads the transaction&apos;s

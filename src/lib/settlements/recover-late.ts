@@ -136,6 +136,9 @@ import { BNB_CAIP2, BNB_CHAIN_ID, BNB_USD1_ADDRESS } from "@/lib/chain/bnb";
 import { CELO_CAIP2, CELO_CHAIN_ID, CELO_USDC_ADDRESS } from "@/lib/chain/celo";
 import { TEMPO_CHAIN_ID, TEMPO_MAINNET_CAIP2, TEMPO_USDC_E, tempoRpcUrl } from "@/lib/observatory/mpp-payer";
 import { SOLANA_MAINNET_CAIP2, SOLANA_USDC_MINT } from "@/lib/observatory/sol402-payer";
+import { STELLAR_LEDGER_SCALE, STELLAR_PUBNET_CAIP2, STELLAR_USDC_ISSUER } from "@/lib/observatory/stellar402-payer";
+import { stellarDecimalToStroops } from "@/lib/observatory/settlement-verify-stellar";
+import { STELLAR_HORIZON_URL as STELLAR_HORIZON_DEFAULT_URL } from "@/lib/diagnose/readiness";
 import { usdcOwnerDelta, type SolanaTokenBalance } from "@/lib/observatory/settlement-verify-solana";
 import { evmIndexLedgerAmount } from "@/lib/settlements/index-evm";
 import { solanaUsdcTokenAccount } from "@/lib/settlements/index-solana";
@@ -260,9 +263,14 @@ export const AVALANCHE_CHAIN_READ_BUDGET_MS = 30_000;
 export const TEMPO_CHAIN_READ_BUDGET_MS = 30_000;
 export const ARC_CHAIN_READ_BUDGET_MS = 30_000;
 export const SOLANA_CHAIN_READ_BUDGET_MS = 30_000;
+/**
+ * Stellar のレーンの持ち時間（2026-11-26）。Tempo・Arc・Solana と同じ 30 秒を別枠で持つ。
+ * recover-late-chains の cron が走らせる（index-settlements の lanes には含めない）。
+ */
+export const STELLAR_CHAIN_READ_BUDGET_MS = 30_000;
 
 /** 直読みのレーンの名前（lanes オプションと CHAIN_READ_LANES の key）。 */
-export type ChainReadLaneKey = "base" | "celo" | "bnb" | "arbitrum" | "avalanche" | "tempo" | "arc" | "solana";
+export type ChainReadLaneKey = "base" | "celo" | "bnb" | "arbitrum" | "avalanche" | "tempo" | "arc" | "solana" | "stellar";
 
 export type LateSettlementSummary = {
   recovered: number;
@@ -318,6 +326,12 @@ export type LateSettlementSummary = {
   chainRowsReadSolana?: number;
   /** Solana のレーンで、この回は読めなかった行の数（行は変えていない）。 */
   chainRowsUnreadSolana?: number;
+  /** recoveredFromChain のうち Stellar のレーンで貼った数（2026-11-26・transfer と時刻の窓だけ）。 */
+  recoveredFromChainStellar?: number;
+  /** chainRowsRead のうち Stellar のレーンで読んだ行の数。 */
+  chainRowsReadStellar?: number;
+  /** Stellar のレーンで、この回は読めなかった行の数（行は変えていない）。 */
+  chainRowsUnreadStellar?: number;
   /** 1 本の貼り付けの文が落ちた数（その 1 本は台帳も訂正ログも書かれていない・次回に再試行）。 */
   linkErrors?: number;
   /** 結びつけた (purchase_id, tx_hash) の対。cron の応答に出る。 */
@@ -348,6 +362,8 @@ export async function recoverLateSettlements(
     arcChainReadBudgetMs?: number;
     /** Solana のレーンの持ち時間（ms）。 */
     solanaChainReadBudgetMs?: number;
+    /** Stellar のレーンの持ち時間（ms）。 */
+    stellarChainReadBudgetMs?: number;
     /**
      * この回に走らせる直読みのレーン（2026-11-03）。省略は全部。index-settlements は従来の 5 本、
      * recover-late-chains は Tempo・Arc・Solana を渡す（同じレーンを 2 つの cron で二重に読まない）。
@@ -472,6 +488,7 @@ export async function recoverLateSettlements(
     tempo: options.tempoChainReadBudgetMs ?? TEMPO_CHAIN_READ_BUDGET_MS,
     arc: options.arcChainReadBudgetMs ?? ARC_CHAIN_READ_BUDGET_MS,
     solana: options.solanaChainReadBudgetMs ?? SOLANA_CHAIN_READ_BUDGET_MS,
+    stellar: options.stellarChainReadBudgetMs ?? STELLAR_CHAIN_READ_BUDGET_MS,
   };
   const wanted = options.lanes ? new Set<ChainReadLaneKey>(options.lanes) : null;
   const none = { linked: [] as LinkedRow[], read: 0, unread: 0 };
@@ -529,6 +546,9 @@ export async function recoverLateSettlements(
     recoveredFromChainSolana: byLane.solana.linked.length,
     chainRowsReadSolana: byLane.solana.read,
     chainRowsUnreadSolana: byLane.solana.unread,
+    recoveredFromChainStellar: byLane.stellar.linked.length,
+    chainRowsReadStellar: byLane.stellar.read,
+    chainRowsUnreadStellar: byLane.stellar.unread,
     linkErrors: errors.count,
     links: rows.map((r) => ({ purchaseId: r.purchase_id, txHash: r.tx_hash })),
   };
@@ -831,6 +851,15 @@ async function linkOne(
   }
 }
 
+/** pg 試験: 遅延回収の 1 行貼り（{@link recoverLateSettlements} の直読み段と同じ文）。 */
+export async function linkOneLatePurchase(
+  db: Db,
+  link: { purchaseId: string; txHash: string; source: string; matchedBy: string; how: string },
+  errors: { count: number },
+): Promise<LinkedRow[]> {
+  return linkOne(db, link, errors);
+}
+
 /**
  * 索引の候補のうち、上の 1 文が「候補が 2 行以上」で貼らなかった tx を、入れ替え可能な組なら時刻順に貼る。
  * EVM・nonce の無い行だけ（nonce のある行は linkAmbiguousByNonce が決める）。
@@ -934,6 +963,11 @@ type ChainReadLane = {
    * 初めて decided: true（1 回目は decided: false・tries 1・zeroReads 1 で、次の回にまた読む）。
    */
   zeroReadsToDecide?: number;
+  /**
+   * 試行の何分前までを「この行の窓」に入れるか（2026-11-26・Stellar）。省略は LATE_SETTLEMENT_BACKDATE_MINUTES（2）。
+   * Stellar は 0（created_at は ledger の確定時刻なので、試行より前の着金を窓に入れない）。
+   */
+  windowBackMinutes?: number;
 };
 const BASE_CHAIN_READ_LANE: ChainReadLane = { key: "base", networks: BASE_NETWORK_KEYS, nonceBound: false, noAnswerFirst: false, rowWindows: false };
 // 2026-11-03: Celo も認可の状態で決める（BNB と同じ）。数字の監査で、公開 RPC の forno が settled の tx 12/30 のレシートを null で
@@ -963,6 +997,19 @@ const SOLANA_CHAIN_READ_LANE: ChainReadLane = {
   nonceShape: "^[0-9a-f]{32}$",
   zeroReadsToDecide: 2,
 };
+// 2026-11-26（SCF 監査）: Stellar の購入は sponsor 付きで tx hash が署名時と変わるので auth_nonce と tx を結び付けない。
+// 貼るのは transfer（from = 行の payer・to = 行の pay_to・額 = amount_units）と時刻の窓で chooseLinks が決める（Base と同じ）。
+// ledger の created_at は秒単位なので、15 秒だけ試行より前を窓に入れる（自社時計とのずれで着金を落とさない）。
+// path payment と契約の effect は読めないので、0 件の読みは 2 回で決める（Tempo・Solana と同じ）。
+const STELLAR_CHAIN_READ_LANE: ChainReadLane = {
+  key: "stellar",
+  networks: [STELLAR_PUBNET_CAIP2],
+  nonceBound: false,
+  noAnswerFirst: false,
+  rowWindows: true,
+  windowBackMinutes: 0.25,
+  zeroReadsToDecide: 2,
+};
 /** 直読みのレーンの表（テストと点検が読む）。走る順もこの順。 */
 export const CHAIN_READ_LANES: readonly ChainReadLane[] = [
   BASE_CHAIN_READ_LANE,
@@ -973,6 +1020,7 @@ export const CHAIN_READ_LANES: readonly ChainReadLane[] = [
   TEMPO_CHAIN_READ_LANE,
   ARC_CHAIN_READ_LANE,
   SOLANA_CHAIN_READ_LANE,
+  STELLAR_CHAIN_READ_LANE,
 ];
 
 /** レーンの一回性の値の形（SQL の ~ と JS の RegExp で同じ意味）。 */
@@ -1056,7 +1104,7 @@ async function linkFromChain(
   };
   const batch = rowsOfRaw<B>(batchRaw);
   const winMs = LATE_SETTLEMENT_WINDOW_MINUTES * 60_000;
-  const backMs = LATE_SETTLEMENT_BACKDATE_MINUTES * 60_000;
+  const backMs = (lane.windowBackMinutes ?? LATE_SETTLEMENT_BACKDATE_MINUTES) * 60_000;
   const keyOf = (b: B) => `${b.network}|${b.payer}|${b.pay_to}|${b.amount_units}`;
   // 2026-10-11 点検（中 2）: 同じ払い元・宛先・額の未読の行が 1 日以上離れていると、1 つの組として端から端まで
   // （24 時間ぶんのブロック）を読みに行き、持ち時間で切れて、次回も同じ組から始まっていた。rowWindows のレーンでは、
@@ -1949,6 +1997,7 @@ export function makeChainTransferReader(
     tempo?: TransferReader;
     arc?: TransferReader;
     solana?: TransferReader;
+    stellar?: TransferReader;
     /** memo の読み手と共有する Solana の入れ物（cron が 1 回に 1 つ作る）。 */
     solanaCache?: SolanaLateReadCache;
   } = {},
@@ -1962,6 +2011,7 @@ export function makeChainTransferReader(
     [TEMPO_MAINNET_CAIP2]: readers.tempo ?? makeTempoTransferReader(),
     [ARC_CAIP2]: readers.arc ?? makeArcTransferReader(),
     [SOLANA_MAINNET_CAIP2]: readers.solana ?? makeSolanaTransferReader(undefined, readers.solanaCache),
+    [STELLAR_PUBNET_CAIP2]: readers.stellar ?? makeStellarTransferReader(),
   };
   return (q) => (byNetwork[q.network] ?? baseReader)(q);
 }
@@ -2408,5 +2458,203 @@ async function createSolanaLateReadRpc(): Promise<SolanaLateReadRpc | null> {
         memos,
       };
     },
+  };
+}
+
+// ------------------------------------------------------------
+// 2026-11-26: Stellar（stellar:pubnet）の読み手（SCF 監査・settle_failed 14 件）。
+// ------------------------------------------------------------
+
+/** Horizon の operations 一覧を 1 ページで読むときの件数（Horizon の上限 200）。 */
+export const STELLAR_LATE_READ_OPERATIONS_PER_PAGE = 200;
+/** 窓の始まりより古い operation に届くまで遡る頁の上限。 */
+export const STELLAR_LATE_READ_MAX_PAGES = 5;
+
+export type StellarHorizonOperationsPage = {
+  records: unknown[];
+  nextCursor: string | null;
+};
+
+export type StellarHorizonLateReadClient = {
+  getOperationsPage: (payer: string, cursor?: string) => Promise<StellarHorizonOperationsPage | null>;
+};
+
+function stellarHorizonBaseUrl(): string {
+  const raw = process.env.STELLAR_HORIZON_URL?.trim();
+  return raw || STELLAR_HORIZON_DEFAULT_URL;
+}
+
+function stellarHorizonOperationsPageOf(body: unknown): StellarHorizonOperationsPage | null {
+  const root = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : null;
+  if (!root) return null;
+  const embedded = typeof root._embedded === "object" && root._embedded !== null ? (root._embedded as Record<string, unknown>) : null;
+  const records = embedded?.records;
+  if (!Array.isArray(records)) return null;
+  let nextCursor: string | null = null;
+  const links = typeof root._links === "object" && root._links !== null ? (root._links as Record<string, unknown>) : null;
+  const next = links?.next;
+  const href =
+    typeof next === "object" && next !== null && typeof (next as { href?: unknown }).href === "string"
+      ? (next as { href: string }).href
+      : null;
+  if (href) {
+    try {
+      const u = new URL(href);
+      const cursor = u.searchParams.get("cursor");
+      if (cursor) nextCursor = cursor;
+    } catch {
+      return null;
+    }
+  }
+  return { records, nextCursor };
+}
+
+function createStellarHorizonLateReadClient(timeoutMs?: number): StellarHorizonLateReadClient {
+  const base = stellarHorizonBaseUrl().replace(/\/$/, "");
+  return {
+    getOperationsPage: async (payer, cursor) => {
+      const url = new URL(`${base}/accounts/${encodeURIComponent(payer)}/operations`);
+      url.searchParams.set("order", "desc");
+      url.searchParams.set("limit", String(STELLAR_LATE_READ_OPERATIONS_PER_PAGE));
+      if (cursor) url.searchParams.set("cursor", cursor);
+      const cap = Math.max(1_000, Math.trunc(timeoutMs ?? 20_000));
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), cap);
+      try {
+        const res = await fetch(url.toString(), { signal: ctrl.signal, headers: { Accept: "application/json" } });
+        if (res.status === 429 || !res.ok) return null;
+        return stellarHorizonOperationsPageOf(await res.json());
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+  };
+}
+
+function stellarUsdcTransferFromFields(
+  txHash: string,
+  createdAt: string,
+  from: unknown,
+  to: unknown,
+  amount: unknown,
+  assetCode: unknown,
+  assetIssuer: unknown,
+  payer: string,
+  payTo: string,
+): ChainTransfer | null {
+  if (from !== payer || assetCode !== "USDC" || assetIssuer !== STELLAR_USDC_ISSUER) return null;
+  const dest = typeof to === "string" ? to : null;
+  const amt = typeof amount === "string" ? amount : null;
+  if (!dest || !amt || dest !== payTo) return null;
+  const stroops = stellarDecimalToStroops(amt);
+  if (stroops === null || stroops % STELLAR_LEDGER_SCALE !== 0n) return null;
+  const value = (stroops / STELLAR_LEDGER_SCALE).toString();
+  return { txHash, from: payer, to: payTo, value, blockTime: createdAt };
+}
+
+function stellarUsdcTransferOf(
+  op: Record<string, unknown>,
+  payer: string,
+  payTo: string,
+): ChainTransfer | null {
+  if (op.transaction_successful !== true) return null;
+  const txHash = typeof op.transaction_hash === "string" ? op.transaction_hash.trim().toLowerCase() : null;
+  const createdAt = typeof op.created_at === "string" ? op.created_at : null;
+  if (!txHash || !createdAt) return null;
+  if (op.type === "payment") {
+    return stellarUsdcTransferFromFields(
+      txHash,
+      createdAt,
+      op.from,
+      op.to,
+      op.amount,
+      op.asset_code,
+      op.asset_issuer,
+      payer,
+      payTo,
+    );
+  }
+  const changes = op.asset_balance_changes;
+  if (!Array.isArray(changes)) return null;
+  for (const raw of changes) {
+    const c = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
+    if (!c || c.type !== "transfer") continue;
+    const t = stellarUsdcTransferFromFields(
+      txHash,
+      createdAt,
+      c.from,
+      c.to,
+      c.amount,
+      c.asset_code,
+      c.asset_issuer,
+      payer,
+      payTo,
+    );
+    if (t) return t;
+  }
+  return null;
+}
+
+/**
+ * Stellar pubnet の USDC transfer（購入元 → 宛先）を時刻の窓で読む読み手（2026-11-26・linkFromChain の Stellar のレーン）。
+ *   - stellar:pubnet 以外は null。Horizon は既定 https://horizon.stellar.org（STELLAR_HORIZON_URL があればそちら）。
+ *   - GET /accounts/{payer}/operations を新しい順に遡り、窓の始まりより古くなるまで最大 5 頁。
+ *   - transaction_successful が true の operation だけ。Soroban の asset_balance_changes（type = transfer）と
+ *     classic の payment（from・to・amount・asset_code・asset_issuer）のいずれかから USDC transfer を拾う。
+ *   - 額は 7 桁 stroops のうち 1 stroop（7 桁目）が 0 でないものは捨てる。value は台帳と同じ 6 桁の最小単位。
+ *   - HTTP 失敗・429・形が違う・頁上限で窓の始まりに届かないときは null（行に印を付けない。組は次回へ回す）。
+ */
+export function makeStellarTransferReader(client?: StellarHorizonLateReadClient): TransferReader {
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== STELLAR_PUBNET_CAIP2) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const expired = () => {
+      if (Date.now() > deadline) return true;
+      return false;
+    };
+    const fromMs = from.getTime();
+    const toMs = to.getTime();
+    const out: ChainTransfer[] = [];
+    let cursor: string | undefined;
+    let pages = 0;
+    let reachedPastWindow = false;
+    while (pages < STELLAR_LATE_READ_MAX_PAGES) {
+      if (expired()) return null;
+      pages++;
+      const remaining = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+      const c = client ?? createStellarHorizonLateReadClient(remaining);
+      const page = await c.getOperationsPage(payer, cursor);
+      if (!page) return null;
+      const { records, nextCursor } = page;
+      if (records.length === 0) {
+        reachedPastWindow = true;
+        break;
+      }
+      let oldestMs: number | null = null;
+      for (const raw of records) {
+        const op = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
+        if (!op) return null;
+        const createdAt = typeof op.created_at === "string" ? op.created_at : null;
+        const bt = createdAt !== null ? Date.parse(createdAt) : NaN;
+        if (!Number.isFinite(bt)) return null;
+        if (oldestMs === null || bt < oldestMs) oldestMs = bt;
+        if (bt < fromMs || bt > toMs) continue;
+        const t = stellarUsdcTransferOf(op, payer, payTo);
+        if (t) out.push(t);
+      }
+      if (oldestMs !== null && oldestMs < fromMs) {
+        reachedPastWindow = true;
+        break;
+      }
+      if (!nextCursor || records.length < STELLAR_LATE_READ_OPERATIONS_PER_PAGE) {
+        reachedPastWindow = true;
+        break;
+      }
+      cursor = nextCursor;
+    }
+    if (!reachedPastWindow) return null;
+    return out;
   };
 }

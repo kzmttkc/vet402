@@ -80,9 +80,27 @@ test("Arc reader: another network, another chain id, or a lagging tip is null; t
   assert.equal(lagging.getLogsCalls.length, 0);
   const calls: string[] = [];
   const tag = (name: string) => async (q: { network: string }) => (calls.push(`${name}:${q.network}`), []);
-  const composed = makeChainTransferReader({ base: tag("base"), celo: tag("celo"), bnb: tag("bnb"), arbitrum: tag("arbitrum"), avalanche: tag("avalanche"), tempo: tag("tempo"), arc: tag("arc"), solana: tag("solana") });
-  for (const network of [ARC, "eip155:4217", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "eip155:8453", "eip155:42220"]) await composed({ ...query, network });
-  assert.deepEqual(calls, [`arc:${ARC}`, "tempo:eip155:4217", "solana:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "base:eip155:8453", "celo:eip155:42220"]);
+  const composed = makeChainTransferReader({
+    base: tag("base"),
+    celo: tag("celo"),
+    bnb: tag("bnb"),
+    arbitrum: tag("arbitrum"),
+    avalanche: tag("avalanche"),
+    tempo: tag("tempo"),
+    arc: tag("arc"),
+    solana: tag("solana"),
+    stellar: tag("stellar"),
+  });
+  for (const network of [ARC, "eip155:4217", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "stellar:pubnet", "eip155:8453", "eip155:42220"])
+    await composed({ ...query, network });
+  assert.deepEqual(calls, [
+    `arc:${ARC}`,
+    "tempo:eip155:4217",
+    "solana:solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "stellar:stellar:pubnet",
+    "base:eip155:8453",
+    "celo:eip155:42220",
+  ]);
 });
 
 test("Arc reader: without ARC_RPC_URL it reads nothing — no silent fallback to the public RPC", async () => {
