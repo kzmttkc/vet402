@@ -313,6 +313,24 @@ export function isRateLimitError(error: unknown): boolean {
   return text.includes("rate limit");
 }
 
+/** Base 公開 RPC の -32011 / request limit（isRateLimitError とは別枠）。 */
+export function isRequestLimitError(error: unknown): boolean {
+  const err = error as {
+    code?: number;
+    details?: string;
+    message?: string;
+    cause?: { code?: number; details?: string; message?: string };
+  };
+  if (err?.code === -32011 || err?.cause?.code === -32011) return true;
+  const text = `${err?.details ?? ""} ${err?.cause?.details ?? ""} ${err?.message ?? ""}`.toLowerCase();
+  return text.includes("request limit");
+}
+
+/** payer-reconcile など rateLimitMaxRetries を明示した呼び手用の合成判定。 */
+export function isGetLogsRetryableLimitError(error: unknown): boolean {
+  return isRateLimitError(error) || isRequestLimitError(error);
+}
+
 /**
  * RPC client errors (viem HttpRequestError) embed the full request URL —
  * which includes the provider API key as a path segment — in error.message.
@@ -333,6 +351,8 @@ async function fetchRange(
   toBlock: bigint,
   rateLimitRetries = 0,
   deadline?: Deadline,
+  rateLimitMaxRetries = RATE_LIMIT_MAX_RETRIES,
+  retryRequestLimit = false,
 ): Promise<ChainLog[]> {
   if (fromBlock > toBlock) return [];
   deadline?.throwIfExpired("getLogsChunked");
@@ -346,17 +366,19 @@ async function fetchRange(
   } catch (error) {
     if (error instanceof DeadlineExceededError) throw error;
 
-    if (isRateLimitError(error) && rateLimitRetries < RATE_LIMIT_MAX_RETRIES) {
+    const retryable =
+      isRateLimitError(error) || (retryRequestLimit && isRequestLimitError(error));
+    if (retryable && rateLimitRetries < rateLimitMaxRetries) {
       const backoff = RATE_LIMIT_BASE_DELAY_MS * 2 ** rateLimitRetries;
       // Don't sleep past the deadline just to make a call we can't afford.
       if (deadline && backoff >= deadline.remaining()) {
         throw new DeadlineExceededError("getLogsChunked", backoff);
       }
       logServerInfoSafe(
-        "chunked-logs", `rate-limited ${fromBlock}-${toBlock}, retry ${rateLimitRetries + 1}/${RATE_LIMIT_MAX_RETRIES}`,
+        "chunked-logs", `rate-limited ${fromBlock}-${toBlock}, retry ${rateLimitRetries + 1}/${rateLimitMaxRetries}`,
       );
       await sleep(backoff);
-      return fetchRange(client, params, fromBlock, toBlock, rateLimitRetries + 1, deadline);
+      return fetchRange(client, params, fromBlock, toBlock, rateLimitRetries + 1, deadline, rateLimitMaxRetries, retryRequestLimit);
     }
 
     // Only an over-wide range is fixable by halving. Bisecting on anything
@@ -388,7 +410,7 @@ async function fetchRange(
       const out: ChainLog[] = [];
       for (let start = fromBlock; start <= toBlock; start += stated) {
         const end = start + stated - 1n > toBlock ? toBlock : start + stated - 1n;
-        out.push(...(await fetchRange(client, params, start, end, 0, deadline)));
+        out.push(...(await fetchRange(client, params, start, end, 0, deadline, rateLimitMaxRetries, retryRequestLimit)));
       }
       return out;
     }
@@ -404,8 +426,8 @@ async function fetchRange(
     );
 
     const mid = fromBlock + span / 2n;
-    const left = await fetchRange(client, params, fromBlock, mid, 0, deadline);
-    const right = await fetchRange(client, params, mid + 1n, toBlock, 0, deadline);
+    const left = await fetchRange(client, params, fromBlock, mid, 0, deadline, rateLimitMaxRetries, retryRequestLimit);
+    const right = await fetchRange(client, params, mid + 1n, toBlock, 0, deadline, rateLimitMaxRetries, retryRequestLimit);
     return [...left, ...right];
   }
 }
@@ -429,6 +451,8 @@ export async function getLogsChunked(
     /** Override the env pacing delay (batch pacing must not leak into live requests). */
     delayMs?: number;
     signal?: AbortSignal;
+    /** Max backoff retries on rate-limit style errors (default 7). */
+    rateLimitMaxRetries?: number;
   },
 ): Promise<ChainLog[]> {
   const abortIfNeeded = () => {
@@ -459,6 +483,8 @@ export async function getLogsChunked(
 
   const delayMs = options?.delayMs ?? getLogsChunkDelayMs();
   const effectiveConcurrency = Math.max(1, concurrency);
+  const rateLimitMaxRetries = options?.rateLimitMaxRetries ?? RATE_LIMIT_MAX_RETRIES;
+  const retryRequestLimit = options?.rateLimitMaxRetries !== undefined;
 
   // Sequential path preserved byte-for-byte for concurrency === 1 (and when a
   // pacing delay is configured, so the delay keeps its "space out RPC calls"
@@ -469,7 +495,7 @@ export async function getLogsChunked(
       const { start, end } = ranges[i]!;
       abortIfNeeded();
       deadline?.throwIfExpired("getLogsChunked");
-      const logs = await fetchRange(client, rest, start, end, 0, deadline);
+      const logs = await fetchRange(client, rest, start, end, 0, deadline, rateLimitMaxRetries, retryRequestLimit);
       results.push(...logs);
       if (delayMs > 0 && i < ranges.length - 1) {
         if (deadline && delayMs >= deadline.remaining()) {
@@ -486,7 +512,7 @@ export async function getLogsChunked(
     effectiveConcurrency,
     ({ start, end }) => {
       abortIfNeeded();
-      return fetchRange(client, rest, start, end, 0, deadline);
+      return fetchRange(client, rest, start, end, 0, deadline, rateLimitMaxRetries, retryRequestLimit);
     },
   );
 

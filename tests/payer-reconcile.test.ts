@@ -22,6 +22,16 @@ import { ARBITRUM_CAIP2 } from "@/lib/chain/arbitrum";
 import { AVALANCHE_CAIP2 } from "@/lib/chain/avalanche";
 import { BNB_CAIP2 } from "@/lib/chain/bnb";
 import { exclusionReasonForPayerTransfer, type OwnWalletContext } from "@/lib/settlements/own-wallets";
+import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile-network";
+import {
+  formatPayerOutgoingFailure,
+  makeBasePayerOutgoingReader,
+  makeStellarPayerOutgoingReader,
+  payerOutgoingFail,
+  payerOutgoingOk,
+} from "@/lib/settlements/payer-outgoing-readers";
+import { redactForLog } from "@/lib/observatory/redact";
+import { isGetLogsRetryableLimitError, getLogsChunked, __resetLearnedRangeCapsForTests } from "@/lib/chain/chunked-logs";
 import { ARC_GATEWAY_WALLET } from "@/lib/observatory/arc-gateway";
 import { ARC_CAIP2 } from "@/lib/chain/arc";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
@@ -52,6 +62,26 @@ function transfer(
 
 const noopPersist = async () => {};
 const FAR_FUTURE_DEADLINE = Date.now() + 25_000;
+
+test("payerReconcilePurchaseNetwork: stellar:pubnet は isMainnet が false でも照合対象", () => {
+  assert.equal(payerReconcilePurchaseNetwork("stellar:pubnet"), STELLAR);
+  assert.equal(payerReconcilePurchaseNetwork("stellar"), STELLAR);
+  assert.equal(payerReconcilePurchaseNetwork("stellar:testnet"), null);
+});
+
+test("stellar の行が loadNetworks にあれば結果に必ず 1 行出る", async () => {
+  const result = await runPayerReconcile({
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
+    loadTxHashes: async () => new Set(),
+    readOutgoing: async () => payerOutgoingOk([]),
+    ownWallets: emptyOwn,
+  });
+  assert.equal(result.chains.length, 1);
+  assert.equal(result.chains[0]?.network, STELLAR);
+  assert.equal(result.chains[0]?.status, "ok");
+});
 
 test("payerReconcileWindowEnd: recover-late success and 24h fallback", () => {
   const now = new Date("2026-11-26T10:00:00.000Z");
@@ -197,28 +227,26 @@ test("ARC gateway deposit is excluded and counted", () => {
   assert.equal(r.unrecorded, 1);
 });
 
-test("reader returning null → unavailable, ok false", async () => {
+test("reader fail → unavailable, ok false", async () => {
   const result = await runPayerReconcile({
     persistRun: noopPersist,
     deadlineAt: FAR_FUTURE_DEADLINE,
     loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
     loadTxHashes: async () => new Set(),
-    readOutgoing: async () => null,
+    readOutgoing: async () => payerOutgoingFail("reader_returned_null"),
     ownWallets: emptyOwn,
   });
   assert.equal(result.ok, false);
   assert.equal(result.chains[0]?.status, "unavailable");
 });
 
-test("reader throw → unavailable", async () => {
+test("reader fail with message → unavailable", async () => {
   const result = await runPayerReconcile({
     persistRun: noopPersist,
     deadlineAt: FAR_FUTURE_DEADLINE,
     loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
     loadTxHashes: async () => new Set(),
-    readOutgoing: async () => {
-      throw new Error("rpc down");
-    },
+    readOutgoing: async () => payerOutgoingFail("Error: rpc down"),
     ownWallets: emptyOwn,
   });
   assert.equal(result.ok, false);
@@ -231,7 +259,7 @@ test("time budget → unavailable reason budget", async () => {
     deadlineAt: Date.now() - 1,
     loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
     loadTxHashes: async () => new Set(),
-    readOutgoing: async () => [transfer("a", "GDEST1")],
+    readOutgoing: async () => payerOutgoingOk([transfer("a", "GDEST1")]),
     ownWallets: emptyOwn,
   });
   const c = result.chains[0];
@@ -268,7 +296,7 @@ test("one transfer missing on ledger → unrecorded 1 and alert hook", async () 
     ownWallets: emptyOwn,
     loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
     loadTxHashes: async () => new Set(["known"]),
-    readOutgoing: async () => [transfer("known", "GDEST1"), transfer("missing", "GDEST2")],
+    readOutgoing: async () => payerOutgoingOk([transfer("known", "GDEST1"), transfer("missing", "GDEST2")]),
     onUnrecorded: (d) => alerts.push(d),
   });
   assert.equal(result.ok, false);
@@ -289,7 +317,8 @@ test("unavailable with zero unrecorded still makes ok false", async () => {
       { network: STELLAR, payer: "GOTHERPAYER" },
     ],
     loadTxHashes: async () => new Set(["known"]),
-    readOutgoing: async ({ payer }) => (payer === PAYER ? [transfer("known", "GDEST1")] : null),
+    readOutgoing: async ({ payer }) =>
+      payer === PAYER ? payerOutgoingOk([transfer("known", "GDEST1")]) : payerOutgoingFail("secondary_payer_read_failed"),
     onUnavailable: (d) => unavail.push(d),
     ownWallets: emptyOwn,
   });
@@ -317,7 +346,8 @@ test("EVM empty rpc path → unavailable not zero transfers", async () => {
     from: new Date("2026-11-20T00:00:00Z"),
     to: new Date("2026-11-25T00:00:00Z"),
   });
-  assert.equal(out, null);
+  assert.equal(out.ok, false);
+  if (!out.ok) assert.match(out.detail, /missing_rpc/);
 });
 
 test("Solana without RPC → not_configured, no recent purchases", async () => {
@@ -327,7 +357,7 @@ test("Solana without RPC → not_configured, no recent purchases", async () => {
     loadNetworks: async () => [{ network: SOLANA_MAINNET_CAIP2, payer: "SoPayer111" }],
     loadTxHashes: async () => new Set(),
     countRecentPurchases: async () => 0,
-    readOutgoing: async () => null,
+    readOutgoing: async () => payerOutgoingFail("reader_returned_null"),
     ownWallets: emptyOwn,
   });
   assert.equal(result.chains[0]?.status, "not_configured");
@@ -395,7 +425,7 @@ test("checkpoint advances only after persist succeeds", async () => {
       },
       loadNetworks: async () => [{ network: BNB_CAIP2, payer: EVM_PAYER }],
       loadTxHashes: async () => new Set(),
-      readOutgoing: async () => [],
+      readOutgoing: async () => payerOutgoingOk([]),
       ownWallets: emptyOwn,
     }),
   );
@@ -419,7 +449,7 @@ test("two payers: only successful chain gets checkpoint", async () => {
         { network: BNB_CAIP2, payer: p2 },
       ],
       loadTxHashes: async () => new Set(),
-      readOutgoing: async ({ payer }) => (payer === p1 ? [] : null),
+      readOutgoing: async ({ payer }) => (payer === p1 ? payerOutgoingOk([]) : payerOutgoingFail("payer_two_failed")),
       ownWallets: emptyOwn,
     }),
   );
@@ -449,7 +479,7 @@ test("incremental chains read 24h slices until window end", async () => {
       loadWindowFrom: async () => startBehind,
       readOutgoing: async ({ network, from, to }) => {
         slices.push({ network, from: from.toISOString(), to: to.toISOString() });
-        return [];
+        return payerOutgoingOk([]);
       },
       ownWallets: emptyOwn,
     }),
@@ -481,7 +511,7 @@ test("bookmark lag over 36h makes ok false", async () => {
       loadNetworks: async () => [{ network: BNB_CAIP2, payer: EVM_PAYER }],
       loadTxHashes: async () => new Set(),
       loadWindowFrom: async () => startBehind,
-      readOutgoing: async () => [],
+      readOutgoing: async () => payerOutgoingOk([]),
       ownWallets: emptyOwn,
     }),
   );
@@ -505,7 +535,7 @@ test("budget aborts in-flight reader", async () => {
       new Promise((resolve) => {
         signal?.addEventListener("abort", () => {
           aborted = true;
-          resolve(null);
+          resolve(payerOutgoingFail("AbortError: aborted"));
         });
       }),
     ownWallets: emptyOwn,
@@ -523,7 +553,7 @@ test("not_configured chain with no purchases does not block ok", async () => {
     ],
     loadTxHashes: async () => new Set(["known"]),
     countRecentPurchases: async () => 0,
-    readOutgoing: async () => [transfer("known", "GDEST1")],
+    readOutgoing: async () => payerOutgoingOk([transfer("known", "GDEST1")]),
     ownWallets: emptyOwn,
   });
   const arb = result.chains.find((c) => c.network === ARBITRUM_CAIP2);
@@ -534,4 +564,243 @@ test("not_configured chain with no purchases does not block ok", async () => {
 
 test("incremental slice size is 24 hours", () => {
   assert.equal(PAYER_RECONCILE_MAX_INCREMENTAL_WINDOW_MS, 24 * 60 * 60 * 1000);
+});
+
+test("read_failed unavailable exposes detail next to reason", async () => {
+  const result = await runPayerReconcile({
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadNetworks: async () => [{ network: EVM, payer: EVM_PAYER }],
+    loadTxHashes: async () => new Set(),
+    readOutgoing: async () => payerOutgoingFail("RpcRequestError: code=-32011 request limit reached"),
+    ownWallets: emptyOwn,
+  });
+  const c = result.chains[0];
+  assert.equal(c?.status, "unavailable");
+  assert.equal(c?.status === "unavailable" && c.reason, "read_failed");
+  assert.match(c?.status === "unavailable" && c.detail ? c.detail : "", /-32011/);
+});
+
+test("code -32011 counts as retryable limit (chunked-logs retry path)", () => {
+  const err = Object.assign(new Error("RPC Request failed."), {
+    name: "RpcRequestError",
+    code: -32011,
+    details: "request limit reached",
+  });
+  assert.equal(isGetLogsRetryableLimitError(err), true);
+});
+
+test("Base payer getLogs retries -32011 up to 3 times inside deadline", async () => {
+  __resetLearnedRangeCapsForTests();
+  let calls = 0;
+  const client = {
+    getChainId: async () => 8453,
+    getBlock: async () => ({ number: 1000n, timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
+    getBlockNumber: async () => 1000n,
+    getLogs: async () => {
+      calls++;
+      if (calls <= 2) {
+        throw Object.assign(new Error("RPC Request failed."), {
+          name: "RpcRequestError",
+          code: -32011,
+          details: "request limit reached",
+        });
+      }
+      return [{ blockNumber: 1n, transactionHash: "0xabc", args: { from: "0x1", to: "0x2", value: 1n } }];
+    },
+  };
+  const logs = await getLogsChunked(
+    client as never,
+    { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", fromBlock: 1n, toBlock: 10n } as never,
+    20_000n,
+    1,
+    { rateLimitMaxRetries: 3, deadlineMs: 30_000 },
+  );
+  assert.equal(calls, 3);
+  assert.equal(logs.length, 1);
+});
+
+test("getLogsChunked without rateLimitMaxRetries does not retry -32011", async () => {
+  __resetLearnedRangeCapsForTests();
+  let calls = 0;
+  const client = {
+    getChainId: async () => 8453,
+    getBlock: async () => ({ number: 1000n, timestamp: BigInt(Math.floor(Date.now() / 1000)) }),
+    getBlockNumber: async () => 1000n,
+    getLogs: async () => {
+      calls++;
+      throw Object.assign(new Error("RPC Request failed."), {
+        name: "RpcRequestError",
+        code: -32011,
+        details: "request limit reached",
+      });
+    },
+  };
+  await assert.rejects(
+    () =>
+      getLogsChunked(
+        client as never,
+        { address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", fromBlock: 1n, toBlock: 10n } as never,
+        20_000n,
+        1,
+        { deadlineMs: 30_000 },
+      ),
+    (e: Error) => {
+      assert.match(e.message, /request limit|RPC Request failed/i);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
+
+test("formatPayerOutgoingFailure redacts URL keys from detail", () => {
+  const detail = formatPayerOutgoingFailure(
+    new Error("RpcRequestError: failed https://base-mainnet.g.alchemy.com/v2/SECRETKEY_HERE"),
+  );
+  assert.doesNotMatch(detail, /SECRETKEY_HERE/);
+  assert.match(detail, /<url>/);
+  assert.equal(redactForLog(detail), detail);
+});
+
+test("different chains read in parallel", async () => {
+  let stellarDone = false;
+  let bnbStartedDuringStellar = false;
+
+  await withIncrementalRpcEnv(() =>
+    runPayerReconcile({
+      persistRun: noopPersist,
+      deadlineAt: FAR_FUTURE_DEADLINE,
+      loadNetworks: async () => [
+        { network: STELLAR, payer: PAYER },
+        { network: BNB_CAIP2, payer: EVM_PAYER },
+      ],
+      loadTxHashes: async () => new Set(),
+      readOutgoing: async ({ network, signal }) => {
+        if (network === STELLAR) {
+          await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 40);
+            signal?.addEventListener("abort", () => {
+              clearTimeout(timer);
+              resolve();
+            }, { once: true });
+          });
+          stellarDone = true;
+          return payerOutgoingOk([]);
+        }
+        if (!stellarDone) bnbStartedDuringStellar = true;
+        return payerOutgoingOk([]);
+      },
+      ownWallets: emptyOwn,
+    }),
+  );
+
+  assert.equal(bnbStartedDuringStellar, true);
+});
+
+test("same-chain payers read sequentially", async () => {
+  const order: string[] = [];
+  await runPayerReconcile({
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadNetworks: async () => [
+      { network: STELLAR, payer: PAYER },
+      { network: STELLAR, payer: "GOTHERPAYER" },
+    ],
+    loadTxHashes: async () => new Set(),
+    readOutgoing: async ({ payer }) => {
+      order.push(`start:${payer}`);
+      await new Promise((r) => setTimeout(r, 5));
+      order.push(`end:${payer}`);
+      return payerOutgoingOk([]);
+    },
+    ownWallets: emptyOwn,
+  });
+  assert.deepEqual(order, [`start:${PAYER}`, `end:${PAYER}`, `start:GOTHERPAYER`, `end:GOTHERPAYER`]);
+});
+
+test("node behind window: bookmark stops at readThroughMs and status is node_behind_window", async () => {
+  const now = new Date("2026-11-26T10:00:00.000Z");
+  const { to: windowTo } = payerReconcileWindow(now, new Date("2026-11-26T08:00:00.000Z"));
+  const through = new Date(windowTo.getTime() - 6 * 60 * 60 * 1000);
+  const saved: string[] = [];
+
+  const result = await runPayerReconcile({
+    now,
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadRecoverLateLastSuccess: async () => new Date("2026-11-26T08:00:00.000Z"),
+    loadNetworks: async () => [{ network: STELLAR, payer: PAYER }],
+    loadTxHashes: async () => new Set(["known"]),
+    readOutgoing: async ({ to }) =>
+      payerOutgoingOk([transfer("known", "GDEST1")], Math.min(through.getTime(), to.getTime())),
+    saveWindowEnd: async (_n, _p, end) => {
+      saved.push(end.toISOString());
+    },
+    ownWallets: emptyOwn,
+  });
+
+  const c = result.chains[0];
+  assert.equal(c?.status, "unavailable");
+  assert.equal(c?.status === "unavailable" && c.reason, "node_behind_window");
+  assert.equal(c?.status === "unavailable" && c.windowTo, through.toISOString());
+  assert.equal(c?.status === "unavailable" && c.matched, 1);
+  assert.equal(result.ok, false);
+  assert.equal(saved.length, 0);
+});
+
+test("Base fromBlock > toBlock → unavailable (not empty ok)", async () => {
+  const futureHead = BigInt(Math.floor(Date.now() / 1000) + 3600);
+  const client = {
+    getChainId: async () => 8453,
+    getBlock: async () => ({ number: 1n, timestamp: futureHead }),
+    getLogs: async () => {
+      throw new Error("getLogs should not run");
+    },
+  };
+  const reader = makeBasePayerOutgoingReader(client as never);
+  const to = new Date();
+  const from = new Date(to.getTime() - 48 * 60 * 60 * 1000);
+  const out = await reader({ network: EVM, payer: EVM_PAYER, from, to, timeoutMs: 5_000 });
+  assert.equal(out.ok, false);
+  if (!out.ok) assert.match(out.detail, /fromBlock > toBlock|invalid_block_range/);
+
+  const result = await runPayerReconcile({
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadNetworks: async () => [{ network: EVM, payer: EVM_PAYER }],
+    loadTxHashes: async () => new Set(),
+    readOutgoing: reader,
+    ownWallets: emptyOwn,
+  });
+  const c = result.chains[0];
+  assert.equal(c?.status, "unavailable");
+  assert.equal(c?.status === "unavailable" && c.reason, "read_failed");
+});
+
+test("Stellar horizon failure detail includes HTTP status", async () => {
+  const reader = makeStellarPayerOutgoingReader({
+    getOperationsPage: async () => {
+      throw new Error("horizon_http_error: http=503");
+    },
+  });
+  const out = await reader({
+    network: STELLAR,
+    payer: PAYER,
+    from: new Date("2026-11-20T00:00:00Z"),
+    to: new Date("2026-11-25T00:00:00Z"),
+    timeoutMs: 5_000,
+  });
+  assert.equal(out.ok, false);
+  if (!out.ok) assert.match(out.detail, /http=503/);
+});
+
+test("own-wallets: stellar rows normalize to stellar:pubnet key", () => {
+  const ctx: OwnWalletContext = {
+    byNetwork: new Map([[STELLAR, new Set([OWN])]]),
+  };
+  const reason = exclusionReasonForPayerTransfer(
+    { network: "stellar", payer: PAYER, from: PAYER, to: OWN },
+    ctx,
+  );
+  assert.equal(reason, "own_wallet");
 });
