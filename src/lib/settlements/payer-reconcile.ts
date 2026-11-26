@@ -5,6 +5,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getIndexerCheckpointWithCursor, setIndexerCheckpoint } from "@/lib/db/owner-index";
+import { ARC_CAIP2 } from "@/lib/chain/arc";
 import { ARBITRUM_CAIP2 } from "@/lib/chain/arbitrum";
 import { AVALANCHE_CAIP2 } from "@/lib/chain/avalanche";
 import { BNB_CAIP2 } from "@/lib/chain/bnb";
@@ -37,8 +38,14 @@ export const RECOVER_LATE_LAST_SUCCESS_SCOPE = "recover-late:last_success";
 export const LOG_TAG_PAYER_RECONCILE_UNRECORDED = "observatory.payer-reconcile.unrecorded";
 export const LOG_TAG_PAYER_RECONCILE_UNAVAILABLE = "observatory.payer-reconcile.unavailable";
 
-/** BNB・Arbitrum・Avalanche は前回読めた終わりからの増分窓にする。 */
-export const PAYER_RECONCILE_INCREMENTAL_NETWORKS = new Set<string>([BNB_CAIP2, ARBITRUM_CAIP2, AVALANCHE_CAIP2]);
+/** Base・Arc・BNB・Arbitrum・Avalanche は前回読めた終わりからの増分窓にする（1 回の読みは最大 24 時間）。 */
+export const PAYER_RECONCILE_INCREMENTAL_NETWORKS = new Set<string>([
+  "eip155:8453",
+  ARC_CAIP2,
+  BNB_CAIP2,
+  ARBITRUM_CAIP2,
+  AVALANCHE_CAIP2,
+]);
 
 export type PayerReconcileChainOk = {
   status: "ok";

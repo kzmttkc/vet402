@@ -26,10 +26,19 @@ import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile
 import {
   formatPayerOutgoingFailure,
   makeBasePayerOutgoingReader,
+  makeEvmPayerOutgoingReader,
   makeStellarPayerOutgoingReader,
   payerOutgoingFail,
   payerOutgoingOk,
 } from "@/lib/settlements/payer-outgoing-readers";
+import {
+  ARC_TRANSFER_READ_CHUNK_BLOCKS,
+  ARC_TRANSFER_READ_MARGIN_BLOCKS,
+  AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
+  locateEvmBlock,
+} from "@/lib/settlements/recover-late";
+import { AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanche";
+import { ROBINHOOD_CAIP2 } from "@/lib/observatory/evm-lane-ingest";
 import { redactForLog } from "@/lib/observatory/redact";
 import { isGetLogsRetryableLimitError, getLogsChunked, __resetLearnedRangeCapsForTests } from "@/lib/chain/chunked-logs";
 import { ARC_GATEWAY_WALLET } from "@/lib/observatory/arc-gateway";
@@ -338,6 +347,7 @@ test("EVM empty rpc path → unavailable not zero transfers", async () => {
     marginBlocks: 1n,
     blockSeconds: 1,
     toleranceSeconds: 30,
+    chainName: "Arbitrum",
     client: () => null,
   });
   const out = await reader({
@@ -392,7 +402,13 @@ test("checkpoint scope is per network and payer", () => {
   );
 });
 
-const INCREMENTAL_RPC_ENVS = ["BNB_RPC_URL", "ARBITRUM_RPC_URL", "AVALANCHE_RPC_URL"] as const;
+const INCREMENTAL_RPC_ENVS = [
+  "BNB_RPC_URL",
+  "ARBITRUM_RPC_URL",
+  "AVALANCHE_RPC_URL",
+  "ARC_RPC_URL",
+  "INDEXER_RPC_URL",
+] as const;
 
 function withIncrementalRpcEnv<T>(fn: () => Promise<T>): Promise<T> {
   const prev: Record<string, string | undefined> = {};
@@ -463,7 +479,7 @@ test("incremental chains read 24h slices until window end", async () => {
   const startBehind = new Date(windowTo.getTime() - 50 * 60 * 60 * 1000);
   const slices: { network: string; from: string; to: string }[] = [];
 
-  const networks = [BNB_CAIP2, ARBITRUM_CAIP2, AVALANCHE_CAIP2].map((network) => ({
+  const networks = [EVM, ARC_CAIP2, BNB_CAIP2, ARBITRUM_CAIP2, AVALANCHE_CAIP2].map((network) => ({
     network,
     payer: EVM_PAYER,
   }));
@@ -803,4 +819,159 @@ test("own-wallets: stellar rows normalize to stellar:pubnet key", () => {
     ctx,
   );
   assert.equal(reason, "own_wallet");
+});
+
+test("incremental networks include Base and Arc", () => {
+  assert.equal(PAYER_RECONCILE_INCREMENTAL_NETWORKS.has(EVM), true);
+  assert.equal(PAYER_RECONCILE_INCREMENTAL_NETWORKS.has(ARC_CAIP2), true);
+});
+
+test("payer outgoing Arc uses recover-late chunk and margin constants", () => {
+  assert.equal(ARC_TRANSFER_READ_CHUNK_BLOCKS, 5_000n);
+  assert.equal(ARC_TRANSFER_READ_MARGIN_BLOCKS, 120n);
+  assert.equal(AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS, 80n);
+});
+
+test("locateEvmBlock failure includes head block and time", async () => {
+  const headTs = 1_700_000_000n;
+  const head = { number: 9_000_000n, timestamp: headTs };
+  const client = {
+    getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+      number: blockNumber,
+      timestamp: headTs,
+    }),
+  };
+  await assert.rejects(
+    () =>
+      locateEvmBlock(
+        client as never,
+        head,
+        new Date(Number(headTs) * 1000 - 48 * 60 * 60 * 1000),
+        0.97,
+        30,
+        () => {},
+        "Avalanche",
+      ),
+    (e: Error) => {
+      assert.match(e.message, /could not locate the Avalanche block/);
+      assert.match(e.message, /head_block=9000000/);
+      assert.match(e.message, /head_time=/);
+      return true;
+    },
+  );
+});
+
+test("Avalanche payer outgoing: block locate failure detail carries head", async () => {
+  const headTs = 1_700_000_000n;
+  const headNum = 1_000_000n;
+  const reader = makeEvmPayerOutgoingReader({
+    network: AVALANCHE_CAIP2,
+    chainId: AVALANCHE_CHAIN_ID,
+    token: AVALANCHE_USDC_ADDRESS as `0x${string}`,
+    chunkBlocks: 100n,
+    marginBlocks: AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
+    blockSeconds: 0.97,
+    toleranceSeconds: 30,
+    chainName: "Avalanche",
+    client: () =>
+      ({
+        getChainId: async () => AVALANCHE_CHAIN_ID,
+        getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
+          if (q.blockTag === "latest") return { number: headNum, timestamp: headTs };
+          return { number: q.blockNumber ?? 0n, timestamp: headTs };
+        },
+        getLogs: async () => [],
+      }) as never,
+  });
+  const out = await reader({
+    network: AVALANCHE_CAIP2,
+    payer: EVM_PAYER,
+    from: new Date(Number(headTs) * 1000 - 2 * 60 * 60 * 1000),
+    to: new Date(Number(headTs) * 1000 - 60 * 60 * 1000),
+    timeoutMs: 5_000,
+  });
+  assert.equal(out.ok, false);
+  if (!out.ok) {
+    assert.match(out.detail, /could not locate the Avalanche block/);
+    assert.match(out.detail, /head_block=1000000/);
+    assert.match(out.detail, /head_time=/);
+  }
+});
+
+test("Arc payer getLogs retries -32005 rate limit", async () => {
+  __resetLearnedRangeCapsForTests();
+  let calls = 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headNum = 100_000n;
+  const client = {
+    getChainId: async () => 5042,
+    getBlock: async (q: { blockNumber?: bigint; blockTag?: string }) => {
+      if (q.blockTag === "latest") return { number: headNum, timestamp: BigInt(nowSec) };
+      const n = q.blockNumber ?? 0n;
+      const behind = Number(headNum - n);
+      return { number: n, timestamp: BigInt(nowSec - behind) };
+    },
+    getBlockNumber: async () => headNum,
+    getLogs: async () => {
+      calls++;
+      if (calls <= 2) {
+        throw Object.assign(new Error("Request exceeds defined limit."), {
+          name: "LimitExceededRpcError",
+          code: -32005,
+          details: "rate limit exceeded",
+        });
+      }
+      return [];
+    },
+  };
+  const reader = makeEvmPayerOutgoingReader({
+    network: ARC_CAIP2,
+    chainId: 5042,
+    token: "0x3600000000000000000000000000000000000000",
+    chunkBlocks: ARC_TRANSFER_READ_CHUNK_BLOCKS,
+    marginBlocks: ARC_TRANSFER_READ_MARGIN_BLOCKS,
+    blockSeconds: 0.51,
+    toleranceSeconds: 30,
+    chainName: "Arc",
+    client: () => client as never,
+    chunkedGetLogs: { concurrency: 1, rateLimitMaxRetries: 3, delayMs: 0 },
+  });
+  const from = new Date((nowSec - 7_200) * 1000);
+  const to = new Date((nowSec - 3_600) * 1000);
+  const out = await reader({ network: ARC_CAIP2, payer: EVM_PAYER, from, to, timeoutMs: 30_000 });
+  assert.equal(out.ok, true);
+  assert.ok(calls >= 3, `expected retries, got ${calls} getLogs calls`);
+});
+
+test("Robinhood payer outgoing uses locateEvmBlock (head in locate failure)", async () => {
+  const headTs = 1_700_000_000n;
+  const headNum = 50_000n;
+  const reader = makeEvmPayerOutgoingReader({
+    network: ROBINHOOD_CAIP2,
+    chainId: 4663,
+    token: "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+    chunkBlocks: 2_000n,
+    marginBlocks: 120n,
+    blockSeconds: 2,
+    toleranceSeconds: 30,
+    chainName: "Robinhood",
+    client: () =>
+      ({
+        getChainId: async () => 4663,
+        getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
+          if (q.blockTag === "latest") return { number: headNum, timestamp: headTs };
+          return { number: q.blockNumber ?? 0n, timestamp: headTs };
+        },
+        getLogs: async () => [],
+      }) as never,
+  });
+  const out = await reader({
+    network: ROBINHOOD_CAIP2,
+    payer: EVM_PAYER,
+    from: new Date(Number(headTs) * 1000 - 2 * 60 * 60 * 1000),
+    to: new Date(Number(headTs) * 1000 - 60 * 60 * 1000),
+    timeoutMs: 5_000,
+  });
+  assert.equal(out.ok, false);
+  if (!out.ok) assert.match(out.detail, /could not locate the Robinhood block.*head_block=50000/);
 });

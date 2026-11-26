@@ -34,8 +34,14 @@ import type { XrplAccountTxEntry } from "@/lib/settlements/index-xrpl";
 import { rwaNonAlchemyRpcUrl, RWA_PUBLIC_RPC_URL } from "../../../packages/rwa/config";
 import {
   ARC_TRANSFER_READ_CHUNK_BLOCKS,
+  ARC_TRANSFER_READ_MARGIN_BLOCKS,
+  ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS,
+  ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS,
   AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
+  AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
+  BNB_TRANSFER_READ_CHUNK_BLOCKS,
   CELO_TRANSFER_READ_CHUNK_BLOCKS,
+  locateEvmBlock,
   STELLAR_LATE_READ_MAX_PAGES,
   STELLAR_LATE_READ_OPERATIONS_PER_PAGE,
   type ChainTransfer,
@@ -56,6 +62,15 @@ const BASE_INDEX_CHAIN = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453")
 const BASE_PAYER_LOG_CHUNK_BLOCKS = BASE_INDEX_CHAIN?.subWindowBlocks ?? 20_000n;
 const PAYER_BASE_LOG_CONCURRENCY = 1;
 const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
+const PAYER_ARC_LOG_CONCURRENCY = 1;
+const PAYER_ARC_DEFAULT_CHUNK_DELAY_MS = 100;
+
+function arcPayerLogDelayMs(): number {
+  const raw = process.env.GET_LOGS_CHUNK_DELAY_MS;
+  if (!raw) return PAYER_ARC_DEFAULT_CHUNK_DELAY_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : PAYER_ARC_DEFAULT_CHUNK_DELAY_MS;
+}
 
 const ROBINHOOD_CHAIN = defineChain({
   id: 4663,
@@ -220,9 +235,16 @@ type EvmOutgoingConfig = {
   marginBlocks: bigint;
   blockSeconds: number;
   toleranceSeconds: number;
+  chainName: string;
   client: () => EvmLogClient | null;
   formatAmount?: (raw: bigint) => string | null;
   tempoMemo?: boolean;
+  /** recover-late の Base と同じ getLogsChunked（上限エラー再試行・区切り間の待ち）。 */
+  chunkedGetLogs?: {
+    concurrency: number;
+    rateLimitMaxRetries: number;
+    delayMs: number;
+  };
 };
 
 async function readEvmPayerOutgoing(
@@ -250,52 +272,76 @@ async function readEvmPayerOutgoing(
     return payerOutgoingFail(`node_behind_window: head=${new Date(headMs).toISOString()} before_from=${from.toISOString()}`);
   }
   const windowTo = new Date(effectiveToMs);
-  const locate = async (t: Date): Promise<bigint> => {
-    let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (cfg.blockSeconds * 1000))));
-    for (let i = 0; i < 3; i++) {
-      expired();
-      if (n < 0n) n = 0n;
-      if (n > head.number) n = head.number;
-      const block = await c.getBlock({ blockNumber: n });
-      const driftSeconds = Math.round((Number(block.timestamp) * 1000 - t.getTime()) / 1000);
-      if (Math.abs(driftSeconds) <= cfg.toleranceSeconds) return n;
-      if ((n === 0n && driftSeconds > 0) || (n === head.number && driftSeconds < 0)) break;
-      n -= BigInt(Math.trunc(driftSeconds / cfg.blockSeconds));
-    }
-    throw new Error(`could not locate block for the window`);
+  const expiredLocate = () => {
+    expired();
   };
   try {
-    const [fromAt, toAt] = await Promise.all([locate(from), locate(windowTo)]);
+    const [fromAt, toAt] = await Promise.all([
+      locateEvmBlock(c, head, from, cfg.blockSeconds, cfg.toleranceSeconds, expiredLocate, cfg.chainName),
+      locateEvmBlock(c, head, windowTo, cfg.blockSeconds, cfg.toleranceSeconds, expiredLocate, cfg.chainName),
+    ]);
     const fromBlock = fromAt - cfg.marginBlocks < 0n ? 0n : fromAt - cfg.marginBlocks;
     const toBlock = toAt + cfg.marginBlocks > head.number ? head.number : toAt + cfg.marginBlocks;
     if (fromBlock > toBlock) return payerOutgoingOk([]);
     const out: ChainTransfer[] = [];
-    for (let lo = fromBlock; lo <= toBlock; lo += cfg.chunkBlocks) {
+    const pushLog = (l: {
+      blockNumber: bigint | null;
+      transactionHash: string | null;
+      args: { from?: unknown; to?: unknown; value?: bigint; amount?: bigint };
+    }) => {
+      if (l.blockNumber === null || !l.transactionHash) return;
+      const args = l.args;
+      const raw = cfg.tempoMemo ? args.amount : args.value;
+      if (typeof raw !== "bigint") return;
+      const value = cfg.formatAmount ? cfg.formatAmount(raw) : raw.toString();
+      if (value === null) return;
       expired();
-      const hi = lo + cfg.chunkBlocks - 1n < toBlock ? lo + cfg.chunkBlocks - 1n : toBlock;
-      const logs = await c.getLogs({
-        address: cfg.token,
-        event,
-        args: { from: payer as Address },
-        fromBlock: lo,
-        toBlock: hi,
+      out.push({
+        txHash: l.transactionHash,
+        from: String(args.from),
+        to: String(args.to),
+        value,
+        blockTime: "",
+        blockNumber: l.blockNumber,
       });
-      for (const l of logs) {
-        if (l.blockNumber === null || !l.transactionHash) continue;
-        const args = l.args as { from?: unknown; to?: unknown; value?: bigint; amount?: bigint };
-        const raw = cfg.tempoMemo ? args.amount : args.value;
-        if (typeof raw !== "bigint") continue;
-        const value = cfg.formatAmount ? cfg.formatAmount(raw) : raw.toString();
-        if (value === null) continue;
+    };
+    if (cfg.chunkedGetLogs) {
+      const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+      const logs = (await getLogsChunked(
+        c as unknown as Parameters<typeof getLogsChunked>[0],
+        {
+          address: cfg.token,
+          event,
+          args: { from: payer as Address },
+          fromBlock,
+          toBlock,
+        } as never,
+        cfg.chunkBlocks,
+        cfg.chunkedGetLogs.concurrency,
+        {
+          signal,
+          delayMs: cfg.chunkedGetLogs.delayMs,
+          rateLimitMaxRetries: cfg.chunkedGetLogs.rateLimitMaxRetries,
+          ...(remainingMs === undefined ? {} : { deadlineMs: remainingMs }),
+        },
+      )) as unknown as {
+        blockNumber: bigint | null;
+        transactionHash: string | null;
+        args: { from?: unknown; to?: unknown; value?: bigint; amount?: bigint };
+      }[];
+      for (const l of logs) pushLog(l);
+    } else {
+      for (let lo = fromBlock; lo <= toBlock; lo += cfg.chunkBlocks) {
         expired();
-        out.push({
-          txHash: l.transactionHash,
-          from: String(args.from),
-          to: String(args.to),
-          value,
-          blockTime: "",
-          blockNumber: l.blockNumber,
+        const hi = lo + cfg.chunkBlocks - 1n < toBlock ? lo + cfg.chunkBlocks - 1n : toBlock;
+        const logs = await c.getLogs({
+          address: cfg.token,
+          event,
+          args: { from: payer as Address },
+          fromBlock: lo,
+          toBlock: hi,
         });
+        for (const l of logs) pushLog(l);
       }
     }
     const partialHead = headMs < to.getTime();
@@ -686,16 +732,18 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     marginBlocks: 35n,
     blockSeconds: 1,
     toleranceSeconds: 30,
+    chainName: "Celo",
     client: () => rpcClient(celo, process.env.CELO_RPC_URL?.trim(), 20_000),
   }),
   [BNB_CAIP2]: makeEvmPayerOutgoingReader({
     network: BNB_CAIP2,
     chainId: BNB_CHAIN_ID,
     token: BNB_USD1_ADDRESS as Address,
-    chunkBlocks: CELO_TRANSFER_READ_CHUNK_BLOCKS,
+    chunkBlocks: BNB_TRANSFER_READ_CHUNK_BLOCKS,
     marginBlocks: 200n,
     blockSeconds: 0.45,
     toleranceSeconds: 30,
+    chainName: "BNB",
     client: () => rpcClient(bsc, process.env.BNB_RPC_URL?.trim(), 20_000),
     formatAmount: (raw) => {
       const v = evmIndexLedgerAmount(BNB_CHAIN_ID, raw);
@@ -706,10 +754,11 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     network: ARBITRUM_CAIP2,
     chainId: ARBITRUM_CHAIN_ID,
     token: ARBITRUM_USDC_ADDRESS as Address,
-    chunkBlocks: 2_000n,
-    marginBlocks: 60n,
+    chunkBlocks: ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS,
+    marginBlocks: ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS,
     blockSeconds: 0.28,
     toleranceSeconds: 30,
+    chainName: "Arbitrum",
     client: () => rpcClient(arbitrum, process.env.ARBITRUM_RPC_URL?.trim(), 20_000),
   }),
   [AVALANCHE_CAIP2]: makeEvmPayerOutgoingReader({
@@ -717,9 +766,10 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     chainId: AVALANCHE_CHAIN_ID,
     token: AVALANCHE_USDC_ADDRESS as Address,
     chunkBlocks: AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
-    marginBlocks: 60n,
+    marginBlocks: AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
     blockSeconds: 0.97,
     toleranceSeconds: 30,
+    chainName: "Avalanche",
     client: () => rpcClient(avalanche, process.env.AVALANCHE_RPC_URL?.trim(), 20_000),
   }),
   [ARC_CAIP2]: makeEvmPayerOutgoingReader({
@@ -727,10 +777,16 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     chainId: ARC_CHAIN_ID,
     token: ARC_USDC_ADDRESS as Address,
     chunkBlocks: ARC_TRANSFER_READ_CHUNK_BLOCKS,
-    marginBlocks: 120n,
+    marginBlocks: ARC_TRANSFER_READ_MARGIN_BLOCKS,
     blockSeconds: 0.51,
     toleranceSeconds: 30,
+    chainName: "Arc",
     client: () => rpcClient(arc, process.env.ARC_RPC_URL?.trim(), 20_000),
+    chunkedGetLogs: {
+      concurrency: PAYER_ARC_LOG_CONCURRENCY,
+      rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES,
+      delayMs: arcPayerLogDelayMs(),
+    },
   }),
   [TEMPO_MAINNET_CAIP2]: makeEvmPayerOutgoingReader(
     {
@@ -741,6 +797,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
       marginBlocks: 120n,
       blockSeconds: 0.56,
       toleranceSeconds: 30,
+      chainName: "Tempo",
       client: () => rpcClient(tempoChain, tempoRpcUrl(), 20_000),
       tempoMemo: true,
     },
@@ -754,6 +811,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     marginBlocks: 120n,
     blockSeconds: 2,
     toleranceSeconds: 30,
+    chainName: "Robinhood",
     client: () => robinhoodClient(20_000),
   }),
 };
