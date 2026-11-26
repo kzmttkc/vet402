@@ -165,6 +165,7 @@ import {
 } from "./seller-retest";
 import {
   PINNED_PURCHASE_SELECTION,
+  fetchPinnedCandidateRows,
   loadActivePinnedPurchaseTargets,
   pinnedPurchaseMetaOf,
   promotePinnedPurchaseCandidates,
@@ -180,10 +181,6 @@ import {
   type SellerRetestRequest,
 } from "./seller-retest-requests";
 
-/** 主候補に無い予約購入を 1 バッチで個別に引く上限（2026-11-27・予約 349 件で準備が持ち時間を食った）。 */
-export const PINNED_FETCHES_PER_BATCH = 40;
-/** 同じく、そのための個別 SQL の回数の上限（候補にならない予約で回数を使い切らないように）。 */
-export const PINNED_QUERIES_PER_BATCH = 120;
 
 export type L1BatchSummary = {
   attempted: number;
@@ -327,6 +324,12 @@ export type L1BatchSummary = {
    * 10/26 12:35Z のデプロイ後に最初の購入まで 19〜20 秒から 60 秒へ延びた原因を切り分けるための計器。
    */
   setupMs: number | null;
+  /** 窓の内で買い足りない予約購入の件数（2026-11-27）。予約が無い日は 0。 */
+  pinnedActive: number;
+  /** 予約を個別に引いた問い合わせの回数（上限 PINNED_QUERIES_PER_BATCH）。 */
+  pinnedFetchQueries: number;
+  /** 準備（setupMs）が持ち時間の半分を超えた（2026-11-27・11/26 は 231 秒で 0 件）。 */
+  setupOverHalfBudget: boolean;
   /** このバッチで試行（kind === "attempted"）した件数を、署名した accept の network（CAIP-2）ごとに（2026-10-27）。 */
   attemptsByNetwork: Record<string, number>;
   /**
@@ -386,6 +389,9 @@ export type PublicL1BatchSummary = Omit<
   | "gatewayPostBodyUnknownActive"
   | "gatewayPostBodyUnknownSignSkipped"
   | "setupMs"
+  | "pinnedActive"
+  | "pinnedFetchQueries"
+  | "setupOverHalfBudget"
   | "attemptsByNetwork"
   | "primaryFetchMs"
   | "laneFetchMs"
@@ -2477,6 +2483,9 @@ export async function runL1Batch(
     gatewayPostBodyUnknownActive: null,
     gatewayPostBodyUnknownSignSkipped: 0,
     setupMs: null,
+    pinnedActive: 0,
+    pinnedFetchQueries: 0,
+    setupOverHalfBudget: false,
     attemptsByNetwork: {},
     primaryFetchMs: null,
     laneFetchMs: {},
@@ -2870,18 +2879,10 @@ export async function runL1Batch(
     try {
       const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
       if (pinTargets.length > 0) {
-        const pinIds = new Set(candidates.map((c) => c.id));
-        // 主候補に無い予約の行は 1 件ずつ SQL で引くので、1 バッチで足す件数と SQL の回数に上限を置く
-        // （2026-11-27: 349 件を全部引いて準備が 231 秒、11/26 は 0 件の購入）。引き始めは UTC の日ごとに
-        // 40 件ずつずらす: 候補にならない予約や買えなかった予約が先頭に溜まっても、毎日別の予約を引く。
-        let pinAdded = 0;
-        let pinQueries = 0;
-        const pinStart = pinTargets.length > 0 ? (Math.floor(now() / 86_400_000) * PINNED_FETCHES_PER_BATCH) % pinTargets.length : 0;
-        const pinOrder = [...pinTargets.slice(pinStart), ...pinTargets.slice(0, pinStart)];
-        for (const t of pinOrder) {
-          if (pinIds.has(t.endpointId)) continue;
-          if (pinAdded >= PINNED_FETCHES_PER_BATCH || pinQueries >= PINNED_QUERIES_PER_BATCH) break;
-          pinQueries++;
+        summary.pinnedActive = pinTargets.length;
+        // 主候補に無い予約は 1 件ずつ引く。件数と回数の上限・日ごとのずらしは fetchPinnedCandidateRows
+        // （2026-11-27: 349 件を全部引いて準備が 231 秒、11/26 は 0 件の購入）。
+        const fetched = await fetchPinnedCandidateRows(pinTargets, new Set(candidates.map((c) => c.id)), now(), async (t) => {
           const pinSql = l1TargetsSqlBuilders({
             limit: 1,
             onlyEndpointId: t.endpointId,
@@ -2894,13 +2895,10 @@ export async function runL1Batch(
             async () => await db.execute(pinSql(true, undefined, undefined, undefined, primaryExtra)),
             async () => await db.execute(pinSql(false, undefined, undefined, undefined, primaryExtra)),
           );
-          const row = rowsOf(raw)[0];
-          if (row) {
-            candidates.push(rowToCandidate(row));
-            pinIds.add(t.endpointId);
-            pinAdded++;
-          }
-        }
+          return rowsOf(raw)[0];
+        });
+        summary.pinnedFetchQueries = fetched.queries;
+        for (const row of fetched.rows) candidates.push(rowToCandidate(row));
         candidates = promotePinnedPurchaseCandidates(candidates, pinTargets, (c, t) => ({
           ...c,
           selection: PINNED_PURCHASE_SELECTION,
@@ -2999,6 +2997,14 @@ export async function runL1Batch(
   // 買わずに飛ばして、持ち時間を Base の主候補に回す。並びは変えない（時間で飛ばすだけ）。
   const laneTimeLimitMs = batchBudgetMs * laneTimeShare();
   summary.setupMs = now() - runStartedAt;
+  // 準備が持ち時間の半分を超えたら、この回の中で知らせる（2026-11-27: 11/26 は 22:34 のカナリアまで誰も知らなかった）。
+  if (summary.setupMs > batchBudgetMs / 2) {
+    summary.setupOverHalfBudget = true;
+    logServerErrorSafe(
+      "observatory.l1.setup_over_half_budget",
+      new Error(`setup_over_half_budget setupMs=${summary.setupMs} budgetMs=${batchBudgetMs} pinnedActive=${summary.pinnedActive} pinnedFetchQueries=${summary.pinnedFetchQueries}`),
+    );
+  }
 
   // 3.7 売り手依頼の 1 回きり買い直し（2026-10-30）。Base の主候補ループの前に、依頼リストだけを
   // 最大 SELLER_RETEST_MAX_PER_RUN 件（census / retest の枠とは別）。playground の 1 件指定では走らない。

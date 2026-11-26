@@ -243,3 +243,37 @@ export function promotePinnedPurchaseCandidates<
 
 /** 方法論・テストが参照するチェックイン場所。 */
 export const PINNED_PURCHASES_SOURCE = "src/lib/observatory/pinned-purchases.ts";
+/** 主候補に無い予約購入を 1 バッチで足す上限（2026-11-27・予約 349 件で準備が持ち時間を食い、11/26 は 0 件）。 */
+export const PINNED_FETCHES_PER_BATCH = 40;
+/** そのための個別の問い合わせの回数の上限（候補にならない予約で回数を使い切らないように）。 */
+export const PINNED_QUERIES_PER_BATCH = 120;
+
+/**
+ * 主候補に無い予約を 1 件ずつ引く（fetchOne が 1 回の問い合わせ）。足すのは PINNED_FETCHES_PER_BATCH まで、
+ * 問い合わせは PINNED_QUERIES_PER_BATCH まで。引き始めは UTC の日ごとに PINNED_FETCHES_PER_BATCH ずつずらす。
+ * 予約が何件あっても、問い合わせの回数は上限で止まる（tests/pinned-purchases.test.ts が 349 件と 1,000 件で確かめる）。
+ */
+export async function fetchPinnedCandidateRows<R>(
+  pinTargets: readonly ActivePinnedTarget[],
+  existingIds: ReadonlySet<string>,
+  nowMs: number,
+  fetchOne: (t: ActivePinnedTarget) => Promise<R | null | undefined>,
+): Promise<{ rows: R[]; queries: number }> {
+  const rows: R[] = [];
+  let queries = 0;
+  if (pinTargets.length === 0) return { rows, queries };
+  const seen = new Set(existingIds);
+  const start = (Math.floor(nowMs / 86_400_000) * PINNED_FETCHES_PER_BATCH) % pinTargets.length;
+  const order = [...pinTargets.slice(start), ...pinTargets.slice(0, start)];
+  for (const t of order) {
+    if (seen.has(t.endpointId)) continue;
+    if (rows.length >= PINNED_FETCHES_PER_BATCH || queries >= PINNED_QUERIES_PER_BATCH) break;
+    queries++;
+    const row = await fetchOne(t);
+    if (row) {
+      rows.push(row);
+      seen.add(t.endpointId);
+    }
+  }
+  return { rows, queries };
+}
