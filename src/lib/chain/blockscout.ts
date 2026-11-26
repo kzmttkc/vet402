@@ -661,7 +661,7 @@ export async function fetchPayerTokenTransfersV2Page(
     token: contractAddress,
     type: "ERC-20",
   };
-  let params = { ...baseParams };
+  const params = { ...baseParams };
   if (options.cursor) {
     for (const [key, value] of Object.entries(options.cursor)) {
       if (value !== null && value !== undefined) params[key] = String(value);
