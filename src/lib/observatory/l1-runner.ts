@@ -170,6 +170,7 @@ import {
   promotePinnedPurchaseCandidates,
   type PinnedPurchaseMeta,
 } from "./pinned-purchases";
+
 import {
   notSellerRetestRequestSourceSql,
   resolveSellerRetestUrl,
@@ -178,6 +179,11 @@ import {
   unsignedAuthNonceSql,
   type SellerRetestRequest,
 } from "./seller-retest-requests";
+
+/** 主候補に無い予約購入を 1 バッチで個別に引く上限（2026-11-27・予約 349 件で準備が持ち時間を食った）。 */
+export const PINNED_FETCHES_PER_BATCH = 40;
+/** 同じく、そのための個別 SQL の回数の上限（候補にならない予約で回数を使い切らないように）。 */
+export const PINNED_QUERIES_PER_BATCH = 120;
 
 export type L1BatchSummary = {
   attempted: number;
@@ -2865,8 +2871,17 @@ export async function runL1Batch(
       const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
       if (pinTargets.length > 0) {
         const pinIds = new Set(candidates.map((c) => c.id));
-        for (const t of pinTargets) {
+        // 主候補に無い予約の行は 1 件ずつ SQL で引くので、1 バッチで足す件数と SQL の回数に上限を置く
+        // （2026-11-27: 349 件を全部引いて準備が 231 秒、11/26 は 0 件の購入）。引き始めは UTC の日ごとに
+        // 40 件ずつずらす: 候補にならない予約や買えなかった予約が先頭に溜まっても、毎日別の予約を引く。
+        let pinAdded = 0;
+        let pinQueries = 0;
+        const pinStart = pinTargets.length > 0 ? (Math.floor(now() / 86_400_000) * PINNED_FETCHES_PER_BATCH) % pinTargets.length : 0;
+        const pinOrder = [...pinTargets.slice(pinStart), ...pinTargets.slice(0, pinStart)];
+        for (const t of pinOrder) {
           if (pinIds.has(t.endpointId)) continue;
+          if (pinAdded >= PINNED_FETCHES_PER_BATCH || pinQueries >= PINNED_QUERIES_PER_BATCH) break;
+          pinQueries++;
           const pinSql = l1TargetsSqlBuilders({
             limit: 1,
             onlyEndpointId: t.endpointId,
@@ -2883,6 +2898,7 @@ export async function runL1Batch(
           if (row) {
             candidates.push(rowToCandidate(row));
             pinIds.add(t.endpointId);
+            pinAdded++;
           }
         }
         candidates = promotePinnedPurchaseCandidates(candidates, pinTargets, (c, t) => ({

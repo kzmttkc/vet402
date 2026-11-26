@@ -159,21 +159,63 @@ export async function loadActivePinnedPurchaseTargets(
 ): Promise<ActivePinnedTarget[]> {
   const active = pinnedPurchasesActiveAt(nowMs, list);
   if (active.length === 0) return [];
-  const out: ActivePinnedTarget[] = [];
+  // 出品の表は 1 回だけ読む（2026-11-27: 予約 349 件で 1 件ずつ全件を読み直し、準備が 231 秒かかって
+  // 11/26 の L1 が 1 件も買えなかった）。照合は従来と同じ listingMatchesPinned・最初に当たった行。
+  const raw = await db.execute(sql`
+    SELECT e.id, e.resource_url, e.method
+    FROM x402_endpoints e
+    WHERE e.status = 'active'
+  `);
+  const byKey = new Map<string, string>();
+  for (const r of rowsOf(raw)) {
+    if (typeof r.id !== "string" || typeof r.resource_url !== "string") continue;
+    const c = canonicalUrl(r.resource_url);
+    if (c === null) continue;
+    const key = `${(typeof r.method === "string" ? r.method : "GET").toUpperCase()} ${c.url}`;
+    if (!byKey.has(key)) byKey.set(key, r.id);
+  }
+  const matched: { entry: PinnedPurchase; endpointId: string }[] = [];
   for (const entry of active) {
-    const raw = await db.execute(sql`
-      SELECT e.id, e.resource_url, e.method
-      FROM x402_endpoints e
-      WHERE e.status = 'active'
-        AND upper(coalesce(e.method, 'GET')) = ${entry.method.toUpperCase()}
-    `);
-    const match = rowsOf(raw).find((r) =>
-      typeof r.resource_url === "string" && listingMatchesPinned(entry, r.resource_url, typeof r.method === "string" ? r.method : null),
-    );
-    if (!match || typeof match.id !== "string") continue;
-    const settledCount = await countSettledSincePinFrom(db, match.id, entry.from);
-    if (settledCount >= entry.maxPurchases) continue;
-    out.push({ entry, endpointId: match.id, settledCount });
+    const c = canonicalUrl(entry.url);
+    if (c === null) continue;
+    const id = byKey.get(`${entry.method.toUpperCase()} ${c.url}`);
+    if (id) matched.push({ entry, endpointId: id });
+  }
+  // 件数も窓の開始ごとに 1 回で数える（数え方は countSettledSincePinFrom と同じ）。
+  const counts = new Map<string, number>();
+  const byFrom = new Map<string, string[]>();
+  for (const m of matched) byFrom.set(m.entry.from, [...(byFrom.get(m.entry.from) ?? []), m.endpointId]);
+  for (const [fromIso, ids] of byFrom) {
+    const n = await countSettledSincePinFromMany(db, [...new Set(ids)], fromIso);
+    for (const [id, v] of n) counts.set(`${fromIso} ${id}`, v);
+  }
+  const out: ActivePinnedTarget[] = [];
+  for (const m of matched) {
+    const settledCount = counts.get(`${m.entry.from} ${m.endpointId}`) ?? 0;
+    if (settledCount >= m.entry.maxPurchases) continue;
+    out.push({ entry: m.entry, endpointId: m.endpointId, settledCount });
+  }
+  return out;
+}
+
+/** countSettledSincePinFrom を複数の出品で 1 回に（同じ status・同じ attempted_at の線）。 */
+export async function countSettledSincePinFromMany(
+  db: DbLike,
+  endpointIds: readonly string[],
+  fromIso: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (endpointIds.length === 0) return out;
+  const raw = await db.execute(sql`
+    SELECT pu.endpoint_id::text AS id, count(*)::int AS n
+    FROM x402_l1_purchases pu
+    WHERE pu.endpoint_id IN (${sql.join(endpointIds.map((id) => sql`${id}::uuid`), sql`, `)})
+      AND pu.status IN ('settled', 'settle_claimed', 'settle_claimed_unverifiable', 'delivered_no_receipt')
+      AND pu.attempted_at >= ${fromIso}::timestamptz
+    GROUP BY pu.endpoint_id
+  `);
+  for (const r of rowsOf(raw)) {
+    if (typeof r.id === "string") out.set(r.id, typeof r.n === "number" ? r.n : Number(r.n ?? 0));
   }
   return out;
 }
