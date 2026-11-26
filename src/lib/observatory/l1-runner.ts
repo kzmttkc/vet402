@@ -170,6 +170,7 @@ import {
   promotePinnedPurchaseCandidates,
   type PinnedPurchaseMeta,
 } from "./pinned-purchases";
+
 import {
   notSellerRetestRequestSourceSql,
   resolveSellerRetestUrl,
@@ -178,6 +179,9 @@ import {
   unsignedAuthNonceSql,
   type SellerRetestRequest,
 } from "./seller-retest-requests";
+
+/** 主候補に無い予約購入を 1 バッチで個別に引く上限（2026-11-27・予約 349 件で準備が持ち時間を食った）。 */
+export const PINNED_FETCHES_PER_BATCH = 40;
 
 export type L1BatchSummary = {
   attempted: number;
@@ -2865,8 +2869,14 @@ export async function runL1Batch(
       const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
       if (pinTargets.length > 0) {
         const pinIds = new Set(candidates.map((c) => c.id));
+        // 主候補に無い予約の行は 1 件ずつ SQL で引くので、1 バッチで引く件数に上限を置く（2026-11-27:
+        // 349 件を全部引いて準備が 231 秒、11/26 は 0 件の購入）。並びは予約の順。買えた予約は窓の判定で
+        // 外れるので、残りは次のバッチが引く。
+        let pinFetches = 0;
         for (const t of pinTargets) {
           if (pinIds.has(t.endpointId)) continue;
+          if (pinFetches >= PINNED_FETCHES_PER_BATCH) break;
+          pinFetches++;
           const pinSql = l1TargetsSqlBuilders({
             limit: 1,
             onlyEndpointId: t.endpointId,

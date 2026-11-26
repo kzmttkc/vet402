@@ -7,6 +7,7 @@ import {
   PINNED_PURCHASES,
   PINNED_PURCHASE_SELECTION,
   listingMatchesPinned,
+  loadActivePinnedPurchaseTargets,
   pinnedPurchaseMetaOf,
   pinnedPurchasesActiveAt,
   pinnedWindowActive,
@@ -100,4 +101,31 @@ test("weather-forecast: the window holds both 12:00 UTC cron runs before judging
   assert.equal(at("2027-01-11T18:00:00.000Z"), false);
   const wf = PINNED_PURCHASES.find((p) => p.url.includes("weather-forecast"))!;
   assert.equal(wf.maxPurchases, 1);
+});
+
+test("loadActivePinnedPurchaseTargets: two queries for many pins (endpoints once, counts once per window start), same matches and caps (2026-11-27)", async () => {
+  const pins: PinnedPurchase[] = Array.from({ length: 300 }, (_, i) => ({ ...SAMPLE, url: `https://example.com/api/p${i}`, method: i % 2 ? "POST" : "GET" }));
+  const rows = pins.map((p, i) => ({ id: `00000000-0000-0000-0000-${String(i).padStart(12, "0")}`, resource_url: p.url, method: p.method }));
+  // p0 already bought once (at maxPurchases 1), p1 listed with the other method only, p2 not listed.
+  rows[1] = { ...rows[1]!, method: "GET" };
+  rows.splice(2, 1);
+  let calls = 0;
+  const db = {
+    execute: async (q: unknown) => {
+      calls++;
+      const text = JSON.stringify(q);
+      if (text.includes("x402_endpoints")) return { rows };
+      return { rows: [{ id: rows[0]!.id, n: 1 }] };
+    },
+  } as unknown as Parameters<typeof loadActivePinnedPurchaseTargets>[0];
+  const now = Date.parse("2027-01-11T12:00:00.000Z");
+  const out = await loadActivePinnedPurchaseTargets(db, now, pins);
+  assert.equal(calls, 2);
+  const urls = new Set(out.map((t) => t.entry.url));
+  assert.equal(urls.has(pins[0]!.url), false, "bought already");
+  assert.equal(urls.has(pins[1]!.url), false, "method differs");
+  assert.equal(urls.has(pins[2]!.url), false, "not listed");
+  assert.equal(out.length, 297);
+  assert.equal(out[0]!.entry.url, pins[3]!.url, "list order kept");
+  assert.deepEqual(await loadActivePinnedPurchaseTargets(db, Date.parse("2026-01-01T00:00:00.000Z"), pins), []);
 });
