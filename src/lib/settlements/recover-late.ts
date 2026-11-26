@@ -1778,7 +1778,7 @@ const ARBITRUM_BLOCK_SECONDS = 0.28;
 export const ARBITRUM_TRANSFER_READ_CHUNK_BLOCKS = 2_000n;
 const ARBITRUM_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
 // 余裕は見積もりの許容（30 秒 ≈ 108 ブロック）より広く取る。Celo の「余裕は許容より広く」と同じ規則（2026-10-22 審査）。
-const ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS = 120n;
+export const ARBITRUM_TRANSFER_READ_MARGIN_BLOCKS = 120n;
 
 type ArbitrumTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
@@ -1881,7 +1881,7 @@ const AVALANCHE_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
 // 余裕は許容 30 秒より広く取る。2026-10-26 の実測でブロック間隔は 0.75〜1.43 秒。
 // 40 ブロックは 0.75 秒間隔だと 30 秒ちょうどで、見積もりが速い側にずれると窓を外す。
 // 80 ブロックは 0.75 秒でも 60 秒、1.43 秒でも 30 秒を超える。Arbitrum の「余裕は許容より広く」と同じ規則。
-const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 80n;
+export const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 80n;
 
 type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
@@ -2169,7 +2169,7 @@ const ARC_BLOCK_SECONDS = 0.51;
 export const ARC_TRANSFER_READ_CHUNK_BLOCKS = 5_000n;
 const ARC_BLOCK_LOCATE_TOLERANCE_SECONDS = 30;
 // 余裕は許容 30 秒より広く取る。0.51 秒間隔で 120 ブロックは 61 秒。
-const ARC_TRANSFER_READ_MARGIN_BLOCKS = 120n;
+export const ARC_TRANSFER_READ_MARGIN_BLOCKS = 120n;
 
 type ArcTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
@@ -2245,7 +2245,7 @@ function boundedArcClient(timeoutMs: number | undefined): ArcTransferClient | nu
  * 時刻 → ブロック番号（Tempo・Arc の読み手が共有・2026-11-03）。秒/ブロックで見積もり、そのブロックの実際の時刻で確かめて直す
  * （最大 3 回）。直すときの間隔は、読んだブロックと先端の実の間隔（BNB の読み手と同じ）。先端・起点に張り付いたまま合わないなら例外。
  */
-async function locateEvmBlock(
+export async function locateEvmBlock(
   c: Pick<ReturnType<typeof getLogScanClient>, "getBlock">,
   head: { number: bigint; timestamp: bigint },
   t: Date,
@@ -2268,7 +2268,9 @@ async function locateEvmBlock(
     const observed = blocksBack > 0 ? (Number(head.timestamp) - Number(block.timestamp)) / blocksBack : 0;
     n -= BigInt(Math.trunc(driftSeconds / (observed > 0 ? observed : secondsPerBlock)));
   }
-  throw new Error(`could not locate the ${chainName} block for the window`);
+  throw new Error(
+    `could not locate the ${chainName} block for the window; head_block=${head.number} head_time=${new Date(headMs).toISOString()}`,
+  );
 }
 
 /**
