@@ -91,7 +91,7 @@ function endpoint(
 const oneLogFrom = (name: string) => (args: Args) => [{ blockNumber: args.fromBlock, from: name }];
 
 test("the real error shapes classify the way the failover relies on", () => {
-  // -32011 は rate-limit でも range でもない: 待っても割っても直らなかった（10/13 実測）。
+  // -32011 は rate-limit でも range でもない: 待っても割っても直らなかった（10/13 実測）。再試行は isGetLogsRetryableLimitError。
   assert.equal(isRateLimitError(makeBaseRefusal()), false);
   assert.equal(isRangeTooWideError(makeBaseRefusal()), false);
   // data にしか無い「範囲が広すぎる」を読めること。読めないと走査ごと落ちる。

@@ -8,6 +8,7 @@ import { parsePartyId } from "@/lib/ids/canonical";
 import { ARC_CAIP2 } from "@/lib/chain/arc";
 import { ARC_GATEWAY_WALLET } from "@/lib/observatory/arc-gateway";
 import { toCaip2 } from "@/lib/observatory/chains";
+import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile-network";
 import { operatorPayToDenylist, isOperatorPayTo } from "@/lib/observatory/operator";
 import { rowsOf } from "./upsert";
 
@@ -16,8 +17,12 @@ export type OwnWalletContext = {
   byNetwork: ReadonlyMap<string, ReadonlySet<string>>;
 };
 
+function ownWalletNetworkCaip(network: string): string {
+  return payerReconcilePurchaseNetwork(network) ?? toCaip2(network) ?? network;
+}
+
 function normalizeAddress(network: string, address: string): string {
-  const caip = toCaip2(network) ?? network;
+  const caip = ownWalletNetworkCaip(network);
   if (caip.startsWith("eip155:") || caip.startsWith("xrpl:")) return address.toLowerCase();
   return address;
 }
@@ -28,7 +33,7 @@ export async function loadOwnWalletContext(): Promise<OwnWalletContext> {
 
   const byNetwork = new Map<string, Set<string>>();
   const add = (network: string, address: string) => {
-    const caip = toCaip2(network) ?? network;
+    const caip = ownWalletNetworkCaip(network);
     let set = byNetwork.get(caip);
     if (!set) {
       set = new Set();
@@ -68,7 +73,7 @@ export function exclusionReasonForPayerTransfer(
   input: { network: string; payer: string; to: string; from: string },
   ctx: OwnWalletContext,
 ): string | null {
-  const caip = toCaip2(input.network) ?? input.network;
+  const caip = ownWalletNetworkCaip(input.network);
   if (input.from.toLowerCase() === input.to.toLowerCase()) return "self_transfer";
   if (isOperatorPayTo(input.to)) return "own_wallet";
   const own = ctx.byNetwork.get(caip);

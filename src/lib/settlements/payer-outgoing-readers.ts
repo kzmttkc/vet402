@@ -33,12 +33,17 @@ import { rippleTimeToDate } from "@/lib/observatory/settlement-verify-xrpl";
 import type { XrplAccountTxEntry } from "@/lib/settlements/index-xrpl";
 import { rwaNonAlchemyRpcUrl, RWA_PUBLIC_RPC_URL } from "../../../packages/rwa/config";
 import {
+  ARC_TRANSFER_READ_CHUNK_BLOCKS,
+  AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
   CELO_TRANSFER_READ_CHUNK_BLOCKS,
   STELLAR_LATE_READ_MAX_PAGES,
   STELLAR_LATE_READ_OPERATIONS_PER_PAGE,
   type ChainTransfer,
   type StellarHorizonLateReadClient,
 } from "@/lib/settlements/recover-late";
+import { EVM_INDEX_CHAINS } from "@/lib/settlements/index-evm";
+import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile-network";
+import { redactForLog, redactUrls } from "@/lib/observatory/redact";
 
 const TRANSFER_LOG = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 const TEMPO_TRANSFER_WITH_MEMO_LOG = parseAbiItem(
@@ -46,6 +51,11 @@ const TEMPO_TRANSFER_WITH_MEMO_LOG = parseAbiItem(
 );
 const BASE_NETWORK_KEYS = ["eip155:8453", "base"];
 const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const BASE_INDEX_CHAIN = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453");
+/** index-settlements の Base subWindow と同じ幅で区切る。 */
+const BASE_PAYER_LOG_CHUNK_BLOCKS = BASE_INDEX_CHAIN?.subWindowBlocks ?? 20_000n;
+const PAYER_BASE_LOG_CONCURRENCY = 1;
+const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
 
 const ROBINHOOD_CHAIN = defineChain({
   id: 4663,
@@ -54,6 +64,10 @@ const ROBINHOOD_CHAIN = defineChain({
   rpcUrls: { default: { http: [RWA_PUBLIC_RPC_URL] } },
 });
 
+export type PayerOutgoingReadResult =
+  | { ok: true; transfers: ChainTransfer[]; readThroughMs?: number }
+  | { ok: false; detail: string };
+
 export type PayerOutgoingReader = (q: {
   network: string;
   payer: string;
@@ -61,7 +75,43 @@ export type PayerOutgoingReader = (q: {
   to: Date;
   timeoutMs?: number;
   signal?: AbortSignal;
-}) => Promise<ChainTransfer[] | null>;
+}) => Promise<PayerOutgoingReadResult>;
+
+export function payerOutgoingOk(transfers: ChainTransfer[], readThroughMs?: number): PayerOutgoingReadResult {
+  return readThroughMs !== undefined ? { ok: true, transfers, readThroughMs } : { ok: true, transfers };
+}
+
+export function payerOutgoingFail(detail: string): PayerOutgoingReadResult {
+  return { ok: false, detail };
+}
+
+/** read_failed の detail 欄・ログ用。URL とクエリは伏せる。 */
+export function formatPayerOutgoingFailure(error: unknown): string {
+  if (error instanceof DOMException && error.name === "AbortError") return "AbortError: aborted";
+  const e = error as {
+    name?: string;
+    message?: string;
+    code?: number;
+    shortMessage?: string;
+    details?: string;
+    cause?: { name?: string; message?: string; code?: number; details?: string; shortMessage?: string };
+  };
+  const name =
+    (typeof e?.name === "string" && e.name) ||
+    (typeof e?.cause?.name === "string" && e.cause.name) ||
+    "Error";
+  const bits: string[] = [name];
+  const code = e?.code ?? e?.cause?.code;
+  if (code !== undefined) bits.push(`code=${code}`);
+  const raw = [e?.details, e?.shortMessage, e?.message, e?.cause?.details, e?.cause?.shortMessage, e?.cause?.message]
+    .filter((x): x is string => typeof x === "string" && x.length > 0)
+    .join(" ")
+  .replace(/\s+/g, " ")
+    .slice(0, 220);
+  const msg = redactForLog(redactUrls(raw));
+  if (msg) bits.push(msg);
+  return bits.join(": ");
+}
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
@@ -100,51 +150,65 @@ function robinhoodClient(timeoutMs: number | undefined): EvmLogClient {
 
 export function makeBasePayerOutgoingReader(client?: EvmLogClient): PayerOutgoingReader {
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
-    if (!BASE_NETWORK_KEYS.includes(network)) return null;
+    if (!BASE_NETWORK_KEYS.includes(network)) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
-    const c = client ?? (typeof timeoutMs === "number" ? boundedBaseClient(timeoutMs) : getLogScanClient(8453));
-    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
-    const chainId = await c.getChainId();
-    if (chainId !== BASE_CHAIN_ID) return null;
-    const head = await c.getBlock({ blockTag: "latest" });
-    throwIfAborted(signal);
-    const blockAt = (t: Date) => firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, t.getTime() / 1000);
-    const fromBlock = blockAt(from) - 60n;
-    const toBlock = blockAt(to) + 60n > head.number ? head.number : blockAt(to) + 60n;
-    if (fromBlock < 0n || fromBlock > toBlock) return null;
-    const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
-    const logs = (await getLogsChunked(
-      c as unknown as Parameters<typeof getLogsChunked>[0],
-      {
-        address: BASE_USDC,
-        event: TRANSFER_LOG,
-        args: { from: payer as Address },
-        fromBlock,
-        toBlock,
-      } as never,
-      undefined,
-      undefined,
-      remainingMs === undefined ? undefined : { deadlineMs: remainingMs, delayMs: 0, signal },
-    )) as unknown as {
-      blockNumber: bigint | null;
-      transactionHash: string | null;
-      args: { from: Address; to: Address; value?: bigint };
-    }[];
-    const out: ChainTransfer[] = [];
-    for (const l of logs) {
+    try {
+      const c = client ?? (typeof timeoutMs === "number" ? boundedBaseClient(timeoutMs) : getLogScanClient(8453));
+      const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+      const chainId = await c.getChainId();
+      if (chainId !== BASE_CHAIN_ID) {
+        return payerOutgoingFail(`wrong_chain_id: rpc=${chainId} expected=${BASE_CHAIN_ID}`);
+      }
+      const head = await c.getBlock({ blockTag: "latest" });
       throwIfAborted(signal);
-      if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
-      if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") continue;
-      out.push({
-        txHash: l.transactionHash,
-        from: String(l.args.from),
-        to: String(l.args.to),
-        value: l.args.value.toString(),
-        blockTime: "",
-        blockNumber: l.blockNumber,
-      });
+      const blockAt = (t: Date) => firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, t.getTime() / 1000);
+      const headMs = Number(head.timestamp) * 1000;
+      const fromBlock = blockAt(from) - 60n;
+      const toBlock = blockAt(to) + 60n > head.number ? head.number : blockAt(to) + 60n;
+      if (fromBlock < 0n) return payerOutgoingFail("invalid_block_range: fromBlock < 0");
+      if (fromBlock > toBlock) return payerOutgoingFail("invalid_block_range: fromBlock > toBlock");
+      const readThroughMs = Math.min(to.getTime(), headMs);
+      const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+      const logs = (await getLogsChunked(
+        c as unknown as Parameters<typeof getLogsChunked>[0],
+        {
+          address: BASE_USDC,
+          event: TRANSFER_LOG,
+          args: { from: payer as Address },
+          fromBlock,
+          toBlock,
+        } as never,
+        BASE_PAYER_LOG_CHUNK_BLOCKS,
+        PAYER_BASE_LOG_CONCURRENCY,
+        remainingMs === undefined
+          ? { signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES }
+          : { deadlineMs: remainingMs, delayMs: 0, signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES },
+      )) as unknown as {
+        blockNumber: bigint | null;
+        transactionHash: string | null;
+        args: { from: Address; to: Address; value?: bigint };
+      }[];
+      const out: ChainTransfer[] = [];
+      for (const l of logs) {
+        throwIfAborted(signal);
+        if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
+        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") continue;
+        out.push({
+          txHash: l.transactionHash,
+          from: String(l.args.from),
+          to: String(l.args.to),
+          value: l.args.value.toString(),
+          blockTime: "",
+          blockNumber: l.blockNumber,
+        });
+      }
+      return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
+    } catch (e) {
+      if (signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        return payerOutgoingFail("AbortError: aborted");
+      }
+      return payerOutgoingFail(formatPayerOutgoingFailure(e));
     }
-    return out;
   };
 }
 
@@ -170,16 +234,22 @@ async function readEvmPayerOutgoing(
   deadline: number,
   event: typeof TRANSFER_LOG | typeof TEMPO_TRANSFER_WITH_MEMO_LOG,
   signal?: AbortSignal,
-): Promise<ChainTransfer[] | null> {
+): Promise<PayerOutgoingReadResult> {
   const expired = () => {
     throwIfAborted(signal);
     if (Date.now() > deadline) throw new Error("transfer read ran past its time limit");
   };
   throwIfAborted(signal);
   const [chainId, head] = await Promise.all([c.getChainId(), c.getBlock({ blockTag: "latest" })]);
-  if (chainId !== cfg.chainId) return null;
+  if (chainId !== cfg.chainId) {
+    return payerOutgoingFail(`wrong_chain_id: rpc=${chainId} expected=${cfg.chainId}`);
+  }
   const headMs = Number(head.timestamp) * 1000;
-  if (headMs < to.getTime()) return null;
+  const effectiveToMs = Math.min(to.getTime(), headMs);
+  if (effectiveToMs < from.getTime()) {
+    return payerOutgoingFail(`node_behind_window: head=${new Date(headMs).toISOString()} before_from=${from.toISOString()}`);
+  }
+  const windowTo = new Date(effectiveToMs);
   const locate = async (t: Date): Promise<bigint> => {
     let n = head.number - BigInt(Math.max(0, Math.ceil((headMs - t.getTime()) / (cfg.blockSeconds * 1000))));
     for (let i = 0; i < 3; i++) {
@@ -194,60 +264,72 @@ async function readEvmPayerOutgoing(
     }
     throw new Error(`could not locate block for the window`);
   };
-  const [fromAt, toAt] = await Promise.all([locate(from), locate(to)]);
-  const fromBlock = fromAt - cfg.marginBlocks < 0n ? 0n : fromAt - cfg.marginBlocks;
-  const toBlock = toAt + cfg.marginBlocks > head.number ? head.number : toAt + cfg.marginBlocks;
-  if (fromBlock > toBlock) return null;
-  const out: ChainTransfer[] = [];
-  for (let lo = fromBlock; lo <= toBlock; lo += cfg.chunkBlocks) {
-    expired();
-    const hi = lo + cfg.chunkBlocks - 1n < toBlock ? lo + cfg.chunkBlocks - 1n : toBlock;
-    const logs = await c.getLogs({
-      address: cfg.token,
-      event,
-      args: { from: payer as Address },
-      fromBlock: lo,
-      toBlock: hi,
-    });
-    for (const l of logs) {
-      if (l.blockNumber === null || !l.transactionHash) continue;
-      const args = l.args as { from?: unknown; to?: unknown; value?: bigint; amount?: bigint };
-      const raw = cfg.tempoMemo ? args.amount : args.value;
-      if (typeof raw !== "bigint") continue;
-      const value = cfg.formatAmount ? cfg.formatAmount(raw) : raw.toString();
-      if (value === null) continue;
+  try {
+    const [fromAt, toAt] = await Promise.all([locate(from), locate(windowTo)]);
+    const fromBlock = fromAt - cfg.marginBlocks < 0n ? 0n : fromAt - cfg.marginBlocks;
+    const toBlock = toAt + cfg.marginBlocks > head.number ? head.number : toAt + cfg.marginBlocks;
+    if (fromBlock > toBlock) return payerOutgoingOk([]);
+    const out: ChainTransfer[] = [];
+    for (let lo = fromBlock; lo <= toBlock; lo += cfg.chunkBlocks) {
       expired();
-      out.push({
-        txHash: l.transactionHash,
-        from: String(args.from),
-        to: String(args.to),
-        value,
-        blockTime: "",
-        blockNumber: l.blockNumber,
+      const hi = lo + cfg.chunkBlocks - 1n < toBlock ? lo + cfg.chunkBlocks - 1n : toBlock;
+      const logs = await c.getLogs({
+        address: cfg.token,
+        event,
+        args: { from: payer as Address },
+        fromBlock: lo,
+        toBlock: hi,
       });
+      for (const l of logs) {
+        if (l.blockNumber === null || !l.transactionHash) continue;
+        const args = l.args as { from?: unknown; to?: unknown; value?: bigint; amount?: bigint };
+        const raw = cfg.tempoMemo ? args.amount : args.value;
+        if (typeof raw !== "bigint") continue;
+        const value = cfg.formatAmount ? cfg.formatAmount(raw) : raw.toString();
+        if (value === null) continue;
+        expired();
+        out.push({
+          txHash: l.transactionHash,
+          from: String(args.from),
+          to: String(args.to),
+          value,
+          blockTime: "",
+          blockNumber: l.blockNumber,
+        });
+      }
     }
+    const partialHead = headMs < to.getTime();
+    return payerOutgoingOk(out, partialHead ? effectiveToMs : undefined);
+  } catch (e) {
+    return payerOutgoingFail(formatPayerOutgoingFailure(e));
   }
-  return out;
 }
 
-function mergeUniqueTransfers(parts: (ChainTransfer[] | null)[]): ChainTransfer[] | null {
-  if (parts.some((p) => p === null)) return null;
+function mergeUniqueOutgoing(parts: PayerOutgoingReadResult[]): PayerOutgoingReadResult {
+  const failed = parts.find((p) => !p.ok);
+  if (failed && !failed.ok) return failed;
   const map = new Map<string, ChainTransfer>();
+  let readThroughMs: number | undefined;
   for (const part of parts) {
-    for (const t of part!) {
+    if (!part.ok) continue;
+    if (part.readThroughMs !== undefined) {
+      readThroughMs =
+        readThroughMs === undefined ? part.readThroughMs : Math.min(readThroughMs, part.readThroughMs);
+    }
+    for (const t of part.transfers) {
       const key = t.txHash.toLowerCase();
       if (!map.has(key)) map.set(key, t);
     }
   }
-  return [...map.values()];
+  return payerOutgoingOk([...map.values()], readThroughMs);
 }
 
 export function makeEvmPayerOutgoingReader(cfg: EvmOutgoingConfig, dualTempo = false): PayerOutgoingReader {
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
-    if (network !== cfg.network) return null;
+    if (network !== cfg.network) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
     const c = cfg.client();
-    if (!c) return null;
+    if (!c) return payerOutgoingFail(`missing_rpc: ${cfg.network}`);
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     try {
       if (dualTempo) {
@@ -255,13 +337,15 @@ export function makeEvmPayerOutgoingReader(cfg: EvmOutgoingConfig, dualTempo = f
           readEvmPayerOutgoing(c, cfg, payer, from, to, deadline, TEMPO_TRANSFER_WITH_MEMO_LOG, signal),
           readEvmPayerOutgoing(c, cfg, payer, from, to, deadline, TRANSFER_LOG, signal),
         ]);
-        return mergeUniqueTransfers([memo, plain]);
+        return mergeUniqueOutgoing([memo, plain]);
       }
       const event = cfg.tempoMemo ? TEMPO_TRANSFER_WITH_MEMO_LOG : TRANSFER_LOG;
       return await readEvmPayerOutgoing(c, cfg, payer, from, to, deadline, event, signal);
     } catch (e) {
-      if (signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) return null;
-      return null;
+      if (signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
+        return payerOutgoingFail("AbortError: aborted");
+      }
+      return payerOutgoingFail(formatPayerOutgoingFailure(e));
     }
   };
 }
@@ -296,7 +380,7 @@ function stellarOutgoingFromOp(op: Record<string, unknown>, payer: string): Chai
 
 export function makeStellarPayerOutgoingReader(client?: StellarHorizonLateReadClient): PayerOutgoingReader {
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
-    if (network !== STELLAR_PUBNET_CAIP2) return null;
+    if (network !== STELLAR_PUBNET_CAIP2) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const fromMs = from.getTime();
@@ -318,7 +402,8 @@ export function makeStellarPayerOutgoingReader(client?: StellarHorizonLateReadCl
       const timer = setTimeout(() => ctrl.abort(), cap);
       try {
         const res = await fetch(url.toString(), { signal: ctrl.signal, headers: { Accept: "application/json" } });
-        if (res.status === 429 || !res.ok) return null;
+        if (res.status === 429) throw new Error(`horizon_rate_limited: http=${res.status}`);
+        if (!res.ok) throw new Error(`horizon_http_error: http=${res.status}`);
         const body = await res.json();
         const embedded = body?._embedded;
         const records = embedded?.records;
@@ -341,10 +426,15 @@ export function makeStellarPayerOutgoingReader(client?: StellarHorizonLateReadCl
     };
     while (pages < STELLAR_LATE_READ_MAX_PAGES) {
       throwIfAborted(signal);
-      if (Date.now() > deadline) return null;
+      if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
       pages++;
-      const page = client ? await client.getOperationsPage(payer, cursor) : await getPage(cursor);
-      if (!page) return null;
+      let page: Awaited<ReturnType<NonNullable<StellarHorizonLateReadClient["getOperationsPage"]>>> | null;
+      try {
+        page = client ? await client.getOperationsPage(payer, cursor) : await getPage(cursor);
+      } catch (e) {
+        return payerOutgoingFail(formatPayerOutgoingFailure(e));
+      }
+      if (!page) return payerOutgoingFail("horizon_page_unavailable");
       const { records, nextCursor } = page;
       if (records.length === 0) {
         reachedPastWindow = true;
@@ -353,10 +443,10 @@ export function makeStellarPayerOutgoingReader(client?: StellarHorizonLateReadCl
       let oldestMs: number | null = null;
       for (const raw of records) {
         const op = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
-        if (!op) return null;
+        if (!op) return payerOutgoingFail("horizon_malformed_operation");
         const createdAt = typeof op.created_at === "string" ? op.created_at : null;
         const bt = createdAt !== null ? Date.parse(createdAt) : NaN;
-        if (!Number.isFinite(bt)) return null;
+        if (!Number.isFinite(bt)) return payerOutgoingFail("horizon_invalid_created_at");
         if (oldestMs === null || bt < oldestMs) oldestMs = bt;
         if (bt < fromMs || bt > toMs) continue;
         const t = stellarOutgoingFromOp(op, payer);
@@ -375,17 +465,17 @@ export function makeStellarPayerOutgoingReader(client?: StellarHorizonLateReadCl
       }
       cursor = nextCursor;
     }
-    if (!reachedPastWindow) return null;
-    return out;
+    if (!reachedPastWindow) return payerOutgoingFail("horizon_scan_incomplete");
+    return payerOutgoingOk(out);
   };
 }
 
 export function makeSolanaPayerOutgoingReader(): PayerOutgoingReader {
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
-    if (network !== SOLANA_MAINNET_CAIP2) return null;
+    if (network !== SOLANA_MAINNET_CAIP2) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
     const url = process.env.SOLANA_RPC_URL?.trim();
-    if (!url) return null;
+    if (!url) return payerOutgoingFail("missing_rpc: SOLANA_RPC_URL");
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const { Connection, PublicKey } = await import("@solana/web3.js");
     const conn = new Connection(url, {
@@ -409,7 +499,7 @@ export function makeSolanaPayerOutgoingReader(): PayerOutgoingReader {
       },
     });
     const account = solanaUsdcTokenAccount(payer);
-    if (!account) return null;
+    if (!account) return payerOutgoingFail("invalid_solana_payer");
     const fromSeconds = Math.floor(from.getTime() / 1000);
     const toSeconds = Math.ceil(to.getTime() / 1000);
     const sigs: { signature: string; blockTime: number }[] = [];
@@ -417,7 +507,7 @@ export function makeSolanaPayerOutgoingReader(): PayerOutgoingReader {
     let sigScanComplete = false;
     for (let pages = 0; pages < 20; pages++) {
       throwIfAborted(signal);
-      if (Date.now() > deadline) return null;
+      if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
       const page = await conn.getSignaturesForAddress(new PublicKey(account), { limit: 100, ...(before ? { before } : {}) });
       if (page.length === 0) {
         sigScanComplete = true;
@@ -438,12 +528,12 @@ export function makeSolanaPayerOutgoingReader(): PayerOutgoingReader {
       }
       before = page[page.length - 1].signature;
     }
-    if (!sigScanComplete) return null;
+    if (!sigScanComplete) return payerOutgoingFail("solana_signature_scan_incomplete");
     const out: ChainTransfer[] = [];
     const seen = new Set<string>();
     for (const { signature, blockTime } of sigs) {
       throwIfAborted(signal);
-      if (Date.now() > deadline) return null;
+      if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
       const tx = await conn.getParsedTransaction(signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
       if (!tx?.meta || tx.meta.err) continue;
       const pre = tx.meta.preTokenBalances ?? [];
@@ -469,7 +559,7 @@ export function makeSolanaPayerOutgoingReader(): PayerOutgoingReader {
         blockTime: new Date(blockTime * 1000).toISOString(),
       });
     }
-    return out;
+    return payerOutgoingOk(out);
   };
 }
 
@@ -519,10 +609,10 @@ function xrplOutgoingPayment(entry: XrplAccountTxEntry, payer: string, fromMs: n
 
 export function makeXrplPayerOutgoingReader(): PayerOutgoingReader {
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
-    if (network !== XRPL_MAINNET_CAIP2) return null;
+    if (network !== XRPL_MAINNET_CAIP2) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
     const rpcUrl = process.env.XRPL_RPC_URL?.trim();
-    if (!rpcUrl) return null;
+    if (!rpcUrl) return payerOutgoingFail("missing_rpc: XRPL_RPC_URL");
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const fromMs = from.getTime();
     const toMs = to.getTime();
@@ -534,11 +624,11 @@ export function makeXrplPayerOutgoingReader(): PayerOutgoingReader {
     let complete = false;
     while (pages < 30) {
       throwIfAborted(signal);
-      if (Date.now() > deadline) return null;
+      if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
       pages++;
-      const cap = Math.max(1_000, Math.trunc(Math.min(15_000, deadline - Date.now())));
-      const body = (await Promise.race([
-        rpc("account_tx", {
+      let body: { transactions?: XrplAccountTxEntry[]; marker?: unknown } | null;
+      try {
+        body = (await rpc("account_tx", {
           account: payer,
           ledger_index_min: -1,
           ledger_index_max: -1,
@@ -546,10 +636,11 @@ export function makeXrplPayerOutgoingReader(): PayerOutgoingReader {
           forward: false,
           limit: 200,
           ...(marker !== undefined ? { marker } : {}),
-        }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("xrpl timeout")), cap)),
-      ]).catch(() => null)) as { transactions?: XrplAccountTxEntry[]; marker?: unknown } | null;
-      if (!body || !Array.isArray(body.transactions)) return null;
+        })) as { transactions?: XrplAccountTxEntry[]; marker?: unknown };
+      } catch (e) {
+        return payerOutgoingFail(formatPayerOutgoingFailure(e));
+      }
+      if (!body || !Array.isArray(body.transactions)) return payerOutgoingFail("xrpl_account_tx_unavailable");
       const txs = body.transactions;
       if (txs.length === 0) {
         complete = true;
@@ -581,8 +672,8 @@ export function makeXrplPayerOutgoingReader(): PayerOutgoingReader {
       }
       marker = body.marker;
     }
-    if (!complete) return null;
-    return out;
+    if (!complete) return payerOutgoingFail("xrpl_scan_incomplete");
+    return payerOutgoingOk(out);
   };
 }
 
@@ -625,7 +716,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     network: AVALANCHE_CAIP2,
     chainId: AVALANCHE_CHAIN_ID,
     token: AVALANCHE_USDC_ADDRESS as Address,
-    chunkBlocks: 100n,
+    chunkBlocks: AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
     marginBlocks: 60n,
     blockSeconds: 0.97,
     toleranceSeconds: 30,
@@ -635,7 +726,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     network: ARC_CAIP2,
     chainId: ARC_CHAIN_ID,
     token: ARC_USDC_ADDRESS as Address,
-    chunkBlocks: 5_000n,
+    chunkBlocks: ARC_TRANSFER_READ_CHUNK_BLOCKS,
     marginBlocks: 120n,
     blockSeconds: 0.51,
     toleranceSeconds: 30,
@@ -691,14 +782,18 @@ export function makeChainPayerOutgoingReader(overrides: Partial<Record<string, P
   const solana = overrides.solana ?? makeSolanaPayerOutgoingReader();
   const xrpl = overrides.xrpl ?? makeXrplPayerOutgoingReader();
   return async (q) => {
-    if (PAYER_OUTGOING_UNAVAILABLE[q.network]) return null;
-    if (q.network === STELLAR_PUBNET_CAIP2) return stellar(q);
-    if (q.network === SOLANA_MAINNET_CAIP2) return solana(q);
-    if (q.network === XRPL_MAINNET_CAIP2) return xrpl(q);
-    const evm = EVM_READERS[q.network];
-    if (evm) return evm(q);
-    if (BASE_NETWORK_KEYS.includes(q.network)) return baseReader(q);
-    return null;
+    const network = payerReconcilePurchaseNetwork(q.network) ?? q.network;
+    const query = network === q.network ? q : { ...q, network };
+    if (PAYER_OUTGOING_UNAVAILABLE[network]) {
+      return payerOutgoingFail(PAYER_OUTGOING_UNAVAILABLE[network]);
+    }
+    if (network === STELLAR_PUBNET_CAIP2) return stellar(query);
+    if (network === SOLANA_MAINNET_CAIP2) return solana(query);
+    if (network === XRPL_MAINNET_CAIP2) return xrpl(query);
+    const evm = EVM_READERS[network];
+    if (evm) return evm(query);
+    if (BASE_NETWORK_KEYS.includes(network)) return baseReader(query);
+    return payerOutgoingFail("no_payer_outgoing_reader");
   };
 }
 

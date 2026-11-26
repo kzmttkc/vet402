@@ -8,17 +8,21 @@ import { getIndexerCheckpointWithCursor, setIndexerCheckpoint } from "@/lib/db/o
 import { ARBITRUM_CAIP2 } from "@/lib/chain/arbitrum";
 import { AVALANCHE_CAIP2 } from "@/lib/chain/avalanche";
 import { BNB_CAIP2 } from "@/lib/chain/bnb";
-import { isMainnet, toCaip2 } from "@/lib/observatory/chains";
+import { toCaip2 } from "@/lib/observatory/chains";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
+import { redactForLog } from "@/lib/observatory/redact";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { payeeId } from "@/lib/ids/canonical";
 import { loadOwnWalletContext, exclusionReasonForPayerTransfer, type OwnWalletContext } from "./own-wallets";
 import {
   PAYER_OUTGOING_UNAVAILABLE,
+  formatPayerOutgoingFailure,
   makeChainPayerOutgoingReader,
   payerOutgoingNotConfiguredReason,
   type PayerOutgoingReader,
 } from "./payer-outgoing-readers";
+import { payerReconcilePurchaseNetwork } from "./payer-reconcile-network";
+import { STELLAR_PUBNET_CAIP2 } from "@/lib/observatory/stellar402-payer";
 import { insertPayerReconcileRun } from "./payer-reconcile-runs";
 import { rowsOf } from "./upsert";
 import type { ChainTransfer } from "./recover-late";
@@ -57,7 +61,21 @@ export type PayerReconcileChainUnavailable = {
   network: string;
   payer: string;
   reason: string;
-};
+  detail?: string;
+} & Partial<
+  Pick<
+    PayerReconcileChainOk,
+    | "read"
+    | "matched"
+    | "unrecorded"
+    | "unrecordedTxs"
+    | "excluded"
+    | "excludedByReason"
+    | "windowFrom"
+    | "windowTo"
+    | "bookmarkLagMs"
+  >
+>;
 
 export type PayerReconcileChainNotConfigured = {
   status: "not_configured";
@@ -193,8 +211,8 @@ export async function loadPayerNetworks(): Promise<{ network: string; payer: str
   const out: { network: string; payer: string }[] = [];
   const seen = new Set<string>();
   for (const r of rows) {
-    if (!isMainnet(r.network)) continue;
-    const caip = toCaip2(r.network) ?? r.network;
+    const caip = payerReconcilePurchaseNetwork(r.network);
+    if (!caip) continue;
     const payer = normalizePayerForKey(caip, r.payer);
     const key = `${caip}\0${payer}`;
     if (seen.has(key)) continue;
@@ -236,6 +254,7 @@ function networkAliases(network: string): string[] {
   const caip = toCaip2(network) ?? network;
   if (caip === "eip155:8453") return ["eip155:8453", "base"];
   if (caip === "eip155:5042") return ["eip155:5042", "arc"];
+  if (caip === STELLAR_PUBNET_CAIP2) return ["stellar:pubnet", "stellar"];
   return [caip];
 }
 
@@ -282,17 +301,31 @@ async function saveIncrementalWindowEnd(network: string, payer: string, windowEn
   await setIndexerCheckpoint(payerReconcileWindowScope(network, payer), 0n, undefined, windowEnd.toISOString());
 }
 
-function unavailableReason(network: string, budget: boolean, readFailed: boolean): string {
+function unavailableReason(network: string, budget: boolean, readFailed: boolean, detail?: string): string {
   if (budget) return "budget";
+  if (detail?.startsWith("node_behind_window:")) return "node_behind_window";
   if (readFailed) return "read_failed";
   return PAYER_OUTGOING_UNAVAILABLE[network] ?? "no payer-outgoing reader for this network";
+}
+
+function redactOutgoingDetail(detail: string | undefined): string | undefined {
+  return detail ? redactForLog(detail) : undefined;
+}
+
+function nodeBehindWindowDetail(readThrough: Date, wantedTo: Date): string {
+  return `unread_from=${readThrough.toISOString()} unread_to=${wantedTo.toISOString()}`;
+}
+
+function chainUnrecorded(c: PayerReconcileChainResult): number {
+  if (c.status !== "ok" && c.status !== "unavailable") return 0;
+  return typeof c.unrecorded === "number" ? c.unrecorded : 0;
 }
 
 async function readOutgoingWithBudget(
   readOutgoing: PayerOutgoingReader,
   q: Parameters<PayerOutgoingReader>[0],
   deadlineAt: number,
-): Promise<{ transfers: ChainTransfer[] | null; budget: boolean }> {
+): Promise<{ transfers: ChainTransfer[] | null; budget: boolean; detail?: string; readThroughMs?: number }> {
   const remaining = deadlineAt - Date.now();
   if (remaining <= 0) return { transfers: null, budget: true };
   const controller = new AbortController();
@@ -309,13 +342,163 @@ async function readOutgoingWithBudget(
       budgetPromise,
     ]);
     if (raced === "budget") return { transfers: null, budget: true };
-    return { transfers: raced, budget: false };
+    if (!raced.ok) return { transfers: null, budget: false, detail: raced.detail };
+    return { transfers: raced.transfers, budget: false, readThroughMs: raced.readThroughMs };
   } catch (e) {
     if (controller.signal.aborted) return { transfers: null, budget: true };
-    return { transfers: null, budget: false };
+    return { transfers: null, budget: false, detail: formatPayerOutgoingFailure(e) };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+async function reconcileOneNetworkPayer(
+  ctx: {
+    network: string;
+    payer: string;
+    defaultWindow: { from: Date; to: Date };
+    deadlineAt: number;
+    readOutgoing: PayerOutgoingReader;
+    ownWallets: OwnWalletContext;
+    loadTxHashes: (network: string) => Promise<Set<string>>;
+    loadWindowFrom: (network: string, payer: string, defaultFrom: Date) => Promise<Date>;
+    countRecent: (network: string, since: Date) => Promise<number>;
+    purchaseLookbackSince: Date;
+    txCache: Map<string, Set<string>>;
+    checkpointEnds: { network: string; payer: string; windowEnd: Date }[];
+  },
+): Promise<PayerReconcileChainResult> {
+  const { network, payer, defaultWindow, deadlineAt, readOutgoing, ownWallets } = ctx;
+  const presetReason = PAYER_OUTGOING_UNAVAILABLE[network];
+  if (presetReason) {
+    return { status: "unavailable", network, payer, reason: presetReason };
+  }
+
+  const notConfigured = payerOutgoingNotConfiguredReason(network);
+  if (notConfigured) {
+    const recentPurchases = await ctx.countRecent(network, ctx.purchaseLookbackSince);
+    return {
+      status: "not_configured",
+      network,
+      payer,
+      reason: notConfigured,
+      recentPurchases,
+    };
+  }
+
+  const windowTo = defaultWindow.to;
+  const defaultFrom = defaultWindow.from;
+  const incremental = PAYER_RECONCILE_INCREMENTAL_NETWORKS.has(network);
+  let cursorFrom = await ctx.loadWindowFrom(network, payer, defaultFrom);
+  const windowFromStr = cursorFrom.toISOString();
+  const transfers: ChainTransfer[] = [];
+  let bookmarkEnd = cursorFrom;
+  let nodeBehindDetail: string | undefined;
+
+  if (incremental) {
+    while (cursorFrom.getTime() < windowTo.getTime()) {
+      if (Date.now() >= deadlineAt) break;
+      const readTo = capIncrementalReadEnd(cursorFrom, windowTo);
+      const { transfers: chunk, budget, detail, readThroughMs } = await readOutgoingWithBudget(
+        readOutgoing,
+        { network, payer, from: cursorFrom, to: readTo, timeoutMs: Math.max(1, deadlineAt - Date.now()) },
+        deadlineAt,
+      );
+      if (chunk === null) {
+        return {
+          status: "unavailable",
+          network,
+          payer,
+          reason: unavailableReason(network, budget, !budget, detail),
+          ...(detail ? { detail: redactOutgoingDetail(detail) } : {}),
+        };
+      }
+      transfers.push(...chunk);
+      const throughMs = readThroughMs ?? readTo.getTime();
+      bookmarkEnd = new Date(throughMs);
+      if (throughMs < readTo.getTime()) {
+        nodeBehindDetail = nodeBehindWindowDetail(bookmarkEnd, readTo);
+        break;
+      }
+      if (readTo.getTime() >= windowTo.getTime()) break;
+      cursorFrom = readTo;
+    }
+  } else {
+    const { transfers: chunk, budget, detail, readThroughMs } = await readOutgoingWithBudget(
+      readOutgoing,
+      { network, payer, from: cursorFrom, to: windowTo, timeoutMs: Math.max(1, deadlineAt - Date.now()) },
+      deadlineAt,
+    );
+    if (chunk === null) {
+      return {
+        status: "unavailable",
+        network,
+        payer,
+        reason: unavailableReason(network, budget, !budget, detail),
+        ...(detail ? { detail: redactOutgoingDetail(detail) } : {}),
+      };
+    }
+    transfers.push(...chunk);
+    const throughMs = readThroughMs ?? windowTo.getTime();
+    bookmarkEnd = new Date(throughMs);
+    if (throughMs < windowTo.getTime()) {
+      nodeBehindDetail = nodeBehindWindowDetail(bookmarkEnd, windowTo);
+    }
+  }
+
+  let hashes = ctx.txCache.get(network);
+  if (!hashes) {
+    hashes = await ctx.loadTxHashes(network);
+    ctx.txCache.set(network, hashes);
+  }
+
+  const body = reconcilePayerTransfers({
+    network,
+    payer,
+    transfers,
+    purchaseTxHashes: hashes,
+    ownWallets,
+  });
+
+  const bookmarkLagMs = incremental ? Math.max(0, windowTo.getTime() - bookmarkEnd.getTime()) : undefined;
+
+  if (incremental && bookmarkEnd.getTime() > new Date(windowFromStr).getTime()) {
+    ctx.checkpointEnds.push({ network, payer, windowEnd: bookmarkEnd });
+  }
+
+  if (nodeBehindDetail) {
+    return {
+      status: "unavailable",
+      network,
+      payer,
+      reason: "node_behind_window",
+      detail: redactOutgoingDetail(nodeBehindDetail),
+      windowFrom: windowFromStr,
+      windowTo: bookmarkEnd.toISOString(),
+      ...(bookmarkLagMs !== undefined ? { bookmarkLagMs } : {}),
+      ...body,
+    };
+  }
+
+  return {
+    status: "ok",
+    network,
+    payer,
+    windowFrom: windowFromStr,
+    windowTo: bookmarkEnd.toISOString(),
+    ...(bookmarkLagMs !== undefined ? { bookmarkLagMs } : {}),
+    ...body,
+  };
+}
+
+function groupNetworksByChain(networks: { network: string; payer: string }[]): { network: string; payer: string }[][] {
+  const byNetwork = new Map<string, { network: string; payer: string }[]>();
+  for (const row of networks) {
+    const list = byNetwork.get(row.network);
+    if (list) list.push(row);
+    else byNetwork.set(row.network, [row]);
+  }
+  return [...byNetwork.values()];
 }
 
 export async function runPayerReconcile(options: {
@@ -354,106 +537,32 @@ export async function runPayerReconcile(options: {
   const txCache = new Map<string, Set<string>>();
   const checkpointEnds: { network: string; payer: string; windowEnd: Date }[] = [];
 
-  const chains: PayerReconcileChainResult[] = await Promise.all(
-    networks.map(async ({ network, payer }) => {
-      const presetReason = PAYER_OUTGOING_UNAVAILABLE[network];
-      if (presetReason) {
-        return { status: "unavailable", network, payer, reason: presetReason } satisfies PayerReconcileChainUnavailable;
-      }
+  const reconcileCtx = {
+    defaultWindow,
+    deadlineAt,
+    readOutgoing,
+    ownWallets,
+    loadTxHashes,
+    loadWindowFrom,
+    countRecent,
+    purchaseLookbackSince,
+    txCache,
+    checkpointEnds,
+  };
 
-      const notConfigured = payerOutgoingNotConfiguredReason(network);
-      if (notConfigured) {
-        const recentPurchases = await countRecent(network, purchaseLookbackSince);
-        return {
-          status: "not_configured",
-          network,
-          payer,
-          reason: notConfigured,
-          recentPurchases,
-        } satisfies PayerReconcileChainNotConfigured;
-      }
-
-      const windowTo = defaultWindow.to;
-      const defaultFrom = defaultWindow.from;
-      const incremental = PAYER_RECONCILE_INCREMENTAL_NETWORKS.has(network);
-      let cursorFrom = await loadWindowFrom(network, payer, defaultFrom);
-      const windowFromStr = cursorFrom.toISOString();
-      const transfers: ChainTransfer[] = [];
-      let bookmarkEnd = cursorFrom;
-
-      if (incremental) {
-        while (cursorFrom.getTime() < windowTo.getTime()) {
-          if (Date.now() >= deadlineAt) break;
-          const readTo = capIncrementalReadEnd(cursorFrom, windowTo);
-          const { transfers: chunk, budget } = await readOutgoingWithBudget(
-            readOutgoing,
-            { network, payer, from: cursorFrom, to: readTo, timeoutMs: Math.max(1, deadlineAt - Date.now()) },
-            deadlineAt,
-          );
-          if (chunk === null) {
-            return {
-              status: "unavailable",
-              network,
-              payer,
-              reason: unavailableReason(network, budget, true),
-            } satisfies PayerReconcileChainUnavailable;
-          }
-          transfers.push(...chunk);
-          bookmarkEnd = readTo;
-          if (readTo.getTime() >= windowTo.getTime()) break;
-          cursorFrom = readTo;
+  const chains: PayerReconcileChainResult[] = (
+    await Promise.all(
+      groupNetworksByChain(networks).map(async (group) => {
+        const out: PayerReconcileChainResult[] = [];
+        for (const { network, payer } of group) {
+          out.push(await reconcileOneNetworkPayer({ ...reconcileCtx, network, payer }));
         }
-      } else {
-        const { transfers: chunk, budget } = await readOutgoingWithBudget(
-          readOutgoing,
-          { network, payer, from: cursorFrom, to: windowTo, timeoutMs: Math.max(1, deadlineAt - Date.now()) },
-          deadlineAt,
-        );
-        if (chunk === null) {
-          return {
-            status: "unavailable",
-            network,
-            payer,
-            reason: unavailableReason(network, budget, true),
-          } satisfies PayerReconcileChainUnavailable;
-        }
-        transfers.push(...chunk);
-        bookmarkEnd = windowTo;
-      }
+        return out;
+      }),
+    )
+  ).flat();
 
-      let hashes = txCache.get(network);
-      if (!hashes) {
-        hashes = await loadTxHashes(network);
-        txCache.set(network, hashes);
-      }
-
-      const body = reconcilePayerTransfers({
-        network,
-        payer,
-        transfers,
-        purchaseTxHashes: hashes,
-        ownWallets,
-      });
-
-      const bookmarkLagMs = incremental ? Math.max(0, windowTo.getTime() - bookmarkEnd.getTime()) : undefined;
-
-      if (incremental && bookmarkEnd.getTime() > new Date(windowFromStr).getTime()) {
-        checkpointEnds.push({ network, payer, windowEnd: bookmarkEnd });
-      }
-
-      return {
-        status: "ok",
-        network,
-        payer,
-        windowFrom: windowFromStr,
-        windowTo: bookmarkEnd.toISOString(),
-        ...(bookmarkLagMs !== undefined ? { bookmarkLagMs } : {}),
-        ...body,
-      } satisfies PayerReconcileChainOk;
-    }),
-  );
-
-  const totalUnrecorded = chains.reduce((n, c) => (c.status === "ok" ? n + c.unrecorded : n), 0);
+  const totalUnrecorded = chains.reduce((n, c) => n + chainUnrecorded(c), 0);
   const totalNotConfigured = chains.filter((c) => c.status === "not_configured").length;
   const anyUnavailable = chains.some((c) => c.status === "unavailable");
   const chainsOkForStatus = chains.every((c) => c.status === "ok" || c.status === "not_configured");
@@ -469,10 +578,10 @@ export async function runPayerReconcile(options: {
 
   if (totalUnrecorded > 0) {
     const detail = chains
-      .filter((c): c is PayerReconcileChainOk => c.status === "ok" && c.unrecorded > 0)
+      .filter((c) => chainUnrecorded(c) > 0)
       .map(
         (c) =>
-          `${c.network} payer=${payeeId(c.network, c.payer) ?? c.payer}: ${c.unrecorded} unrecorded (${c.unrecordedTxs.join(", ")})`,
+          `${c.network} payer=${payeeId(c.network, c.payer) ?? c.payer}: ${chainUnrecorded(c)} unrecorded (${(c.status === "ok" || c.status === "unavailable") && c.unrecordedTxs ? c.unrecordedTxs.join(", ") : ""})`,
       )
       .join("; ");
     if (options.onUnrecorded) options.onUnrecorded(detail);
@@ -482,7 +591,7 @@ export async function runPayerReconcile(options: {
   if (anyUnavailable) {
     const detail = chains
       .filter((c): c is PayerReconcileChainUnavailable => c.status === "unavailable")
-      .map((c) => `${c.network} payer=${c.payer}: ${c.reason}`)
+      .map((c) => `${c.network} payer=${c.payer}: ${c.reason}${c.detail ? ` (${redactForLog(c.detail)})` : ""}`)
       .join("; ");
     if (options.onUnavailable) options.onUnavailable(detail);
     else logServerErrorSafe(LOG_TAG_PAYER_RECONCILE_UNAVAILABLE, new Error(detail));
