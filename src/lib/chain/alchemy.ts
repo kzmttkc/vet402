@@ -294,6 +294,16 @@ const MAX_COUNT = 1_000;
  * complete — a caller must never mistake a refusal for an empty history.
  */
 export async function fetchAssetTransfers(query: TransferQuery): Promise<CategorizedTransfer[]> {
+  return (await fetchAssetTransfersPage(query)).transfers;
+}
+
+/**
+ * fetchAssetTransfers with Alchemy's `pageKey`: one page, and the key for the next one (null on the last page).
+ * `rawCount` is the rows Alchemy returned before toTransfer dropped any. Throws when the read did not complete.
+ */
+export async function fetchAssetTransfersPage(
+  query: TransferQuery & { pageKey?: string | null },
+): Promise<{ transfers: CategorizedTransfer[]; rawCount: number; pageKey: string | null }> {
   const url = alchemyUrl(query.chainId);
   if (!url) throw new AlchemyUnavailableError("alchemy_not_configured");
 
@@ -309,6 +319,7 @@ export async function fetchAssetTransfers(query: TransferQuery): Promise<Categor
   if (query.contractAddress && query.categories.includes("erc20")) {
     params.contractAddresses = [query.contractAddress];
   }
+  if (query.pageKey) params.pageKey = query.pageKey;
 
   const page = await rpc(url, params, query.budgetMs);
   const out: CategorizedTransfer[] = [];
@@ -316,7 +327,7 @@ export async function fetchAssetTransfers(query: TransferQuery): Promise<Categor
     const transfer = toTransfer(raw);
     if (transfer) out.push(transfer);
   }
-  return out;
+  return { transfers: out, rawCount: page.transfers.length, pageKey: typeof page.pageKey === "string" && page.pageKey !== "" ? page.pageKey : null };
 }
 
 /**

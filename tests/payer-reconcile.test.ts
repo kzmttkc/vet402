@@ -1221,3 +1221,41 @@ test("Base payer falls back to RPC getLogs when Blockscout is unavailable", asyn
   assert.equal(out.ok, true);
   if (out.ok) assert.equal(out.transfers[0]?.txHash, "0xrpc");
 });
+test("Base payer reader: Alchemy first when its key is set (2026-11-27 base.blockscout.com 403), pages by pageKey, window kept, raw amounts", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  const to = new Date("2026-11-25T20:00:00.000Z");
+  const from = new Date("2026-11-23T20:00:00.000Z");
+  const usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913";
+  const bodies: Record<string, unknown>[] = [];
+  const tr = (hash: string, iso: string, value: string) => ({
+    uniqueId: `${hash}:log:0`, hash, blockNum: "0x10", from: EVM_PAYER.toLowerCase(), to: "0x000000000000000000000000000000000000beef",
+    category: "erc20", rawContract: { value, address: usdc, decimal: "0x6" }, metadata: { blockTimestamp: iso },
+  });
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (!u.includes("base-mainnet.g.alchemy.com")) throw new Error(`unexpected fetch ${u}`);
+    const body = JSON.parse(String(init?.body));
+    bodies.push(body.params[0]);
+    const page = body.params[0].pageKey
+      ? { transfers: [tr("0xbb", "2026-11-24T00:00:00.000Z", "0x1e8480"), tr("0xcc", "2026-11-20T00:00:00.000Z", "0x01")] }
+      : { transfers: [tr("0xaa", "2026-11-26T10:00:00.000Z", "0x2710")], pageKey: "k2" };
+    return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: page }), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const out = await makeBasePayerOutgoingReader()({ network: EVM, payer: EVM_PAYER, from, to, timeoutMs: 5_000 });
+    assert.equal(out.ok, true, out.ok ? "" : out.detail);
+    if (out.ok) {
+      assert.deepEqual(out.transfers.map((t) => [t.txHash, t.value]), [["0xbb", "2000000"]], "only the transfer inside the window, raw units");
+    }
+    assert.equal(bodies.length, 2, "second page read through pageKey, then stopped at a transfer older than the window");
+    assert.equal(bodies[0]!.fromAddress, EVM_PAYER);
+    assert.deepEqual((bodies[0]!.contractAddresses as string[]).map((a) => a.toLowerCase()), [usdc]);
+    assert.equal(bodies[1]!.pageKey, "k2");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
