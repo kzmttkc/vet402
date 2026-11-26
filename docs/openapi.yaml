@@ -4335,6 +4335,9 @@ paths:
                       inconclusiveSettled:
                         type: integer
                         description: The settled part of inconclusive; settled − delivered − inconclusiveSettled is money that moved without a 4xx and did not count as delivered (a 5xx, a 3xx, a 202, an empty body or no recorded answer).
+                      settledNotDelivered:
+                        type: integer
+                        description: settled − delivered − inconclusiveSettled, published directly (never below 0). Money moved without a 4xx and the paid request did not count as delivered.
                       inconclusiveByReason:
                         type: object
                         description: >-
