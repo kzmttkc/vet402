@@ -1048,6 +1048,13 @@ export default async function ObservatoryMethodologyPage() {
           stopped partway).
         </p>
         <p className="doc-p">
+          <strong>Endpoints with a delivery (since 2026-11-26).</strong>{" "}
+          <code>l1.endpointsDelivered</code> counts endpoints, active or not, with at least one delivered row.{" "}
+          <code>l1.endpointsSettled</code> minus <code>l1.endpointsDelivered</code> counts endpoints where at least
+          one payment settled and no paid request has come back delivered so far. That count includes endpoints
+          whose settled rows are all held as inconclusive, so it is not a count of sellers at fault.
+        </p>
+        <p className="doc-p">
           <strong>Answer check (since 2026-11-17).</strong>{" "}
           <code>l1.answerCheck</code> on <code>/api/v1/observatory/state</code> counts settled purchases in the
           last 30 days whose stored body, challenge, and catalog declaration were already re-read offline
