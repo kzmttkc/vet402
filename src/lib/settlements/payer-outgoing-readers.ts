@@ -4,6 +4,12 @@
 // ============================================================
 import { createPublicClient, defineChain, http, parseAbiItem, type Address } from "viem";
 import { arc, arbitrum, avalanche, base, bsc, celo, tempo as tempoChain } from "viem/chains";
+import {
+  BlockscoutUnavailableError,
+  fetchBlockscoutIndexedHeadMs,
+  fetchPayerTokenTransfersV2Page,
+  type PayerTokenTransfersV2Page,
+} from "@/lib/chain/blockscout";
 import { getLogScanClient } from "@/lib/chain/client";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
@@ -60,8 +66,13 @@ const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_INDEX_CHAIN = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453");
 /** index-settlements の Base subWindow と同じ幅で区切る。 */
 const BASE_PAYER_LOG_CHUNK_BLOCKS = BASE_INDEX_CHAIN?.subWindowBlocks ?? 20_000n;
+/** v2 token-transfers の 1 ページあたり件数（Blockscout 既定 50）。 */
+const BASE_BLOCKSCOUT_V2_PAGE_SIZE = 50;
+/** 窓の始端まで遡れなければ unavailable（stellar の horizon_scan_incomplete と同型）。 */
+const BASE_BLOCKSCOUT_MAX_PAGES = 50;
 const PAYER_BASE_LOG_CONCURRENCY = 1;
 const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
+export const PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS = 40;
 const PAYER_ARC_LOG_CONCURRENCY = 1;
 const PAYER_ARC_DEFAULT_CHUNK_DELAY_MS = 100;
 
@@ -163,62 +174,216 @@ function robinhoodClient(timeoutMs: number | undefined): EvmLogClient {
   }) as unknown as EvmLogClient;
 }
 
-export function makeBasePayerOutgoingReader(client?: EvmLogClient): PayerOutgoingReader {
+export type BlockscoutIndexedHeadMs = (chainId: number, budgetMs?: number) => Promise<number>;
+
+export type BasePayerBlockscoutFetch = (
+  payer: Address,
+  opts: {
+    contractAddress: Address;
+    chainId: number;
+    budgetMs?: number;
+    cursor?: Record<string, string> | null;
+  },
+) => Promise<PayerTokenTransfersV2Page>;
+
+/**
+ * 時刻 t 以下でいちばん新しいブロック（照合専用・recover-late の locateEvmBlock は触らない）。
+ */
+export async function locateEvmBlockBinarySearch(
+  c: Pick<EvmLogClient, "getBlock">,
+  head: { number: bigint; timestamp: bigint },
+  t: Date,
+  expired: () => void,
+  chainName: string,
+  maxIters = PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS,
+): Promise<bigint> {
+  const targetMs = t.getTime();
+  const headMs = Number(head.timestamp) * 1000;
+  if (targetMs >= headMs) return head.number;
+  let lo = 0n;
+  let hi = head.number;
+  let iters = 0;
+  while (lo < hi && iters < maxIters) {
+    expired();
+    iters++;
+    const mid = lo + (hi - lo + 1n) / 2n;
+    const block = await c.getBlock({ blockNumber: mid });
+    const blockMs = Number(block.timestamp) * 1000;
+    if (blockMs <= targetMs) lo = mid;
+    else hi = mid - 1n;
+  }
+  expired();
+  if (lo < hi) {
+    throw new Error(
+      `could not locate the ${chainName} block for the window (binary search iteration cap); head_block=${head.number} head_time=${new Date(headMs).toISOString()}`,
+    );
+  }
+  const chosen = await c.getBlock({ blockNumber: lo });
+  if (Number(chosen.timestamp) * 1000 > targetMs) {
+    throw new Error(
+      `could not locate the ${chainName} block for the window; head_block=${head.number} head_time=${new Date(headMs).toISOString()}`,
+    );
+  }
+  return lo;
+}
+
+async function readBasePayerOutgoingViaBlockscout(
+  payer: string,
+  from: Date,
+  to: Date,
+  deadline: number,
+  signal: AbortSignal | undefined,
+  fetchPage: BasePayerBlockscoutFetch,
+): Promise<PayerOutgoingReadResult> {
+  const fromSec = Math.floor(from.getTime() / 1000);
+  const toSec = Math.floor(to.getTime() / 1000);
+  const payerLower = payer.toLowerCase();
+  const out: ChainTransfer[] = [];
+  const seen = new Set<string>();
+  let pages = 0;
+  let reachedPastWindow = false;
+  let cursor: Record<string, string> | null = null;
+
+  while (pages < BASE_BLOCKSCOUT_MAX_PAGES) {
+    throwIfAborted(signal);
+    if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
+    const budgetMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+    const page = await fetchPage(payer as Address, {
+      contractAddress: BASE_USDC,
+      chainId: BASE_CHAIN_ID,
+      budgetMs,
+      cursor,
+    });
+    pages++;
+    if (page.rawItemCount === 0) {
+      reachedPastWindow = true;
+      break;
+    }
+    for (const tx of page.rows) {
+      const ts = Number(tx.timeStamp);
+      if (!Number.isFinite(ts)) continue;
+      if (ts < fromSec || ts > toSec) continue;
+      if (tx.from.toLowerCase() !== payerLower) continue;
+      const hash = tx.hash;
+      if (!hash) continue;
+      const key = hash.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        txHash: hash,
+        from: tx.from,
+        to: tx.to,
+        value: tx.value,
+        blockTime: new Date(ts * 1000).toISOString(),
+        blockNumber: BigInt(tx.blockNumber),
+      });
+    }
+    if (page.pageOldestSec !== null && page.pageOldestSec < fromSec) {
+      reachedPastWindow = true;
+      break;
+    }
+    if (page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE || !page.nextCursor) {
+      reachedPastWindow = true;
+      break;
+    }
+    cursor = page.nextCursor;
+  }
+  if (!reachedPastWindow) return payerOutgoingFail("blockscout_scan_incomplete");
+  return payerOutgoingOk(out);
+}
+
+async function readBasePayerOutgoingViaRpc(
+  c: EvmLogClient,
+  payer: string,
+  from: Date,
+  to: Date,
+  deadline: number,
+  signal: AbortSignal | undefined,
+): Promise<PayerOutgoingReadResult> {
+  const head = await c.getBlock({ blockTag: "latest" });
+  throwIfAborted(signal);
+  const blockAt = (t: Date) => firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, t.getTime() / 1000);
+  const headMs = Number(head.timestamp) * 1000;
+  const fromBlock = blockAt(from) - 60n;
+  const toBlock = blockAt(to) + 60n > head.number ? head.number : blockAt(to) + 60n;
+  if (fromBlock < 0n) return payerOutgoingFail("invalid_block_range: fromBlock < 0");
+  if (fromBlock > toBlock) return payerOutgoingFail("invalid_block_range: fromBlock > toBlock");
+  const readThroughMs = Math.min(to.getTime(), headMs);
+  const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+  const logs = (await getLogsChunked(
+    c as unknown as Parameters<typeof getLogsChunked>[0],
+    {
+      address: BASE_USDC,
+      event: TRANSFER_LOG,
+      args: { from: payer as Address },
+      fromBlock,
+      toBlock,
+    } as never,
+    BASE_PAYER_LOG_CHUNK_BLOCKS,
+    PAYER_BASE_LOG_CONCURRENCY,
+    remainingMs === undefined
+      ? { signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES }
+      : { deadlineMs: remainingMs, delayMs: 0, signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES },
+  )) as unknown as {
+    blockNumber: bigint | null;
+    transactionHash: string | null;
+    args: { from: Address; to: Address; value?: bigint };
+  }[];
+  const out: ChainTransfer[] = [];
+  for (const l of logs) {
+    throwIfAborted(signal);
+    if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
+    if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") continue;
+    out.push({
+      txHash: l.transactionHash,
+      from: String(l.args.from),
+      to: String(l.args.to),
+      value: l.args.value.toString(),
+      blockTime: "",
+      blockNumber: l.blockNumber,
+    });
+  }
+  return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
+}
+
+export function makeBasePayerOutgoingReader(
+  client?: EvmLogClient,
+  blockscoutFetch?: BasePayerBlockscoutFetch,
+  indexedHeadMs: BlockscoutIndexedHeadMs = fetchBlockscoutIndexedHeadMs,
+): PayerOutgoingReader {
+  const fetchPage =
+    blockscoutFetch ??
+    ((payer, opts) => fetchPayerTokenTransfersV2Page(payer, opts.contractAddress, opts));
   return async ({ network, payer, from, to, timeoutMs, signal }) => {
     if (!BASE_NETWORK_KEYS.includes(network)) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     try {
-      const c = client ?? (typeof timeoutMs === "number" ? boundedBaseClient(timeoutMs) : getLogScanClient(8453));
-      const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
-      const chainId = await c.getChainId();
-      if (chainId !== BASE_CHAIN_ID) {
-        return payerOutgoingFail(`wrong_chain_id: rpc=${chainId} expected=${BASE_CHAIN_ID}`);
-      }
-      const head = await c.getBlock({ blockTag: "latest" });
-      throwIfAborted(signal);
-      const blockAt = (t: Date) => firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, t.getTime() / 1000);
-      const headMs = Number(head.timestamp) * 1000;
-      const fromBlock = blockAt(from) - 60n;
-      const toBlock = blockAt(to) + 60n > head.number ? head.number : blockAt(to) + 60n;
-      if (fromBlock < 0n) return payerOutgoingFail("invalid_block_range: fromBlock < 0");
-      if (fromBlock > toBlock) return payerOutgoingFail("invalid_block_range: fromBlock > toBlock");
-      const readThroughMs = Math.min(to.getTime(), headMs);
-      const remainingMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
-      const logs = (await getLogsChunked(
-        c as unknown as Parameters<typeof getLogsChunked>[0],
-        {
-          address: BASE_USDC,
-          event: TRANSFER_LOG,
-          args: { from: payer as Address },
-          fromBlock,
-          toBlock,
-        } as never,
-        BASE_PAYER_LOG_CHUNK_BLOCKS,
-        PAYER_BASE_LOG_CONCURRENCY,
-        remainingMs === undefined
-          ? { signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES }
-          : { deadlineMs: remainingMs, delayMs: 0, signal, rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES },
-      )) as unknown as {
-        blockNumber: bigint | null;
-        transactionHash: string | null;
-        args: { from: Address; to: Address; value?: bigint };
-      }[];
-      const out: ChainTransfer[] = [];
-      for (const l of logs) {
-        throwIfAborted(signal);
-        if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
-        if (l.blockNumber === null || !l.transactionHash || typeof l.args.value !== "bigint") continue;
-        out.push({
-          txHash: l.transactionHash,
-          from: String(l.args.from),
-          to: String(l.args.to),
-          value: l.args.value.toString(),
-          blockTime: "",
-          blockNumber: l.blockNumber,
-        });
-      }
-      return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
+      const blockscout = await readBasePayerOutgoingViaBlockscout(payer, from, to, deadline, signal, fetchPage);
+      if (!blockscout.ok) return blockscout;
+      const budgetMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
+      const indexedMs = await indexedHeadMs(BASE_CHAIN_ID, budgetMs);
+      const readThroughMs = Math.min(to.getTime(), indexedMs);
+      return payerOutgoingOk(
+        blockscout.transfers,
+        readThroughMs < to.getTime() ? readThroughMs : undefined,
+      );
     } catch (e) {
+      if (e instanceof BlockscoutUnavailableError) {
+        try {
+          const c = client ?? (typeof timeoutMs === "number" ? boundedBaseClient(timeoutMs) : getLogScanClient(8453));
+          const chainId = await c.getChainId();
+          if (chainId !== BASE_CHAIN_ID) {
+            return payerOutgoingFail(`wrong_chain_id: rpc=${chainId} expected=${BASE_CHAIN_ID}`);
+          }
+          return await readBasePayerOutgoingViaRpc(c, payer, from, to, deadline, signal);
+        } catch (rpcErr) {
+          if (signal?.aborted || (rpcErr instanceof DOMException && rpcErr.name === "AbortError")) {
+            return payerOutgoingFail("AbortError: aborted");
+          }
+          return payerOutgoingFail(formatPayerOutgoingFailure(rpcErr));
+        }
+      }
       if (signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
         return payerOutgoingFail("AbortError: aborted");
       }
@@ -245,7 +410,32 @@ type EvmOutgoingConfig = {
     rateLimitMaxRetries: number;
     delayMs: number;
   };
+  /** locateEvmBlock が失敗したら getBlock の二分探索で探し直す（Avalanche・Robinhood）。 */
+  binarySearchOnLocateFailure?: boolean;
 };
+
+async function locateBlockForPayerReconcile(
+  c: EvmLogClient,
+  head: { number: bigint; timestamp: bigint },
+  t: Date,
+  cfg: EvmOutgoingConfig,
+  expired: () => void,
+): Promise<bigint> {
+  try {
+    return await locateEvmBlock(
+      c,
+      head,
+      t,
+      cfg.blockSeconds,
+      cfg.toleranceSeconds,
+      expired,
+      cfg.chainName,
+    );
+  } catch (e) {
+    if (!cfg.binarySearchOnLocateFailure) throw e;
+    return locateEvmBlockBinarySearch(c, head, t, expired, cfg.chainName);
+  }
+}
 
 async function readEvmPayerOutgoing(
   c: EvmLogClient,
@@ -277,8 +467,8 @@ async function readEvmPayerOutgoing(
   };
   try {
     const [fromAt, toAt] = await Promise.all([
-      locateEvmBlock(c, head, from, cfg.blockSeconds, cfg.toleranceSeconds, expiredLocate, cfg.chainName),
-      locateEvmBlock(c, head, windowTo, cfg.blockSeconds, cfg.toleranceSeconds, expiredLocate, cfg.chainName),
+      locateBlockForPayerReconcile(c, head, from, cfg, expiredLocate),
+      locateBlockForPayerReconcile(c, head, windowTo, cfg, expiredLocate),
     ]);
     const fromBlock = fromAt - cfg.marginBlocks < 0n ? 0n : fromAt - cfg.marginBlocks;
     const toBlock = toAt + cfg.marginBlocks > head.number ? head.number : toAt + cfg.marginBlocks;
@@ -771,6 +961,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     toleranceSeconds: 30,
     chainName: "Avalanche",
     client: () => rpcClient(avalanche, process.env.AVALANCHE_RPC_URL?.trim(), 20_000),
+    binarySearchOnLocateFailure: true,
   }),
   [ARC_CAIP2]: makeEvmPayerOutgoingReader({
     network: ARC_CAIP2,
@@ -813,6 +1004,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     toleranceSeconds: 30,
     chainName: "Robinhood",
     client: () => robinhoodClient(20_000),
+    binarySearchOnLocateFailure: true,
   }),
 };
 

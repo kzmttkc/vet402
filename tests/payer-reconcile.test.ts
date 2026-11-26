@@ -25,12 +25,15 @@ import { exclusionReasonForPayerTransfer, type OwnWalletContext } from "@/lib/se
 import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile-network";
 import {
   formatPayerOutgoingFailure,
+  locateEvmBlockBinarySearch,
   makeBasePayerOutgoingReader,
   makeEvmPayerOutgoingReader,
   makeStellarPayerOutgoingReader,
   payerOutgoingFail,
   payerOutgoingOk,
+  PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS,
 } from "@/lib/settlements/payer-outgoing-readers";
+import { BlockscoutUnavailableError } from "@/lib/chain/blockscout";
 import {
   ARC_TRANSFER_READ_CHUNK_BLOCKS,
   ARC_TRANSFER_READ_MARGIN_BLOCKS,
@@ -41,6 +44,7 @@ import { AVALANCHE_CHAIN_ID, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanch
 import { ROBINHOOD_CAIP2 } from "@/lib/observatory/evm-lane-ingest";
 import { redactForLog } from "@/lib/observatory/redact";
 import { isGetLogsRetryableLimitError, getLogsChunked, __resetLearnedRangeCapsForTests } from "@/lib/chain/chunked-logs";
+import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
 import { ARC_GATEWAY_WALLET } from "@/lib/observatory/arc-gateway";
 import { ARC_CAIP2 } from "@/lib/chain/arc";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
@@ -773,7 +777,9 @@ test("Base fromBlock > toBlock → unavailable (not empty ok)", async () => {
       throw new Error("getLogs should not run");
     },
   };
-  const reader = makeBasePayerOutgoingReader(client as never);
+  const reader = makeBasePayerOutgoingReader(client as never, async () => {
+    throw new BlockscoutUnavailableError("blockscout_unavailable");
+  });
   const to = new Date();
   const from = new Date(to.getTime() - 48 * 60 * 60 * 1000);
   const out = await reader({ network: EVM, payer: EVM_PAYER, from, to, timeoutMs: 5_000 });
@@ -861,7 +867,7 @@ test("locateEvmBlock failure includes head block and time", async () => {
   );
 });
 
-test("Avalanche payer outgoing: block locate failure detail carries head", async () => {
+test("Avalanche payer outgoing: locate miss falls back to binary search", async () => {
   const headTs = 1_700_000_000n;
   const headNum = 1_000_000n;
   const reader = makeEvmPayerOutgoingReader({
@@ -873,12 +879,15 @@ test("Avalanche payer outgoing: block locate failure detail carries head", async
     blockSeconds: 0.97,
     toleranceSeconds: 30,
     chainName: "Avalanche",
+    binarySearchOnLocateFailure: true,
     client: () =>
       ({
         getChainId: async () => AVALANCHE_CHAIN_ID,
         getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
           if (q.blockTag === "latest") return { number: headNum, timestamp: headTs };
-          return { number: q.blockNumber ?? 0n, timestamp: headTs };
+          const n = q.blockNumber ?? 0n;
+          const behind = Number(headNum - n);
+          return { number: n, timestamp: headTs - BigInt(behind) };
         },
         getLogs: async () => [],
       }) as never,
@@ -890,12 +899,7 @@ test("Avalanche payer outgoing: block locate failure detail carries head", async
     to: new Date(Number(headTs) * 1000 - 60 * 60 * 1000),
     timeoutMs: 5_000,
   });
-  assert.equal(out.ok, false);
-  if (!out.ok) {
-    assert.match(out.detail, /could not locate the Avalanche block/);
-    assert.match(out.detail, /head_block=1000000/);
-    assert.match(out.detail, /head_time=/);
-  }
+  assert.equal(out.ok, true);
 });
 
 test("Arc payer getLogs retries -32005 rate limit", async () => {
@@ -943,7 +947,7 @@ test("Arc payer getLogs retries -32005 rate limit", async () => {
   assert.ok(calls >= 3, `expected retries, got ${calls} getLogs calls`);
 });
 
-test("Robinhood payer outgoing uses locateEvmBlock (head in locate failure)", async () => {
+test("Robinhood payer outgoing: binary search after flat locate estimate", async () => {
   const headTs = 1_700_000_000n;
   const headNum = 50_000n;
   const reader = makeEvmPayerOutgoingReader({
@@ -955,12 +959,15 @@ test("Robinhood payer outgoing uses locateEvmBlock (head in locate failure)", as
     blockSeconds: 2,
     toleranceSeconds: 30,
     chainName: "Robinhood",
+    binarySearchOnLocateFailure: true,
     client: () =>
       ({
         getChainId: async () => 4663,
         getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
           if (q.blockTag === "latest") return { number: headNum, timestamp: headTs };
-          return { number: q.blockNumber ?? 0n, timestamp: headTs };
+          const n = q.blockNumber ?? 0n;
+          const behind = Number(headNum - n);
+          return { number: n, timestamp: headTs - BigInt(behind * 2) };
         },
         getLogs: async () => [],
       }) as never,
@@ -972,6 +979,245 @@ test("Robinhood payer outgoing uses locateEvmBlock (head in locate failure)", as
     to: new Date(Number(headTs) * 1000 - 60 * 60 * 1000),
     timeoutMs: 5_000,
   });
+  assert.equal(out.ok, true);
+});
+
+test("locateEvmBlockBinarySearch finds block at or before target on sparse timestamps", async () => {
+  const headTs = 2_000_000n;
+  const headNum = 10_000n;
+  const client = {
+    getBlock: async ({ blockNumber }: { blockNumber: bigint }) => {
+      const gap = 5;
+      const block = Number(blockNumber);
+      const ts = headTs - BigInt(Math.floor((Number(headNum) - block) / gap) * gap);
+      return { number: blockNumber, timestamp: ts };
+    },
+  };
+  const target = new Date(Number(headTs - 400n) * 1000);
+  const n = await locateEvmBlockBinarySearch(client as never, { number: headNum, timestamp: headTs }, target, () => {}, "Test");
+  const block = await client.getBlock({ blockNumber: n });
+  assert.ok(Number(block.timestamp) * 1000 <= target.getTime());
+  const newer = await client.getBlock({ blockNumber: n + 1n });
+  assert.ok(Number(newer.timestamp) * 1000 > target.getTime() || n === headNum);
+});
+
+test("locateEvmBlockBinarySearch throws when iteration cap is hit", async () => {
+  const headTs = 2_000_000n;
+  const client = {
+    getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+      number: blockNumber,
+      timestamp: headTs - blockNumber,
+    }),
+  };
+  await assert.rejects(
+    () =>
+      locateEvmBlockBinarySearch(
+        client as never,
+        { number: 1_000_000n, timestamp: headTs },
+        new Date(Number(headTs - 500_000n) * 1000),
+        () => {},
+        "Test",
+        3,
+      ),
+    (e: Error) => {
+      assert.match(e.message, /binary search iteration cap/);
+      return true;
+    },
+  );
+});
+
+test("Base payer Blockscout v2: cursor pages descend to window start", async () => {
+  const windowFrom = new Date("2026-11-25T00:00:00.000Z");
+  const windowTo = new Date("2026-11-26T00:00:00.000Z");
+  const fromSec = Math.floor(windowFrom.getTime() / 1000);
+  const toSec = Math.floor(windowTo.getTime() / 1000);
+  const midSec = Math.floor((fromSec + toSec) / 2);
+  const inWindowRow = {
+    hash: "0xIN",
+    timeStamp: String(midSec),
+    from: EVM_PAYER,
+    to: "0xdest2",
+    value: "2000000",
+    blockNumber: "101",
+  };
+  const padRow = (i: number) => ({
+    hash: `0xPAD${i}`,
+    timeStamp: String(toSec + 60),
+    from: EVM_PAYER,
+    to: "0xdest",
+    value: "1",
+    blockNumber: String(200 + i),
+  });
+  const page1Rows = Array.from({ length: 49 }, (_, i) => padRow(i)).concat([inWindowRow]);
+  const page2Rows = [
+    {
+      hash: "0xOLD",
+      timeStamp: String(fromSec - 60),
+      from: EVM_PAYER,
+      to: "0xdest3",
+      value: "3",
+      blockNumber: "50",
+    },
+  ];
+  let pageCalls = 0;
+  let getBlockCalls = 0;
+  const reader = makeBasePayerOutgoingReader(
+    {
+      getChainId: async () => 8453,
+      getBlock: async () => {
+        getBlockCalls++;
+        throw new Error("RPC head should not run after Blockscout");
+      },
+      getLogs: async () => {
+        throw new Error("getLogs should not run");
+      },
+    } as never,
+    async (_addr, opts) => {
+      pageCalls++;
+      if (!opts.cursor) {
+        return {
+          rows: page1Rows,
+          rawItemCount: 50,
+          pageOldestSec: midSec,
+          nextCursor: { block_number: "100" },
+        };
+      }
+      return {
+        rows: page2Rows,
+        rawItemCount: 1,
+        pageOldestSec: fromSec - 60,
+        nextCursor: null,
+      };
+    },
+    async () => windowTo.getTime(),
+  );
+  const out = await reader({
+    network: EVM,
+    payer: EVM_PAYER,
+    from: windowFrom,
+    to: windowTo,
+    timeoutMs: 10_000,
+  });
+  assert.equal(out.ok, true);
+  if (out.ok) {
+    assert.equal(out.transfers.length, 1);
+    assert.equal(out.transfers[0]?.txHash, "0xIN");
+    assert.equal(out.readThroughMs, undefined);
+  }
+  assert.equal(pageCalls, 2);
+  assert.equal(getBlockCalls, 0);
+});
+
+test("Base payer Blockscout: scan incomplete uses raw count before token filter", async () => {
+  let getLogsCalled = false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const reader = makeBasePayerOutgoingReader(
+    {
+      getChainId: async () => 8453,
+      getBlock: async () => ({ number: 1n, timestamp: BigInt(nowSec) }),
+      getLogs: async () => {
+        getLogsCalled = true;
+        return [];
+      },
+    } as never,
+    async () => ({
+      rows: [],
+      rawItemCount: 50,
+      pageOldestSec: nowSec,
+      nextCursor: { block_number: "1" },
+    }),
+    async () => nowSec * 1000,
+  );
+  const out = await reader({
+    network: EVM,
+    payer: EVM_PAYER,
+    from: new Date("2020-01-01T00:00:00.000Z"),
+    to: new Date("2026-11-26T00:00:00.000Z"),
+    timeoutMs: 10_000,
+  });
   assert.equal(out.ok, false);
-  if (!out.ok) assert.match(out.detail, /could not locate the Robinhood block.*head_block=50000/);
+  if (!out.ok) assert.match(out.detail, /blockscout_scan_incomplete/);
+  assert.equal(getLogsCalled, false);
+});
+
+test("Base payer Blockscout: indexed head behind window → node_behind_window", async () => {
+  const now = new Date("2026-11-26T10:00:00.000Z");
+  const { to: windowTo } = payerReconcileWindow(now, new Date("2026-11-26T08:00:00.000Z"));
+  const indexedBehind = new Date(windowTo.getTime() - 6 * 60 * 60 * 1000);
+
+  const result = await runPayerReconcile({
+    now,
+    persistRun: noopPersist,
+    deadlineAt: FAR_FUTURE_DEADLINE,
+    loadRecoverLateLastSuccess: async () => new Date("2026-11-26T08:00:00.000Z"),
+    loadNetworks: async () => [{ network: EVM, payer: EVM_PAYER }],
+    loadTxHashes: async () => new Set(),
+    readOutgoing: makeBasePayerOutgoingReader(
+      {
+        getChainId: async () => 8453,
+        getBlock: async () => {
+          throw new Error("RPC head should not run");
+        },
+        getLogs: async () => [],
+      } as never,
+      async () => ({
+        rows: [],
+        rawItemCount: 0,
+        pageOldestSec: null,
+        nextCursor: null,
+      }),
+      async () => indexedBehind.getTime(),
+    ),
+    ownWallets: emptyOwn,
+  });
+
+  const c = result.chains[0];
+  assert.equal(c?.status, "unavailable");
+  assert.equal(c?.status === "unavailable" && c.reason, "node_behind_window");
+  assert.equal(c?.status === "unavailable" && c.windowTo, indexedBehind.toISOString());
+  assert.equal(result.ok, false);
+});
+
+test("Base payer falls back to RPC getLogs when Blockscout is unavailable", async () => {
+  let getLogsCalled = false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headTs = BigInt(nowSec);
+  const headNum = firstBlockAtOrAfter(BASE_BLOCK_TIME_SCHEDULE, nowSec) + 1000n;
+  const reader = makeBasePayerOutgoingReader(
+    {
+      getChainId: async () => 8453,
+      getBlockNumber: async () => headNum,
+      getBlock: async (q: { blockTag?: string; blockNumber?: bigint }) => {
+        if (q.blockTag === "latest") return { number: headNum, timestamp: headTs };
+        return { number: q.blockNumber ?? 0n, timestamp: headTs };
+      },
+      getLogs: async () => {
+        getLogsCalled = true;
+        return [
+          {
+            blockNumber: 100n,
+            transactionHash: "0xrpc",
+            args: { from: EVM_PAYER, to: "0xdest", value: 5_000_000n },
+          },
+        ];
+      },
+    } as never,
+    async () => {
+      throw new BlockscoutUnavailableError("blockscout_http_503");
+    },
+    async () => {
+      throw new Error("indexed head should not run when transfer read falls back to RPC");
+    },
+  );
+  const now = Date.now();
+  const out = await reader({
+    network: EVM,
+    payer: EVM_PAYER,
+    from: new Date(now - 3_600_000),
+    to: new Date(now - 1_800_000),
+    timeoutMs: 15_000,
+  });
+  assert.equal(getLogsCalled, true);
+  assert.equal(out.ok, true);
+  if (out.ok) assert.equal(out.transfers[0]?.txHash, "0xrpc");
 });

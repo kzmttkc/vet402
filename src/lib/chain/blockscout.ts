@@ -617,6 +617,98 @@ export async function fetchAddressTransactionCount(
   }
 }
 
+/** Blockscout が取り込み済みの最新ブロック時刻（ms）。照合の readThrough 用（RPC 先頭は使わない）。 */
+export async function fetchBlockscoutIndexedHeadMs(chainId?: number, budgetMs?: number): Promise<number> {
+  // 2026-11-26 点検: v2 の /blocks だけを使う。v1 に戻ると採点と共有の締め出しを開きうるうえ、
+  // proxy eth_blockNumber は取り込み済みではなくノードの先頭を返すので、取り込みの遅れを隠す。
+  const data = await blockscoutV2GetOnce<{ items: { timestamp?: string }[] }>(
+    "/blocks",
+    { limit: "1" },
+    chainId,
+    budgetMs,
+  );
+  const iso = data.items?.[0]?.timestamp;
+  const ms = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(ms)) {
+    throw new BlockscoutUnavailableError("blockscout_indexed_head_unavailable");
+  }
+  return ms;
+}
+
+export type PayerTokenTransfersV2Page = {
+  rows: BlockscoutTx[];
+  /** API が返した items 件数（トークン・払い手で絞る前）。 */
+  rawItemCount: number;
+  /** 同ページの最古 transfer 時刻（秒）。窓の始端判定用。 */
+  pageOldestSec: number | null;
+  nextCursor: Record<string, string> | null;
+};
+
+/**
+ * payer-reconcile 専用: v2 token-transfers を新しい順に 1 ページ。（v1 tokentx は採点用のまま。）
+ */
+export async function fetchPayerTokenTransfersV2Page(
+  address: Address,
+  contractAddress: Address,
+  options: {
+    chainId?: number;
+    budgetMs?: number;
+    cursor?: Record<string, string> | null;
+  } = {},
+): Promise<PayerTokenTransfersV2Page> {
+  const wanted = contractAddress.toLowerCase();
+  const baseParams: Record<string, string> = {
+    token: contractAddress,
+    type: "ERC-20",
+  };
+  let params = { ...baseParams };
+  if (options.cursor) {
+    for (const [key, value] of Object.entries(options.cursor)) {
+      if (value !== null && value !== undefined) params[key] = String(value);
+    }
+  }
+  const data = await blockscoutV2Get<{ items: V2TokenTransfer[]; next_page_params?: Record<string, string | number | null> | null }>(
+    `/addresses/${address}/token-transfers`,
+    params,
+    options.chainId,
+    options.budgetMs,
+  );
+  const items = data.items ?? [];
+  const rows: BlockscoutTx[] = [];
+  let pageOldestSec: number | null = null;
+  for (const item of items) {
+    const iso = item.timestamp;
+    if (iso) {
+      const sec = Math.floor(Date.parse(iso) / 1000);
+      if (Number.isFinite(sec) && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
+    }
+    const token = (item.token?.address_hash ?? item.token?.address)?.toLowerCase();
+    if (token !== wanted) continue;
+    const from = item.from?.hash;
+    const to = item.to?.hash;
+    const value = item.total?.value;
+    if (!from || !to || value === undefined || value === null) continue;
+    rows.push({
+      hash: item.transaction_hash ?? "",
+      blockNumber: String(item.block_number ?? 0),
+      timeStamp: toEpochSeconds(item.timestamp),
+      from,
+      to,
+      value,
+    });
+  }
+  const next = data.next_page_params;
+  let nextCursor: Record<string, string> | null = null;
+  if (next && typeof next === "object") {
+    nextCursor = {};
+    for (const [key, value] of Object.entries(next)) {
+      if (value !== null && value !== undefined) nextCursor[key] = String(value);
+    }
+    if (Object.keys(nextCursor).length === 0) nextCursor = null;
+  }
+  return { rows, rawItemCount: items.length, pageOldestSec, nextCursor };
+}
+
 // ---- v2 transfer reads ------------------------------------------------------
 /**
  * WHY THESE EXIST (2026-08-13). The payee engine's drain check used to make
