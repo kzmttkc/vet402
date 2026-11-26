@@ -428,10 +428,15 @@ export async function getLogsChunked(
     deadlineMs?: number;
     /** Override the env pacing delay (batch pacing must not leak into live requests). */
     delayMs?: number;
+    signal?: AbortSignal;
   },
 ): Promise<ChainLog[]> {
+  const abortIfNeeded = () => {
+    if (options?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  };
   const deadline =
     options?.deadlineMs === undefined ? undefined : createDeadline(options.deadlineMs);
+  abortIfNeeded();
   const toBlock = await resolveToBlock(client, params.toBlock);
   const fromBlock = params.fromBlock;
   const { fromBlock: _ignoredFrom, toBlock: _ignoredTo, ...rest } = params;
@@ -462,6 +467,7 @@ export async function getLogsChunked(
     const results: ChainLog[] = [];
     for (let i = 0; i < ranges.length; i++) {
       const { start, end } = ranges[i]!;
+      abortIfNeeded();
       deadline?.throwIfExpired("getLogsChunked");
       const logs = await fetchRange(client, rest, start, end, 0, deadline);
       results.push(...logs);
@@ -478,7 +484,10 @@ export async function getLogsChunked(
   const perChunk = await mapWithConcurrency(
     ranges,
     effectiveConcurrency,
-    ({ start, end }) => fetchRange(client, rest, start, end, 0, deadline),
+    ({ start, end }) => {
+      abortIfNeeded();
+      return fetchRange(client, rest, start, end, 0, deadline);
+    },
   );
 
   const results: ChainLog[] = [];

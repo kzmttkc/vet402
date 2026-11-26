@@ -153,6 +153,10 @@
       "schedule": "0 14 * * *"
     },
     {
+      "path": "/api/cron/payer-reconcile",
+      "schedule": "30 14 * * *"
+    },
+    {
       "schedule": "0 13 * * *",
       "path": "/api/cron/index-settlements"
     },

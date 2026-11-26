@@ -1864,3 +1864,15 @@ export const nearaiHeldTargets = pgTable("nearai_held_targets", {
   failureClass: text("failure_class").notNull(),
   confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull(),
 });
+
+/** 払い手照合 cron の実行記録（監視用）。SQL: scripts/sql/2026-11-26-payer-reconcile.sql */
+export const payerReconcileRuns = pgTable("payer_reconcile_runs", {
+  id: serial("id").primaryKey(),
+  ranAt: timestamp("ran_at", { withTimezone: true }).notNull(),
+  ok: boolean("ok").notNull(),
+  totalUnrecorded: integer("total_unrecorded").notNull(),
+  totalPending: integer("total_pending").notNull(),
+  windowFrom: timestamp("window_from", { withTimezone: true }).notNull(),
+  windowTo: timestamp("window_to", { withTimezone: true }).notNull(),
+  chainsJson: jsonb("chains_json").notNull(),
+});
