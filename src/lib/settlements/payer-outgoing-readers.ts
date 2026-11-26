@@ -11,6 +11,7 @@ import {
   type PayerTokenTransfersV2Page,
 } from "@/lib/chain/blockscout";
 import { getLogScanClient } from "@/lib/chain/client";
+import { AlchemyUnavailableError, fetchAssetTransfersPage, isAlchemyEnabled } from "@/lib/chain/alchemy";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
@@ -282,7 +283,8 @@ async function readBasePayerOutgoingViaBlockscout(
       reachedPastWindow = true;
       break;
     }
-    if (page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE || !page.nextCursor) {
+    // 次のページの鍵が無ければ終わり。Blockscout は満たないページで終わる（Alchemy は満たないページでも pageKey を返しうる）。
+    if (!page.nextCursor || (fetchPage !== alchemyBasePayerFetch && page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE)) {
       reachedPastWindow = true;
       break;
     }
@@ -346,6 +348,34 @@ async function readBasePayerOutgoingViaRpc(
   return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
 }
 
+/**
+ * Base の払い手の USDC 送金を Alchemy の alchemy_getAssetTransfers（fromAddress・新しい順・pageKey）で読む。
+ * readBasePayerOutgoingViaBlockscout と同じページの形で返し、窓の判定はそちらに任せる（2026-11-27:
+ * base.blockscout.com が Cloudflare の確認画面で 403 を返し、公開 RPC は getLogs を回数で断った）。
+ */
+export const alchemyBasePayerFetch: BasePayerBlockscoutFetch = async (payer, opts) => {
+  const page = await fetchAssetTransfersPage({
+    address: payer,
+    direction: "from",
+    categories: ["erc20"],
+    contractAddress: opts.contractAddress,
+    limit: 1000,
+    order: "desc",
+    chainId: opts.chainId,
+    budgetMs: opts.budgetMs,
+    pageKey: opts.cursor?.pageKey ?? null,
+  });
+  let pageOldestSec: number | null = null;
+  const rows = page.transfers.map((t) => {
+    const sec = Number(t.timeStamp);
+    // 時刻の無い行は窓の外として捨てると、記録に無い送金を黙って見逃す。読めなかったことにして従来の読み先へ戻す。
+    if (!Number.isFinite(sec) || sec <= 0) throw new AlchemyUnavailableError("alchemy_missing_block_timestamp");
+    if (Number.isFinite(sec) && sec > 0 && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
+    return { hash: t.hash, blockNumber: t.blockNumber, timeStamp: t.timeStamp, from: t.from, to: t.to, value: t.value };
+  });
+  return { rows, rawItemCount: page.rawCount, pageOldestSec, nextCursor: page.pageKey ? { pageKey: page.pageKey } : null };
+};
+
 export function makeBasePayerOutgoingReader(
   client?: EvmLogClient,
   blockscoutFetch?: BasePayerBlockscoutFetch,
@@ -358,6 +388,17 @@ export function makeBasePayerOutgoingReader(
     if (!BASE_NETWORK_KEYS.includes(network)) return payerOutgoingFail("wrong_network");
     throwIfAborted(signal);
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    // Alchemy の鍵がある本番では、まず Alchemy で読む（差し替えの fetch を渡したテストは従来どおり）。
+    // 索引は最新のブロックまでなので、読めた窓をそのまま返す。読めなければ従来の Blockscout → RPC へ。
+    if (!blockscoutFetch && isAlchemyEnabled(BASE_CHAIN_ID)) {
+      try {
+        const viaAlchemy = await readBasePayerOutgoingViaBlockscout(payer, from, to, deadline, signal, alchemyBasePayerFetch);
+        if (viaAlchemy.ok) return viaAlchemy;
+      } catch (e) {
+        // 読めなかった（AlchemyUnavailableError ほか）: 止めずに従来の読み先へ。中断だけは従来どおり投げる。
+        if (!(e instanceof AlchemyUnavailableError)) throwIfAborted(signal);
+      }
+    }
     try {
       const blockscout = await readBasePayerOutgoingViaBlockscout(payer, from, to, deadline, signal, fetchPage);
       if (!blockscout.ok) return blockscout;
