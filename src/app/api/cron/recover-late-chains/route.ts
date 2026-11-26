@@ -6,20 +6,21 @@ import { readAuthorizationNonces, readAuthorizationState } from "@/lib/observato
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
 
-// 遅延回収のチェーン直読み——Tempo・Arc・Solana のレーン（2026-11-03・数字の監査 結論 #1 型 (a)）。
+// 遅延回収のチェーン直読み——Tempo・Arc・Solana・Stellar のレーン（2026-11-03・数字の監査 結論 #1 型 (a); Stellar は 2026-11-26）。
 //
 // なぜ index-settlements と分けるか: あちらは索引の段（EVM 120 + Solana 60 + XRPL 20 秒）と Base の直読み（45 秒）の後ろに
-// Celo / BNB / Arbitrum / Avalanche の直読みを並べていて、締切（285 秒）までの残りで頭打ちになる。そこへ 3 本足すと、
-// 索引が長引いた日は一度も読まれない。ここは自分の 300 秒を持ち、3 本のレーンに 30 秒ずつ（締切で頭打ち）を配る。
+// Celo / BNB / Arbitrum / Avalanche の直読みを並べていて、締切（285 秒）までの残りで頭打ちになる。そこへこれらを足すと、
+// 索引が長引いた日は一度も読まれない。ここは自分の 300 秒を持ち、4 本のレーンに 30 秒ずつ（締切で頭打ち）を配る。
 // 索引の段（SQL だけ・索引に載った着金を貼る）と売り手の名指した tx の昇格も走るが、どちらも冪等で、同じ日に 2 回走っても
 // 貼る行は 1 回しか貼れない（部分一意 index・RECOVERABLE_ROW の読み直し）。
 //
 // 時刻（vercel.json）: index-settlements（13:00 UTC）の後・verify-settlements（14:00 UTC）の前。貼った行は settle_claimed で、
 // 照合器が同じ日に settled にする。読み手: TEMPO_RPC_URL・ARC_RPC_URL・SOLANA_RPC_URL が無いレーンは何も読まない（行を変えない）。
+// Stellar は Horizon（既定 https://horizon.stellar.org。STELLAR_HORIZON_URL があればそちら）を読む。
 export const maxDuration = 300;
 
 /** この cron が走らせるレーン。index-settlements の lanes と重ねない。 */
-const RECOVER_LATE_CHAINS_LANES = ["tempo", "arc", "solana"] as const;
+const RECOVER_LATE_CHAINS_LANES = ["tempo", "arc", "solana", "stellar"] as const;
 
 export async function GET(request: NextRequest) {
   if (!authorizeCron(request)) {

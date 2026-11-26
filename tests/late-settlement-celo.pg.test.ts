@@ -455,6 +455,7 @@ if (!TEST_DB) {
         ["tempo", ["eip155:4217"], true, false],
         ["arc", ["eip155:5042"], true, true],
         ["solana", ["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"], true, false],
+        ["stellar", ["stellar:pubnet"], false, false],
       ]);
     });
 
@@ -707,6 +708,7 @@ if (!TEST_DB) {
         ["tempo", true, true],
         ["arc", true, true],
         ["solana", true, true],
+        ["stellar", false, true],
       ]);
       assert.equal(late.CHAIN_READ_BUDGET_MS, 45_000, "Base の持ち時間は変えていない");
       assert.equal(late.CELO_CHAIN_READ_BUDGET_MS, 30_000);
