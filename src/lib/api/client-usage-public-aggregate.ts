@@ -86,3 +86,21 @@ export function utcWeekStart(day: string): string {
   const back = (d.getUTCDay() + 6) % 7;
   return new Date(d.getTime() - back * 86_400_000).toISOString().slice(0, 10);
 }
+
+/**
+ * 行から週ごとの外からの呼び出しを足し上げる。windowStart より前に始まる週は途中からの合計になるので出さない。
+ */
+export function weeklyExternalFromRows(
+  rows: readonly { day: string; client: string; route: string; count: number }[],
+  windowStart: string,
+): PublicApiUsageWeek[] {
+  const byWeek = new Map<string, number>();
+  for (const r of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.day)) continue;
+    if (!isExternalUsageRow(r.client, r.route)) continue;
+    const w = utcWeekStart(r.day);
+    if (w < windowStart) continue;
+    byWeek.set(w, (byWeek.get(w) ?? 0) + (Number(r.count) || 0));
+  }
+  return [...byWeek.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([weekStart, externalCalls]) => ({ weekStart, externalCalls }));
+}

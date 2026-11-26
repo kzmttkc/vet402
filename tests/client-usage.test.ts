@@ -594,3 +594,20 @@ test("weekly external calls leave out own monitors, the site, crawlers and MCP h
   assert.equal(isExternalUsageRow("Googlebot/2.1", "decision"), false);
   assert.equal(isExternalUsageRow("self-monitor", "rest:check"), false);
 });
+
+test("weeklyExternalFromRows sums whole weeks only: a week that starts before the window is left out (2026-11-27)", async () => {
+  const { weeklyExternalFromRows, utcWeekStart } = await import("@/lib/api/client-usage-public-aggregate");
+  assert.equal(utcWeekStart("2026-01-01"), "2025-12-29");
+  const rows = [
+    { day: "2026-11-15", client: "other", route: "rest:check", count: 9 },
+    { day: "2026-11-16", client: "other", route: "rest:check", count: 5 },
+    { day: "2026-11-22", client: "cursor", route: "mcp:check_x402_seller", count: 2 },
+    { day: "2026-11-22", client: "other", route: "mcp:initialize", count: 100 },
+    { day: "2026-11-23", client: "site", route: "decision", count: 50 },
+    { day: "2026-11-23", client: "vet402-sdk/0.7.2", route: "decision", count: 1 },
+  ];
+  assert.deepEqual(weeklyExternalFromRows(rows, "2026-11-12"), [
+    { weekStart: "2026-11-16", externalCalls: 7 },
+    { weekStart: "2026-11-23", externalCalls: 1 },
+  ]);
+});
