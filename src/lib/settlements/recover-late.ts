@@ -202,8 +202,15 @@ export type NonceReader = (input: { network: string; txHash: string; payer: stri
 /** 認可がチェーンで使われたか。true＝使われた、false＝使われていない、null＝読めない（settlement-verify の readAuthorizationState）。 */
 export type AuthorizationStateReader = (input: { network: string; payer: string; nonce: string }) => Promise<boolean | null>;
 
-/** チェーンから直接読んだ USDC の Transfer（blockTime は ISO8601 UTC）。 */
-export type ChainTransfer = { txHash: string; from: string; to: string; value: string; blockTime: string };
+/** チェーンから直接読んだ USDC の Transfer（blockTime は ISO8601 UTC。未解決時は空文字）。 */
+export type ChainTransfer = {
+  txHash: string;
+  from: string;
+  to: string;
+  value: string;
+  blockTime: string;
+  blockNumber?: bigint;
+};
 /** from → to の USDC Transfer を時刻の窓で読む。対象外のチェーン・読めないときは null（＝貼らない・読んだ印も付けない）。 */
 export type TransferReader = (q: {
   network: string;
