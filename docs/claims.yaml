@@ -2514,3 +2514,10 @@ claims:
     check: null
     why_unverifiable: "契約は docs/bazaar-delivery-field.md・tests/bazaar-delivery.test.ts と tests/bazaar-delivery.pg.test.ts が固定する"
     verified_at: 2026-11-25
+  - id: endpoints_settled_not_delivered_definition
+    surface: src/app/observatory/methodology/page.tsx
+    quote: "whose settled rows are all held as inconclusive"
+    means: "l1.endpointsSettled − l1.endpointsDelivered は、settled が1行以上あって delivered が1行も無い endpoint の数。settled の行が全部 inconclusive（settled_4xx）で保留の endpoint も含む。src/lib/observatory/reader.ts の endpoints_settled と endpoints_delivered は同じ表・同じ WHERE で、delivered の条件は settled を含む。"
+    check: null
+    why_unverifiable: "src/lib/observatory/reader.ts の集計の SQL が数え方を固定する。独立の点検で照合済み（2026-11-26）"
+    verified_at: 2026-11-26
