@@ -4663,6 +4663,18 @@ paths:
                     properties:
                       retrievedAt: { type: string, format: date-time }
                       note: { type: string }
+                      weeklyExternalNote: { type: string, description: What weeklyExternal leaves out. }
+                      weeklyExternal:
+                        type: array
+                        description: >-
+                          Calls without an API key per UTC week starting Monday, every route, leaving out
+                          vet402's own monitors and observatory clients, vet402's own site, crawlers, and MCP
+                          connection handshakes that call no tool (mcp:initialize).
+                        items:
+                          type: object
+                          properties:
+                            weekStart: { type: string, format: date }
+                            externalCalls: { type: integer }
                       byDay:
                         type: array
                         items:

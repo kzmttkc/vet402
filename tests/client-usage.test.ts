@@ -579,3 +579,18 @@ test("MCP check_x402_seller: network が分かるとき client_usage_daily_netwo
   await tasks[0]();
   assert.ok(seen.some((s) => s.includes("client_usage_daily_network") && s.includes("eip155:42220")));
 });
+
+test("weekly external calls leave out own monitors, the site, crawlers and MCP handshakes; weeks start on UTC Monday (2026-11-27)", async () => {
+  const { isExternalUsageRow, utcWeekStart } = await import("@/lib/api/client-usage-public-aggregate");
+  assert.equal(utcWeekStart("2026-11-16"), "2026-11-16");
+  assert.equal(utcWeekStart("2026-11-22"), "2026-11-16");
+  assert.equal(utcWeekStart("2026-11-23"), "2026-11-23");
+  assert.equal(isExternalUsageRow("other", "rest:check"), true);
+  assert.equal(isExternalUsageRow("cursor", "mcp:check_x402_seller"), true);
+  assert.equal(isExternalUsageRow("vet402-sdk/0.7.2", "decision"), true);
+  assert.equal(isExternalUsageRow("other", "mcp:initialize"), false);
+  assert.equal(isExternalUsageRow("site", "decision"), false);
+  assert.equal(isExternalUsageRow("crawler", "decision"), false);
+  assert.equal(isExternalUsageRow("Googlebot/2.1", "decision"), false);
+  assert.equal(isExternalUsageRow("self-monitor", "rest:check"), false);
+});

@@ -63,3 +63,26 @@ export function addPublicClientUsageRow(
   next[bucket] += n;
   return next;
 }
+
+/**
+ * 週ごとの外からの呼び出し（2026-11-27・申請文の基準を公開の口で再現できるように）。
+ * 数えないもの: vet402 自身の監視と観測所（isExcludedPublicClient）、自サイト（client=site）、
+ * crawler（client=crawler か、client に bot・crawl・spider・slurp を含む）、道具を呼ばない MCP の接続（route=mcp:initialize）。
+ * 週は UTC の月曜始まり。
+ */
+export type PublicApiUsageWeek = { weekStart: string; externalCalls: number };
+
+const CRAWLER_RE = /bot|crawl|spider|slurp/i;
+
+export function isExternalUsageRow(client: string, route: string): boolean {
+  if (isExcludedPublicClient(client)) return false;
+  if (client === "site" || client === "crawler" || CRAWLER_RE.test(client)) return false;
+  if (route === "mcp:initialize") return false;
+  return true;
+}
+
+export function utcWeekStart(day: string): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  const back = (d.getUTCDay() + 6) % 7;
+  return new Date(d.getTime() - back * 86_400_000).toISOString().slice(0, 10);
+}
