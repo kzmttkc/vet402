@@ -1259,3 +1259,30 @@ test("Base payer reader: Alchemy first when its key is set (2026-11-27 base.bloc
     else process.env.ALCHEMY_API_KEY = prevKey;
   }
 });
+
+test("Base payer reader: an Alchemy row without a block time is not dropped; the read falls back instead (2026-11-27)", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  let alchemyCalls = 0;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes("base-mainnet.g.alchemy.com")) {
+      alchemyCalls++;
+      const body = JSON.parse(String(init?.body));
+      const t = { uniqueId: "0xdd:log:0", hash: "0xdd", blockNum: "0x10", from: EVM_PAYER.toLowerCase(), to: "0x000000000000000000000000000000000000beef", category: "erc20", rawContract: { value: "0x01" }, metadata: {} };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { transfers: [t] } }), { status: 200 });
+    }
+    return new Response("<!DOCTYPE html>Just a moment...", { status: 403 });
+  }) as typeof fetch;
+  const client = { getChainId: async () => { throw new Error("rpc refused"); } };
+  try {
+    const out = await makeBasePayerOutgoingReader(client as never)({ network: EVM, payer: EVM_PAYER, from: new Date("2026-11-23T20:00:00.000Z"), to: new Date("2026-11-25T20:00:00.000Z"), timeoutMs: 5_000 });
+    assert.equal(alchemyCalls, 1);
+    assert.equal(out.ok, false, "not an empty success");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});

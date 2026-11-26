@@ -368,6 +368,8 @@ export const alchemyBasePayerFetch: BasePayerBlockscoutFetch = async (payer, opt
   let pageOldestSec: number | null = null;
   const rows = page.transfers.map((t) => {
     const sec = Number(t.timeStamp);
+    // 時刻の無い行は窓の外として捨てると、記録に無い送金を黙って見逃す。読めなかったことにして従来の読み先へ戻す。
+    if (!Number.isFinite(sec) || sec <= 0) throw new AlchemyUnavailableError("alchemy_missing_block_timestamp");
     if (Number.isFinite(sec) && sec > 0 && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
     return { hash: t.hash, blockNumber: t.blockNumber, timeStamp: t.timeStamp, from: t.from, to: t.to, value: t.value };
   });
