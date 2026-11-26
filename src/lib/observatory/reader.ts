@@ -911,6 +911,11 @@ export type ObservatoryStats = {
     /** 理由別の内訳（和は inconclusive）。 */
     inconclusiveByReason: InconclusiveByReason;
     /**
+     * settled − delivered − inconclusiveSettled（2026-11-27）。決済が成立し、届かず、保留の 4xx でもない行
+     * （5xx・202・空の 2xx・HTTP 状態の記録なし）。引き算を読み手にさせず、照会を 1 欄で済ませる。
+     */
+    settledNotDelivered: number;
+    /**
      * settled のうち署名 nonce（EVM: EIP-3009 の authorization nonce / Solana: 我々が
      * 生成した memo）まで束縛できた件数。2026-09-05 監査 S-4 / S-17: settled を
      * 1 段で出していたので、2026-09-04 12:00 UTC より前の「金額・宛先の一致のみ」の
@@ -1091,6 +1096,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       delivered: 0,
       inconclusive: 0,
       inconclusiveSettled: 0,
+      settledNotDelivered: 0,
       inconclusiveByReason: { settled4xx: 0, unsettled4xx: 0, payerUnfunded: 0 },
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
@@ -1223,6 +1229,7 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
       delivered: 0,
       inconclusive: 0,
       inconclusiveSettled: 0,
+      settledNotDelivered: 0,
       inconclusiveByReason: { settled4xx: 0, unsettled4xx: 0, payerUnfunded: 0 } as InconclusiveByReason,
       settledNonceBound: 0,
       settledAmountPayeeOnly: 0,
@@ -1307,6 +1314,10 @@ export async function getObservatoryStats(): Promise<ObservatoryStats> {
           delivered: Number(l1List[0].delivered ?? 0),
           inconclusive: Number(l1List[0].inconclusive ?? 0),
           inconclusiveSettled: Number(l1List[0].inconclusive_settled ?? 0),
+          settledNotDelivered: Math.max(
+            0,
+            Number(l1List[0].settled) - Number(l1List[0].delivered ?? 0) - Number(l1List[0].inconclusive_settled ?? 0),
+          ),
           inconclusiveByReason: {
             settled4xx: Number(l1List[0].inconclusive_settled ?? 0),
             unsettled4xx: Number(l1List[0].inconclusive_unsettled_4xx ?? 0),

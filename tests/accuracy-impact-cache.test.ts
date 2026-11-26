@@ -128,6 +128,7 @@ const sampleObservatoryStats: ObservatoryStats = {
     inconclusive: 2,
     inconclusiveSettled: 1,
     inconclusiveByReason: { settled4xx: 1, unsettled4xx: 0, payerUnfunded: 0 },
+    settledNotDelivered: 4,
     settledNonceBound: 30,
     settledAmountPayeeOnly: 10,
     settledLateLinked: 5,
