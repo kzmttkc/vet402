@@ -428,8 +428,8 @@ test("privacy: Clarity の節（取るもの・Microsoft・EEA/UK/CH の同意�
   assert.doesNotMatch(section, /—/, "no em dash");
   const prose = section.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
   assert.doesNotMatch(prose, /\b[Ww]e\b|\bour\b|\bus\b/, "first person is I or vet402");
-  assert.match(src, /Revision: <span className="text-signal">November 16, 2026<\/span>/);
-  assert.match(src, /Last updated: November 16, 2026/);
+  assert.match(src, /Revision: <span className="text-signal">November 26, 2026<\/span>/);
+  assert.match(src, /Last updated: November 26, 2026/);
   assert.match(src, /<strong>Microsoft Clarity<\/strong>/, "listed among subprocessors and third parties");
   // 「Plausible だけ」「同意に頼らない」「cookie は 1 つ」の旧文は Clarity と食い違うので残さない。
   assert.doesNotMatch(src, /This is the\s+only third party our pages send information to/);

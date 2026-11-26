@@ -10,6 +10,7 @@ import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { RAW_RETENTION_DAYS } from "@/lib/settlements/rollup";
 import { rowsOf } from "@/lib/settlements/upsert";
 import { escapeLike } from "@/lib/util/like";
+import { usageChainOf } from "@/lib/api/decision-usage";
 import { classifyQuery, type QueryKind } from "./classify";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { canonicalIdForAlias } from "./aliases";
@@ -181,12 +182,29 @@ function endpointWhere(ref: string) {
 }
 
 export async function getEndpoint(ref: string): Promise<EndpointRef | null> {
+  const row = await endpointRow(ref);
+  return row ? toRef(row) : null;
+}
+
+async function endpointRow(ref: string): Promise<EndpointRow | null> {
   const db = getDb();
   if (!db) return null;
   const where = endpointWhere(ref);
   if (!where) return null;
-  const rows = rowsOf<EndpointRow>(await db.execute(sql`${ENDPOINT_SELECT} WHERE ${where} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT 1`));
-  return rows[0] ? toRef(rows[0]) : null;
+  const rows = rowsOf<EndpointRow>(
+    await db.execute(sql`${ENDPOINT_SELECT} WHERE ${where} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT 1`),
+  );
+  return rows[0] ?? null;
+}
+
+function usageNetworkOfEndpoint(network: string | null | undefined): string | undefined {
+  const chain = usageChainOf(network);
+  return chain === "" ? undefined : chain;
+}
+
+async function resourceHit(method: string, url: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
+  const row = await resourceRow(toResourceId(method, url));
+  return row ? { ref: toRef(row), network: row.network } : null;
 }
 
 /**
@@ -312,28 +330,43 @@ export async function settlementByTx(txHash: string): Promise<SettlementRef | nu
  * GET → POST の順。支払う側（MCP の pay_if_trusted）は払う method の正規の resource_id を要る。
  */
 export async function resolve(q: string, opts: { method?: string } = {}): Promise<ResolveResult> {
-  return withNotFound(await resolveRaw(q, opts));
+  return withNotFound((await resolveRaw(q, opts)).out);
 }
 
-async function resolveRaw(q: string, opts: { method?: string }): Promise<ResolveResult> {
+/** resolve と同じ 1 本の読み取りで、鍵なし利用集計用の network（CAIP-2）も返す。公開 JSON には載せない。 */
+export async function resolveForRoute(
+  q: string,
+  opts: { method?: string } = {},
+): Promise<{ result: ResolveResult; usageNetwork?: string }> {
+  const raw = await resolveRaw(q, opts);
+  return { result: withNotFound(raw.out), usageNetwork: raw.usageNetwork };
+}
+
+type ResolveRaw = { out: ResolveResult; usageNetwork?: string };
+
+async function resolveRaw(q: string, opts: { method?: string }): Promise<ResolveRaw> {
   const query = classifyQuery(q);
   const out: ResolveResult = { query, disclaimer: DISCLAIMER };
+  let usageNetwork: string | undefined;
   switch (query.kind) {
     case "url": {
       const c = canonicalUrl(query.value);
-      if (!c) return out;
+      if (!c) return { out };
       // method が無ければ GET → POST の順に引く（§6.1 の既定に合わせる）。あればその method だけ。
       const hit = opts.method
-        ? await getResource(toResourceId(opts.method, c.url))
-        : ((await getResource(toResourceId("GET", c.url))) ?? (await getResource(toResourceId("POST", c.url))));
-      if (hit) out.resource = hit;
+        ? await resourceHit(opts.method, c.url)
+        : ((await resourceHit("GET", c.url)) ?? (await resourceHit("POST", c.url)));
+      if (hit) {
+        out.resource = hit.ref;
+        usageNetwork = usageNetworkOfEndpoint(hit.network);
+      }
       const host = new URL(c.url).hostname;
       out.endpoints = await endpointsByDomain(host, 50);
-      return out;
+      return { out, usageNetwork };
     }
     case "domain": {
       out.endpoints = await endpointsByDomain(query.value);
-      return out;
+      return { out };
     }
     case "address": {
       const ids = query.value.startsWith("0x")
@@ -342,18 +375,24 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
       const lists = await Promise.all(ids.map((id) => endpointsByPayee(id)));
       out.endpoints = lists.flat();
       out.payees = ids.map((id, i) => ({ payee_id: id, endpoints: lists[i].length })).filter((p) => p.endpoints > 0);
-      return out;
+      return { out };
     }
     case "payee_id": {
       out.endpoints = await endpointsByPayee(query.value);
       out.payees = [{ payee_id: query.value, endpoints: out.endpoints.length }];
-      return out;
+      return { out };
     }
     case "tx": {
       const s = await settlementByTx(query.value);
       if (s) {
         out.settlement = s;
-        if (s.endpoint_id) out.resource = (await getEndpoint(s.endpoint_id)) ?? undefined;
+        if (s.endpoint_id) {
+          const row = await endpointRow(s.endpoint_id);
+          if (row) {
+            out.resource = toRef(row);
+            usageNetwork = usageNetworkOfEndpoint(row.network);
+          }
+        }
       } else {
         out.settlement_not_found = {
           reason: "not_in_raw_window",
@@ -361,9 +400,9 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
           note: `No indexed settlement for this transaction. Per-transaction receipts are served only for the ${RAW_RETENTION_DAYS}-day raw window; a settlement older than the ${RAW_RETENTION_DAYS}-day raw window is counted in /api/v1/census/summary but its individual receipt is no longer stored.`,
         };
       }
-      return out;
+      return { out, usageNetwork };
     }
     default:
-      return out;
+      return { out };
   }
 }

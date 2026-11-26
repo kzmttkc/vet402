@@ -38,6 +38,8 @@ export type CheckSellerCachedPayload = {
   out: CheckSellerOutput;
   /** この読み取りを始めた時刻（ISO8601 UTC）。再利用しない本文は空文字。応答には出さない。 */
   cacheReadAt: string;
+  /** client_usage_daily_network 用。endpoint から分かった network（CAIP-2）。 */
+  usageNetwork?: string;
 };
 
 export function isCheckSellerCachedReadFresh(
@@ -78,23 +80,42 @@ export type GetCheckSellerCached = (
 async function readCheckSellerFresh(
   deps: CheckSellerDeps,
   input: { url: string; method?: string },
-): Promise<CheckSellerOutput> {
-  return checkSellerFreezeForCache(await checkSeller(deps, input));
+): Promise<{ out: CheckSellerOutput; usageNetwork?: string }> {
+  let usageNetwork: string | undefined;
+  const wrapped: CheckSellerDeps = {
+    ...deps,
+    captureUsageNetwork: (network) => {
+      usageNetwork = network;
+    },
+  };
+  const out = checkSellerFreezeForCache(await checkSeller(wrapped, input));
+  return { out, usageNetwork };
+}
+
+function finishFreshRead(deps: CheckSellerDeps, fresh: Awaited<ReturnType<typeof readCheckSellerFresh>>): CheckSellerOutput {
+  if (fresh.usageNetwork) deps.captureUsageNetwork?.(fresh.usageNetwork);
+  return fresh.out;
 }
 
 export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
   return async (deps, input) => {
     const parts = checkSellerCacheKeyParts(input.url, input.method);
     // 正規化で伸びて照会の上限を超える URL は、正規化した形では引けないのでキャッシュを通さない。
-    if (parts === null || classifyQuery(parts[0]).kind !== "url") return readCheckSellerFresh(deps, input);
+    if (parts === null || classifyQuery(parts[0]).kind !== "url") {
+      return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
+    }
 
     const [urlKey, methodKey] = parts;
     const read = cache(
       async (): Promise<CheckSellerCachedPayload> => {
         // 読み始めの時刻で数える。読み終わりで数えると、読み取りにかかった分だけ 60 秒を超える。
         const cacheReadAt = new Date().toISOString();
-        const out = await readCheckSellerFresh(deps, { ...input, url: urlKey });
-        return { out: checkSellerForStore(out), cacheReadAt: out.spending_halted === true ? "" : cacheReadAt };
+        const fresh = await readCheckSellerFresh(deps, { ...input, url: urlKey });
+        return {
+          out: checkSellerForStore(fresh.out),
+          cacheReadAt: fresh.out.spending_halted === true ? "" : cacheReadAt,
+          usageNetwork: fresh.usageNetwork,
+        };
       },
       ["check-seller:v2", urlKey, methodKey],
       { revalidate: CHECK_SELLER_CACHE_SECONDS, tags: ["check-seller"] },
@@ -103,11 +124,12 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     try {
       const cached = await read();
       if (isCheckSellerCachedReadFresh(cached.cacheReadAt)) {
+        if (cached.usageNetwork) deps.captureUsageNetwork?.(cached.usageNetwork);
         return checkSellerForCaller(stripCheckSellerCachedPayload(cached), input.url);
       }
-      return await readCheckSellerFresh(deps, input);
+      return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
     } catch (error) {
-      if (isNoDataCacheError(error)) return readCheckSellerFresh(deps, input);
+      if (isNoDataCacheError(error)) return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
       logServerErrorSafe("check_seller_cache", error);
       throw error;
     }

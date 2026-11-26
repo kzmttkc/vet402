@@ -10,6 +10,7 @@
 //  5. DB が投げても（同期でも非同期でも）記帳は外へ投げない
 // 本物の DB とルートを通す検査は tests/client-usage.pg.test.ts。
 // ============================================================
+import { readFileSync } from "node:fs";
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { __setDbForTests } from "@/lib/db/client";
@@ -289,6 +290,29 @@ test("recordClientUsage: Authorization ヘッダが付いた呼び出しは予�
   assert.equal(tasks.length, 1);
 });
 
+test("recordClientUsage: network が渡るとき client_usage_daily_network にも足す", async () => {
+  const tasks: Array<() => Promise<void>> = [];
+  setAfterResponseSchedulerForTest((task) => tasks.push(task));
+  const seen: string[] = [];
+  __setDbForTests({
+    execute: async (q: unknown) => {
+      seen.push(JSON.stringify(q));
+      return { rows: [] };
+    },
+  });
+  recordClientUsage(new Headers({ "user-agent": "vet402-hermes/0.1.0" }), "decision", "eip155:8453");
+  assert.equal(tasks.length, 1);
+  await tasks[0]();
+  assert.equal(seen.length, 2);
+  assert.match(seen[0], /client_usage_daily/);
+  assert.match(seen[1], /client_usage_daily_network/);
+  assert.match(seen[1], /eip155:8453/);
+  recordClientUsage(new Headers({ "user-agent": "curl/8.7.1" }), "resolve");
+  await tasks[1]();
+  assert.equal(seen.length, 3);
+  assert.doesNotMatch(seen[2], /client_usage_daily_network/);
+});
+
 test("recordClientUsage: 書く値は日・client・route と 1 だけ（URL や IP は渡らない）", async () => {
   const tasks: Array<() => Promise<void>> = [];
   setAfterResponseSchedulerForTest((task) => tasks.push(task));
@@ -368,6 +392,8 @@ test("プライバシーポリシーがこの表と保存しない値を書い�
   const page = readFileSync("src/app/legal/privacy/page.tsx", "utf8").replace(/\s+/g, " ");
   assert.match(page, /<code>client_usage_daily<\/code>/);
   assert.match(page, /made without an API key, a count per UTC day, client name and API route/);
+  assert.match(page, /<code>client_usage_daily_network<\/code>/);
+  assert.match(page, /Since 2026-11-26/);
   // 頁が挙げる名前は、実装が返す名前の全部（配布物の先頭と FIXED_CLIENTS）
   for (const name of DISTRIBUTED_CLIENTS) assert.ok(page.includes(`<code>${name}/</code>`), name);
   for (const name of FIXED_CLIENTS) assert.ok(page.includes(`<code>${name}</code>`), name);
@@ -427,4 +453,129 @@ test("MCP の順は mcp:* だけ: resolve・decision の client は今までど�
   assert.equal(mcpClientUsageLabel("grok-bot/1.0"), "grok-bot");
   const route = (await import("node:fs")).readFileSync("src/app/api/v1/resolve/route.ts", "utf8");
   assert.ok(!route.includes("mcpClientUsageLabel"), "resolve の route は MCP の寄せ方を使わない");
+});
+
+test("recordClientUsage: client_usage_daily_network の書き込みが失敗しても client_usage_daily は書き、外へ投げない", async () => {
+  const tasks: Array<() => Promise<void>> = [];
+  setAfterResponseSchedulerForTest((task) => tasks.push(task));
+  const seen: string[] = [];
+  __setDbForTests({
+    execute: async (q: unknown) => {
+      const s = JSON.stringify(q);
+      seen.push(s);
+      if (s.includes("client_usage_daily_network")) throw new Error('relation "client_usage_daily_network" does not exist');
+      return { rows: [] };
+    },
+  });
+  recordClientUsage(new Headers({ "user-agent": "vet402-hermes/0.1.0" }), "resolve", "eip155:8453");
+  assert.equal(tasks.length, 1);
+  await tasks[0]();
+  assert.equal(seen.length, 2);
+  assert.match(seen[0], /client_usage_daily/);
+  assert.match(seen[1], /client_usage_daily_network/);
+});
+
+test("resolve と check の公開 JSON に usageNetwork は載せない", () => {
+  const resolve = readFileSync("src/app/api/v1/resolve/route.ts", "utf8");
+  assert.match(resolve, /const \{ result, usageNetwork \} = await resolveForRoute/);
+  assert.match(resolve, /NextResponse\.json\(result/);
+  assert.doesNotMatch(resolve, /NextResponse\.json\(\s*\{[^\n]*usageNetwork/);
+  const keyless = readFileSync("src/lib/api/keyless-check-route.ts", "utf8");
+  assert.doesNotMatch(keyless, /res\.json\([^\)]*usageNetwork/);
+  assert.match(keyless, /recordClientUsage\(request\.headers, usageRoute, usage\.network\)/);
+  const cache = readFileSync("src/lib/api/check-seller-cache.ts", "utf8");
+  assert.match(cache, /GetCheckSellerCached[\s\S]*Promise<CheckSellerOutput>/);
+  assert.match(cache, /stripCheckSellerCachedPayload\(payload: CheckSellerCachedPayload\): CheckSellerOutput/);
+  const checkHandler = readFileSync("src/lib/api/check-handler.ts", "utf8");
+  assert.doesNotMatch(checkHandler, /usageNetwork/);
+});
+
+test("usageNetworkFromMatchingListings: 一致する出品が複数チェーンに分かれるときは数えない", async () => {
+  const { usageNetworkFromMatchingListings } = await import("@/lib/mcp/tools");
+  const url = "https://seller.example/api/item";
+  assert.equal(
+    usageNetworkFromMatchingListings(
+      [
+        { resourceUrl: url, network: "eip155:8453" },
+        { resourceUrl: url, network: "eip155:42220" },
+      ],
+      url,
+    ),
+    null,
+  );
+  assert.equal(
+    usageNetworkFromMatchingListings([{ resourceUrl: url, network: "eip155:8453" }], url),
+    "eip155:8453",
+  );
+  assert.equal(usageNetworkFromMatchingListings([{ resourceUrl: url, network: null }], url), null);
+});
+
+test("MCP check_x402_seller: network が分かるとき client_usage_daily_network にも足す", async () => {
+  const { checkSeller } = await import("@/lib/mcp/tools");
+  const { DECISION_RULES_VERSION } = await import("@/lib/decision/rules");
+  const { recordMcpUsage, mcpClientUsageLabel } = await import("@/lib/api/client-usage");
+  const tasks: Array<() => Promise<void>> = [];
+  setAfterResponseSchedulerForTest((task) => tasks.push(task));
+  const seen: string[] = [];
+  __setDbForTests({
+    execute: async (q: unknown) => {
+      seen.push(JSON.stringify(q));
+      return { rows: [] };
+    },
+  });
+  const obs = "00000000-0000-0000-0000-000000000099";
+  let usageNetwork: string | undefined;
+  const out = await checkSeller(
+    {
+      now: () => new Date("2026-11-26T12:00:00.000Z"),
+      resolve: async () => {
+        throw new Error("resolveForRoute を使う");
+      },
+      resolveForRoute: async () => ({
+        result: {
+          query: { kind: "url", value: "https://api.example.com/x" },
+          disclaimer: "",
+          resource: {
+            observatory_id: obs,
+            endpoint_id: obs,
+            resource_id: "a".repeat(64),
+            canonical_url: "https://api.example.com/x",
+            method: "GET",
+            payee_id: null,
+            catalog_status: "listed",
+            first_seen: null,
+            last_seen: null,
+          },
+          endpoints: [],
+        },
+        usageNetwork: "eip155:42220",
+      }),
+      captureUsageNetwork: (network) => {
+        usageNetwork = network;
+      },
+      decide: (async () => ({
+        recommendation: "ALLOW",
+        reason_codes: [],
+        reasons: [],
+        facts: {
+          l0: { status: "pass", observed_at: null, dialect: null, fail_reason: null },
+          l1: { n_attempts: 0, n_delivered: 0, n_settled: 0, last_attempt_at: null },
+          l2: { status: "undeclared" },
+        },
+        scoredAt: "2026-11-26T12:00:00.000Z",
+        freshness: { l0: null, l1: null, l2: null },
+        spending_halted: false,
+        evidence_age: null,
+        rules_version: DECISION_RULES_VERSION,
+      })) as never,
+      l1Purchases: async () => [],
+    },
+    { url: "https://api.example.com/x" },
+  );
+  assert.equal(out.not_in_catalog, false);
+  assert.equal(usageNetwork, "eip155:42220");
+  recordMcpUsage(mcpClientUsageLabel("vet402-mcp/1.0.0"), "mcp:check_x402_seller", usageNetwork);
+  assert.equal(tasks.length, 1);
+  await tasks[0]();
+  assert.ok(seen.some((s) => s.includes("client_usage_daily_network") && s.includes("eip155:42220")));
 });

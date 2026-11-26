@@ -5,7 +5,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
 import sitemap from "@/app/sitemap";
-import { LEGAL_TERMS_PRIVACY_LAST_MODIFIED, LEGAL_TERMS_PRIVACY_DISPLAY } from "@/lib/legal/document-dates";
+import {
+  LEGAL_PRIVACY_DISPLAY,
+  LEGAL_PRIVACY_LAST_MODIFIED,
+  LEGAL_TERMS_PRIVACY_LAST_MODIFIED,
+  LEGAL_TERMS_PRIVACY_DISPLAY,
+} from "@/lib/legal/document-dates";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -93,15 +98,14 @@ test("vet402 voice: no we/our/us in public prose on memo, status, faq, docs/api,
 
 test("sitemap legal lastmod reads from the same constant as the legal pages", async () => {
   const entries = await sitemap();
-  for (const path of ["/legal/terms", "/legal/privacy"] as const) {
-    const row = entries.find((e) => e.url.endsWith(path));
-    assert.ok(row, path);
-    assert.equal(String(row!.lastModified), LEGAL_TERMS_PRIVACY_LAST_MODIFIED);
-  }
-  // The pages keep the literal date (other legal tests read it); the constant must say the same thing.
-  for (const page of ["src/app/legal/terms/page.tsx", "src/app/legal/privacy/page.tsx"]) {
-    assert.match(read(page), new RegExp(`Last updated: ${LEGAL_TERMS_PRIVACY_DISPLAY}`));
-  }
+  const terms = entries.find((e) => e.url.endsWith("/legal/terms"));
+  const privacy = entries.find((e) => e.url.endsWith("/legal/privacy"));
+  assert.ok(terms);
+  assert.ok(privacy);
+  assert.equal(String(terms!.lastModified), LEGAL_TERMS_PRIVACY_LAST_MODIFIED);
+  assert.equal(String(privacy!.lastModified), LEGAL_PRIVACY_LAST_MODIFIED);
+  assert.match(read("src/app/legal/terms/page.tsx"), new RegExp(`Last updated: ${LEGAL_TERMS_PRIVACY_DISPLAY}`));
+  assert.match(read("src/app/legal/privacy/page.tsx"), new RegExp(`Last updated: ${LEGAL_PRIVACY_DISPLAY}`));
 });
 
 test("INCIDENT_RUNBOOK §9 documents Neon point-in-time restore", () => {

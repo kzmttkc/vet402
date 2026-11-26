@@ -157,7 +157,7 @@ function hasRpcResult(contentType: string, text: string): boolean {
  * 数える（§2.4）: HTTP 200・result のある応答だけ。initialize は clientInfo、tools/call は UA から client を決める。
  * 自己申告の値なので、利用者数や採用の証拠として外に出さない。
  */
-function countUsage(request: Request, rpc: Rpc, contentType: string, text: string): void {
+function countUsage(request: Request, rpc: Rpc, contentType: string, text: string, state: McpRequestState): void {
   if (!hasRpcResult(contentType, text)) return;
   if (rpc.method === "initialize") {
     const info = rpc.params?.clientInfo;
@@ -169,7 +169,11 @@ function countUsage(request: Request, rpc: Rpc, contentType: string, text: strin
   if (rpc.method === "tools/call" && typeof rpc.params?.name === "string") {
     const route = COUNTED_TOOLS[rpc.params.name];
     if (!route) return;
-    recordMcpUsage(mcpClientUsageLabel(request.headers.get("user-agent"), isOwnPageRequest(request.headers)), route);
+    recordMcpUsage(
+      mcpClientUsageLabel(request.headers.get("user-agent"), isOwnPageRequest(request.headers)),
+      route,
+      state.usageNetwork,
+    );
   }
 }
 
@@ -211,7 +215,12 @@ async function handlePost(request: NextRequest): Promise<Response> {
   }
 
   const state: McpRequestState = { unavailable: false };
-  const deps = mcpDeps();
+  const deps = {
+    ...mcpDeps(),
+    captureUsageNetwork: (network: string) => {
+      state.usageNetwork = network;
+    },
+  };
   // 要求ごとに作る（server・transport を要求の間で共有しない）。
   const handler = createMcpHandler((server) => registerVet402Tools(server, deps, state), {
     serverInfo: { ...MCP_SERVER_INFO },
@@ -235,7 +244,7 @@ async function handlePost(request: NextRequest): Promise<Response> {
   const ct = res.headers.get("content-type");
   if (ct) headers.set("Content-Type", ct);
   for (const [k, v] of Object.entries(gate.headers)) headers.set(k, v);
-  if (res.status === 200 && rpc && !Array.isArray(rpc)) countUsage(request, rpc, ct ?? "", body);
+  if (res.status === 200 && rpc && !Array.isArray(rpc)) countUsage(request, rpc, ct ?? "", body, state);
   return new Response(body, { status: res.status, headers });
 }
 

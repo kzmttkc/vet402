@@ -37,18 +37,18 @@ export default async function PrivacyPage() {
             <span>Instrument: privacy policy</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">November 16, 2026</span>
+              Revision: <span className="text-signal">November 26, 2026</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>November 16, 2026</span>
+            <span>November 26, 2026</span>
           </div>
         </div>
         <h1 className="doc-title mt-8">Privacy Policy</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: November 16, 2026</p>
+        <p className="doc-note text-center">Last updated: November 26, 2026</p>
 
         {/* 2026-09-29 監査 4 周目: GDPR 13 条 1 項 (a) の管理者の身元と連絡先を明記。 */}
         <section className="space-y-2">
@@ -148,7 +148,9 @@ export default async function PrivacyPage() {
               calls can also get <code>cursor</code>, <code>grok-bot</code>, <code>claude</code>,{" "}
               <code>chatgpt</code> or <code>paybox</code>. We read the User-Agent header, the client
               name an MCP client sends when it connects, and for browsers whether the request came
-              from a vet402.com page, only to pick that name. We do not store the User-Agent text, the
+              from a vet402.com page, only to pick that name. Since 2026-11-26,{" "}
+              <code>client_usage_daily_network</code> holds a count per UTC day, client name, API route
+              and network when the network is known from the endpoint record. We do not store the User-Agent text, the
               IP address, the URL or query being looked up, or any API key with these counts
             </li>
             <li>
@@ -208,9 +210,9 @@ export default async function PrivacyPage() {
               labeled relation shows the number of owners and the number of calls. A labeled relation
               with fewer than 3 owners shows {"<3"} and leaves the call count out. An unclassified
               relation shows the number of owners and leaves the call count out. Fewer than 3
-              unclassified owners shows {"<3"}. Calls made without a key are not counted per chain, so
-              this table does not list them. The table leaves out the key, the email address, and the
-              name.
+              unclassified owners shows {"<3"}. This table lists keyed decision answers. Key-less
+              call counts by network are kept in <code>client_usage_daily_network</code> and are not
+              listed here. The table leaves out the key, the email address, and the name.
             </li>
             <li>
               <strong>Disputes</strong> (<code>disputes</code>): the endpoint the dispute is about,

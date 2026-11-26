@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS } from "@/lib/api/keyless-limits";
 import { publicRateLimit } from "@/lib/api/public-route";
-import { resolve } from "@/lib/resolve/lookup";
+import { resolveForRoute } from "@/lib/resolve/lookup";
 import { ACCEPTED_QUERY_FORMS, classifyQuery, explainInvalidQuery } from "@/lib/resolve/classify";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { isKeylessRequest, recordClientUsage } from "@/lib/api/client-usage";
@@ -50,12 +50,12 @@ export async function GET(request: NextRequest) {
     );
   }
   try {
-    const result = await resolve(q, methodRaw ? { method: methodRaw.toUpperCase() } : {});
+    const { result, usageNetwork } = await resolveForRoute(q, methodRaw ? { method: methodRaw.toUpperCase() } : {});
     // 2026-10-07 / 10-11: 鍵なしの呼び出しを、決まった client の名前に寄せて日別の件数で数える（応答の後・失敗しても
     // 応答は変わらない）。数えるのは 200 を返すときだけ（decision と同じ。400 と 503 は枠を消費するが数えない）。
     // このルートは Authorization を読まない（鍵つきでも同じ IP 枠・同じ答え）が、SDK と MCP サーバは鍵が設定されて
     // いれば resolve にも Authorization を付ける。付いている呼び出しは「鍵なし」の数に入れない（独立した点検・高）。
-    if (isKeylessRequest(request.headers)) recordClientUsage(request.headers, "resolve");
+    if (isKeylessRequest(request.headers)) recordClientUsage(request.headers, "resolve", usageNetwork);
     return NextResponse.json(result, { headers: gate.cacheHeaders });
   } catch (error) {
     logServerErrorSafe("resolve", error);

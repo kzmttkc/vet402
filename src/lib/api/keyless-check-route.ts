@@ -34,9 +34,16 @@ export async function handleKeylessCheckRoute(
 
   const keyless = isKeylessRequest(request.headers);
 
-  const res = await handleCheck(request, mcpDeps());
+  const usage: { network?: string } = {};
+  const deps = {
+    ...mcpDeps(),
+    captureUsageNetwork: (network: string) => {
+      usage.network = network;
+    },
+  };
+  const res = await handleCheck(request, deps);
   if (res.status === 200 && keyless) {
-    recordClientUsage(request.headers, usageRoute);
+    recordClientUsage(request.headers, usageRoute, usage.network);
     scheduleKeylessCallerRecord(request.headers);
   }
 

@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = pageMetadata({
   title: "Decision call counts",
   description:
-    "Counts of decision API answers made with a key, for one published chain and one closed UTC month. The figures are stored on the first read after 00:00 UTC on the 3rd day of the next month. Answers are summed by relation. A labeled relation shows the number of owners. Fewer than 3 owners shows <3 and leaves the call count out. An unclassified relation leaves the call count out. Calls made without a key are not counted per chain. The page leaves out the key, the email address, and the name.",
+    "Counts of decision API answers made with a key, for one published chain and one closed UTC month. The figures are stored on the first read after 00:00 UTC on the 3rd day of the next month. Answers are summed by relation. A labeled relation shows the number of owners. Fewer than 3 owners shows <3 and leaves the call count out. An unclassified relation leaves the call count out. This table lists keyed decision answers. Key-less call counts by network are kept in client_usage_daily_network and are not listed on this page. The page leaves out the key, the email address, and the name.",
   path: "/usage/monthly",
   noindex: true,
 });
@@ -133,7 +133,8 @@ export default async function UsageMonthlyPage({
           figures are stored on the first read after 00:00 UTC on the 3rd day of the next month, and later reads return
           that stored copy. Answers are grouped by relation. A labeled relation shows the number of owners and the
           number of calls. Fewer than 3 owners shows &lt;3 and leaves the call count off this page. An unclassified
-          relation leaves the call count off this page. Calls made without a key are not counted per chain. Relation is
+          relation leaves the call count off this page. This table lists keyed decision answers. Key-less call
+          counts by network are kept in client_usage_daily_network and are not listed on this page. Relation is
           a label an operator sets by hand. The prezenti_grantee relation marks an owner matched by hand to a public
           record of a Prezenti grant, such as a post on the Celo Forum. Keys marked prezenti_grantee are counted in their
           own row. Published chains: {PUBLIC_USAGE_CHAINS.join(", ")}.

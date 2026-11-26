@@ -5408,7 +5408,9 @@ paths:
         and later reads return that stored copy. Answers are summed by relation.
         A labeled relation shows the number of owners. Fewer than 3 owners shows
         <3 and leaves the call count out. An unclassified relation leaves the call
-        count out. Calls made without a key are not counted per chain.
+        count out. This response lists keyed decision answers. Since 2026-11-26,
+        key-less calls with a known network are counted in client_usage_daily_network by UTC day,
+        client, route and network. Those counts are not in this response.
         The response leaves out the key, the email address, and the name.
         Key-less. 60 requests per minute.
         `chain` must be a published network id. `eip155:42220` is published.
