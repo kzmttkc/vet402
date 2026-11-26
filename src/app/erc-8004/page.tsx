@@ -32,7 +32,7 @@ const PATH = "/erc-8004";
 const PUBLISHED = "2026-11-24";
 
 const PAGE_DESCRIPTION =
-  "ERC-8004 is an Ethereum standard with three on-chain registries for AI agents: identity, reputation and validation. What each registry does, and how many registered agents have an owner or agentWallet that exactly matches a payTo vet402 paid over x402.";
+  "ERC-8004 is a standard for AI agent identity, reputation and validation. vet402 counts agents whose owner or agentWallet equals a payTo it paid over x402.";
 
 export const metadata: Metadata = pageMetadata({
   title: "What is ERC-8004? Agent registries, with live payment data",

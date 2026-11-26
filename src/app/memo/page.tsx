@@ -6,7 +6,9 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { X402_DEFINITION } from "@/components/site/faq-data";
 import { buttonClass } from "@/components/ui/Button";
 import { SITE_URL } from "@/lib/site-url";
-import { pageMetadata } from "@/lib/seo";
+import { headers } from "next/headers";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 import { formatPct1 } from "@/lib/util/pct";
 import { buildMonth } from "@/lib/build-month";
 import {
@@ -23,10 +25,12 @@ import { formDisputeQueueSummary } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
 import { liveStatusLabel } from "@/lib/about/live-status-label";
 
+const MEMO_DESCRIPTION =
+  "The full vet402 memo: verification levels, what a verdict carries, what is live, the public ledger by chain, access tiers and references. Settlement assets include USDC.";
+
 export const metadata = pageMetadata({
   title: "The vet402 memo: how vet402 measures x402 purchases",
-  description:
-    "The full vet402 memo: verification levels, what a verdict carries, what is live, the public ledger by chain, access tiers and references. Settlement assets include USDC.",
+  description: MEMO_DESCRIPTION,
   path: "/memo",
 });
 
@@ -137,6 +141,16 @@ export default async function Memo() {
   const latestPurchaseAt = example?.latest[0]?.attemptedAt ?? null;
   const statusValue = liveStatusLabel(latestPurchaseAt, stats?.readAt ?? null);
   const headLeft: HeadLeftRow[] = [...HEAD_LEFT, { label: "Status", value: statusValue, signal: true }];
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Memo", path: "/memo" },
+  ]);
+  const webPage = webPageJsonLd({
+    name: "The vet402 memo",
+    description: MEMO_DESCRIPTION,
+    path: "/memo",
+  });
   return (
     // 2026-08-13 UX監査2巡目 [M8]: 1440×720 で2本の CTA の下端が 843px にあり、
     // fold の 123px 下だった。RFC 第1面の要素と順序（ヘッダ／表題／タグライン／
@@ -155,6 +169,18 @@ export default async function Memo() {
       {/* 紙の天地は .sheet の共通値。1200px の列は WideColumn（表の頁も同じ）。 */}
       <article className="sheet max-w-[1200px]">
         <WideColumn />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
+        />
         {/* 2026-10-22 オーナー決定（案 C）: 第 1 画面は見出しと Figure 1、右に check。
             書誌欄・Abstract・#gap 以降は下に残す。ETHOnline の導線も書誌欄に残る。 */}
         <HomeIntro

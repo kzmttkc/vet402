@@ -11,7 +11,7 @@ import DocsToc, { type TocItem } from "@/components/docs/DocsToc";
 import { WideColumn } from "@/components/site/WideColumn";
 import { SITE_URL } from "@/lib/site-url";
 import { KEYLESS_READ_STOP, keylessRatesSentence, keylessResolvePerMinute } from "@/lib/api/keyless-limits";
-import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
+import { pageMetadata, breadcrumbJsonLd, publisherOrg, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
 import { API_DOCS_ANSWER } from "@/lib/docs/api-page-text";
@@ -69,8 +69,8 @@ export default async function ApiDocsPage() {
     headline: "API reference",
     description: API_BLURB,
     url: `${SITE_URL}/docs/api`,
-    author: { "@type": "Organization", name: "vet402", url: SITE_URL },
-    publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },
+    author: publisherOrg(),
+    publisher: publisherOrg(),
     inLanguage: "en",
   };
   const webApi = webApiJsonLd({

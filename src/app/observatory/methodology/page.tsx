@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import {
   pageMetadata,
   breadcrumbJsonLd,
+  publisherOrg,
   OBSERVATORY_SNAPSHOT_CONCEPT_DOI_URL,
   OBSERVATORY_SNAPSHOT_REPO_URL,
 } from "@/lib/seo";
@@ -123,8 +124,8 @@ export default async function ObservatoryMethodologyPage() {
     description: METHOD_BLURB,
     url: `${SITE_URL}/observatory/methodology`,
     dateModified: "2026-10-26",
-    author: { "@type": "Organization", name: "vet402", url: SITE_URL },
-    publisher: { "@type": "Organization", name: "vet402", url: SITE_URL },
+    author: publisherOrg(),
+    publisher: publisherOrg(),
     inLanguage: "en",
   };
 

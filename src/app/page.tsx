@@ -373,6 +373,13 @@ export default async function Home() {
               </li>
             ))}
           </ul>
+          <p className={s.pricingLead}>
+            ERC-8004 registers AI agents on chain. vet402 matches them to payTo addresses from its purchase ledger.{" "}
+            <Link href="/erc-8004" className={s.inlineLink}>
+              See the ERC-8004 overview
+            </Link>
+            .
+          </p>
         </section>
 
         <section className={s.section} aria-labelledby="lp-use-vet402">

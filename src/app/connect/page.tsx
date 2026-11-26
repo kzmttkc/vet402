@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import TrackView from "@/components/site/TrackView";
 import ConnectChooser from "@/components/connect/ConnectChooser";
 import { TryInChatConnect } from "@/components/connect/TryInChatConnect";
@@ -16,22 +17,48 @@ import {
   CONNECT_PASTE_HREF,
   CONNECT_SIGNUP_HREF,
 } from "@/lib/connect/snippets";
-import { pageMetadata } from "@/lib/seo";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 import styles from "./connect.module.css";
 
 // 2026-11-08 製品の殻: 買う側・売る側・両方を選ぶ入口。説明と手順だけで、お金は動かさない。
 // スニペットの出典と検査は src/lib/connect/snippets.ts と tests/connect-page.test.ts。
+const CONNECT_DESCRIPTION = `${CONNECT_LEAD} Start as a buyer, a seller or both, with curl, TypeScript, Python, MCP or no code.`;
+
 export const metadata: Metadata = pageMetadata({
-  title: "Connect",
-  description: `${CONNECT_LEAD} Start as a buyer, a seller or both, with curl, TypeScript, Python, MCP or no code.`,
+  title: "Connect vet402 for x402 buyer and seller agents",
+  description: CONNECT_DESCRIPTION,
   path: "/connect",
 });
 
-export default function ConnectPage() {
+export default async function ConnectPage() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Connect", path: "/connect" },
+  ]);
+  const webPage = webPageJsonLd({
+    name: "Connect vet402",
+    description: CONNECT_DESCRIPTION,
+    path: "/connect",
+  });
+
   return (
     <main className={styles.page}>
       <TrackView event="connect_view" />
       <article className={styles.article}>
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
+        />
         <div>
           <h1>{CONNECT_LEAD}</h1>
           <p className={styles.lede}>

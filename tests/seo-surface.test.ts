@@ -107,6 +107,14 @@ test("Organization sameAs includes the other public identities", () => {
   assert.ok(blob.includes("https://x.com/vet402_com"));
 });
 
+test("Organization carries @id and nested JSON-LD references it", () => {
+  const seo = read("src/lib/seo.ts");
+  assert.match(seo, /ORGANIZATION_ID = `\$\{SITE_URL\}\/#org`/);
+  assert.match(seo, /publisher: publisherOrg\(\)/);
+  const home = read("src/app/page.tsx");
+  assert.match(home, /publisher: publisherOrg\(\)/);
+});
+
 test("pageMetadata noindex sets robots index:false, and defaults to indexable", () => {
   const indexed = pageMetadata({ title: "T", description: "D", path: "/x" });
   assert.equal(indexed.robots, undefined, "default pages carry no robots override (indexable)");

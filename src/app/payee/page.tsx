@@ -47,7 +47,7 @@ const SAMPLE_PAYEES = [
 ];
 
 export const metadata: Metadata = pageMetadata({
-  title: "Verify a payee",
+  title: "Check an x402 payee wallet before your agent pays",
   description:
     "Look up any Base wallet address: the signature-proven identity claim on file, if there is one, and a live payee score.",
   path: "/payee",

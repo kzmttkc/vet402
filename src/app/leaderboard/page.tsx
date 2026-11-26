@@ -13,7 +13,7 @@ import { WideColumn } from "@/components/site/WideColumn";
 // Honest empty state, same discipline as /accuracy.
 // 2026-08-13 vet402: typeset as a register of the memo.
 export const metadata: Metadata = pageMetadata({
-  title: "Register of recently verified subjects",
+  title: "Top-scored ERC-8004 agents and wallets, verified",
   description:
     "The highest-scoring ERC-8004 agents and wallets vet402 recently verified: identity, reputation, wallet history and x402 settlement record, as one score.",
   path: "/leaderboard",

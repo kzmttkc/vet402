@@ -47,9 +47,18 @@ export const ORG_SAME_AS = [
   "https://www.npmjs.com/package/@vet402/mcp-server",
 ] as const;
 
+/** Canonical Organization node for every page graph (2026-11-26 SEO entity). */
+export const ORGANIZATION_ID = `${SITE_URL}/#org` as const;
+
+/** Reference the Organization without re-emitting its properties. */
+export function orgRef() {
+  return { "@id": ORGANIZATION_ID };
+}
+
 export function publisherOrg() {
   return {
     "@type": "Organization" as const,
+    "@id": ORGANIZATION_ID,
     name: "vet402",
     url: SITE_URL,
     logo: { "@type": "ImageObject" as const, url: `${SITE_URL}/brand/icon-512.png` },
@@ -60,6 +69,7 @@ export function organizationJsonLd(description: string) {
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": ORGANIZATION_ID,
     name: "vet402",
     url: SITE_URL,
     description,

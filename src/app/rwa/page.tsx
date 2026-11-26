@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { entryTarget } from "../../../packages/rwa/entry";
 import { EXAMPLE_WALLETS } from "../../../packages/rwa/examples";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 
 /**
  * /rwa — where "paste any wallet" lands. One field, no wallet connection, no
@@ -20,18 +23,44 @@ const PAID_TX = "0xeb26d1b5b0b1a12056ec8abd99640fcbb00860552b4c5a44d3e1b67b3da73
 /** The latest anchor of the demo record: rwa-recon-0.3 (fixtures/rwa/anchors/rwa-recon-0.3-76177721.json). */
 const ANCHOR_TX = "0x15f9ed8ae5dd466c2f35021c9f1291e7a624abbb52c8ac26b54d47442f585c7f";
 
-export const metadata: Metadata = {
-  title: "vet402 /rwa — check a Stock Token track record",
-  description:
-    "Paste a Robinhood Chain wallet and see its Stock Token record rebuilt from public chain data. Not investment advice.",
-};
+const RWA_DESCRIPTION =
+  "Paste a Robinhood Chain wallet and see its Stock Token record rebuilt from public chain data. Not investment advice.";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Robinhood Chain wallet: Stock Token track record",
+  description: RWA_DESCRIPTION,
+  path: "/rwa",
+});
 
 export default async function RwaEntryPage({ searchParams }: { searchParams: Promise<{ address?: string | string[] }> }) {
   const target = entryTarget((await searchParams).address);
   if (target.kind === "go") redirect(target.path);
 
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "RWA", path: "/rwa" },
+  ]);
+  const webPage = webPageJsonLd({
+    name: "vet402 /rwa",
+    description: RWA_DESCRIPTION,
+    path: "/rwa",
+  });
+
   return (
     <main className="mx-auto max-w-3xl px-6 py-12">
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+      />
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
+      />
       <h1 className="text-xl font-semibold">vet402 /rwa</h1>
       <p className="mt-4">
         Someone shows you their Stock Token track record. Paste their Robinhood Chain wallet and see what the chain

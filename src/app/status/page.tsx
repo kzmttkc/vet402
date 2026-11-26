@@ -51,7 +51,7 @@ import { CurrentIndexFreshness } from "@/components/site/status/CurrentIndexFres
  */
 
 export const metadata: Metadata = pageMetadata({
-  title: "Status",
+  title: "vet402 uptime and health: rows from /api/health",
   description:
     "vet402's own uptime, measured like everything else here: rows written by requests to /api/health, published as observed, with no assumed 100% on quiet days.",
   path: "/status",

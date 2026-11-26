@@ -51,7 +51,7 @@ export default async function BlogPostPage({
     // 2026-08-14: author/image は BlogPosting の推奨フィールド。author は
     // 擬名運用なので発行主体の Organization を充てる（新しい主張は足さない）。
     // image はファイル規約の og 画像（RFC 第1頁の組版）をそのまま指す。
-    author: { "@type": "Organization", name: "vet402", url: SITE_URL },
+    author: publisherOrg(),
     image: `${SITE_URL}/opengraph-image.png`,
     mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE_URL}/blog/${post.slug}` },
     publisher: publisherOrg(),

@@ -3,7 +3,40 @@ import { getAllPosts } from "@/lib/blog";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 import { CREDENTIALS } from "@/lib/about/credentials";
 import { LEGAL_PRIVACY_LAST_MODIFIED, LEGAL_TERMS_PRIVACY_LAST_MODIFIED } from "@/lib/legal/document-dates";
+import { fetchLeaderboard } from "@/lib/db/leaderboard";
 import { SITE_URL } from "@/lib/site-url";
+
+function sitemapDay(iso: string | undefined, fallback: string): string {
+  if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) return iso.slice(0, 10);
+  return fallback;
+}
+
+/** Pages whose lastmod follows live data (not read time, not deploy date). */
+async function dataBackedLastMods(): Promise<Record<string, string>> {
+  const mods: Record<string, string> = {};
+
+  // 2026-11-26 点検: reputationSitemapEntries と同じく待ち時間の上限を付ける。取れなければ SITE_REVISION のまま。
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const leaderboard = await Promise.race([
+    fetchLeaderboard(500),
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("leaderboard sitemap read timeout")), REPUTATION_SITEMAP_READ_MS);
+    }),
+  ])
+    .catch(() => [] as Awaited<ReturnType<typeof fetchLeaderboard>>)
+    .finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  if (leaderboard.length > 0) {
+    const latest = leaderboard.reduce(
+      (max, row) => (row.scoredAt > max ? row.scoredAt : max),
+      leaderboard[0]!.scoredAt,
+    );
+    mods["/leaderboard"] = sitemapDay(latest, SITE_REVISION);
+  }
+
+  return mods;
+}
 
 // 静的頁の lastmod（2026-08-14）。`new Date()` を使うとデプロイのたびに全頁が
 // 「今日更新」に化けて偽の鮮度信号になるので使わない。ここは公開面の最後の
@@ -36,7 +69,10 @@ const REV_2026_11_16 = "2026-11-16";
 /** 2026-11-24: /erc-8004 pillar and /x402/glossary (SEO/AEO/LLMO proposal). */
 const REV_2026_11_24 = "2026-11-24";
 
-function coreStaticSitemap(): MetadataRoute.Sitemap {
+async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
+  const dataMods = await dataBackedLastMods();
+  const last = (path: string, fallback: string) => dataMods[path] ?? fallback;
+
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`, lastModified: REV_2026_11_16, changeFrequency: "weekly", priority: 1 },
     // /memo is the long document the front page used to be, linked from /, indexable with a self canonical.
@@ -45,7 +81,7 @@ function coreStaticSitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/docs/mcp`, lastModified: "2026-10-28", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/connect`, lastModified: "2026-11-08", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
-    { url: `${SITE_URL}/leaderboard`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.7 },
+    { url: `${SITE_URL}/leaderboard`, lastModified: last("/leaderboard", SITE_REVISION), changeFrequency: "daily", priority: 0.7 },
     { url: `${SITE_URL}/status`, lastModified: SITE_REVISION, changeFrequency: "daily", priority: 0.6 },
     // 2026-08-15: 観測所（L0/L1/L2）は本番稼働中だが sitemap から漏れていた。
     // 動的な /observatory/e/:id は /payee/:address と同じ理由（無限に生成できる）
@@ -175,5 +211,5 @@ async function reputationSitemapEntries(): Promise<MetadataRoute.Sitemap> {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  return [...coreStaticSitemap(), ...(await reputationSitemapEntries())];
+  return [...(await coreStaticSitemap()), ...(await reputationSitemapEntries())];
 }

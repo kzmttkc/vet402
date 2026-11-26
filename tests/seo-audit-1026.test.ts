@@ -238,15 +238,42 @@ test("x402 payments for AI agents はトップの頁だけが使う", () => {
 
 // 2026-11-02: layout.tsx を外した。/rwa と Tokyo の凍結は 2026-10-23 に解除済みで、この固定はそのあとに残ったもの。
 // SITE_DESCRIPTION が "verifies fulfillment" のままになっていた（公開面の文言監査 H4）。
-// 2026-11-09: 共有画像が差し替わったので、ethonline の og alt もその画像の文（OG_IMAGE_ALT）。頁のファイルは origin/main のまま。
+// 2026-11-09: 共有画像が差し替わったので、ethonline の og alt もその画像の文（OG_IMAGE_ALT）。
+// 2026-11-26: /rwa と /ethonline は metadata と JSON-LD だけ直した（SEO 実体・欠落 5 頁）。本文は凍結のまま。
+// tokyo は凍結のまま。
+function frozenPageWithoutSeoSurface(src: string): string {
+  let s = src;
+  s = s.replace(/<script[\s\S]*?type="application\/ld\+json"[\s\S]*?(?:<\/script>|\/>)\s*/g, "");
+  s = s.replace(/\s*const nonce = \(await headers\(\)\)\.get\("x-nonce"\) \?\? undefined;\n/, "");
+  s = s.replace(/\s*const breadcrumb = breadcrumbJsonLd\(\[[\s\S]*?\]\);\n/, "");
+  s = s.replace(/\s*const webPage = webPageJsonLd\(\{[\s\S]*?\}\);\n/, "");
+  s = s.replace(/^import \{ headers \} from "next\/headers";\n/m, "");
+  s = s.replace(/^import \{ breadcrumbJsonLd, pageMetadata, webPageJsonLd \} from "@\/lib\/seo";\n/m, "");
+  s = s.replace(/^import \{ safeJsonLd \} from "@\/lib\/util\/json-ld";\n/m, "");
+  s = s.replace(/^import type \{ Metadata \} from "next";\n/m, "");
+  s = s.replace(/^import \{ pageMetadata \} from "@\/lib\/seo";\n/m, "");
+  s = s.replace(/const (ETHONLINE_DESCRIPTION|RWA_DESCRIPTION) =[\s\S]*?;\n\n/, "");
+  s = s.replace(/export const metadata: Metadata = [\s\S]*?;\n/, "export const metadata: Metadata = {};\n");
+  s = s.replace(/export default async function/, "export default function");
+  s = s.replace(/if \(target\.kind === "go"\) redirect\(target\.path\);\n  return/, 'if (target.kind === "go") redirect(target.path);\n\n  return');
+  s = s.replace(/\n{3,}/g, "\n\n");
+  return s;
+}
+
 test("凍結面のファイルは origin/main と同じで、ethonline の og alt は共有画像の文", () => {
   const diff = execFileSync(
     "git",
     // judge-panel.tsx だけ外す（2026-11-02 監査 L2）: GET /api/tokyo/state が書かなくなり、90 秒後の戻しを画面が呼ぶ。見た目は同じ。
-    ["diff", "origin/main", "--", "src/app/rwa", "src/app/tokyo", ":(exclude)src/app/tokyo/judge-panel.tsx", "src/app/ethonline", "AI_USAGE.md", "contracts"],
+    ["diff", "origin/main", "--", "src/app/tokyo", ":(exclude)src/app/tokyo/judge-panel.tsx", "AI_USAGE.md", "contracts"],
     { encoding: "utf8" },
   );
   assert.equal(diff, "");
+  for (const rel of ["src/app/rwa/page.tsx", "src/app/ethonline/page.tsx"]) {
+    const atRef = `origin/main:${rel}`;
+    const baseline = frozenPageWithoutSeoSurface(execFileSync("git", ["show", atRef], { encoding: "utf8" }));
+    const current = frozenPageWithoutSeoSurface(read(rel));
+    assert.equal(current, baseline, `${rel} body unchanged aside from SEO metadata and JSON-LD`);
+  }
   const eth = pageMetadata({ title: "payOrRefuse — ETHOnline 2026", description: "d", path: "/ethonline" });
   const images = (eth.openGraph as { images: Array<{ alt?: string }> }).images;
   assert.equal(images[0].alt, OG_IMAGE_ALT);
@@ -255,9 +282,9 @@ test("凍結面のファイルは origin/main と同じで、ethonline の og al
   assert.equal(faqAlt, OG_IMAGE_ALT);
   assert.equal(/\b(we|our|us)\b/i.test(faqAlt ?? ""), false);
   assert.equal(/[;—–]/.test(faqAlt ?? ""), false);
-  for (const file of ["src/app/rwa/page.tsx", "src/app/tokyo/page.tsx"]) {
-    assert.equal(read(file).includes("pageMetadata"), false, file);
-  }
+  assert.equal(read("src/app/tokyo/page.tsx").includes("pageMetadata"), false, "src/app/tokyo/page.tsx");
+  assert.ok(read("src/app/rwa/page.tsx").includes("pageMetadata"), "rwa uses pageMetadata");
+  assert.ok(read("src/app/ethonline/page.tsx").includes("webPageJsonLd"), "ethonline JSON-LD");
 });
 
 test("FAQ の導入は短い x402 の定義を使い、Q1 は承認済みの答えのまま", () => {

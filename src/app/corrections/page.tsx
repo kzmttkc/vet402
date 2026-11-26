@@ -32,7 +32,7 @@ import { catalogWithdrawalCorrectionAction } from "@/lib/observatory/l0-verdict"
  */
 
 export const metadata: Metadata = pageMetadata({
-  title: "Corrections log",
+  title: "Public corrections to vet402 scores and results",
   description:
     "Every correction vet402 has issued to a published score or verification result, with what was wrong and what changed.",
   path: "/corrections",

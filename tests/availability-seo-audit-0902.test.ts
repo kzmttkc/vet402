@@ -183,10 +183,11 @@ test("公開ルート共通の Cache-Control と /census/summary の Cache-Contr
 // ------------------------------------------------------------------
 // 呼称の統一
 // ------------------------------------------------------------------
-test("/leaderboard は title・見出し行・H1 で Register と名乗る", () => {
+// 2026-11-26: title は検索向けに "Top-scored ERC-8004 agents and wallets…" と書く（一覧には ERC-8004 の登録の無い財布も載るので wallets を残す・点検）。H1 の Register は簿記の呼称のまま。
+test("/leaderboard は title に検索意図を置き、見出し行・H1 は Register と名乗る", () => {
   const src = read("src/app/leaderboard/page.tsx");
   const title = /title:\s*"([^"]+)"/.exec(src)?.[1] ?? "";
-  assert.match(title, /^Register\b/);
+  assert.match(title, /^Top-scored ERC-8004 agents and wallets\b/);
   const h1 = /<h1[^>]*>([^<]+)<\/h1>/.exec(src)?.[1] ?? "";
   assert.match(h1, /^Register\b/, `H1 "${h1}"`);
 });

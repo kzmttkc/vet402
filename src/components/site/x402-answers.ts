@@ -76,7 +76,7 @@ export const CHECK_SELLER: AnswerPage = {
   question: "How do you check an x402 seller before paying?",
   path: "/x402/check-a-seller",
   h1: "How a seller check works",
-  title: "How a seller check works",
+  title: "How do you check an x402 seller before paying?",
   description:
     "Before an AI agent pays an x402 seller, read the vet402 decision and the purchases already made. Compare the 402 with the last delivered purchase.",
   lead: [

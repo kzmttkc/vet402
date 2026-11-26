@@ -13,7 +13,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 const ABOUT_DESCRIPTION = "Who builds vet402, what it does, and the prizes and grants behind it.";
 
 export const metadata: Metadata = pageMetadata({
-  title: "About",
+  title: "Who builds vet402: prizes, grants, measurements",
   description: ABOUT_DESCRIPTION,
   path: "/about",
 });

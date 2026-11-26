@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import CodeBlock from "@/components/docs/CodeBlock";
-import { pageMetadata } from "@/lib/seo";
+import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
+import { safeJsonLd } from "@/lib/util/json-ld";
 
 /**
  * /ethonline — the page an ETHOnline 2026 judge lands on from the submission's Demo URL.
@@ -54,11 +56,13 @@ const READING_ORDER: { n: number; label: string; href: string; why: string }[] =
   },
 ];
 
+const ETHONLINE_DESCRIPTION =
+  "Judges' page for vet402's ETHOnline 2026 entry: one keyless command for the x402 payment gate, the documents in reading order, the disclosure, on-chain proof.";
+
 export const metadata: Metadata = pageMetadata({
   // layout の template "%s | vet402" が接尾辞を付ける。
   title: "payOrRefuse — ETHOnline 2026",
-  description:
-    "Judges' page for vet402's ETHOnline 2026 entry: one keyless command for the x402 payment gate, the documents in reading order, the disclosure, on-chain proof.",
+  description: ETHONLINE_DESCRIPTION,
   path: "/ethonline",
 });
 
@@ -70,10 +74,33 @@ function Ext({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-export default function EthOnlinePage() {
+export default async function EthOnlinePage() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const breadcrumb = breadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "ETHOnline 2026", path: "/ethonline" },
+  ]);
+  const webPage = webPageJsonLd({
+    name: "payOrRefuse ETHOnline 2026",
+    description: ETHONLINE_DESCRIPTION,
+    path: "/ethonline",
+  });
+
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet">
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+        />
+        <script
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
+        />
         <div className="doc-head">
           <div className="doc-head-col">
             <span>ETHOnline 2026 — Continuity track</span>
