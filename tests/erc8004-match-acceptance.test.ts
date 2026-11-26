@@ -37,6 +37,7 @@ test("ERC-8004 A: counts distinct agents and payTo, sums purchases and settled",
   // 鎖の読みを渡していないので unavailable（3.10 より前は not_indexed）。
   assert.equal(s.byChain["eip155:1"].status, "unavailable");
   assert.equal(s.byChain["eip155:56"].status, "unavailable");
+  assert.equal(s.byChain["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"].status, "unavailable");
   assert.equal("matchedAgents" in s.byChain["eip155:1"], false, "a chain that cannot be read carries no count");
   for (const m of s.matches) {
     assert.equal(m.payTo, m.payTo.toLowerCase());

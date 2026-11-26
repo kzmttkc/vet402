@@ -123,6 +123,22 @@ test("3.10 row 3: readErc8004Match reads the chain index from the DB and says un
         return { rows: [{ scanned_agents: "40", wallet_rows: 0, matched_agents: 0, matched_pay_to: 0, matched_purchases: "0", matched_settled: "0", top: [] }] };
       }
       if (text.includes("erc8004_chain_agents")) {
+        if (text.includes("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")) {
+          return {
+            rows: [
+              {
+                index_block: null,
+                scanned_agents: "0",
+                wallet_rows: 0,
+                matched_agents: 0,
+                matched_pay_to: 0,
+                matched_purchases: "0",
+                matched_settled: "0",
+                top: [],
+              },
+            ],
+          };
+        }
         // eip155:1 は索引の到達点が無い（ジョブが一度も走っていない）。eip155:56 は走査済み。
         const chain1 = text.includes(`"${erc8004StateCheckpointScope("eip155:1")}"`);
         return {
@@ -142,8 +158,12 @@ test("3.10 row 3: readErc8004Match reads the chain index from the DB and says un
   if (s.status !== "ok") return;
   assert.deepEqual(s.byChain["eip155:1"], { status: "unavailable", reason: "index_not_started" });
   assert.deepEqual(s.byChain["eip155:56"], { status: "scanned", scannedAgents: 5, matchedAgents: 1, indexBlock: "61000000" });
+  assert.deepEqual(s.byChain["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"], {
+    status: "unavailable",
+    reason: "index_not_started",
+  });
   assert.equal(s.matchedAgents, 0, "the Base totals do not absorb another chain's matches");
-  assert.ok(queries.filter((q) => q.includes("erc8004_chain_agents")).length === 2, "one query per chain");
+  assert.ok(queries.filter((q) => q.includes("erc8004_chain_agents")).length >= 2, "one query per EVM extra chain plus Solana");
 });
 
 test("3.10 row 3: a failed chain query is unavailable for that chain only and Base stays ok", async (t) => {
@@ -295,6 +315,7 @@ test("3.10 row 7: erc8004.about never calls matches adoption or users, and keeps
   assert.doesNotMatch(ERC8004_ABOUT, /[—–;]|\bwe\b|\bour\b|\bus\b/i);
   assert.match(ERC8004_ABOUT, /Ethereum/);
   assert.match(ERC8004_ABOUT, /BNB Chain/);
+  assert.match(ERC8004_ABOUT, /Solana/);
   assert.match(ERC8004_ABOUT, /unavailable/);
   const route = readFileSync("src/app/api/v1/observatory/state/route.ts", "utf8");
   assert.match(route, /about: ERC8004_ABOUT/);

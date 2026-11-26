@@ -70,6 +70,9 @@ function fakeDb(opts: { checkpoint: bigint | null; matchRows?: MatchRow[]; walle
       if (text.includes("erc8004_chain_agents")) {
         return { rows: [{ ...sqlRow([], 0), index_block: null, scanned_agents: "0" }] };
       }
+      if (text.includes("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")) {
+        return { rows: [{ ...sqlRow([], 0), index_block: null, scanned_agents: "0" }] };
+      }
       throw new Error(`unexpected query ${text.slice(0, 80)}`);
     },
   };
@@ -180,6 +183,7 @@ test("cached reader: ok gets readAt, a failure is not stored and the next read r
       "eip155:8453": { status: "scanned", scannedAgents: 1, matchedAgents: 0, indexBlock: "1" },
       "eip155:1": { status: "unavailable", reason: "index_not_started" },
       "eip155:56": { status: "unavailable", reason: "index_not_started" },
+      "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": { status: "unavailable", reason: "index_not_started" },
     },
     matches: [],
     notes: [],

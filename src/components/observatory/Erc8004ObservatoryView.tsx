@@ -97,6 +97,13 @@ export function Erc8004ObservatoryView({ data }: { data: Erc8004MatchRead }) {
           </h2>
           <p className="doc-p">{ERC8004_PAGE_MATCH_RULE}</p>
           <p className="doc-p">{ERC8004_PAGE_NOT_COUNTED}</p>
+          <p className="doc-p">
+            Solana (8004-solana) uses exact base58 equality and does not lowercase addresses. Details:{" "}
+            <Link href="/8004-solana" className="doc-link">
+              8004-solana on Solana mainnet
+            </Link>
+            .
+          </p>
 
           <h2 className="sec-head mt-8">
             <span className="sec-no">2.</span>

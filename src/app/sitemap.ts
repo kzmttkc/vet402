@@ -35,6 +35,8 @@ const REV_2026_11_16 = "2026-11-16";
 
 /** 2026-11-24: /erc-8004 pillar and /x402/glossary (SEO/AEO/LLMO proposal). */
 const REV_2026_11_24 = "2026-11-24";
+/** 2026-11-26: /8004-solana ladder page (WO-10). */
+const REV_2026_11_26 = "2026-11-26";
 
 function coreStaticSitemap(): MetadataRoute.Sitemap {
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -99,6 +101,7 @@ function coreStaticSitemap(): MetadataRoute.Sitemap {
     { url: `${SITE_URL}/x402/refunds`, lastModified: REV_2026_11_12, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/glossary`, lastModified: REV_2026_11_24, changeFrequency: "monthly", priority: 0.7 },
     { url: `${SITE_URL}/erc-8004`, lastModified: REV_2026_11_24, changeFrequency: "daily", priority: 0.9 },
+    { url: `${SITE_URL}/8004-solana`, lastModified: REV_2026_11_26, changeFrequency: "daily", priority: 0.85 },
     { url: `${SITE_URL}/x402/ways-to-check-a-seller`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/pricing`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },

@@ -211,7 +211,11 @@ export default async function Erc8004PillarPage() {
               <Link href="/observatory/erc8004" className="doc-link">
                 ERC-8004 agents matched to vet402 payTo addresses
               </Link>
-              . A match is exact lowercase address equality. Names and endpoint URLs are not used.
+              . A match is exact lowercase address equality on EVM chains. Solana uses exact base58 on{" "}
+              <Link href="/8004-solana" className="doc-link">
+                8004-solana
+              </Link>
+              . Names and endpoint URLs are not used.
             </p>
           </>
         ) : (

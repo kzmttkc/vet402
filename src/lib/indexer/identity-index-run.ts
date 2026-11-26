@@ -3,6 +3,7 @@ import { type AgentWalletIndexResult } from "./agent-wallet-indexer";
 import { indexOwnerAgents, type OwnerIndexResult } from "./owner-indexer";
 import { indexErc8004StateChains, type Erc8004StateIndexResult, DEFAULT_STATE_TIME_BUDGET_MS } from "./erc8004-state-indexer";
 import type { Erc8004ChainIndexResult } from "./erc8004-chain-indexer";
+import { indexErc8004SolanaChains, type Erc8004SolanaIndexResult } from "./erc8004-solana-indexer";
 
 /**
  * `/api/cron/index-owners` の中身（2026-10-31）。所有者索引と WalletSet 索引を、同じ時計・同じ
@@ -30,6 +31,7 @@ export type IdentityIndexRunBody = {
   /** Ethereum・BNB・Base wallet の状態読み索引。鎖ごとに ok・error。 */
   chainIndexes: Erc8004ChainIndexResult[] | Erc8004StateIndexResult[];
   stateIndexes?: Erc8004StateIndexResult[];
+  solanaIndexes?: Erc8004SolanaIndexResult[];
 } & Omit<Partial<OwnerIndexResult>, "blocksAdvanced" | "caughtUp">;
 
 const BUDGET_STOPS = new Set(["time_budget", "hard_stop", "write_deadline"]);
@@ -100,16 +102,22 @@ async function runHoldingLease(input: {
     deps: { now, env: process.env },
   };
 
-  const [owner, states] = await Promise.allSettled([indexOwnerAgents(ownerShared), indexErc8004StateChains(stateShared)]);
+  const [owner, states, solana] = await Promise.allSettled([
+    indexOwnerAgents(ownerShared),
+    indexErc8004StateChains(stateShared),
+    indexErc8004SolanaChains({ timeBudgetMs: stateTimeBudget, startedAt, deps: { now } }),
+  ]);
 
   const ownerResult = owner.status === "fulfilled" ? owner.value : null;
   const stateResults = states.status === "fulfilled" ? states.value : [];
+  const solanaResults = solana.status === "fulfilled" ? solana.value : [];
   const baseState = stateResults.find((r) => r.chain === "eip155:8453");
   const walletResult = baseState ? stateToWalletResult(baseState) : { error: message(states.status === "rejected" ? states.reason : "state_index_missing") };
 
   const errors = [
     owner.status === "rejected" ? `owner: ${message(owner.reason)}` : null,
     states.status === "rejected" ? `state: ${message(states.reason)}` : null,
+    solana.status === "rejected" ? `solana8004: ${message(solana.reason)}` : null,
   ].filter((e): e is string => e !== null);
 
   const body: IdentityIndexRunBody = {
@@ -130,11 +138,12 @@ async function runHoldingLease(input: {
     walletIndex: walletResult,
     chainIndexes: stateResults,
     stateIndexes: stateResults,
+    solanaIndexes: solanaResults,
   };
 
   return {
     status: errors.length === 0 ? 200 : 500,
     body,
-    failures: [owner, states].flatMap((r) => (r.status === "rejected" ? [r.reason] : [])),
+    failures: [owner, states, solana].flatMap((r) => (r.status === "rejected" ? [r.reason] : [])),
   };
 }

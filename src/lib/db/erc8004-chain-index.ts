@@ -10,6 +10,9 @@
 // checkpoint は進まないので、次の回が同じ区切りを読み直して同じ形に書く（冪等）。
 // ============================================================
 import { and, eq, inArray, sql } from "drizzle-orm";
+import {
+  ERC8004_SOLANA_DB_CHAIN_ID,
+} from "@/lib/observatory/erc8004-solana-constants";
 import { getDb } from "./client";
 import { erc8004ChainAgents } from "./schema";
 import { DeadlineExceededError } from "@/lib/util/deadline";
@@ -28,6 +31,11 @@ export function erc8004StateCheckpointScope(caip2: string): string {
   return `erc8004_state:${caip2}`;
 }
 
+export type Erc8004SolanaAgentRows = {
+  owners: { agentId: bigint; owner: string }[];
+  wallets: { agentId: bigint; wallet: string | null }[];
+};
+
 export type Erc8004ChainAgentChanges = {
   /** 小文字の owner。最後の Transfer の `to`。 */
   owners: { agentId: bigint; owner: string }[];
@@ -38,6 +46,51 @@ export type Erc8004ChainAgentChanges = {
 };
 
 const BATCH = 500;
+
+/** 8004-solana: owner and agent_wallet are written without lowercasing (base58 is case-sensitive). */
+export async function applyErc8004SolanaAgentRows(
+  rows: Erc8004SolanaAgentRows,
+  options?: { shouldStop?: () => boolean },
+): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const chainId = ERC8004_SOLANA_DB_CHAIN_ID;
+  const guard = () => {
+    if (options?.shouldStop?.()) throw new DeadlineExceededError("erc8004-solana-index", 0);
+  };
+
+  for (let i = 0; i < rows.owners.length; i += BATCH) {
+    guard();
+    const now = new Date();
+    await db
+      .insert(erc8004ChainAgents)
+      .values(
+        rows.owners
+          .slice(i, i + BATCH)
+          .map((o) => ({ chainId, agentId: o.agentId, owner: o.owner, updatedAt: now })),
+      )
+      .onConflictDoUpdate({
+        target: [erc8004ChainAgents.chainId, erc8004ChainAgents.agentId],
+        set: { owner: sql`excluded.owner`, updatedAt: now },
+      });
+  }
+
+  for (let i = 0; i < rows.wallets.length; i += BATCH) {
+    guard();
+    const now = new Date();
+    await db
+      .insert(erc8004ChainAgents)
+      .values(
+        rows.wallets
+          .slice(i, i + BATCH)
+          .map((w) => ({ chainId, agentId: w.agentId, wallet: w.wallet, updatedAt: now })),
+      )
+      .onConflictDoUpdate({
+        target: [erc8004ChainAgents.chainId, erc8004ChainAgents.agentId],
+        set: { wallet: sql`excluded.wallet`, updatedAt: now },
+      });
+  }
+}
 
 export async function applyErc8004ChainAgentChanges(
   chainId: number,

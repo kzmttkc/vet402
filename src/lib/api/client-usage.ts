@@ -83,6 +83,7 @@ export const SELF_MONITOR_NAMES: readonly string[] = [
   "vet402-gtm-weekly",
   "vet402-payer-balance",
   "vet402-diagnose",
+  "vet402-erc8004-solana-index",
 ];
 /** Takeshi_Automation の監視が名乗る先頭（`kizuna-grant-figures/1` など）。社内の接頭辞で、配布物には使わない。 */
 const SELF_MONITOR_PREFIX = "kizuna-";

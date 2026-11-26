@@ -15,6 +15,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 - [What is x402?](https://vet402.com/x402): x402 is an open payment standard built on HTTP 402. A server answers 402 with payment terms, the client pays, often in USDC, and repeats the request with proof of payment.
 - [What is ERC-8004?](https://vet402.com/erc-8004): ERC-8004 (Trustless Agents) is an Ethereum standard with three registries for AI agents: identity, reputation and validation. Payments are out of its scope.
+- [8004-solana on Solana mainnet](https://vet402.com/8004-solana): Registered 8004-solana agents, x402 declarations in the public index, and vet402 purchase overlap with exact base58 payTo equality (not lowercase).
 - [Glossary](https://vet402.com/x402/glossary): facilitator, payTo, PAYMENT-REQUIRED, exact, upto, batch settlement, Bazaar, CAIP-2, agentId, feedbackURI.
 - [Methodology](https://vet402.com/observatory/methodology): what L0 (unpaid probe), L1 (real purchase) and L2 (output check against the seller's declaration) mean, and when a failure counts against a seller.
 

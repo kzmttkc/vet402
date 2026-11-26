@@ -26,11 +26,15 @@ import {
   erc8004StateCheckpointScope,
   type Erc8004ExtraChain,
 } from "@/lib/db/erc8004-chain-index";
+import {
+  ERC8004_SOLANA_CAIP,
+  ERC8004_SOLANA_DB_CHAIN_ID,
+} from "@/lib/observatory/erc8004-solana-constants";
 import { PUBLIC_READ_REVALIDATE } from "./public-read-revalidate";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export const ERC8004_INDEXED_CHAIN = "eip155:8453" as const;
-export { ERC8004_EXTRA_CHAINS, type Erc8004ExtraChain };
+export { ERC8004_EXTRA_CHAINS, type Erc8004ExtraChain, ERC8004_SOLANA_CAIP };
 const MAX_LISTED = 200;
 
 /**
@@ -38,7 +42,7 @@ const MAX_LISTED = 200;
  * 一致の数を採用や利用者の数として書かない。公開の英語の決まり（we・ダッシュ・セミコロンを置かない）。
  */
 export const ERC8004_ABOUT =
-  "Exact lowercase address equality between the payTo of vet402 purchase rows and the owner or agentWallet of an agent in vet402's index of the ERC-8004 Identity Registry. The top-level counts are Base. byChain gives Base, Ethereum and BNB Chain each on its own, with the agents scanned, the agents matched and the block the index has read to. A chain whose index cannot be read says unavailable with a reason and carries no counts. Each purchase row counts once even when its payTo owns several agents. readAt is when these counts were read from the database, cached up to 5 minutes.";
+  "Exact address equality between the payTo of vet402 purchase rows and the owner or agentWallet of an agent in vet402's index of the ERC-8004 Identity Registry. On EVM chains the comparison uses lowercase addresses. On Solana mainnet base58 addresses keep their original case. The top-level counts are Base. byChain gives Base, Ethereum, BNB Chain and Solana each on its own, with the agents scanned, the agents matched and the block or slot the index has read to. A chain whose index cannot be read says unavailable with a reason and carries no counts. Each purchase row counts once even when its payTo owns several agents. readAt is when these counts were read from the database, cached up to 5 minutes.";
 
 export type Erc8004MatchRow = { agentId: string; payTo: string; purchases: number; settled: number };
 
@@ -63,8 +67,12 @@ export type Erc8004MatchInput =
   | ({ checkedAt: string } & Exclude<Erc8004ChainInput, { error: string }> & {
       /** Ethereum・BNB Chain の読み。渡されない鎖は unavailable（chain_index_not_read）。 */
       extraChains?: Partial<Record<Erc8004ExtraChain, Erc8004ChainInput>>;
+      /** 8004-solana の読み。渡されないときは unavailable（chain_index_not_read）。 */
+      solanaChain?: Erc8004ChainInput;
       /** 状態読み索引の進み（byChain の state* フィールド）。 */
-      stateProgress?: Partial<Record<Erc8004ExtraChain | typeof ERC8004_INDEXED_CHAIN, Erc8004StateProgress>>;
+      stateProgress?: Partial<
+        Record<Erc8004ExtraChain | typeof ERC8004_INDEXED_CHAIN | typeof ERC8004_SOLANA_CAIP, Erc8004StateProgress>
+      >;
       matched_pay_to_owner_only?: number;
       matched_pay_to_wallet_confirmed?: number;
     });
@@ -86,7 +94,7 @@ export type Erc8004MatchBinding = {
 
 export type Erc8004Match = {
   agentId: string;
-  chainId: typeof ERC8004_INDEXED_CHAIN | Erc8004ExtraChain;
+  chainId: typeof ERC8004_INDEXED_CHAIN | Erc8004ExtraChain | typeof ERC8004_SOLANA_CAIP;
   payTo: string;
   matchKind: "owner" | "agent_wallet";
   purchases: number;
@@ -125,6 +133,7 @@ export type Erc8004MatchSummary =
         "eip155:8453": Erc8004ScannedChain;
         "eip155:1": Erc8004ScannedChain | Erc8004UnavailableChain;
         "eip155:56": Erc8004ScannedChain | Erc8004UnavailableChain;
+        [ERC8004_SOLANA_CAIP]: Erc8004ScannedChain | Erc8004UnavailableChain;
       };
       matches: Erc8004Match[];
       notes: string[];
@@ -174,6 +183,34 @@ export function summarizeErc8004Match(input: Erc8004MatchInput): Erc8004MatchSum
     }
   }
 
+  let solanaByChain: Erc8004ScannedChain | Erc8004UnavailableChain = {
+    status: "unavailable",
+    reason: "chain_index_not_read",
+  };
+  const solanaRead = input.solanaChain;
+  if (solanaRead) {
+    if ("error" in solanaRead) {
+      solanaByChain = { status: "unavailable", reason: solanaRead.error };
+    } else {
+      const rows = chainMatches(solanaRead, ERC8004_SOLANA_CAIP);
+      extraMatches.push(...rows);
+      const prog = input.stateProgress?.[ERC8004_SOLANA_CAIP];
+      solanaByChain = {
+        status: "scanned",
+        scannedAgents: solanaRead.scannedAgents,
+        matchedAgents: (solanaRead.totals ?? totalsFromRows(rows)).matchedAgents,
+        indexBlock: solanaRead.indexBlock,
+        ...(prog
+          ? {
+              stateIndexToken: prog.stateIndexToken,
+              stateSupplyEstimate: prog.stateSupplyEstimate,
+              stateLap: prog.stateLap,
+            }
+          : {}),
+      };
+    }
+  }
+
   const matchBinding = matchBindingOf(input);
 
   const listed = [...matches, ...extraMatches]
@@ -207,6 +244,7 @@ export function summarizeErc8004Match(input: Erc8004MatchInput): Erc8004MatchSum
           : {}),
       },
       ...extra,
+      [ERC8004_SOLANA_CAIP]: solanaByChain,
     },
     matches: listed,
     notes: input.walletMatches === null ? [ERC8004_AGENT_WALLET_EMPTY_NOTE] : [],
@@ -259,10 +297,11 @@ function totalsFromRows(matches: Erc8004Match[]): Erc8004MatchTotals {
 }
 
 function toMatch(r: Erc8004MatchRow, matchKind: Erc8004Match["matchKind"], chainId: Erc8004Match["chainId"]): Erc8004Match {
+  const preserveCase = chainId === ERC8004_SOLANA_CAIP;
   return {
     agentId: String(r.agentId),
     chainId,
-    payTo: r.payTo.toLowerCase(),
+    payTo: preserveCase ? r.payTo : r.payTo.toLowerCase(),
     matchKind,
     purchases: Number(r.purchases),
     settled: Number(r.settled),
@@ -373,6 +412,60 @@ SELECT
 
 const ERC8004_CHAIN_IDS: Record<Erc8004ExtraChain, number> = { "eip155:1": 1, "eip155:56": 56 };
 
+/**
+ * 8004-solana 照合。pay_to は小文字化せず、Solana mainnet の購入行だけを分母にする。
+ */
+export const ERC8004_SOLANA_MATCH_SQL_TEXT = `
+WITH paid AS (
+  SELECT pay_to,
+         count(*)::int AS purchases,
+         count(*) FILTER (WHERE status = 'settled')::int AS settled
+  FROM x402_l1_purchases
+  WHERE pay_to IS NOT NULL
+    AND network = {{network}}
+  GROUP BY pay_to
+),
+m AS (
+  SELECT 'owner' AS match_kind, ca.agent_id, paid.pay_to, paid.purchases, paid.settled
+  FROM paid
+  JOIN erc8004_chain_agents ca ON ca.chain_id = {{chain_id}} AND ca.owner = paid.pay_to
+  UNION ALL
+  SELECT 'agent_wallet' AS match_kind, ca.agent_id, paid.pay_to, paid.purchases, paid.settled
+  FROM paid
+  JOIN erc8004_chain_agents ca ON ca.chain_id = {{chain_id}} AND ca.wallet = paid.pay_to
+)
+SELECT
+  (SELECT last_block FROM indexer_checkpoints WHERE scope = {{scope}})::text AS index_block,
+  (SELECT count(*) FROM erc8004_chain_agents WHERE chain_id = {{chain_id}} AND owner IS NOT NULL)::bigint::text AS scanned_agents,
+  (SELECT count(*) FROM erc8004_chain_agents WHERE chain_id = {{chain_id}} AND wallet IS NOT NULL)::int AS wallet_rows,
+  (SELECT count(DISTINCT agent_id) FROM m)::int AS matched_agents,
+  (SELECT count(DISTINCT pay_to) FROM m)::int AS matched_pay_to,
+  (SELECT coalesce(sum(purchases), 0) FROM paid WHERE pay_to IN (SELECT pay_to FROM m))::bigint::text AS matched_purchases,
+  (SELECT coalesce(sum(settled), 0) FROM paid WHERE pay_to IN (SELECT pay_to FROM m))::bigint::text AS matched_settled,
+  (SELECT coalesce(json_agg(t), '[]'::json) FROM (
+     SELECT match_kind, agent_id::text AS agent_id, pay_to, purchases, settled
+     FROM m
+     ORDER BY m.purchases DESC, m.pay_to COLLATE "C", m.agent_id
+     LIMIT ${MAX_LISTED}
+   ) t) AS top,
+  (SELECT count(*)::int FROM (
+     SELECT DISTINCT pay_to FROM m WHERE match_kind = 'owner'
+     EXCEPT
+     SELECT DISTINCT pay_to FROM m WHERE match_kind = 'agent_wallet'
+   ) o) AS matched_pay_to_owner_only,
+  (SELECT count(DISTINCT pay_to)::int FROM m WHERE match_kind = 'agent_wallet') AS matched_pay_to_wallet_confirmed
+`;
+
+export function erc8004SolanaMatchQuery() {
+  const params: Record<string, unknown> = {
+    chain_id: ERC8004_SOLANA_DB_CHAIN_ID,
+    scope: erc8004StateCheckpointScope(ERC8004_SOLANA_CAIP),
+    network: ERC8004_SOLANA_CAIP,
+  };
+  const parts = ERC8004_SOLANA_MATCH_SQL_TEXT.split(/\{\{(chain_id|scope|network)\}\}/);
+  return sql.join(parts.map((p, i) => (i % 2 === 1 ? sql`${params[p]}` : sql.raw(p))));
+}
+
 /** ERC8004_CHAIN_MATCH_SQL_TEXT の {{chain_id}}・{{scope}} を bind 引数にした 1 文。 */
 export function erc8004ChainMatchQuery(chain: Erc8004ExtraChain) {
   const params: Record<string, unknown> = { chain_id: ERC8004_CHAIN_IDS[chain], scope: erc8004StateCheckpointScope(chain) };
@@ -417,6 +510,18 @@ function chainInputOf(row: Record<string, unknown>) {
  * 状態読みが一度も進んでいない鎖（erc8004_state の checkpoint 行が無い）だけ
  * index_not_started。どちらも数を持たない。
  */
+async function readSolanaChainIndex(db: NonNullable<ReturnType<typeof getDb>>): Promise<Erc8004ChainInput> {
+  try {
+    const row = rowsOf(await db.execute(erc8004SolanaMatchQuery()))[0];
+    if (!row) return { error: "agent_counts_unreadable" };
+    if (row.index_block === null || row.index_block === undefined) return { error: "index_not_started" };
+    return { indexBlock: String(row.index_block), ...chainInputOf(row) };
+  } catch (error) {
+    logServerErrorSafe(`erc8004_match.${ERC8004_SOLANA_CAIP}`, error);
+    return { error: "query_failed" };
+  }
+}
+
 async function readChainIndex(db: NonNullable<ReturnType<typeof getDb>>, chain: Erc8004ExtraChain): Promise<Erc8004ChainInput> {
   try {
     const row = rowsOf(await db.execute(erc8004ChainMatchQuery(chain)))[0];
@@ -465,11 +570,14 @@ export async function readErc8004Match(): Promise<Erc8004MatchSummary> {
     const entries = await Promise.all(
       ERC8004_EXTRA_CHAINS.map(async (chain) => [chain, await readChainIndex(db, chain)] as const),
     );
+    const solanaChain = await readSolanaChainIndex(db);
     const progressEntries = await Promise.all(
-      [ERC8004_INDEXED_CHAIN, ...ERC8004_EXTRA_CHAINS].map(async (chain) => [chain, await readErc8004StateProgress(db, chain)] as const),
+      [ERC8004_INDEXED_CHAIN, ...ERC8004_EXTRA_CHAINS, ERC8004_SOLANA_CAIP].map(
+        async (chain) => [chain, await readErc8004StateProgress(db, chain)] as const,
+      ),
     );
     const stateProgress = Object.fromEntries(progressEntries.filter(([, p]) => p !== null)) as Partial<
-      Record<Erc8004ExtraChain | typeof ERC8004_INDEXED_CHAIN, Erc8004StateProgress>
+      Record<Erc8004ExtraChain | typeof ERC8004_INDEXED_CHAIN | typeof ERC8004_SOLANA_CAIP, Erc8004StateProgress>
     >;
 
     return summarizeErc8004Match({
@@ -479,6 +587,7 @@ export async function readErc8004Match(): Promise<Erc8004MatchSummary> {
       matched_pay_to_owner_only: Number(row.matched_pay_to_owner_only ?? 0),
       matched_pay_to_wallet_confirmed: Number(row.matched_pay_to_wallet_confirmed ?? 0),
       extraChains: Object.fromEntries(entries),
+      solanaChain,
       stateProgress,
     });
   } catch (error) {
