@@ -362,7 +362,8 @@ if (!TEST_DB) {
 
     const element = await pageMod.default({ searchParams: Promise.resolve({ chain: "eip155:42220", month }) });
     const html = renderToStaticMarkup(element);
-    assert.match(html, /Calls made without a key are not counted per chain/);
+    assert.match(html, /This table lists keyed decision answers/);
+    assert.match(html, /client_usage_daily_network/);
     assert.match(html, /&lt;3/);
     assert.match(html, /withheld/);
     assert.match(html, />external</);

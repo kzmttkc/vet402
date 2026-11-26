@@ -156,8 +156,8 @@ test("本番 SQL は 1 本で足すだけ。client_usage_daily は変えない",
   assert.doesNotMatch(sqlText, /本番には流さない/);
   assert.equal(existsSync("scripts/sql/2026-10-26-decision-usage-chain-pk.sql"), false);
   const route = readFileSync("src/app/api/v1/resources/[resourceId]/decision/route.ts", "utf8");
-  assert.match(route, /recordClientUsage\(request\.headers, "decision"\)/);
-  assert.doesNotMatch(route, /recordClientUsage\([^)]*usageChainOf/);
+  assert.match(route, /recordClientUsage\(request\.headers, "decision",/);
+  assert.match(route, /usageChainOf\(loaded\.network\)/);
 });
 
 test("2026-10-28 の SQL は 3 つの CHECK に prezenti_grantee を足すだけ", () => {
@@ -199,13 +199,17 @@ test("公開の月次ページは noindex で、ポリシーは鍵なしを元�
   const page = readFileSync("src/app/usage/monthly/page.tsx", "utf8");
   const privacy = readFileSync("src/app/legal/privacy/page.tsx", "utf8").replace(/\s+/g, " ");
   assert.match(page, /noindex:\s*true/);
-  assert.match(page, /Calls made without a key are not counted per chain/);
+  assert.match(page, /This table lists keyed decision answers/);
+  assert.match(page, /client_usage_daily_network/);
   assert.match(privacy, /made without an API key, a count per UTC day, client name and API route/);
+  assert.match(privacy, /<code>client_usage_daily_network<\/code>/);
   assert.match(privacy, /day, client name and API route, and holds nothing that identifies who made the calls/);
   assert.doesNotMatch(privacy, /API route and chain/);
   assert.doesNotMatch(privacy, /A resolve row stores an empty chain/);
   assert.doesNotMatch(privacy, /Decision answers made without a key stay/);
-  assert.match(privacy, /Calls made without a key are not counted per chain, so this table does not list them/);
+  assert.doesNotMatch(privacy, /Calls made without a key are not counted per chain/);
+  assert.match(privacy, /This table lists keyed decision answers/);
+  assert.match(privacy, /Key-less call counts by network are kept in <code>client_usage_daily_network<\/code> and are not listed here/);
   assert.match(privacy, /A labeled relation with fewer than 3 owners shows/);
   assert.match(privacy, /An unclassified relation shows the number of owners and leaves the call count out/);
   assert.match(privacy, /The first read at or after 00:00 UTC on the 3rd day of the next month stores the figures/);
@@ -239,4 +243,12 @@ test("公開の月次ページは noindex で、ポリシーは鍵なしを元�
   assert.match(openapi, /owners/);
   assert.doesNotMatch(openapi, /required: \[owner_relation, keys\]/);
   assert.doesNotMatch(openapi, /keyless:/);
+});
+
+test("api endpoint docs: the monthly usage note says key-less network counts are kept but not listed (2026-11-26)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../src/lib/docs/api-endpoints-data.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("Key-less call counts by network are kept in client_usage_daily_network and are not listed in this table."));
+  assert.ok(!src.includes("Calls made without a key are not counted per chain"));
+  assert.ok(!src.includes("counted per chain since 2026-11-26"));
 });

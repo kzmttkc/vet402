@@ -1,7 +1,7 @@
 // ============================================================
 // 鍵ありの判定 API の件数を、鍵とチェーンで数える（2026-10-26）。
 //
-// 鍵なしは client_usage_daily のまま（日・client・ルート）。チェーンは足さない。
+// 鍵なしは client_usage_daily（日・client・ルート）と、network が分かるとき client_usage_daily_network（日・client・ルート・network）。
 // 鍵ありは decision_usage_daily（日・api_key_id・chain）。api_usage の課金とは別。
 // 応答の後に 1 文で upsert し、失敗はログへ出して捨てる。判定の応答は変えない。
 // 数えるのは新鮮な 200 だけ。replay・400・404・401・503 は呼び手が数えない。

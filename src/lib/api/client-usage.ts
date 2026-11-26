@@ -22,6 +22,7 @@
 //                         ブラウザ、curl、node の既定はここ。自社の skill-live もここに混ざる
 // 保存するのは client_usage_daily の (UTC 日, client, ルート名, 件数) だけで、IP・URL・クエリ・鍵・resource_id・
 // UA の生の文字列・Referer は保存しない。ヘッダは名前を選ぶためだけに読む。
+// 2026-11-26: network が分かる呼び出しだけ client_usage_daily_network に (UTC 日, client, ルート, network, 件数) を足す。
 // 名前はどれも呼び手の自己申告（UA は偽れる）。数は「誰が」ではなく「どの入口が何回」を読む。
 //
 // 数えるのは鍵なしの呼び出しだけ（Authorization ヘッダが空。ルートの側で確かめてから呼ぶ）。decision の鍵つきは
@@ -206,6 +207,44 @@ export function clientUsageOverflowLabel(client: string): string {
 }
 
 /** 1 件を加算する単文 upsert。失敗はログへ出して捨てる（呼び手へ投げない）。 */
+export function upsertClientUsageNetwork(
+  client: string,
+  route: ClientUsageRoute,
+  network: string,
+  now: Date = new Date(),
+): Promise<void> {
+  let db: ReturnType<typeof getDb>;
+  try {
+    db = getDb();
+  } catch (error) {
+    logAndSwallowSafe("client_usage_network.record")(error);
+    return Promise.resolve();
+  }
+  if (!db) return Promise.resolve();
+  const day = now.toISOString().slice(0, 10);
+  const overflow = clientUsageOverflowLabel(client);
+  let pending: PromiseLike<unknown>;
+  try {
+    pending = db.execute(
+      sql`INSERT INTO client_usage_daily_network (day, client, route, network, count)
+          SELECT ${day}::date,
+                 CASE WHEN EXISTS (SELECT 1 FROM client_usage_daily WHERE day = ${day}::date AND client = ${client})
+                        OR (SELECT count(DISTINCT client) FROM client_usage_daily
+                             WHERE day = ${day}::date AND position('/' in client) > 0 AND client NOT LIKE '%/other') < ${MAX_CLIENTS_PER_DAY}
+                      THEN ${client} ELSE ${overflow} END,
+                 ${route}, ${network}, 1
+          ON CONFLICT (day, client, route, network) DO UPDATE SET count = client_usage_daily_network.count + 1`,
+    );
+  } catch (error) {
+    logAndSwallowSafe("client_usage_network.record")(error);
+    return Promise.resolve();
+  }
+  return Promise.resolve(pending)
+    .then(() => undefined)
+    .catch(logAndSwallowSafe("client_usage_network.record"));
+}
+
+/** 1 件を加算する単文 upsert。失敗はログへ出して捨てる（呼び手へ投げない）。 */
 export function upsertClientUsage(client: string, route: ClientUsageRoute, now: Date = new Date()): Promise<void> {
   let db: ReturnType<typeof getDb>;
   try {
@@ -251,12 +290,16 @@ export function isKeylessRequest(headers: Pick<Headers, "get">): boolean {
  * Authorization ヘッダが付いた呼び出しは、ここでも数えない（ルートの確かめ漏れに備えた二重の関門）。
  * 応答の後に 1 件を加算する。同期的に返り、例外を外へ出さない。
  */
-export function recordClientUsage(headers: Headers, route: ClientUsageRoute): void {
+export function recordClientUsage(headers: Headers, route: ClientUsageRoute, usageNetwork?: string): void {
   try {
     if (!isKeylessRequest(headers)) return;
     const client = clientUsageLabel(headers.get("user-agent"), isOwnPageRequest(headers));
     const now = new Date();
-    runAfterResponse(() => upsertClientUsage(client, route, now));
+    const network = usageNetwork?.trim();
+    runAfterResponse(async () => {
+      await upsertClientUsage(client, route, now);
+      if (network) await upsertClientUsageNetwork(client, route, network, now);
+    });
   } catch (error) {
     logAndSwallowSafe("client_usage.schedule")(error);
   }
@@ -279,10 +322,14 @@ export function recordRateLimitedClientUsage(route: ClientUsageRoute): void {
  * client は mcpClientUsageLabel が選んだ名前。MCP は鍵を持たないので Authorization の有無で分けない
  * （api_usage と二重に数えることが無い）。応答の後に 1 件を加算し、例外を外へ出さない。
  */
-export function recordMcpUsage(client: string, route: McpUsageRoute): void {
+export function recordMcpUsage(client: string, route: McpUsageRoute, usageNetwork?: string): void {
   try {
     const now = new Date();
-    runAfterResponse(() => upsertClientUsage(client, route, now));
+    const network = usageNetwork?.trim();
+    runAfterResponse(async () => {
+      await upsertClientUsage(client, route, now);
+      if (network) await upsertClientUsageNetwork(client, route, network, now);
+    });
   } catch (error) {
     logAndSwallowSafe("client_usage.schedule")(error);
   }

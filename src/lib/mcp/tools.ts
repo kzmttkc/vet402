@@ -12,7 +12,9 @@
 // ============================================================
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { decide as decideFn } from "@/lib/decision/decide";
-import type { resolve as resolveFn } from "@/lib/resolve/lookup";
+import type { resolve as resolveFn, resolveForRoute as resolveForRouteFn } from "@/lib/resolve/lookup";
+import { usageChainOf } from "@/lib/api/decision-usage";
+import { canonicalUrl } from "@/lib/ids/canonical";
 import type { SellerFacts } from "@/lib/decision/types";
 import { L1_WINDOW_DAYS } from "@/lib/decision/rules";
 import { LISTING_SOURCES } from "@/lib/observatory/listing-sources";
@@ -92,6 +94,9 @@ export type SellerPageLoaders = Parameters<typeof resolveSellerPage>[1];
 
 export type McpDeps = {
   resolve: typeof resolveFn;
+  resolveForRoute?: typeof resolveForRouteFn;
+  /** check 系 tool が endpoint の network を集計へ渡す（URL・IP は渡さない）。 */
+  captureUsageNetwork?: (network: string) => void;
   decide: typeof decideFn;
   l1Purchases: (endpointId: string) => Promise<L1PurchaseOut[]>;
   sellerPage: SellerPageLoaders;
@@ -105,10 +110,12 @@ export type McpDeps = {
 };
 
 /** ① check_x402_seller が読む読み手だけ（tests の最小 fake deps 用）。 */
-export type CheckSellerDeps = Pick<McpDeps, "resolve" | "decide" | "l1Purchases"> & { now?: () => Date };
+export type CheckSellerDeps = Pick<McpDeps, "resolve" | "resolveForRoute" | "captureUsageNetwork" | "decide" | "l1Purchases"> & {
+  now?: () => Date;
+};
 
 /** 1 回の要求の状態。DB を読めなかった tool があれば route が 503 にする。 */
-export type McpRequestState = { unavailable: boolean };
+export type McpRequestState = { unavailable: boolean; usageNetwork?: string };
 
 /** structuredContent の上限（同じ JSON を TextContent にも載せるので、応答全体は約 2 倍になる。16KB 以内に収める）。 */
 export const MAX_STRUCTURED_BYTES = 7_000;
@@ -199,10 +206,43 @@ export function emptyCheckSellerHint(asOf: string): CheckSellerOutput {
   };
 }
 
+function emitUsageNetwork(deps: Pick<McpDeps, "captureUsageNetwork">, network: string | null | undefined): void {
+  const chain = usageChainOf(network);
+  if (chain) deps.captureUsageNetwork?.(chain);
+}
+
+/** check_my_x402_endpoint 用。URL に一致する掲載が 1 チェーンに定まるときだけ network を返す。 */
+export function usageNetworkFromMatchingListings(
+  listings: ReadonlyArray<{ resourceUrl: string; network: string | null | undefined }>,
+  rawUrl: string,
+): string | null | undefined {
+  const c = canonicalUrl(rawUrl);
+  if (!c) return undefined;
+  const matches = listings.filter((l) => canonicalUrl(l.resourceUrl)?.url === c.url);
+  const chains = new Set<string>();
+  for (const l of matches) {
+    const chain = usageChainOf(l.network);
+    if (chain) chains.add(chain);
+  }
+  if (chains.size !== 1) return null;
+  for (const l of matches) {
+    const chain = usageChainOf(l.network);
+    if (chain) return l.network ?? null;
+  }
+  return null;
+}
+
 export async function checkSeller(deps: CheckSellerDeps, input: { url: string; method?: string }): Promise<CheckSellerOutput> {
   const now = (deps.now ?? (() => new Date()))();
   const method = input.method ? input.method.toUpperCase() : undefined;
-  const resolved = await deps.resolve(input.url, method ? { method } : {});
+  let resolved: Awaited<ReturnType<typeof resolveFn>>;
+  if (deps.resolveForRoute) {
+    const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
+    resolved = bundle.result;
+    if (bundle.usageNetwork) deps.captureUsageNetwork?.(bundle.usageNetwork);
+  } else {
+    resolved = await deps.resolve(input.url, method ? { method } : {});
+  }
   const resource = resolved.resource;
   const decision = resource
     ? await deps.decide({
@@ -475,6 +515,8 @@ export async function checkEndpoint(deps: McpDeps, input: { url: string }): Prom
   }
   const fixFirst = modes[0]?.fix_first_url ?? null;
   if (fixFirst) notes.push(OUTPUT_TEXT.fixFirstNote);
+
+  emitUsageNetwork(deps, usageNetworkFromMatchingListings(extras.listings, input.url) ?? null);
 
   return fitBudget<CheckEndpointOutput>(
     {

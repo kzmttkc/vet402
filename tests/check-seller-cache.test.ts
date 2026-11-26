@@ -416,12 +416,42 @@ test("as_of string is shared by body, header, and verdict receipt", async () => 
 
 test("keyless route records usage after handleCheck on 200 (not inside cached checkSeller)", () => {
   const routeSrc = readFileSync("src/lib/api/keyless-check-route.ts", "utf8");
-  assert.match(routeSrc, /await publicRateLimit[\s\S]*await handleCheck\(request, mcpDeps\(\)\)/);
+  assert.match(routeSrc, /await publicRateLimit[\s\S]*await handleCheck\(request, deps\)/);
   assert.match(
     routeSrc,
-    /if \(res\.status === 200 && keyless\)\s*\{[\s\S]*recordClientUsage\(request\.headers, usageRoute\)/,
+    /if \(res\.status === 200 && keyless\)\s*\{[\s\S]*recordClientUsage\(request\.headers, usageRoute/,
   );
   assert.doesNotMatch(readFileSync("src/lib/api/check-handler.ts", "utf8"), /recordClientUsage/);
+});
+
+test("check のキャッシュヒットとミスで network は captureUsageNetwork に 1 回だけ渡る", async () => {
+  __setCheckSellerCacheForTests(storingCache());
+  let networks = 0;
+  let reads = 0;
+  const deps = depsWithDecision(false, "2026-11-18T10:00:00.000Z");
+  deps.resolveForRoute = (async () => {
+    reads++;
+    return {
+      result: {
+        query: { kind: "url", value: URL_A },
+        disclaimer: "",
+        resource: { observatory_id: OBS_ID, canonical_url: URL_A, method: "GET" },
+        endpoints: [],
+      },
+      usageNetwork: "eip155:8453",
+    };
+  }) as unknown as McpDeps["resolveForRoute"];
+  deps.captureUsageNetwork = () => {
+    networks++;
+  };
+  const read = makeGetCheckSellerCached(storingCache());
+  await read(deps, { url: URL_A });
+  assert.equal(reads, 1);
+  assert.equal(networks, 1, "cache miss passes network once");
+  networks = 0;
+  await read(deps, { url: URL_A });
+  assert.equal(reads, 1);
+  assert.equal(networks, 1, "cache hit passes network once");
 });
 
 test("handleKeylessCheckRoute hits check on every call while checkSeller stays warm", async () => {

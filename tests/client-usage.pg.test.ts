@@ -45,6 +45,7 @@ if (!TEST_DB) {
     const rows = (raw: unknown) =>
       [...((Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as Record<string, unknown>[])].map((r) => ({ ...r }));
     const migration = readFileSync(join(process.cwd(), "scripts/sql/2026-10-07-client-usage-daily.sql"), "utf8");
+    const migrationNetwork = readFileSync(join(process.cwd(), "scripts/sql/2026-11-26-client-usage-daily-network.sql"), "utf8");
 
     // 応答の後の処理を捕まえ、テストの中で待つ
     const pending: Array<() => Promise<void>> = [];
@@ -56,8 +57,10 @@ if (!TEST_DB) {
 
     await db.execute(sql.raw(migration));
     await db.execute(sql.raw(migration)); // 再実行してよい
+    await db.execute(sql.raw(migrationNetwork));
+    await db.execute(sql.raw(migrationNetwork));
     await db.execute(
-      sql`TRUNCATE client_usage_daily, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`,
+      sql`TRUNCATE client_usage_daily, client_usage_daily_network, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`,
     );
 
     // 掲載 1 件（decision が 200 を返す相手）
@@ -104,7 +107,13 @@ if (!TEST_DB) {
       rows(await db.execute(sql`SELECT day::text AS day, client, route, count::int AS count FROM client_usage_daily ORDER BY route, client`));
     const total = async (route: string) =>
       Number(rows(await db.execute(sql`SELECT coalesce(sum(count), 0)::int AS n FROM client_usage_daily WHERE route = ${route}`))[0].n);
-    const reset = async () => db.execute(sql`TRUNCATE client_usage_daily, ip_rate_limits`);
+    const netTable = async () =>
+      rows(
+        await db.execute(
+          sql`SELECT day::text AS day, client, route, network, count::int AS count FROM client_usage_daily_network ORDER BY route, client, network`,
+        ),
+      );
+    const reset = async () => db.execute(sql`TRUNCATE client_usage_daily, client_usage_daily_network, ip_rate_limits`);
 
     try {
       await t.test("vet402-hermes の resolve と decision（200）はルートごとに 1 ずつ増える", async () => {
@@ -117,6 +126,32 @@ if (!TEST_DB) {
           { day: today, client: "vet402-hermes/0.1.0", route: "decision", count: 1 },
           { day: today, client: "vet402-hermes/0.1.0", route: "resolve", count: 2 },
         ]);
+      });
+
+      await t.test("network が分かる呼び出しは client_usage_daily_network に足し、分からない呼び出しは足さない", async () => {
+        await reset();
+        await resolve("vet402-hermes/0.1.0");
+        await decision("vet402-hermes/0.1.0");
+        await resolve("curl/8.7.1", nextIp(), {}, `q=${encodeURIComponent("https://unknown.example/no-record")}`);
+        await drain();
+        assert.deepEqual(await netTable(), [
+          { day: today, client: "vet402-hermes/0.1.0", route: "decision", network: "eip155:8453", count: 1 },
+          { day: today, client: "vet402-hermes/0.1.0", route: "resolve", network: "eip155:8453", count: 1 },
+        ]);
+        assert.equal(await total("resolve"), 2);
+        assert.equal(await total("decision"), 1);
+      });
+
+      await t.test("client_usage_daily_network に IP や URL は入らない", async () => {
+        const all = rows(await db.execute(sql`SELECT * FROM client_usage_daily_network`));
+        const dump = JSON.stringify(all);
+        assert.doesNotMatch(dump, /zensched|https?:|198\.51\.100\./);
+        const cols = rows(
+          await db.execute(
+            sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'client_usage_daily_network' ORDER BY ordinal_position`,
+          ),
+        ).map((r) => r.column_name);
+        assert.deepEqual(cols, ["day", "client", "route", "network", "count"]);
       });
 
       await t.test("他の UA・UA 無しは決まった名前に寄せて数える（自社の監視は self-monitor の行）", async () => {
@@ -382,7 +417,7 @@ if (!TEST_DB) {
     } finally {
       setAfterResponseSchedulerForTest(null);
       await db.execute(
-        sql`TRUNCATE client_usage_daily, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`,
+        sql`TRUNCATE client_usage_daily, client_usage_daily_network, ip_rate_limits, x402_endpoints, x402_catalog_snapshots, x402_l0_probes, x402_delisting_events, x402_resource_aliases`,
       );
     }
   });

@@ -589,11 +589,11 @@ claims:
     verified_at: 2026-10-26
   - id: privacy_monthly_table_omits_keyless_chain_counts
     surface: src/app/legal/privacy/page.tsx
-    quote: "Calls made without a key are not counted per chain"
-    means: "鍵なしの呼び出しはチェーンごとに数えない。公開の月次表に鍵なしの節は無い。client_usage_daily に chain 列は無い"
+    quote: "This table lists keyed decision answers"
+    means: "公開の月次表は鍵ありの判定だけを載せる。鍵なしで network が分かる呼び出しは 2026-11-26 から client_usage_daily_network に日・client・route・network・件数で数え、月次表には載せない"
     check: null
-    why_unverifiable: "保存しないことの約束。tests/client-usage.pg.test.ts が client_usage_daily の列を day / client / route / count に固定し、tests/decision-usage.pg.test.ts が公開 JSON に keyless が無いことと、network が celo の出品への鍵あり判定が eip155:42220 に数えることを固定する"
-    verified_at: 2026-10-26
+    why_unverifiable: "保存と公開の約束。tests/client-usage.pg.test.ts が client_usage_daily_network の列を day / client / route / network / count に固定し、tests/decision-usage.pg.test.ts が月次の公開 JSON に鍵なしが無いことを固定する"
+    verified_at: 2026-11-26
   - id: privacy_deleted_account_counts_as_one_owner
     surface: src/app/legal/privacy/page.tsx
     quote: "so the account still counts as one owner"

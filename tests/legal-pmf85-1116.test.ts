@@ -79,12 +79,15 @@ test("terms §12: survival includes sections 13 through 16", () => {
   assert.match(terms, /sections 13 through 16/);
 });
 
-test("terms and privacy: revision and last-updated dates are November 16, 2026", () => {
-  for (const f of ["src/app/legal/terms/page.tsx", "src/app/legal/privacy/page.tsx"]) {
+test("terms and privacy: revision and last-updated dates match the November 2026 legal revisions", () => {
+  for (const [f, display] of [
+    ["src/app/legal/terms/page.tsx", "November 16, 2026"],
+    ["src/app/legal/privacy/page.tsx", "November 26, 2026"],
+  ] as const) {
     const src = read(f);
-    assert.match(src, /Revision: <span className="text-signal">November 16, 2026<\/span>/);
-    assert.match(src, /Last updated: November 16, 2026/);
-    assert.match(src, />November 16, 2026</);
+    assert.match(src, new RegExp(`Revision: <span className="text-signal">${display}<\\/span>`));
+    assert.match(src, new RegExp(`Last updated: ${display}`));
+    assert.match(src, new RegExp(`>${display}<`));
     for (const stale of [
       "September 29, 2026",
       "November 2, 2026",

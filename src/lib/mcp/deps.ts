@@ -9,7 +9,7 @@
 import { unstable_cache } from "next/cache";
 import { getDb } from "@/lib/db/client";
 import { decide } from "@/lib/decision/decide";
-import { resolve } from "@/lib/resolve/lookup";
+import { resolve, resolveForRoute } from "@/lib/resolve/lookup";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import {
   getPurchasedHostsCached,
@@ -44,6 +44,10 @@ export function productionMcpDeps(): McpDeps {
     resolve: (q, opts) => {
       db();
       return resolve(q, opts);
+    },
+    resolveForRoute: (q, opts) => {
+      db();
+      return resolveForRoute(q, opts);
     },
     decide,
     l1Purchases: (id) => readL1Purchases(db(), id),

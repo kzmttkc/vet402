@@ -1584,6 +1584,26 @@ export const clientUsageDaily = pgTable(
 );
 
 /**
+ * client_usage_daily_network（2026-11-26）— 鍵なし公開 API の呼び出し件数を、日・client・ルート・network ごとに足す表。
+ * client_usage_daily と同じ呼び出しを数えるが、endpoint の network が分かるときだけ 1 行増やす（src/lib/api/client-usage.ts）。
+ * network は canonicalNetworkId 済みの CAIP-2。resource が引けない呼び出しは書かない。
+ *
+ * 持つのは (UTC 日, client, ルート名, network, 件数) だけ。IP・URL・クエリ・鍵・resource_id は持たない。
+ * SQL: scripts/sql/2026-11-26-client-usage-daily-network.sql
+ */
+export const clientUsageDailyNetwork = pgTable(
+  "client_usage_daily_network",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    client: text("client").notNull(),
+    route: text("route").notNull(),
+    network: text("network").notNull(),
+    count: bigint("count", { mode: "number" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.client, t.route, t.network] })],
+);
+
+/**
  * site_events_daily（2026-11-09）— 公開頁の閲覧とクリック系イベントを、日・イベント・頁グループ・参照元ラベルごとに数える表。
  * ブラウザは vet402.com 自身へ sendBeacon する（src/lib/analytics.ts）。サーバは src/lib/site-events.ts で集計する。
  * 第三者計装契約終了後、first-party で同じ用途の日次件数だけを持つ。
