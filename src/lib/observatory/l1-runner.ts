@@ -2971,9 +2971,14 @@ export async function runL1Batch(
             censusFirstSelectable,
             unprovenGate,
           }).targetsSql;
+          // network を書いた予約（Celo）はそのレーンの文で引く（2026-11-27）。主候補の文は初回購入の日次枠（FIRST_PURCHASE_DAILY_QUOTA）を
+          // 掛けるので、枠を使い切った日（11/27 は 128 件）は購入行の無い予約の出品が候補にならなかった。レーンの文は枠を掛けず、
+          // 支出はレーンの別枠が縛る（laneFloorCandidates と同じ判断）。その network の accept がカタログに無い出品も、この文で外れる。
+          const pinLaneChain = pinnedLaneChainOf(t.entry);
+          const pinLane = pinLaneChain ? { chain: pinLaneChain, networkLike: CHAIN_DAILY_CAPS[pinLaneChain].networkLike, limit: 1 } : undefined;
           const raw = await withDailyFallback(
-            async () => await db.execute(pinSql(true, undefined, undefined, undefined, primaryExtra)),
-            async () => await db.execute(pinSql(false, undefined, undefined, undefined, primaryExtra)),
+            async () => await db.execute(pinSql(true, pinLane, undefined, undefined, primaryExtra)),
+            async () => await db.execute(pinSql(false, pinLane, undefined, undefined, primaryExtra)),
           );
           return rowsOf(raw)[0];
         });

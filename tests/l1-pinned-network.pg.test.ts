@@ -6,6 +6,8 @@
 //  2. 壁に Celo の accept が無いときは Base に落とさない（署名しない・予約の 1 件を使わない）。
 //  3. Celo の残高が無いときも Base に落とさない（未入金の買い直しで Base を選ばない）。
 //  4. Celo のレーンが off のときは、その予約の出品へ 402 も取りに行かない。
+//  5. 初回購入の日次枠（120 件）を使い切った日も、レーンの枠が 0 でも、予約の出品を引いて Celo で買う（11/27 に GET の 3 口が
+//     候補にならなかった）。
 //
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_observatory_test \
 //   npx tsx --test --test-force-exit --test-concurrency=1 tests/l1-pinned-network.pg.test.ts
@@ -188,6 +190,24 @@ if (!TEST_DB) {
       await runL1Batch({ limit: 10, now: () => INSIDE_MS, getPayerUsdcBalance: FUNDED, fetchImpl: w.fetchImpl });
       assert.equal(w.requests(PIN_URL).length, 0);
       assert.deepEqual(await ledgerFor(PIN_URL), []);
+    });
+    await t.test("first-purchase quota used up and no lane floor: the reservation is still fetched and bought on Celo", async () => {
+      await seed();
+      process.env.OBSERVATORY_CELO_L1_ENABLED = "true";
+      process.env.L1_LANE_FLOOR_PER_RUN = "0";
+      await db.execute(sql`
+        WITH ins AS (
+          INSERT INTO x402_endpoints (resource_key, resource_url, source, status)
+          SELECT 'quota.example/' || g, 'https://quota.example/' || g, 'cdp_bazaar', 'delisted' FROM generate_series(1, 120) g
+          RETURNING id
+        )
+        INSERT INTO x402_l1_purchases (endpoint_id, status) SELECT id, 'request_error' FROM ins`);
+      const w = wall();
+      await runL1Batch({ limit: 10, now: () => INSIDE_MS, getPayerUsdcBalance: FUNDED, fetchImpl: w.fetchImpl });
+      delete process.env.L1_LANE_FLOOR_PER_RUN;
+      assert.deepEqual(w.paid(PIN_URL).map((s) => s.network), [CELO_CAIP2]);
+      const rows = await ledgerFor(PIN_URL);
+      assert.equal(rows[0]?.selection, "pinned_purchase");
     });
   });
 }
