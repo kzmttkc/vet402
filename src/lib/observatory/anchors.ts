@@ -24,6 +24,7 @@ import { createHash } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { utcDayStartOf } from "@/lib/db/utc-day";
+import { anchorPayloadForDay } from "@/lib/observatory/monthly-freeze";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -151,7 +152,8 @@ export async function retainSealedPayloads(db: Pick<Db, "execute">, limit = 400)
   const drifted: string[] = [];
   for (const r of rows) {
     const day = String(r.day);
-    const { payload } = await canonicalDayPayload(db, day);
+    const { payload: ledgerPayload } = await canonicalDayPayload(db, day);
+    const payload = await anchorPayloadForDay(db, day, ledgerPayload);
     const recomputed = createHash("sha256")
       .update(r.prev_root ?? "genesis")
       .update("\n")
@@ -174,7 +176,8 @@ export async function anchorDay(day: string): Promise<AnchorResult> {
   const db = getDb();
   if (!db) throw new Error("anchorDay: DATABASE_URL is not configured");
 
-  const { payload, count } = await canonicalDayPayload(db, day);
+  const { payload: ledgerPayload, count } = await canonicalDayPayload(db, day);
+  const payload = await anchorPayloadForDay(db, day, ledgerPayload);
   // 2026-11-10: 前の root は「day より前に存在する最新の日」。穴は埋めない。
   // 2026-09-02 の「穴が 5 日間検出されなかった」は、連結と連続を分けて見る
   // chainContinuity と、GET の missingHeadDays・headFreshness で公開して防ぐ。
@@ -288,7 +291,8 @@ export type DayVerificationInputs = {
 
 export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: string): Promise<DayVerificationInputs> {
   if (!DAY_RE.test(day)) throw new Error(`readDayVerificationInputs: not a YYYY-MM-DD day: ${day}`);
-  const { payload, count } = await canonicalDayPayload(db, day);
+  const { payload: ledgerPayload, count } = await canonicalDayPayload(db, day);
+  const anchorPayload = await anchorPayloadForDay(db, day, ledgerPayload);
   const headRaw = await db.execute(sql`SELECT day, root_hash, prev_root, sealed_payload FROM ledger_anchors WHERE day = ${day}`);
   const headRows = (Array.isArray(headRaw) ? headRaw : (headRaw as { rows?: unknown[] }).rows ?? []) as {
     day: string;
@@ -314,9 +318,9 @@ export async function readDayVerificationInputs(db: Pick<Db, "execute">, day: st
   const sealed = headRows[0]?.sealed_payload ?? null;
   return {
     day,
-    payload: sealed ?? payload,
+    payload: sealed ?? anchorPayload,
     payloadSource: sealed !== null ? "sealed" : "current",
-    currentPayload: payload,
+    currentPayload: anchorPayload,
     entryCount: count,
     head,
     chainRoot: next && next.prev_root !== null ? String(next.prev_root) : null,

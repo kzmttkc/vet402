@@ -6,12 +6,15 @@ import {
   utcDayString,
 } from "@/lib/observatory/metrics-rollup";
 import { anchorThrough as defaultAnchorThrough } from "@/lib/observatory/anchors";
+import { ensurePriorMonthFrozenIfDue as defaultEnsurePriorMonthFrozenIfDue } from "@/lib/observatory/monthly-freeze";
+import { getDb } from "@/lib/db/client";
 import { sealTradeDisputeDay as defaultSealTradeDisputeDay } from "@/lib/observatory/trade-dispute-store";
 import { sealNearAiDay as defaultSealNearAiDay } from "@/lib/nearai/store";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
 
 let anchorThroughFn: typeof defaultAnchorThrough = defaultAnchorThrough;
+let ensurePriorMonthFrozenIfDueFn: typeof defaultEnsurePriorMonthFrozenIfDue = defaultEnsurePriorMonthFrozenIfDue;
 let sealTradeDisputeDayFn: typeof defaultSealTradeDisputeDay = defaultSealTradeDisputeDay;
 let sealNearAiDayFn: typeof defaultSealNearAiDay = defaultSealNearAiDay;
 let metricsRollupCronRollupsFn: typeof defaultMetricsRollupCronRollups = defaultMetricsRollupCronRollups;
@@ -19,6 +22,7 @@ let metricsRollupCronRollupsFn: typeof defaultMetricsRollupCronRollups = default
 export function setMetricsRollupE6DepsForTests(
   deps: {
     anchorThrough?: typeof defaultAnchorThrough;
+    ensurePriorMonthFrozenIfDue?: typeof defaultEnsurePriorMonthFrozenIfDue;
     sealTradeDisputeDay?: typeof defaultSealTradeDisputeDay;
     sealNearAiDay?: typeof defaultSealNearAiDay;
     metricsRollupCronRollups?: typeof defaultMetricsRollupCronRollups;
@@ -26,12 +30,14 @@ export function setMetricsRollupE6DepsForTests(
 ): void {
   if (!deps) {
     anchorThroughFn = defaultAnchorThrough;
+    ensurePriorMonthFrozenIfDueFn = defaultEnsurePriorMonthFrozenIfDue;
     sealTradeDisputeDayFn = defaultSealTradeDisputeDay;
     sealNearAiDayFn = defaultSealNearAiDay;
     metricsRollupCronRollupsFn = defaultMetricsRollupCronRollups;
     return;
   }
   if (deps.anchorThrough) anchorThroughFn = deps.anchorThrough;
+  if (deps.ensurePriorMonthFrozenIfDue) ensurePriorMonthFrozenIfDueFn = deps.ensurePriorMonthFrozenIfDue;
   if (deps.sealTradeDisputeDay) sealTradeDisputeDayFn = deps.sealTradeDisputeDay;
   if (deps.sealNearAiDay) sealNearAiDayFn = deps.sealNearAiDay;
   if (deps.metricsRollupCronRollups) metricsRollupCronRollupsFn = deps.metricsRollupCronRollups;
@@ -97,11 +103,21 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       logServerErrorSafe("cron.metrics-rollup.nearai-anchor", error);
     }
+    let monthlyFreeze: Awaited<ReturnType<typeof defaultEnsurePriorMonthFrozenIfDue>> | null = null;
+    try {
+      const db = getDb();
+      if (db) {
+        monthlyFreeze = await ensurePriorMonthFrozenIfDueFn(db, new Date());
+      }
+    } catch (error) {
+      logServerErrorSafe("cron.metrics-rollup.monthly-freeze", error);
+    }
     return NextResponse.json({
       ok: true,
       lookbackDays,
       days,
       driftDaysRecomputed,
+      monthlyFreeze,
       anchor,
     });
   } catch (error) {

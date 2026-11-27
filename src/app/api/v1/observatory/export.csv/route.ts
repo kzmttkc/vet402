@@ -1,21 +1,15 @@
-import { l2ReadingColumnsSql, l2ReadingOf } from "@/lib/observatory/l2-check";
 import { NextRequest, NextResponse } from "next/server";
 import { apiJsonRedirect } from "@/lib/api/api-redirect";
-import { sql } from "drizzle-orm";
 import { getClientIp } from "@/lib/api/client-ip";
 import { consumeIpRateLimit, ipRateLimitHeaders, sharedCacheRateLimitHeaders } from "@/lib/api/ip-rate-limit";
 import { getDb } from "@/lib/db/client";
-import { heldReasonSql } from "@/lib/observatory/delivery";
-import { confirmedUnitsSql, EXPORT_CSV_COLUMN_NOTES, EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
+import { EXPORT_CSV_COLUMN_NOTES, EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import {
   EXPORT_CSV_INCLUDE_ERC8004_AGENT,
   EXPORT_CSV_QUERY_ALLOWED,
   ledgerExportCsvShape,
 } from "@/lib/observatory/export-csv-ledger-shape";
-import { responseBytesSql, responseSha256Sql } from "@/lib/observatory/paid-response-fingerprint";
-import { requestBodySha256Sql, requestBodyKindSql } from "@/lib/observatory/request-body";
-import { requestQuerySha256Sql, requestQueryKindSql } from "@/lib/observatory/request-query";
-import { settlementSourceSql } from "@/lib/observatory/settlement-source";
+import { readLedgerExportRows } from "@/lib/observatory/ledger-export";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { csvCell } from "@/lib/util/csv-write";
 import { acquireExportSlot, exportBusyResponse, rejectUnknownQuery } from "@/lib/api/export-guard";
@@ -114,7 +108,7 @@ export async function GET(request: NextRequest) {
     return apiJsonRedirect(canonical, 308, perCaller);
   }
 
-  const { columns: emitColumns, extraSelectSql } = ledgerExportCsvShape(includeParam === EXPORT_CSV_INCLUDE_ERC8004_AGENT);
+  const { columns: emitColumns } = ledgerExportCsvShape(includeParam === EXPORT_CSV_INCLUDE_ERC8004_AGENT);
 
   const db = getDb();
   if (!db) {
@@ -124,49 +118,15 @@ export async function GET(request: NextRequest) {
   const slot = await acquireExportSlot();
   if (!slot.ok) return exportBusyResponse(slot, perCaller);
   try {
-    const raw = await db.execute(sql`
-      SELECT to_char(pu.attempted_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS attempted_at,
-             e.resource_key, pu.network, pu.status, pu.amount_units, pu.spent_units,
-             pu.tx_hash, pu.http_status_paid, pu.latency_ms, pu.l2_schema,
-             (${sql.raw(heldReasonSql("pu"))}) AS held_reason,
-             (${sql.raw(requestBodyKindSql("pu"))}) AS request_body,
-             (${sql.raw(requestBodySha256Sql("pu"))}) AS request_body_sha256,
-             (${sql.raw(settlementSourceSql("pu"))}) AS settlement_source,
-             (${sql.raw(requestQueryKindSql("pu"))}) AS request_query,
-             (${sql.raw(requestQuerySha256Sql("pu"))}) AS request_query_sha256,
-             (${sql.raw(confirmedUnitsSql("pu"))}) AS confirmed_units,
-             pu.id::text AS purchase_id,
-             ${sql.raw(l2ReadingColumnsSql("pu"))},
-             (${sql.raw(responseSha256Sql("pu"))}) AS response_sha256,
-             (${sql.raw(responseBytesSql("pu"))}) AS response_bytes
-             ${sql.raw(extraSelectSql)},
-             CASE WHEN pu.l2_schema = 'mismatch' THEN e.declared_schema END AS l2_declared_schema
-      FROM x402_l1_purchases pu
-      JOIN x402_endpoints e ON e.id = pu.endpoint_id
-      WHERE pu.attempted_at >= now() - make_interval(days => ${days}::int)
-        AND pu.status NOT IN ('budget_denied', 'halted', 'request_error', 'in_flight')
-      ORDER BY pu.attempted_at ASC, pu.id ASC
-      LIMIT ${MAX_ROWS + 1}
-    `);
-    const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as Record<
-      string,
-      unknown
-    >[];
-    const truncated = rows.length > MAX_ROWS;
-    const emit = truncated ? rows.slice(0, MAX_ROWS) : rows;
+    const { rows: emit, truncated } = await readLedgerExportRows(
+      db,
+      { kind: "rolling_days", days },
+      { limit: MAX_ROWS + 1, includeErc8004Agent: includeParam === EXPORT_CSV_INCLUDE_ERC8004_AGENT },
+    );
 
     const lines = [emitColumns.join(",")];
     for (const r of emit) {
-      // 2026-09-29 監査 7 周目: l2_reading は記録頁・判定と同じ読み直し（l2-check.ts l2ReadingOf）。l2_schema は記録の値のまま。
-      const l2Schema = typeof r.l2_schema === "string" ? r.l2_schema : null;
-      const out: Record<string, unknown> = {
-        ...r,
-        l2_reading: l2Schema === null ? null : l2ReadingOf(
-          { l2Schema, l2Detail: r.l2_detail, bodyHead: typeof r.l2_body_head === "string" ? r.l2_body_head : null, contentType: typeof r.l2_content_type === "string" ? r.l2_content_type : null },
-          r.l2_declared_schema ?? null,
-        ),
-      };
-      lines.push(emitColumns.map((c) => csvCell(out[c])).join(","));
+      lines.push(emitColumns.map((c) => csvCell(r[c])).join(","));
     }
     return new NextResponse(lines.join("\n") + "\n", {
       headers: {

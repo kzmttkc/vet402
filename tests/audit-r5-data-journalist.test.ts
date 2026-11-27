@@ -117,7 +117,7 @@ test("export: purchase_id の後ろに l2_reading を足した（既存の列は
   assert.equal(EXPORT_CSV_COLUMNS[19], "response_sha256");
   assert.equal(EXPORT_CSV_COLUMNS[EXPORT_CSV_COLUMNS.length - 1], "response_bytes");
   assert.equal(EXPORT_CSV_COLUMNS[0], "attempted_at");
-  const route = read("src/app/api/v1/observatory/export.csv/route.ts");
+  const route = read("src/lib/observatory/ledger-export.ts");
   assert.match(route, /pu\.id::text AS purchase_id/);
 });
 
