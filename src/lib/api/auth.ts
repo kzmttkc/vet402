@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { consumeIpRateLimit, getClientIp } from "@/lib/api/ip-rate-limit";
 import { ensureProductionConfig, isDevApiKeyEnabled } from "@/lib/config/env";
+import { BILLING_PLANS } from "@/lib/billing/plans";
 import { verifyApiKey } from "@/lib/db/api-keys";
 import { secureCompare } from "@/lib/util/secure-compare";
-
-const PLAN_LIMITS: Record<string, number> = {
-  free: 1_000,
-  pro: 50_000,
-  scale: 500_000,
-};
 
 const AUTH_FAIL_LIMIT = 60;
 const AUTH_FAIL_WINDOW_MS = 60_000;
@@ -103,5 +98,8 @@ export async function authenticateRequest(request: Request): Promise<{
 }
 
 export function getPlanLimit(plan = "free"): number {
-  return PLAN_LIMITS[plan] ?? PLAN_LIMITS.free;
+  if (plan in BILLING_PLANS) {
+    return BILLING_PLANS[plan as keyof typeof BILLING_PLANS].monthlyLimit;
+  }
+  return BILLING_PLANS.free.monthlyLimit;
 }

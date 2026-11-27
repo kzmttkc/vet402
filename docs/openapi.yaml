@@ -13,7 +13,7 @@ info:
     a published rate carries its own `disclaimer` string in the payload, so the
     caveat travels with the number.
 
-    **Rate limits.** Authenticated calls: a per-account monthly quota (Free 1,000
+    **Rate limits.** Authenticated calls: a per-account monthly quota (Free 3,000
     / Pro 50,000 / Scale 500,000), shared across keys, reset at the UTC month
     boundary. Each `/score` is 1 unit; a `/scores/batch` of N agents is N units.
     Scored responses carry `X-RateLimit-Limit`, `X-RateLimit-Used`, and

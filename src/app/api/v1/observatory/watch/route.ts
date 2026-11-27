@@ -13,6 +13,7 @@ import {
 } from "@/lib/verify-message";
 import { logServerErrorSafe, logServerWarnSafe } from "@/lib/util/log-safe";
 import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-not-allowed";
+import { MAX_OBSERVATORY_WATCH_CLAIMS_PER_KEY } from "@/lib/billing/key-feature-limits";
 
 /**
  * Observatory watch registration (design §6.1) — the claim join.
@@ -35,8 +36,6 @@ const postSchema = z.object({
 });
 
 const deleteSchema = z.object({ wallet: z.string() });
-
-const MAX_WATCHERS_PER_KEY = 20;
 
 // 2026-09-02 監査: 静的化された route handler が prerender から古い判定を返すのを防ぐ（09c1fa0 と同じ欠陥）。
 export const dynamic = "force-dynamic";
@@ -163,9 +162,9 @@ export async function POST(request: NextRequest) {
       .select({ id: x402PayeeWatchers.id })
       .from(x402PayeeWatchers)
       .where(eq(x402PayeeWatchers.apiKeyId, auth.ctx.apiKeyId));
-    if (existing.length >= MAX_WATCHERS_PER_KEY) {
+    if (existing.length >= MAX_OBSERVATORY_WATCH_CLAIMS_PER_KEY) {
       return withRateLimitHeaders(
-        NextResponse.json({ error: "watcher_limit_reached", limit: MAX_WATCHERS_PER_KEY }, { status: 409 }),
+        NextResponse.json({ error: "watcher_limit_reached", limit: MAX_OBSERVATORY_WATCH_CLAIMS_PER_KEY }, { status: 409 }),
         auth.ctx.rateLimit,
       );
     }

@@ -7,6 +7,7 @@ import CodeBlock from "@/components/docs/CodeBlock";
 import { TryItPanel } from "@/components/docs/TryItPanel";
 import { TableScroll } from "@/components/site/TableScroll";
 import { SITE_URL } from "@/lib/site-url";
+import { BILLING_PLANS } from "@/lib/billing/plans";
 import {
   DECISION_KEYLESS_LIMIT_SINCE,
   KEYLESS_READ_STOP,
@@ -195,7 +196,7 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             <Link href="/signup" className="doc-link">
               Get a key
             </Link>{" "}
-            &mdash; the free tier is 1,000 score lookups a month.
+            &mdash; the free tier is {BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} score lookups a month.
           </p>
           {/* 2026-08-12 FIX-4: 発行されるキーの形が docs のどこにも書いておらず、
               LP の MCP 例だけが `vk_...` という実在しない接頭辞を載せていた
