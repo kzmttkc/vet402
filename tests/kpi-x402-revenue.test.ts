@@ -133,7 +133,7 @@ function fakeRpc(opts: {
 }) {
   const ranges: Array<[number, number]> = [];
   const impl: JsonRpcFetch = async (_url, init) => {
-    const req = JSON.parse(init.body) as { id: number; method: string; params: any[] };
+    const req = JSON.parse(init.body) as { id: number; method: string; params: unknown[] };
     let result: unknown;
     const archive403 = () => ({
       ok: false,
@@ -142,12 +142,12 @@ function fakeRpc(opts: {
     });
     if (req.method === "eth_blockNumber") result = `0x${HEAD.toString(16)}`;
     else if (req.method === "eth_getBlockByNumber") {
-      const n = Number(BigInt(req.params[0]));
+      const n = Number(BigInt(req.params[0] as string));
       if (opts.archiveBelow !== undefined && n < opts.archiveBelow) return archive403();
       result = { timestamp: `0x${blockSec(n).toString(16)}` };
     } else if (req.method === "eth_getLogs") {
-      const f = Number(BigInt(req.params[0].fromBlock));
-      const t = Number(BigInt(req.params[0].toBlock));
+      const f = Number(BigInt((req.params[0] as { fromBlock: string }).fromBlock));
+      const t = Number(BigInt((req.params[0] as { toBlock: string }).toBlock));
       if (opts.archiveBelow !== undefined && f < opts.archiveBelow) return archive403();
       ranges.push([f, t]);
       if (opts.failGetLogsAt !== undefined && ranges.length === opts.failGetLogsAt) {
