@@ -1,7 +1,8 @@
 // ============================================================
 // POST /api/v1/check/presign の速さを測り、public/data/presign-latency.json に書く（2026-11-27 F7）。
 //
-// 使い方: npx tsx scripts/presign-latency-probe.ts [--n 200] [--seller <402 を返す URL>] [--api https://vet402.com]
+// 使い方: npx tsx scripts/presign-latency-probe.ts [--n 200] [--interval-ms 1100] [--seller <402 を返す URL>] [--api https://vet402.com]
+//   --interval-ms: 呼ぶ間隔。鍵なしの枠は 1 IP で毎分 60 回なので、既定 1100ms で枠に当たらない
 //   1. 売り手の URL を払わずに 1 回 GET し、返った 402（PAYMENT-REQUIRED ヘッダ、無ければ本文）を取る
 //   2. その本文を { challenge, url } にして vet402 へ n 回、順に POST する（並べない。同じ IP の枠に収める）
 //   3. 応答の Server-Timing presign;dur（回数制限から応答までのサーバ内の時間）と、手元の往復の時間を記録する
@@ -35,6 +36,7 @@ async function main(): Promise<void> {
   const seller = arg("seller", "https://1gateway.dev/v1/news/brief");
   const api = arg("api", "https://vet402.com");
   const out = arg("out", "public/data/presign-latency.json");
+  const intervalMs = Number(arg("interval-ms", "1100"));
 
   const unpaid = await fetch(seller, { headers: { "user-agent": UA, accept: "application/json" }, redirect: "follow" });
   if (unpaid.status !== 402) throw new Error(`seller answered ${unpaid.status}, not 402`);
@@ -46,6 +48,7 @@ async function main(): Promise<void> {
   let non200 = 0;
   let firstBody: Record<string, unknown> | null = null;
   for (let i = 0; i < n; i++) {
+    if (i > 0 && intervalMs > 0) await new Promise((r) => setTimeout(r, intervalMs));
     const t0 = performance.now();
     const res = await fetch(`${api}/api/v1/check/presign`, {
       method: "POST",
@@ -60,7 +63,8 @@ async function main(): Promise<void> {
     }
     firstBody ??= body;
     const m = /presign;dur=([0-9.]+)/.exec(res.headers.get("server-timing") ?? "");
-    if (m) serverAll.push(Number(m[1]));
+    if (!m) throw new Error(`call ${i + 1}: 200 without Server-Timing presign;dur`);
+    serverAll.push(Number(m[1]));
     wallAll.push(elapsed);
   }
 

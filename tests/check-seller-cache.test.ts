@@ -745,3 +745,66 @@ test("stale refresh coalesces in-flight reads per cache key", () => {
   const src = readFileSync("src/lib/api/check-seller-cache.ts", "utf8");
   assert.match(src, /freshInflight/, "foreground stale reads share one in-flight checkSeller per URL/method");
 });
+function staleCacheFor(asOfStale: string) {
+  return ((fn: () => Promise<unknown>) => async () => {
+    const live = (await fn()) as CheckSellerCachedPayload;
+    return { ...live, out: { ...live.out, as_of: asOfStale }, cacheReadAt: "2026-11-18T09:58:00.000Z" };
+  }) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+}
+
+test("an expired prefetched read is not returned; the call reads again", async (t) => {
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const storeK = checkSellerCacheKey(URL_A)!;
+  const old = await makeGetCheckSellerCached(((fn: () => Promise<unknown>) => fn) as never)(countingDeps("2026-11-18T09:00:00.000Z"), { url: URL_A });
+  prefetchedByStoreKeyForTests(storeK, { out: old, cacheReadAt: "2026-11-18T09:59:00.000Z" });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-18T10:00:30.000Z") });
+  const cache = staleCacheFor("2026-11-18T09:00:00.000Z");
+  __setCheckSellerCacheForTests(cache);
+  const deps = countingDeps(asOf);
+  const body = await makeGetCheckSellerCached(cache)(deps, { url: URL_A });
+  assert.equal(body.as_of, asOf, "the expired prefetched verdict is not served");
+});
+
+test("a failed prefetch leaves nothing behind for the next caller", async (t) => {
+  const tasks: (() => Promise<void>)[] = [];
+  setAfterResponseSchedulerForTest((task) => {
+    tasks.push(task);
+  });
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const cache = storingCache();
+  __setCheckSellerCacheForTests(cache);
+  const read = makeGetCheckSellerCached(cache);
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(asOf) });
+  const deps = countingDeps(asOf);
+  await read(deps, { url: URL_A });
+  let failing = true;
+  const flaky = {
+    ...deps,
+    resolve: (async (...args: unknown[]) => {
+      if (failing) throw new Error("db down");
+      return (deps.resolve as (...a: unknown[]) => unknown)(...args);
+    }) as typeof deps.resolve,
+  };
+  t.mock.timers.setTime(Date.parse(asOf) + (CHECK_SELLER_CACHE_SECONDS - CHECK_SELLER_PREFETCH_LEAD_SECONDS + 1) * 1000);
+  await read(flaky, { url: URL_A });
+  for (const task of tasks) await task();
+  failing = false;
+  t.mock.timers.setTime(Date.parse(asOf) + (CHECK_SELLER_CACHE_SECONDS + 5) * 1000);
+  const before = deps.counts.resolve;
+  await read(deps, { url: URL_A });
+  assert.ok(deps.counts.resolve > before, "after expiry the caller reads again instead of a stored value");
+});
+
+test("concurrent stale reads of one key share one checkSeller call", async () => {
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const cache = (() => async () => ({ out: {} as never, cacheReadAt: "2026-11-18T09:00:00.000Z" })) as unknown as Parameters<
+    typeof makeGetCheckSellerCached
+  >[0];
+  __setCheckSellerCacheForTests(cache);
+  const deps = countingDeps(asOf);
+  const read = makeGetCheckSellerCached(cache);
+  const [a, b] = await Promise.all([read(deps, { url: URL_A }), read(deps, { url: URL_A })]);
+  assert.equal(deps.counts.resolve, 1);
+  assert.equal(a.as_of, asOf);
+  assert.equal(b.as_of, asOf);
+});

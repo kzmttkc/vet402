@@ -102,6 +102,19 @@ const prefetchedByStoreKey = new Map<string, CheckSellerCachedPayload>();
 const prefetchInflight = new Map<string, Promise<void>>();
 const freshInflight = new Map<string, Promise<{ out: CheckSellerOutput; usageNetwork?: string }>>();
 
+/** 裏読みの持ち数の上限。超えたら古い順に捨てる（URL ごとに増え続けない）。 */
+const PREFETCH_MAX_ENTRIES = 256;
+
+function rememberPrefetched(storeK: string, payload: CheckSellerCachedPayload): void {
+  prefetchedByStoreKey.delete(storeK);
+  while (prefetchedByStoreKey.size >= PREFETCH_MAX_ENTRIES) {
+    const oldest = prefetchedByStoreKey.keys().next().value;
+    if (oldest === undefined) break;
+    prefetchedByStoreKey.delete(oldest);
+  }
+  prefetchedByStoreKey.set(storeK, payload);
+}
+
 /** テスト用: 裏読み・同時リフレッシュの状態を消す。 */
 export function __resetCheckSellerLatencyHelpersForTests(): void {
   prefetchedByStoreKey.clear();
@@ -169,6 +182,18 @@ async function coalescedFreshRead(
   return slot;
 }
 
+/** 同じ鍵の読み直しを1本にまとめ、diagnose_url はこの要求の URL から作り直す（他の呼び手の URL を返さない）。 */
+async function coalescedForCaller(
+  deps: CheckSellerDeps,
+  callerUrl: string,
+  urlKey: string,
+  methodKey: string,
+  storeK: string,
+): Promise<CheckSellerOutput> {
+  const fresh = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK);
+  return checkSellerForCaller(checkSellerForStore(finishFreshRead(deps, fresh)), callerUrl);
+}
+
 function scheduleCheckSellerPrefetch(
   deps: CheckSellerDeps,
   storeK: string,
@@ -188,7 +213,7 @@ function scheduleCheckSellerPrefetch(
       const fresh = await readCheckSellerFresh(deps, { url: urlKey, method: methodKey || undefined });
       const payload = payloadFromFresh(fresh, cacheReadStarted);
       if (isCheckSellerCachedReadFresh(payload.cacheReadAt)) {
-        prefetchedByStoreKey.set(storeK, payload);
+        rememberPrefetched(storeK, payload);
       }
       await warmUnstableCache().catch(() => undefined);
     } catch {
@@ -231,15 +256,15 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
       }
 
       const prefetched = prefetchedByStoreKey.get(storeK);
+      if (prefetched) prefetchedByStoreKey.delete(storeK);
       if (prefetched && isCheckSellerCachedReadFresh(prefetched.cacheReadAt)) {
-        prefetchedByStoreKey.delete(storeK);
         return deliverPrefetched(deps, prefetched, input.url);
       }
 
-      return finishFreshRead(deps, await coalescedFreshRead(deps, { ...input, url: urlKey }, storeK));
+      return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
     } catch (error) {
       if (isNoDataCacheError(error)) {
-        return finishFreshRead(deps, await coalescedFreshRead(deps, { ...input, url: urlKey }, storeK));
+        return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
       }
       logServerErrorSafe("check_seller_cache", error);
       throw error;
