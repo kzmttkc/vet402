@@ -2,13 +2,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import {
   MONTHLY_FREEZE_ANCHOR_FROM_DAY,
   buildAnchorPayloadWithMonthlyLines,
   buildMonthlyFreezeSummary,
+  ensurePriorMonthFrozenIfDue,
   hashMonthlyLedgerExportBody,
   monthlyFreezePublicationError,
+  priorUtcMonthFromDay,
   readMonthlyFreezePublic,
 } from "@/lib/observatory/monthly-freeze";
 import { dayRootHash } from "@/lib/observatory/ledger-day-verify";
@@ -76,7 +79,7 @@ test("hash is unchanged when input row order is shuffled", () => {
 });
 
 test("summary JSON carries row count and period", () => {
-  const summary = buildMonthlyFreezeSummary("2026-11", sampleRows, EXPORT_CSV_COLUMNS, new Date("2026-12-01T00:05:00.000Z"));
+  const summary = buildMonthlyFreezeSummary("2026-11", sampleRows, EXPORT_CSV_COLUMNS);
   assert.equal(summary.month, "2026-11");
   assert.equal(summary.rowCount, 2);
   assert.equal(summary.periodStart, "2026-11-01");
@@ -123,6 +126,30 @@ test("not_frozen_yet before a row exists and during November for 2026-11", async
   assert.equal(oct.status, "not_frozen_yet");
   const nov = await readMonthlyFreezePublic(fakeDb, "2026-11", new Date("2026-11-27T00:00:00.000Z"));
   assert.equal(nov.status, "not_frozen_yet");
+});
+
+test("priorUtcMonthFromDay returns the calendar month before the UTC day", () => {
+  assert.equal(priorUtcMonthFromDay("2026-12-01"), "2026-11");
+  assert.equal(priorUtcMonthFromDay("2026-01-15"), "2025-12");
+  assert.equal(priorUtcMonthFromDay("bad"), null);
+});
+
+test("ensurePriorMonthFrozenIfDue reports already_frozen without calling insert", async () => {
+  const fakeDb = {
+    execute: async () => [{ summary_json: '{"v":1,"month":"2026-11","frozenAt":"2026-12-01T00:01:00.000Z"}' }],
+  } as unknown as Parameters<typeof ensurePriorMonthFrozenIfDue>[0];
+  const done = await ensurePriorMonthFrozenIfDue(fakeDb, new Date("2026-12-05T00:00:00.000Z"));
+  assert.equal(done.status, "skipped");
+  assert.equal(done.reason, "already_frozen");
+  assert.equal(done.month, "2026-11");
+});
+
+test("metrics-rollup cron runs monthly freeze before ledger anchor", () => {
+  const route = readFileSync("src/app/api/cron/metrics-rollup/route.ts", "utf8");
+  const freezeIdx = route.indexOf("ensurePriorMonthFrozenIfDueFn(db");
+  const anchorIdx = route.indexOf("anchorThroughFn(shiftDay");
+  assert.ok(freezeIdx >= 0 && anchorIdx > freezeIdx, "monthly freeze runs before anchorThrough");
+  assert.match(route, /cron\.metrics-rollup\.monthly-freeze/);
 });
 
 test("past day roots without monthly lines match the old hash rule", () => {
