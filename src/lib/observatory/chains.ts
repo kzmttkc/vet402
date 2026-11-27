@@ -174,6 +174,10 @@ const PUBLIC_CHAIN_LABELS: Record<string, string> = {
   "Avalanche C-Chain": "Avalanche C-Chain",
   "Robinhood Chain": "Robinhood Chain",
   "eip155:4663": "Robinhood Chain",
+  // 2026-11-27 Hedera レーン。Stellar と同じく KNOWN には足さない（isMainnet と L0 の公開集計の鍵を動かさない）。
+  "hedera:mainnet": "Hedera",
+  hedera: "Hedera",
+  Hedera: "Hedera",
 };
 
 /** Canonical CAIP-2 for each public name. One id per chain, not the alias that happened to arrive first. */
@@ -189,6 +193,7 @@ const PUBLIC_CHAIN_NETWORKS: Record<string, string> = {
   "Arbitrum One": "eip155:42161",
   "Avalanche C-Chain": "eip155:43114",
   "Robinhood Chain": "eip155:4663",
+  Hedera: "hedera:mainnet",
 };
 
 /**
@@ -293,6 +298,8 @@ const SOLANA_TX_RE = /^[1-9A-HJ-NP-Za-km-z]{86,88}$/;
 const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
 /** Stellar transaction hash: 32 bytes as bare hex（0x 無し）。 */
 const STELLAR_TX_RE = /^[0-9A-Fa-f]{64}$/;
+/** Hedera transaction id（`0.0.x@秒.ナノ秒` か `0.0.x-秒-ナノ秒`）。 */
+const HEDERA_TX_ID_RE = /^0\.0\.([0-9]{1,19})[@-]([0-9]{1,19})[.-]([0-9]{1,9})$/;
 
 const EVM_EXPLORERS: Record<string, string> = {
   Base: "https://basescan.org/tx/",
@@ -339,6 +346,7 @@ const FILTER_ALIAS_TO_CANONICAL: Record<string, string> = {
   bnb: "eip155:56",
   bsc: "eip155:56",
   stellar: "stellar:pubnet",
+  hedera: "hedera:mainnet",
   celo: "eip155:42220",
   ethereum: "eip155:1",
   arbitrum: "eip155:42161",
@@ -356,6 +364,8 @@ const NETWORK_FILTER_SPELLINGS: readonly string[] = [
   "solana-devnet",
   "stellar:pubnet",
   "stellar",
+  "hedera:mainnet",
+  "hedera",
   "bnb",
   "bsc",
   "celo",
@@ -470,6 +480,11 @@ export function explorerTxUrl(network: unknown, tx: unknown): string | null {
   if (caip === "stellar:pubnet") {
     return STELLAR_TX_RE.test(tx) ? `https://stellar.expert/explorer/public/tx/${tx}` : null;
   }
+  // hedera:mainnet も Stellar と同じく id の完全一致でだけリンクを作る（testnet は「—」）。HashScan は mirror node の表記で引く。
+  if (caip === "hedera:mainnet") {
+    const m = HEDERA_TX_ID_RE.exec(tx);
+    return m ? `https://hashscan.io/mainnet/transaction/0.0.${m[1]}-${m[2]}-${m[3].padStart(9, "0")}` : null;
+  }
   const base = EVM_EXPLORERS[label];
   if (!base) return null;
   return EVM_TX_RE.test(tx) ? `${base}${tx}` : null;
@@ -481,6 +496,7 @@ const PUBLIC_EXPLORER_HOSTS = new Set<string>([
   "solscan.io",
   "livenet.xrpl.org",
   "stellar.expert",
+  "hashscan.io",
 ]);
 
 /** True when `url` is https and its host is an explorer this repo already links to. */

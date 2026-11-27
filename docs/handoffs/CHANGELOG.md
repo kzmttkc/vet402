@@ -13,6 +13,12 @@ WORK_ORDERS への発注。読むだけの調査は対象外。`docs/application
 
 ---
 
+## 2026-11-27 L1 に Hedera のレーン（hedera network (pre-agenticmarkets, product work)）
+
+- **何を**: `hedera:mainnet` の x402 exact（`@x402/hedera` 2.31.0・HBAR だけ・facilitator は Blocky402 の fee payer だけ）を L1 のレーンに足した（`src/lib/observatory/hedera402-payer.ts`・`l1-runner.ts`）。Blocky402 の `/discovery/resources` を目録の同期に足した（本番は `source = blocky402_discovery` の出品、試験網は件数の写し `blocky402_testnet_discovery` だけ・aux の 01:30 UTC）。決済の読み直しは mirror node（`settlement-verify-hedera.ts`・取引 ID と tinybar の完全一致）。公開名 Hedera・HashScan のリンク・facilitator `blocky402`。
+- **なぜ**: 会期前の製品の仕事（2026-11-27 オーナー承認）。本番網で第三者の売り手から買い、`l1.byChain` に Hedera の行を出す。
+- **影響**: 旗 `OBSERVATORY_HEDERA_L1_ENABLED`（既定 OFF）。上限は 1 回 0.1 HBAR・合計 5 HBAR（コードで頭打ち・環境変数は下げるだけ）・日次 $0.05（`L1_HEDERA_DAILY_CAP_USD`）。台帳の amount_units / spent_units は Hedera ネットワークの為替で USD 6 桁へ切り上げ、払った tinybar と為替は `raw_response_meta.hedera`。Base 先頭の出品の Hedera の accept（secondary）は買わない。公開の settled の定義文（固定資産の列挙）には HBAR をまだ足していない。
+
 ## 2026-11-19 delivery feed の `?network=` を購入チェーンでも一致させる
 
 - **何を**: `GET /api/v1/delivery/sellers.json` の `network` クエリを、行の `network` 列（カタログ掲載ネットワーク）に加え、30 日窓内で vet402 が署名した購入の `purchase_network` が一致する listing も残すようにした（`src/lib/delivery/sellers-feed.ts`）。公開 JSON の 12 列と件数の意味は不変。
