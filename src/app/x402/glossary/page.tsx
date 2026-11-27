@@ -25,6 +25,7 @@ export const metadata: Metadata = pageMetadata({
   description:
     "Short definitions of x402 and ERC-8004 terms: HTTP 402, facilitator, payTo, PAYMENT-REQUIRED, exact, upto, batch settlement, Bazaar, CAIP-2, agentId and feedbackURI.",
   path: PATH,
+  markdown: true,
 });
 
 export const revalidate = 86400;

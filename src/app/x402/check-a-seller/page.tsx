@@ -3,6 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { KEYLESS_READ_STOP, keylessDecisionPerMinute } from "@/lib/api/keyless-limits";
 import { CHECK_SELLER, GUIDE_UPDATED } from "@/components/site/x402-answers";
+import { CHECK_SELLER_SECTIONS } from "@/lib/x402/check-a-seller-sections";
 import { PasteCheckEmbed } from "@/components/site/home/PasteCheckEmbed";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
@@ -13,6 +14,7 @@ export const metadata: Metadata = pageMetadata({
   title: PAGE.title,
   description: PAGE.description,
   path: PAGE.path,
+  markdown: true,
 });
 
 export default async function CheckSellerPage() {
@@ -63,7 +65,7 @@ export default async function CheckSellerPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">1.</span>
-          <span>Check by URL</span>
+          <span>{CHECK_SELLER_SECTIONS.checkByUrl.title}</span>
         </h2>
         <p className="doc-p">
           <code>GET /api/v1/check?url=</code> returns what vet402 recorded when it paid that x402 URL, including{" "}
@@ -78,7 +80,7 @@ export default async function CheckSellerPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">2.</span>
-          <span>Read the decision</span>
+          <span>{CHECK_SELLER_SECTIONS.readDecision.title}</span>
         </h2>
         <p className="doc-p">
           When you already hold a <code>resource_id</code>,{" "}
@@ -90,7 +92,7 @@ export default async function CheckSellerPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">3.</span>
-          <span>Read a purchase record</span>
+          <span>{CHECK_SELLER_SECTIONS.purchaseRecord.title}</span>
         </h2>
         <p className="doc-p">
           An observatory endpoint page lists the purchases vet402 made, with the chain, the HTTP status, and the
@@ -111,7 +113,7 @@ export default async function CheckSellerPage() {
 
         <h2 className="sec-head">
           <span className="sec-no">4.</span>
-          <span>Compare the terms</span>
+          <span>{CHECK_SELLER_SECTIONS.compareTerms.title}</span>
         </h2>
         <p className="doc-p">
           <code>verified_terms</code> carries <code>pay_to</code>, <code>asset</code>, <code>amount</code>,{" "}

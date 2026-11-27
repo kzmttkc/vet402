@@ -85,13 +85,13 @@ const MAX_PER_PURCHASE_USD = Number(MAX_PER_PURCHASE_UNITS) / 1_000_000;
  * listings (a verifier that special-cases itself is flagging its own fraud).
  */
 
-const METHOD_BLURB =
-  "Methodology for x402 payment measurements: L0 liveness probes, L1 real-money settle-through purchases, L2 conformance checks, and how delisting is detected.";
+import { METHODOLOGY_BLURB, METHODOLOGY_TITLE } from "@/lib/observatory/methodology-copy";
 
 export const metadata: Metadata = pageMetadata({
   title: "Methodology for x402 payment measurements",
-  description: METHOD_BLURB,
+  description: METHODOLOGY_BLURB,
   path: "/observatory/methodology",
+  markdown: true,
 });
 
 export const revalidate = 3600;
@@ -121,7 +121,7 @@ export default async function ObservatoryMethodologyPage() {
     "@context": "https://schema.org",
     "@type": "TechArticle",
     headline: "Methodology for x402 payment measurements",
-    description: METHOD_BLURB,
+    description: METHODOLOGY_BLURB,
     url: `${SITE_URL}/observatory/methodology`,
     dateModified: "2026-10-26",
     author: publisherOrg(),
@@ -171,7 +171,7 @@ export default async function ObservatoryMethodologyPage() {
           </div>
         </div>
 
-        <h1 className="doc-title mt-8">What these measurements mean</h1>
+        <h1 className="doc-title mt-8">{METHODOLOGY_TITLE}</h1>
         <p className="doc-p mt-4">
           Chain pages for the purchase lanes are at{" "}
           <Link href="/x402/chains" className="doc-link">

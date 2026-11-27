@@ -31,12 +31,13 @@ import { TableScroll } from "@/components/site/TableScroll";
 const PATH = "/erc-8004";
 const PUBLISHED = "2026-11-24";
 
-const PAGE_DESCRIPTION =
+export const ERC8004_PAGE_DESCRIPTION =
   "ERC-8004 is a standard for AI agent identity, reputation and validation. vet402 counts agents whose owner or agentWallet equals a payTo it paid over x402.";
 
 export const metadata: Metadata = pageMetadata({
   title: "What is ERC-8004? Agent registries, with live payment data",
-  description: PAGE_DESCRIPTION,
+  description: ERC8004_PAGE_DESCRIPTION,
+  markdown: true,
   path: PATH,
   ogType: "article",
   publishedTime: PUBLISHED,
@@ -79,7 +80,7 @@ export const ERC8004_FAQ = [
 ] as const;
 
 /** Glossary terms on this page. Same strings feed the DefinedTermSet JSON-LD. */
-const TERMS = [
+export const ERC8004_TERMS = [
   { term: "agentId", text: "The ERC-721 tokenId an Identity Registry assigns to an agent." },
   { term: "agentURI", text: "The URI that resolves to the agent's registration file, often ipfs, https or data." },
   { term: "agentWallet", text: "The wallet address an agent registers for receiving payments." },
@@ -101,7 +102,7 @@ export default async function Erc8004PillarPage() {
 
   const article = articleJsonLd({
     headline: "What is ERC-8004? Agent registries, with live payment data",
-    description: PAGE_DESCRIPTION,
+    description: ERC8004_PAGE_DESCRIPTION,
     path: PATH,
     datePublished: PUBLISHED,
     dateModified: live ? match.readAt.slice(0, 10) : PUBLISHED,
@@ -120,7 +121,7 @@ export default async function Erc8004PillarPage() {
     "@type": "DefinedTermSet",
     name: "ERC-8004 terms",
     url: `${SITE_URL}${PATH}#terms`,
-    hasDefinedTerm: TERMS.map((t) => ({
+    hasDefinedTerm: ERC8004_TERMS.map((t) => ({
       "@type": "DefinedTerm",
       name: t.term,
       description: t.text,
@@ -243,7 +244,7 @@ export default async function Erc8004PillarPage() {
           Terms
         </h2>
         <dl>
-          {TERMS.map((t) => (
+          {ERC8004_TERMS.map((t) => (
             <div key={t.term}>
               <dt>
                 <code>{t.term}</code>

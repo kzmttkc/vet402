@@ -41,6 +41,7 @@ export const metadata: Metadata = pageMetadata({
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
   path: PATH,
+  markdown: true,
 });
 
 export const revalidate = 300;
