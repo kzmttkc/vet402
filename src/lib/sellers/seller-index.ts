@@ -18,7 +18,7 @@ export type SellerIndexGate = {
   host: string;
   /** At least one delivered purchase on this host in the last SELLER_INDEX_DELIVERY_WINDOW_DAYS. */
   deliveredWithinWindow: boolean;
-  /** A payTo on this host's listings has a row in verified_payees (signed wallet-control claim). */
+  /** Host-bound payee claim, or a wallet claim when this host is not undelivered-only on the latest row. */
   payeeClaimed: boolean;
 };
 

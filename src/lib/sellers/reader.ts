@@ -37,7 +37,7 @@ import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
-import { answeredHttpPredicate, deliveredPredicate } from "@/lib/observatory/delivery";
+import { answeredHttpPredicate, deliveredPredicate, heldReasonSql } from "@/lib/observatory/delivery";
 import {
   MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
   NONSETTLED_PAID_ATTEMPT_STATUSES,
@@ -632,12 +632,49 @@ export async function readHostsWithDeliveredInWindow(db: Db, days: number): Prom
   return new Set(rowsOf(raw).map((r) => String(r.host)));
 }
 
-/** Hosts whose catalog pay_to matches a signed payee claim (verified_payees). */
+/** Host name taken from verified_payees.url with the same rule as sellerHostOf (SQL side). */
+const PAYEE_CLAIM_URL_HOST = `lower(regexp_replace(
+  split_part(regexp_replace(regexp_replace(vp.url, '^https?://', ''), '^//', ''), '/', 1),
+  ':[0-9]+$',
+  ''))`;
+
+/**
+ * Hosts indexable via payee claim (verified_payees). Wallet-only claims do not
+ * pull in every host that shares the pay_to (C1): the claim must bind this host
+ * (url hostname matches), or the host has no purchases yet, or its latest Base
+ * row is not a settled undelivered failure.
+ */
 export async function readHostsWithPayeeClaim(db: Db): Promise<Set<string>> {
+  const delivered = deliveredPredicate("pu");
+  const held = heldReasonSql("pu");
   const raw = await db.execute(sql`
-    SELECT DISTINCT ${HOST_SQL} AS host
-    FROM x402_endpoints e
-    INNER JOIN verified_payees vp ON vp.wallet = e.pay_to
-    WHERE e.pay_to IS NOT NULL`);
+    WITH wallet_claimed_hosts AS (
+      SELECT DISTINCT ${HOST_SQL} AS host,
+             bool_or(
+               vp.url IS NOT NULL
+                 AND ${sql.raw(PAYEE_CLAIM_URL_HOST)} = ${HOST_SQL}
+             ) AS host_bound
+      FROM x402_endpoints e
+      INNER JOIN verified_payees vp ON vp.wallet = e.pay_to
+      WHERE e.pay_to IS NOT NULL
+      GROUP BY 1
+    ),
+    latest AS (
+      SELECT DISTINCT ON (${HOST_SQL})
+        ${HOST_SQL} AS host,
+        pu.status AS status,
+        coalesce((${sql.raw(delivered)}), false) AS delivered,
+        coalesce(trim((${sql.raw(held)})), '') <> '' AS held
+      FROM x402_l1_purchases pu
+      JOIN x402_endpoints e ON e.id = pu.endpoint_id
+      WHERE ${BASE_LISTING} AND ${BASE_ROW}
+      ORDER BY ${HOST_SQL}, pu.attempted_at DESC, pu.id DESC
+    )
+    SELECT w.host
+    FROM wallet_claimed_hosts w
+    LEFT JOIN latest l ON l.host = w.host
+    WHERE w.host_bound
+       OR l.host IS NULL
+       OR NOT (l.status = 'settled' AND NOT l.delivered AND NOT l.held)`);
   return new Set(rowsOf(raw).map((r) => String(r.host)));
 }
