@@ -8,6 +8,8 @@
 //                      t54 互換の accept だけ（xrpl402-payer.ts）
 //   tempo_mpp          network eip155:4217（mpp-payer.ts）
 //   stellar_facilitator network stellar:pubnet（Stellar レーン）
+//   blocky402          network hedera:mainnet / hedera:testnet。vet402 が支払う Hedera の accept は
+//                      Blocky402 の fee payer のものだけ（hedera402-payer.ts BLOCKY402_FEE_PAYERS）
 //   unknown            上記以外（Solana・Base 等の EVM EIP-3009 で売り手側の facilitator
 //                      は台帳の非公開列にしか残っていない）
 // ============================================================
@@ -23,6 +25,7 @@ export function l1FacilitatorIdSql(alias = "pu"): string {
     WHEN ${p}network = 'xrpl:0' THEN 'xrpl_t54'
     WHEN ${p}network = 'eip155:4217' THEN 'tempo_mpp'
     WHEN ${p}network = 'stellar:pubnet' THEN 'stellar_facilitator'
+    WHEN ${p}network IN ('hedera:mainnet', 'hedera:testnet') THEN 'blocky402'
     ELSE '${L1_FACILITATOR_UNKNOWN}'
   END`;
 }

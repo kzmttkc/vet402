@@ -553,11 +553,25 @@ export async function probeEndpoint(
   const declaredMeta = target.payTo !== null || target.network !== null;
   const declaredNetwork = toCaip2(target.network);
 
+  // Hedera の HBAR（2026-11-27）: 売り手は USD の値段から HBAR を毎回計算し直す（実測: 目録 5,802,334・壁 5,473,255
+  // tinybar、どちらも $0.003）。宣言の網が Hedera で資産が HBAR の accept に限り、壁の額が宣言以下なら一致と読む
+  // （L1 の selectHederaAccept と同じ規則。宣言より高い額は今までどおり price_mismatch）。
+  const hbarRepriced = (a: { amount: unknown; asset: string; network: string }): boolean =>
+    (declaredNetwork === "hedera:mainnet" || declaredNetwork === "hedera:testnet") &&
+    toCaip2(a.network) === declaredNetwork &&
+    a.asset === "0.0.0" &&
+    target.priceAsset === "0.0.0" &&
+    target.priceAmount !== null &&
+    /^[0-9]{1,19}$/.test(target.priceAmount) &&
+    /^[0-9]{1,19}$/.test(String(a.amount)) &&
+    BigInt(String(a.amount)) > 0n &&
+    BigInt(String(a.amount)) <= BigInt(target.priceAmount);
   const priceConsistent = declaredPrice
     ? accepts.some(
         (a) =>
-          (target.priceAmount === null || String(a.amount) === target.priceAmount) &&
-          (target.priceAsset === null || lower(a.asset) === lower(target.priceAsset)),
+          ((target.priceAmount === null || String(a.amount) === target.priceAmount) &&
+            (target.priceAsset === null || lower(a.asset) === lower(target.priceAsset))) ||
+          hbarRepriced(a),
       )
     : null;
 

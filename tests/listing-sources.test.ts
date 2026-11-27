@@ -59,6 +59,7 @@ test("cron の経路は、その出どころの取り込みを呼ぶ", () => {
     cdp_bazaar: /await runCatalogCursorCall\(\)/,
     mpp_directory: /await syncMppDirectory\(\)/,
     circle_discovery: /await syncCircleDiscovery\(\)/,
+    blocky402_discovery: /await syncBlocky402Discovery\(\)/,
   };
   for (const src of LISTING_SOURCES) {
     const route = readFileSync(join(ROOT, "src/app", LISTING_SYNC_CRON_PATHS[src.source], "route.ts"), "utf8");
@@ -89,7 +90,7 @@ test("出どころの URL と source は取り込みのコードの定数と一�
   assert.equal(circleSrc.includes("keepLearnedPayTo"), false);
   assert.deepEqual(
     LISTING_SOURCES.map((s) => s.source).sort(),
-    [CATALOG_SOURCE, CIRCLE_DISCOVERY_SOURCE, MPP_DIRECTORY_SOURCE].sort(),
+    [CATALOG_SOURCE, CIRCLE_DISCOVERY_SOURCE, MPP_DIRECTORY_SOURCE, "blocky402_discovery"].sort(),
   );
 });
 

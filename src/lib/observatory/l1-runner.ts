@@ -110,6 +110,22 @@ import { paidResponseFingerprintRecord } from "./paid-response-fingerprint";
 import { requestBodyRecord } from "./request-body";
 import { deliveredPredicate, isDeliveryHttp } from "./delivery";
 import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerFunds, type PayerUsdcBalanceReader } from "./payer-funds";
+// Hedera（2026-11-27）: この module は SDK を top-level で読まない（@x402/hedera は署名の中で動的に読む）。
+import {
+  HBAR_ASSET,
+  HEDERA_MAINNET_CAIP2,
+  HEDERA_MAX_PURCHASE_TINYBARS_DEFAULT,
+  hederaL1Network,
+  hederaTotalCapTinybars,
+  isHederaL1Enabled,
+  loadHederaPayer,
+  readHederaExchangeRate,
+  selectHederaAccept,
+  tinybarsToLedgerUnits,
+  wouldExceedHederaTotalCap,
+  type HederaExchangeRate,
+  type HederaNetwork,
+} from "./hedera402-payer";
 import {
   ARC_GATEWAY_MAX_TIMEOUT_SECONDS,
   arcGatewayCapOpen,
@@ -579,7 +595,7 @@ const LANE_NETWORK: Partial<Record<CappedChain, string>> = {
 // Avalanche（2026-10-26）: 実測で eip155:43114 のネイティブ USDC（name "USD Coin"）は 902 件・23 ホスト。
 // 先頭が Avalanche の行は 0 件。全部 2 番目以降なので secondary を枠に入れる。
 // extra.name が GatewayWalletBatched の accept（1,670 件・9 ホスト）は Circle Gateway の別経路なので外す。
-const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true, avalanche: true, arc_gateway: false };
+const LANE_SECONDARY_ACCEPTS: Record<CappedChain, boolean> = { solana: false, arc: true, tempo: false, xrpl: true, celo: true, stellar: true, bnb: true, arbitrum: true, avalanche: true, arc_gateway: false, hedera: false };
 
 /**
  * secondary の枝で raw_accepts の accept（SQL の別名 `a`）に足す条件。XRPL は RLUSD（hex か literal）かつ
@@ -976,6 +992,31 @@ async function defaultCreateStellarPayment(input: StellarPaymentInput): Promise<
   return createStellarPaymentPayload(input);
 }
 
+/** テストが差し替える Hedera の署名口。既定は createHederaPaymentPayload（ローカル署名・送信しない）。 */
+export type HederaPaymentInput = { accept: ChallengeAccept; network: HederaNetwork; tinybars: bigint };
+async function defaultCreateHederaPayment(input: HederaPaymentInput): Promise<{ transaction: string; transactionId: string }> {
+  const { createHederaPaymentPayload } = await import("./hedera402-payer");
+  return createHederaPaymentPayload(input);
+}
+
+/**
+ * これまでに Hedera で署名した HBAR の合計（tinybar）。合計の上限（hedera402-payer.ts hederaTotalCapTinybars・
+ * 2026-11-27 オーナー承認 5 HBAR）の判定に使う。数えるのは spent_units が立った行の raw_response_meta.hedera.nativeAmount。
+ * 読めなければ throw（呼び手はレーンを開けない）。
+ */
+async function readHederaSpentTinybars(db: NonNullable<ReturnType<typeof getDb>>): Promise<bigint> {
+  // nativeAmount が読めない Hedera の行（あってはならないが）は、1 回の上限ぶん払ったとみなす（少なく数えない）。
+  const raw = await db.execute(sql`
+    SELECT coalesce(sum(CASE WHEN raw_response_meta->'hedera'->>'nativeAmount' ~ '^[0-9]{1,19}$'
+                             THEN (raw_response_meta->'hedera'->>'nativeAmount')::numeric
+                             ELSE ${String(HEDERA_MAX_PURCHASE_TINYBARS_DEFAULT)}::numeric END), 0)::text AS spent
+    FROM x402_l1_purchases
+    WHERE network LIKE 'hedera:%' AND spent_units::numeric > 0`);
+  const text = rowsOf(raw)[0]?.spent;
+  if (typeof text !== "string") throw new Error("hedera spent query returned no total");
+  return BigInt(text.split(".")[0]);
+}
+
 const guardedFetch = createSafeFetchImpl();
 
 /** The daily cap in USDC base units — the same $25 checkL1Budget judges in USD. */
@@ -1326,6 +1367,9 @@ function listingLedgerUnitsSql(): SQL {
     WHEN e.price_amount ~ '^[0-9]{1,30}$' THEN (CASE
       WHEN e.network = ${BNB_CAIP2} THEN e.price_amount::numeric / 1000000000000
       WHEN e.network = ${STELLAR_PUBNET_CAIP2} THEN e.price_amount::numeric / 10
+      -- Hedera の HBAR（8 桁の tinybar）は 1 HBAR = $1 とみなした上限で換算する（実際の為替は 2026-11-27 で約 $0.054）。
+      -- 候補の上限の絞り込みは多めに数える側へ倒す。払う額は購入時にネットワークの為替で換算する（hedera402-payer.ts）。
+      WHEN e.network = ${HEDERA_MAINNET_CAIP2} AND e.price_asset = ${HBAR_ASSET} THEN e.price_amount::numeric / 100
       ELSE e.price_amount::numeric END)
   END)`;
 }
@@ -1351,6 +1395,8 @@ function listingLedgerUnitsOf(network: string | null, price: string | null): big
   const units = BigInt(price);
   if (network === BNB_CAIP2) return units / 1_000_000_000_000n;
   if (network === STELLAR_PUBNET_CAIP2) return units / 10n;
+  // Hedera は SQL と同じ上限の換算（1 HBAR = $1）。ここは資産を持たないので HBAR とみなす（多めに数える側）。
+  if (network === HEDERA_MAINNET_CAIP2) return units / 100n;
   return units;
 }
 
@@ -2395,6 +2441,10 @@ export async function runL1Batch(
     getXrplSigningInputs?: (address: string) => Promise<XrplSigningInputs>;
     /** Test seam: Stellar の支払い XDR。既定は STELLAR_RPC_URL へ出る。テストはここを差し替え、ネットへ出ない。 */
     createStellarPayment?: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
+    /** Test seam: Hedera の部分署名した取引。既定は createHederaPaymentPayload（ネットへは出ない・ローカル署名）。 */
+    createHederaPayment?: (input: HederaPaymentInput) => Promise<{ transaction: string; transactionId: string }>;
+    /** Test seam: Hedera ネットワークの為替。既定は mirror node の /api/v1/network/exchangerate。 */
+    readHederaRate?: (network: HederaNetwork) => Promise<HederaExchangeRate>;
     /**
      * Test seam: 払う直前の Arkiv 判定の関門（2026-11-06）。既定は checkArkivRuling（Arkiv と Arc testnet へ出る）。
      * node:test の下では差し替えない限り読まない（既存のテストをネットへ出さない）。
@@ -2429,6 +2479,8 @@ export async function runL1Batch(
   const getSolanaBlockhash = options.getSolanaBlockhash ?? defaultSolanaBlockhash;
   const getXrplSigningInputs = options.getXrplSigningInputs ?? defaultXrplSigningInputs;
   const createStellarPayment = options.createStellarPayment ?? defaultCreateStellarPayment;
+  const createHederaPayment = options.createHederaPayment ?? defaultCreateHederaPayment;
+  const readHederaRate = options.readHederaRate ?? ((network: HederaNetwork) => readHederaExchangeRate(network));
   // バッチ内の遮断器: 時間切れの allow_unread が 2 回続いたら、そのバッチの残りは読まない（Arkiv が落ちたとき、
   // EVM 候補ごとに 3 秒ずつ持ち時間を食わない）。429 などのすぐ返る失敗は数えない。結果はバッチの summary に数える（DB と CSV には書かない）。
   const breakerGate = createBatchRulingBreaker(
@@ -2551,6 +2603,21 @@ export async function runL1Batch(
   const stellarAccount = stellarPayer ? stellarPayer.loadStellarPayer() : null;
   const stellarReady =
     stellarAccount !== null && !!process.env.STELLAR_HORIZON_URL?.trim() && !!process.env.STELLAR_RPC_URL?.trim();
+  // Hedera（2026-11-27）: 旗 + 口座 + 鍵。レーンが買うのは hedera:mainnet だけ（別枠の networkLike と同じ）。
+  // 合計の上限（5 HBAR）に届いた、または台帳から合計を読めないときもレーンを開けない。
+  const hederaAccount = isHederaL1Enabled() ? loadHederaPayer() : null;
+  let hederaSpentTinybars = 0n;
+  let hederaTotalOpen = false;
+  if (hederaAccount !== null && hederaL1Network() === HEDERA_MAINNET_CAIP2) {
+    try {
+      hederaSpentTinybars = await readHederaSpentTinybars(db);
+      hederaTotalOpen = hederaSpentTinybars < hederaTotalCapTinybars();
+    } catch (error) {
+      if (!isMissingSchemaError(error)) logServerErrorSafe("observatory.l1.hedera_total_read", redactedError(error));
+      hederaTotalOpen = false;
+    }
+  }
+  const hederaReady = hederaAccount !== null && hederaTotalOpen;
 
   // 2026-08-23 監査: 自己除外が VET402_OPERATOR_PAYTO の手入力だけに依存していて、
   // **本番では未設定＝完全な no-op** だった。中立性は堀そのものなので、忘れられる
@@ -2561,6 +2628,7 @@ export async function runL1Batch(
     solanaKeypair?.publicKey.toBase58() ?? null,
     xrplWallet?.classicAddress ?? null,
     stellarAccount?.address ?? null,
+    hederaAccount?.accountId ?? null,
   ]);
 
   // 1.5 Resolve orphaned reservations from earlier runs BEFORE anything else
@@ -2622,6 +2690,9 @@ export async function runL1Batch(
     { chain: "avalanche", ready: isAvalancheL1Enabled() && !!process.env.AVALANCHE_RPC_URL?.trim() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
+    // Hedera（2026-11-27）: 旗 + 口座 + 鍵 + 合計の上限の内側。どれか欠ければ主ネットワークが hedera:mainnet の行を外す
+    // （旗 OFF でも外す: Hedera が先頭の出品を EVM の selectAccept へ落とさない）。
+    { chain: "hedera", ready: hederaReady },
   ];
   const laneExclusionChains: { chain: CappedChain; clause: SQL }[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
@@ -2986,6 +3057,15 @@ export async function runL1Batch(
   // （auth entry に署名したあとの再シミュレーション・空の payload）は予約を残し、買い直さない。
   // 主ネットワークが pubnet の行は他に買う経路が無いので飛ばす。summary に閉じた理由は足さない。
   let stellarLaneUnavailable = false;
+  // Hedera（2026-11-27）: 未入金・為替が読めない・署名器が落ちたら、このバッチの残りの Hedera 候補は飛ばす。
+  let hederaLaneUnavailable = false;
+  /** このバッチで Hedera に署名した HBAR を、合計の上限の判定に足す。 */
+  const hederaTotal = {
+    spent: () => hederaSpentTinybars,
+    commit: (tinybars: bigint) => {
+      hederaSpentTinybars += tinybars;
+    },
+  };
 
   // 売り手ごとの日次上限に届いた受取先・ホスト（2026-09-29 監査 5 周目）。予約が断ったら、このバッチの残りの
   // 同じ売り手の候補には 402 も取りに行かない（行も書かない）。締めるのは reserveSpend で、ここは無駄を省くだけ。
@@ -3105,6 +3185,11 @@ export async function runL1Batch(
           stellarPayer,
           stellarAddress: stellarAccount?.address ?? null,
           createStellarPayment,
+          // 売り手依頼の経路は Hedera を買わない（依頼の網に Hedera が来ても hedera_key_missing で飛ばす）。
+          hederaAccountId: null,
+          createHederaPayment,
+          readHederaRate,
+          hederaTotal,
           fetchImpl,
           timeoutMs,
           celoPaidTimeoutMs,
@@ -3209,6 +3294,10 @@ export async function runL1Batch(
       summary.skipped++;
       continue;
     }
+    if (hederaLaneUnavailable && candidate.network === HEDERA_MAINNET_CAIP2) {
+      summary.skipped++;
+      continue;
+    }
     // Gateway の優先が閉じている間、残りの Gateway 出品には 402 も取りに行かない（no_eligible_accept を売り手に書かない）。
     if (candidate.laneChain === "arc_gateway" && (arcGatewayLaneUnavailable || !laneOpen("arc_gateway"))) {
       summary.skipped++;
@@ -3276,7 +3365,7 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
-      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, xrplPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment, checkArkivRuling };
+      const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, hederaAccountId: hederaReady ? (hederaAccount?.accountId ?? null) : null, createHederaPayment, readHederaRate, hederaTotal, fetchImpl, timeoutMs, celoPaidTimeoutMs, xrplPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment, checkArkivRuling };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
       // いまの候補が「Celo を優先された Base 先頭の出品」なら、優先なしでもう 1 回だけ通す——壁の並びどおり Base の
@@ -3360,6 +3449,12 @@ export async function runL1Batch(
         // 上で優先は閉じている。主ネットワークが pubnet の行（買い直さない）と、買い直しが再び stellar を
         // 返したときのために印を残す。secondary の Base 買い直しが通ったあとはここへ来ない。
         if (outcome.payerChain === "stellar") stellarLaneUnavailable = true;
+        if (outcome.payerChain === "hedera") hederaLaneUnavailable = true;
+      } else if (outcome.kind === "hedera_lane_unavailable") {
+        // 為替が読めない・合計の上限・署名器の故障（我々の側）。行は書いていない（署名器の故障は予約を 0 に戻した
+        // request_error だけ）。このバッチの残りの Hedera 候補は飛ばす。
+        hederaLaneUnavailable = true;
+        summary.skipped++;
       } else if (outcome.kind === "stellar_signing_unavailable") {
         // 署名後は spent を残した request_error（outcome.spent は予約額。上で日次に足してある）。
         // 署名前の主ネットワークは spent 0 の request_error。どちらも Base では買い直さない。
@@ -3887,6 +3982,12 @@ async function purchaseOne(input: {
   stellarPayer: StellarPayerModule | null;
   stellarAddress: string | null;
   createStellarPayment: (input: StellarPaymentInput) => Promise<{ transaction: string }>;
+  /** Hedera の払い手の口座（0.0.x）。レーンが開いていなければ null（Hedera の候補は飛ばす）。 */
+  hederaAccountId: string | null;
+  createHederaPayment: (input: HederaPaymentInput) => Promise<{ transaction: string; transactionId: string }>;
+  readHederaRate: (network: HederaNetwork) => Promise<HederaExchangeRate>;
+  /** Hedera の合計（tinybar）。バッチ開始時の台帳 + このバッチで署名した額。 */
+  hederaTotal: { spent: () => bigint; commit: (tinybars: bigint) => void };
   fetchImpl: (url: string, init?: RequestInit, call?: SafeFetchCallOptions) => Promise<Response>;
   timeoutMs: number;
   /** Celo の支払い付き要求の待ち。ほかの要求は timeoutMs。 */
@@ -3903,7 +4004,7 @@ async function purchaseOne(input: {
   /** 払う直前の Arkiv 判定の関門（2026-11-06）。 */
   checkArkivRuling: ArkivRulingCheck;
 }): Promise<{
-  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "seller_capped" | "unproven_capped" | "over_dime_capped";
+  kind: "attempted" | "skipped" | "budget_denied" | "halted" | "payer_unfunded" | "xrpl_fee_over_cap" | "xrpl_lane_unavailable" | "stellar_signing_unavailable" | "hedera_lane_unavailable" | "seller_capped" | "unproven_capped" | "over_dime_capped";
   /** kind === "unproven_capped" のとき、1 件の上限か全体の日次合計か。 */
   unprovenScope?: "amount" | "pool";
   /** kind === "seller_capped" のとき、どちらの単位で届いたかと、その売り手（受取先・ホスト）。 */
@@ -3932,7 +4033,7 @@ async function purchaseOne(input: {
   /** kind が attempted 以外のとき、飛ばした理由（snake_case 英語・売り手依頼レーンの記録用）。 */
   skipReason?: string;
 }> {
-  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, fetchImpl, timeoutMs, celoPaidTimeoutMs, xrplPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
+  const { candidate, preferNetworks, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress, createStellarPayment, hederaAccountId, createHederaPayment, readHederaRate, hederaTotal, fetchImpl, timeoutMs, celoPaidTimeoutMs, xrplPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled, mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway } = input;
   // 空の method は GET（SQL の候補の条件 nullif(e.method, '') と揃える。'' のままだと Request が投げる）。
   const method = (candidate.method || "GET").toUpperCase();
   const startedAt = Date.now();
@@ -3943,6 +4044,10 @@ async function purchaseOne(input: {
     process.env.OBSERVATORY_STELLAR_L1_ENABLED === "true" && candidate.network === STELLAR_PUBNET_CAIP2;
   // secondary は壁を読んで selectStellarAccept が通ったときにだけ true になる（下で payerLabel も切り替える）。
   let isStellar = isStellarPrimary;
+  // Hedera（2026-11-27）: 主ネットワークがレーンの網（既定 hedera:mainnet）の行だけ。secondary（Base 先頭の行の
+  // Hedera の accept）は買わない。旗 OFF の行は候補 SQL が外している。
+  const hederaNetwork = hederaL1Network();
+  const isHedera = isHederaL1Enabled() && candidate.network === hederaNetwork;
   // Tempo（MPP・2026-09-17）: 壁は x402 の封筒ではなく WWW-Authenticate: Payment。
   const isTempo = candidate.network === TEMPO_MAINNET_CAIP2;
   // XRPL レール（2026-09-18）: 主ネットワークが XRPL の行は最初から、Base 先頭の行は壁の 402 を読んで
@@ -3959,7 +4064,9 @@ async function purchaseOne(input: {
       ? (xrplWallet?.classicAddress ?? "xrpl_key_missing")
       : isStellar
         ? (stellarAddress ?? "stellar_key_missing")
-        : account.address.toLowerCase();
+        : isHedera
+          ? (hederaAccountId ?? "hedera_key_missing")
+          : account.address.toLowerCase();
 
   // census / retest / seller_request / pinned_purchase の候補なら、この候補について書く行の raw_response_meta に selection を残す。
   const selectionMeta = candidate.pinnedPurchaseMeta
@@ -4014,6 +4121,9 @@ async function purchaseOne(input: {
   }
   if (isStellar && (!stellarPayer || !stellarAddress)) {
     return { kind: "skipped", settled: false, spent: 0n, skipReason: "stellar_key_missing" };
+  }
+  if (isHedera && !hederaAccountId) {
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "hedera_key_missing" };
   }
   // 2026-09-29 監査 5 周目（中・お金）: 買うのは https の出品だけ、かつカタログが受取先（pay_to）を宣言している
   // 行だけ。平文 http の 402 は経路上の誰でも書き換えられ、宣言の無い行では壁の payTo を照合する相手が無い
@@ -4238,6 +4348,14 @@ async function purchaseOne(input: {
     });
     return { kind: "skipped", settled: false, spent: 0n, skipReason: `gateway_${gatewayPick.reason}` };
   }
+  // Hedera の選択は型を保つ（tinybars は accept があるときだけ bigint）。Stellar と同じ理由。
+  const hederaSelection = isHedera
+    ? selectHederaAccept(challengeForSelect.accepts, {
+        declaredAmount: candidate.priceAmount,
+        declaredPayTo: candidate.payTo,
+        network: hederaNetwork,
+      })
+    : null;
   const selection = gatewayPick?.accept
     ? gatewayPick
     : mppSelection
@@ -4246,6 +4364,8 @@ async function purchaseOne(input: {
     ? xrplSecondary
     : stellarSelection !== null
     ? stellarSelection
+    : hederaSelection !== null
+    ? hederaSelection
     : isSolana
     ? selectSolanaAccept(challengeForSelect.accepts, {
         declaredAmount: candidate.priceAmount,
@@ -4275,9 +4395,11 @@ async function purchaseOne(input: {
   const xrplV1Wall = isXrpl && selection.accept !== null && challenge.x402Version !== 2;
   // Stellar の exact も v2 だけ（@x402/stellar の client は v2 の payload を返す）。v1 の壁には署名しない。
   const stellarV1Wall = isStellar && selection.accept !== null && challenge.x402Version !== 2;
-  if (!selection.accept || xrplV1Wall || stellarV1Wall) {
+  // Hedera の exact も v2 だけ（@x402/hedera の client は v2 の payload を返す）。v1 の壁は Stellar と同じ扱い。
+  const hederaV1Wall = isHedera && selection.accept !== null && challenge.x402Version !== 2;
+  if (!selection.accept || xrplV1Wall || stellarV1Wall || hederaV1Wall) {
     await record({
-      status: xrplV1Wall || stellarV1Wall ? "no_eligible_accept" : selection.reason!,
+      status: xrplV1Wall || stellarV1Wall || hederaV1Wall ? "no_eligible_accept" : selection.reason!,
       rawResponseMeta: {
         phase: "select",
         declaredAmount: candidate.priceAmount,
@@ -4303,17 +4425,57 @@ async function purchaseOne(input: {
               ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
               ...(stellarLaneRefusal ? { stellarLane: stellarLaneRefusal } : {}),
               // XRPL の no_eligible_accept の内訳（asset_not_usd = XRP 建てだけの壁・v1 は RLUSD のみ）。
-              ...(xrplV1Wall || stellarV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
+              ...(xrplV1Wall || stellarV1Wall || hederaV1Wall ? { reason: "x402_v1_unsupported" } : "detail" in selection && selection.detail ? { reason: selection.detail } : {}),
             }),
       },
     });
-    const selectSkipReason = xrplV1Wall || stellarV1Wall ? "x402_v1_unsupported" : (selection.reason ?? "no_eligible_accept");
+    const selectSkipReason = xrplV1Wall || stellarV1Wall || hederaV1Wall ? "x402_v1_unsupported" : (selection.reason ?? "no_eligible_accept");
     return { kind: "skipped", settled: false, spent: 0n, skipReason: `select_${selectSkipReason}` };
   }
   const accept = selection.accept;
   // XRPL の IOU は "0.01" のような単位の 10 進文字列（selectXrplAccept が 6 桁 units に落とす）。
   // EVM / Solana は基本単位の整数文字列。台帳（amount_units / spent_units）は常に 6 桁 units。
-  const amount: bigint = "amountUnits" in selection ? (selection.amountUnits as bigint) : BigInt(accept.amount);
+  // Hedera（2026-11-27）: 壁の額は tinybar。台帳の 6 桁へは Hedera ネットワークの為替で切り上げる。為替は予約より前に
+  // 読む（Solana の blockhash と同じ理由: 予約の後の外部 I/O の失敗で「署名した＝数えた」を崩さない）。読めなければ
+  // 行を書かずにレーンを閉じる（我々の側の故障を売り手の行にしない）。
+  let hederaRate: HederaExchangeRate | null = null;
+  const hederaTinybars: bigint | null = isHedera && hederaSelection?.accept ? hederaSelection.tinybars : null;
+  if (isHedera) {
+    try {
+      hederaRate = await readHederaRate(hederaNetwork);
+    } catch (error) {
+      logServerErrorSafe("observatory.l1.hedera_rate", redactedError(error));
+      return { kind: "hedera_lane_unavailable", settled: false, spent: 0n, skipReason: "hedera_rate_unavailable" };
+    }
+    if (hederaTinybars === null) {
+      return { kind: "hedera_lane_unavailable", settled: false, spent: 0n, skipReason: "hedera_selection_lost" };
+    }
+    // 合計の上限（5 HBAR・2026-11-27 オーナー承認）。行は書かない（売り手の落ち度ではない）。レーンを閉じる。
+    if (wouldExceedHederaTotalCap(hederaTotal.spent(), hederaTinybars)) {
+      return { kind: "hedera_lane_unavailable", settled: false, spent: 0n, skipReason: "hedera_total_cap" };
+    }
+  }
+  const amount: bigint =
+    isHedera && hederaRate && hederaTinybars !== null
+      ? tinybarsToLedgerUnits(hederaTinybars, hederaRate)
+      : "amountUnits" in selection
+        ? (selection.amountUnits as bigint)
+        : BigInt(accept.amount);
+  // 台帳に残す Hedera の事実（照合は nativeAmount の tinybar で完全一致を見る・settlement-verify-hedera.ts）。
+  const hederaMeta =
+    isHedera && hederaRate && hederaTinybars !== null
+      ? {
+          asset: HBAR_ASSET,
+          nativeAmount: String(hederaTinybars),
+          feePayer: typeof accept.extra?.feePayer === "string" ? accept.extra.feePayer : null,
+          exchangeRate: {
+            source: "hedera_mirror_node_network_exchangerate",
+            centEquivalent: String(hederaRate.centEquivalent),
+            hbarEquivalent: String(hederaRate.hbarEquivalent),
+            expirationTime: hederaRate.expirationTime,
+          },
+        }
+      : null;
   const amountUnitsText = String(amount);
   // 行に書く network は定数（2026-09-17 レビュー #1）。selectXrplAccept は完全一致しか通さないので accept.network と
   // 同じ値だが、別枠の `LIKE 'xrpl:%'` と照合の `=== "xrpl:0"` が壁の表記に依存しないことをここで固定する。
@@ -4329,6 +4491,8 @@ async function purchaseOne(input: {
       ? accept.asset === STELLAR_USDC_CLASSIC
         ? STELLAR_USDC_CLASSIC
         : STELLAR_USDC_SAC
+      : isHedera
+      ? HBAR_ASSET
       : accept.network === ARC_CAIP2
       ? ARC_CHAIN.usdc
       : accept.network === CELO_CAIP2
@@ -4509,8 +4673,8 @@ async function purchaseOne(input: {
   // Celo（2026-10-10）も同じ: 同じ EOA だが Celo の USDC は別。ここで "celo" に分けないと、Celo の accept に署名する前に
   // **Base の残高**を見てしまう（Celo が空でも署名し、売り手の 402 を settle_failed として記録する——Issue #29 と同じ事故）。
   const evmPayChainId = evmChainFor(accept.network)?.chainId;
-  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : evmPayChainId === 43114 ? "avalanche" : "base";
-  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : account.address;
+  const payerChain: PayerChain = isTempo ? "tempo" : isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : isHedera ? "hedera" : evmPayChainId === 5042 ? "arc" : evmPayChainId === 42220 ? "celo" : evmPayChainId === 56 ? "bnb" : evmPayChainId === 42161 ? "arbitrum" : evmPayChainId === 43114 ? "avalanche" : "base";
+  const payerOwner = isSolana ? solanaKeypair!.publicKey.toBase58() : isXrpl ? xrplWallet!.classicAddress : isStellar ? stellarAddress! : isHedera ? hederaAccountId! : account.address;
   if (isArcGateway) {
     let available: bigint | null = null;
     try {
@@ -4575,7 +4739,11 @@ async function purchaseOne(input: {
       isPriority: candidate.isPriority,
       isMature: candidate.isMature,
     }),
-    meta: isArcGateway ? { ...(selectionMeta ?? {}), circleGatewayRail: "true" } : selectionMeta,
+    meta: isArcGateway
+      ? { ...(selectionMeta ?? {}), circleGatewayRail: "true" }
+      : hederaMeta
+        ? { ...(selectionMeta ?? {}), hedera: hederaMeta }
+        : selectionMeta,
     ...(isArcGateway ? { capChain: "arc_gateway" as const } : {}),
     // census の初回購入だけ census の枠（2026-09-29・既定は同じ 120）。retest・主候補・レーンは従来の枠。
     ...(candidate.selection === "census" ? { firstPurchaseQuota: censusFirstPurchaseQuota(FIRST_PURCHASE_DAILY_QUOTA) } : {}),
@@ -4843,6 +5011,30 @@ async function purchaseOne(input: {
         x402Version: 2,
         accept,
         payload,
+        resourceUrl: candidate.resourceUrl,
+      });
+    } else if (isHedera) {
+      // Hedera（2026-11-27）: 署名はローカル（送信は facilitator）。ここで落ちたら署名した取引は我々の外に出ていないので、
+      // 予約を 0 に戻した request_error を残し、レーンを閉じる（同じ署名器へ積み直さない）。
+      let payload: { transaction: string; transactionId: string };
+      try {
+        payload = await createHederaPayment({ accept, network: hederaNetwork, tinybars: hederaTinybars! });
+      } catch (error) {
+        logServerErrorSafe("observatory.l1.hedera_sign", redactedError(error));
+        await releaseUnsignedReservation(db, reservation.rowId, {
+          status: "request_error",
+          rawResponseMeta: tagMeta({ phase: "hedera_sign", error: redactForLog(error), hedera: hederaMeta }),
+        });
+        invalidateDecisionCache(candidate.id);
+        return { kind: "hedera_lane_unavailable", settled: false, spent: 0n, skipReason: "hedera_sign_error" };
+      }
+      hederaTotal.commit(hederaTinybars!);
+      // 取引 ID は署名の時点で決まる（fee payer の口座 + valid start）。売り手には選べない一回性の値。
+      authNonce = payload.transactionId;
+      header = encodePaymentHeader({
+        x402Version: 2,
+        accept,
+        payload: { transaction: payload.transaction },
         resourceUrl: candidate.resourceUrl,
       });
     } else if (isArcGateway) {
@@ -5132,7 +5324,7 @@ async function purchaseOne(input: {
     const claimedSettlement = settlement?.success === true && !!settlement.transaction;
     const settlementTxWellFormed =
       claimedSettlement &&
-      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : "evm");
+      isWellFormedSettlementTx(settlement!.transaction, isSolana ? "solana" : isXrpl ? "xrpl" : isStellar ? "stellar" : isHedera ? "hedera" : "evm");
 
     // 2026-08-23 監査 C-4: ここで `settled` と名乗らない。
     // settled の定義は「我々がチェーンで確認した」であって、売り手が success:true と
@@ -5228,6 +5420,8 @@ async function purchaseOne(input: {
       ...(xrplLaneRefusal ? { xrplLane: xrplLaneRefusal } : {}),
       // Stellar のレーン候補だったが Stellar の accept を選べず Base へ落ちた理由（2026-10-18・段4）。
       ...(stellarLaneRefusal ? { stellarLane: stellarLaneRefusal } : {}),
+      // Hedera（2026-11-27）: 払った tinybar と為替。照合（settlement-verify-hedera.ts）と合計の上限がここを読む。
+      ...(hederaMeta ? { hedera: hederaMeta } : {}),
       // どのオリジン境界で資格情報を落としたか（2026-09-19 レビュー W-4）。status が
       // request_error になった行の理由はこれ。
       ...(credentialStripped ? { credentialStripped } : {}),
@@ -5402,6 +5596,8 @@ async function purchaseOne(input: {
               ...requestBodyRecord(paidRequestBody),
               ...(selectionMeta ?? {}),
               ...(gatewayMeta ?? {}),
+              // Hedera: 合計の上限と照合が読む tinybar。縮めた記録でも落とさない。
+              ...(hederaMeta ? { hedera: hederaMeta } : {}),
               outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
             }),
             ...pgSanitizedMark(sanitizedFields),

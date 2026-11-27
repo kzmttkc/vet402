@@ -212,8 +212,11 @@ test("Avalanche の別枠は eip155:43114 だけ。既定は $2。Fuji と他レ
   assert.equal(AVALANCHE_DAILY_CAP_USD_DEFAULT, CELO_DAILY_CAP_USD_DEFAULT);
   assert.equal(AVALANCHE_DAILY_CAP_USD_DEFAULT, ARBITRUM_DAILY_CAP_USD_DEFAULT);
   assert.deepEqual(Object.keys(CHAIN_DAILY_CAPS), [
-    "solana", "arc", "tempo", "xrpl", "celo", "stellar", "bnb", "arbitrum", "arc_gateway", "avalanche",
+    "solana", "arc", "tempo", "xrpl", "celo", "stellar", "bnb", "arbitrum", "arc_gateway", "avalanche", "hedera",
   ]);
+  // Hedera（2026-11-27）: 完全一致の hedera:mainnet・既定 $0.05。
+  assert.equal(CHAIN_DAILY_CAPS.hedera.networkLike, "hedera:mainnet");
+  assert.equal(CHAIN_DAILY_CAPS.hedera.defaultUsd, 0.05);
   assert.equal(CHAIN_DAILY_CAPS.solana.defaultUsd, 2);
   assert.equal(CHAIN_DAILY_CAPS.arc.defaultUsd, 2);
   assert.equal(CHAIN_DAILY_CAPS.tempo.defaultUsd, 2);

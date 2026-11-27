@@ -253,6 +253,9 @@ export async function verifyL1Settlement(
      * 持っていない証拠を理由に、無実の売り手を refuted にしない。
      */
     expectedAuthNonce?: string | null;
+    /** Hedera だけ: 払った額（tinybar）と資産。台帳の raw_response_meta.hedera から渡す（amount_units は USD 6 桁）。 */
+    expectedNativeAmount?: string | null;
+    expectedNativeAsset?: string | null;
   },
   deps?: { client?: EvmVerifyClient; /** Tempo の照合器へ渡す client（テスト用）。 */ tempoClient?: EvmVerifyClient },
 ): Promise<SettlementVerifyResult> {
@@ -275,6 +278,11 @@ export async function verifyL1Settlement(
   if (network.startsWith("stellar:")) {
     const { verifyStellarSettlement } = await import("./settlement-verify-stellar");
     return verifyStellarSettlement(input);
+  }
+  // Hedera（2026-11-27）: mirror node で SUCCESS・取引 ID が我々の署名したもの・HBAR が tinybar で完全一致。
+  if (network.startsWith("hedera:")) {
+    const { verifyHederaSettlement } = await import("./settlement-verify-hedera");
+    return verifyHederaSettlement(input);
   }
 
   // Tempo（MPP・2026-09-17）: USDC.e の Transfer / TransferWithMemo を TEMPO_RPC_URL で読む専用の照合器。

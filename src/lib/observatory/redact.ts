@@ -35,7 +35,20 @@ const URL_RE = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s"<>]+/gi;
 const STELLAR_SECRET_RE = /\bS[A-Z2-7]{55}\b/g;
 
 function redactStellarSecrets(text: string): string {
-  return text.replace(STELLAR_SECRET_RE, "<stellar-secret>");
+  return redactHederaSecret(text.replace(STELLAR_SECRET_RE, "<stellar-secret>"));
+}
+
+/**
+ * Hedera の払い手の鍵（2026-11-27・HEDERA_PAYER_PRIVATE_KEY・ECDSA の 32 バイト hex）。形だけでは tx hash と
+ * 区別できないので、環境変数の値そのもの（0x の有無の両方）だけを伏せる。値が無い・短いときは何もしない。
+ */
+export function redactHederaSecret(text: string): string {
+  const raw = process.env.HEDERA_PAYER_PRIVATE_KEY?.trim() ?? "";
+  const bare = raw.replace(/^0x/i, "");
+  if (bare.length < 32) return text;
+  let out = text;
+  for (const v of [bare, bare.toLowerCase(), bare.toUpperCase()]) out = out.split(v).join("<hedera-secret>");
+  return out;
 }
 
 /**
