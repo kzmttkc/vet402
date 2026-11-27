@@ -2544,3 +2544,10 @@ claims:
     check: null
     why_unverifiable: "要求ヘッダは売り手側にしか見えない。コードの一致を tests/integrity-page.test.ts が固定する"
     verified_at: 2026-11-27
+  - id: statistics_l1_by_chain_covers_every_chain
+    surface: src/app/x402/statistics/page.tsx
+    quote: "l1.byChain covers every chain an L1 attempt ran on and sums to the l1 totals."
+    means: "GET /api/v1/observatory/state の disclaimer と同じ文。l1.byChain の各行の attempts・settled・delivered の和はトップレベルの l1 と一致する。"
+    check: null
+    why_unverifiable: "集計の和は src/lib/observatory/reader.ts が固定する。tests/observatory-state-api.test.ts が byChain の形を固定する"
+    verified_at: 2026-11-27

@@ -40,6 +40,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 ## Chains
 
 - [x402 by chain](https://vet402.com/x402/chains): Base, Solana, Tempo (MPP), XRPL, Arc, Celo, Stellar, Arbitrum One, BNB Chain, Avalanche C-Chain.
+- [x402 purchase statistics](https://vet402.com/x402/statistics): paid purchase attempts, settled on-chain, delivered, and counts by chain from `GET /api/v1/observatory/state`.
 
 ## Source and packages
 
@@ -126,6 +127,7 @@ What the API returns today is a different, older thing. It is a 0 to 100 trust o
 - https://vet402.com/x402/stablecoin-payments: how an AI agent pays an x402 API with a stablecoin, often USDC.
 - https://vet402.com/x402/check-a-seller: how to check an x402 seller before paying.
 - https://vet402.com/x402/chains: purchase results by chain, from the same ledger as the observatory.
+- https://vet402.com/x402/statistics: paid purchase attempts, settled on-chain, delivered, and counts by chain from `/api/v1/observatory/state`.
 - [State of x402: November 2026](https://vet402.com/x402/report/2026-11): delivery after payment across vet402's purchases, by chain, as of 2026-11-09 (UTC).
 - https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
 - https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification

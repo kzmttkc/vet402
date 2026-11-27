@@ -174,7 +174,11 @@ export default async function ObservatoryPage({
           This page lists live endpoint checks. Values here are measurements, not opinions.
         </p>
         <p className="mt-2 max-w-[62ch] text-brand">
-          Counts for each chain are on{" "}
+          Headline purchase counts are on{" "}
+          <Link href="/x402/statistics" className="doc-link">
+            x402 purchase statistics
+          </Link>
+          . Counts for each chain are on{" "}
           <Link href="/x402/chains" className="doc-link">
             x402 and MPP payments by chain
           </Link>

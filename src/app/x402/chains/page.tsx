@@ -138,6 +138,13 @@ export default async function ChainsHubPage() {
           </>
         ) : null}
 
+        <p className="doc-p mt-4">
+          Headline attempt, settled, and delivered counts across all chains are on{" "}
+          <Link href="/x402/statistics" className="doc-link">
+            x402 purchase statistics
+          </Link>
+          .
+        </p>
         <p className="doc-p mt-8">
           Source:{" "}
           {/* API route, not a page: a plain anchor avoids an RSC prefetch that answers 400. */}

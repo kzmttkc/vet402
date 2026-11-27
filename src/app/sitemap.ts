@@ -140,6 +140,7 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/x402/ways-to-check-a-seller`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/pricing`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/statistics`, lastModified: "2026-11-27", changeFrequency: "daily", priority: 0.85 },
     ...GUIDE_CHAINS.map((chain) => ({
       url: `${SITE_URL}/x402/chains/${chain.slug}`,
       lastModified: REV_2026_10_26,
