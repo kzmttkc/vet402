@@ -21,7 +21,9 @@ export type PinnedPurchase = {
   /**
    * 払う network（CAIP-2・省略可・2026-11-27）。省略した行は従来どおり主ネットワーク（カタログの accepts[0]）で買う。
    * 書けるのは PINNED_NETWORK_LANES の network だけ。その行はそのレーンの候補として扱う（レーンの accept を先に選ぶ）。
-   * 受取先の照合・上限・別枠・残高の関門はレーンの通常の購入と同じ。カタログにその network の accept が無ければ買わない。
+   * 受取先の照合・上限・別枠・残高の関門はレーンの通常の購入と同じ。その network で払えない回（レーンが閉じている・残高が無い・
+   * 壁にその accept が無い・受取先が宣言と合わない・その network で失敗済み）は買わない。主ネットワーク（Base）には落とさない
+   * （l1-runner の候補ループと purchaseOne・tests/l1-pinned-network.pg.test.ts）。
    */
   network?: string;
 };

@@ -203,7 +203,7 @@ test("network pins: only PINNED_NETWORK_LANES networks validate, and they map to
   assert.throws(() => validatePinnedPurchase({ ...SAMPLE, network: "celo" }, 0), /network must be one of/);
 });
 
-test("prezenti-m3 x402atlas: four listings at $0.005 or less, 1 each on Celo, window 11-27..11-29 UTC", () => {
+test("prezenti-m3 x402atlas: four listings, 1 each on Celo, window 11-27..11-29 UTC", () => {
   const rows = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m3-celo-x402atlas");
   assert.deepEqual(
     rows.map((p) => `${p.method} ${p.url}`),
