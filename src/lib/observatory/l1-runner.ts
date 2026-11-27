@@ -181,8 +181,10 @@ import {
 } from "./seller-retest";
 import {
   PINNED_PURCHASE_SELECTION,
+  dropLaneCandidatesShadowedByNetworkPins,
   fetchPinnedCandidateRows,
   loadActivePinnedPurchaseTargets,
+  pinnedLaneChainOf,
   pinnedPurchaseMetaOf,
   promotePinnedPurchaseCandidates,
   type PinnedPurchaseMeta,
@@ -469,6 +471,8 @@ type Candidate = {
   sellerRequestUnpaid?: SellerRequestUnpaid;
   /** 版管理された予約購入（pinned-purchases.ts）: 台帳の raw_response_meta に残す。 */
   pinnedPurchaseMeta?: PinnedPurchaseMeta | null;
+  /** network を書いた予約（pinned-purchases.ts・2026-11-27）: その network の accept でだけ買う。それ以外は null / undefined。 */
+  pinnedNetwork?: string | null;
   /**
    * カタログの raw_accepts が宣言した XRPL（xrpl:0・RLUSD・固定発行者）accept の payTo（2026-09-18）。
    * Base が先頭の行を XRPL の accept で買うとき、壁の payTo はこの宣言と完全一致でなければ払わない
@@ -2952,6 +2956,8 @@ export async function runL1Batch(
   if (!onlyEndpointId) {
     try {
       const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
+      // network を書いた予約の窓のあいだ、同じホストのそのレーンの枠の候補は外す（予約が届いた後も・2026-11-27）。
+      candidates = dropLaneCandidatesShadowedByNetworkPins(candidates, now(), new Set(pinTargets.map((t) => t.endpointId)));
       if (pinTargets.length > 0) {
         summary.pinnedActive = pinTargets.length;
         // 主候補に無い予約は 1 件ずつ引く。件数と回数の上限・日ごとのずらしは fetchPinnedCandidateRows
@@ -2973,8 +2979,11 @@ export async function runL1Batch(
         });
         summary.pinnedFetchQueries = fetched.queries;
         for (const row of fetched.rows) candidates.push(rowToCandidate(row));
+        // network を書いた予約（Celo・2026-11-27）はそのレーンの候補として買う（下の laneChain）。
         candidates = promotePinnedPurchaseCandidates(candidates, pinTargets, (c, t) => ({
           ...c,
+          laneChain: pinnedLaneChainOf(t.entry) ?? c.laneChain,
+          pinnedNetwork: t.entry.network ?? null,
           selection: PINNED_PURCHASE_SELECTION,
           pinnedPurchaseMeta: pinnedPurchaseMetaOf(t.entry),
         }));
@@ -3368,6 +3377,12 @@ export async function runL1Batch(
         !candidate.failedNetworks.includes(laneNetwork)
           ? [laneNetwork]
           : [];
+      // network を書いた予約は、その network を優先できない回（別枠が尽きた・旗が off・残高が無い・その network で失敗済み）は
+      // 402 も取りに行かない。主ネットワーク（Base）では買わない（2026-11-27）。
+      if (candidate.pinnedNetwork && !preferNetworks.includes(candidate.pinnedNetwork)) {
+        summary.skipped++;
+        continue;
+      }
       const purchaseInput = { candidate, xrplLanePreferred, stellarLanePreferred, arcGatewayPreferred, account, solanaKeypair, getSolanaBlockhash, xrplPayer, xrplWallet, getXrplSigningInputs, stellarPayer, stellarAddress: stellarAccount?.address ?? null, createStellarPayment, hederaAccountId: hederaReady ? (hederaAccount?.accountId ?? null) : null, createHederaPayment, readHederaRate, hederaTotal, fetchImpl, timeoutMs, celoPaidTimeoutMs, xrplPaidTimeoutMs, db, spentToday, payerFunds, onPayerUnfunded, tempoEnabled: laneSelectable.get("tempo") ?? false, mppxCharge: options.mppxCharge, readArcGatewayAvailable, commitArcGateway, signArcGateway: options.signArcGateway ?? signArcGatewayPayment, checkArkivRuling };
       let outcome = await purchaseOne({ ...purchaseInput, preferNetworks });
       // Celo の残高が足りない／読めない（署名していない・行も予約も無い）。以後の Celo レーンの優先を閉じる。
@@ -4391,6 +4406,12 @@ async function purchaseOne(input: {
           declaredPayTosByNetwork: { [ARC_CAIP2]: candidate.arcDeclaredPayTos, [CELO_CAIP2]: candidate.celoDeclaredPayTos, [BNB_CAIP2]: candidate.bnbDeclaredPayTos, [ARBITRUM_CAIP2]: candidate.arbitrumDeclaredPayTos, [AVALANCHE_CAIP2]: candidate.avalancheDeclaredPayTos },
         });
   if (gatewayPick?.accept) isArcGateway = true;
+  // network を書いた予約（2026-11-27・pinned-purchases.ts）: 選ばれた accept がその network でなければ、署名も記帳もしない。
+  // 優先は並べ替えるだけなので、Celo の accept が壁に無い・受取先が宣言と合わない・未入金の買い直し（preferNetworks: []）の
+  // ときは Base が選ばれうる。Base で買うと予約の 1 件を使い切り、その口の Celo の証拠が窓のあいだ取れなくなる。
+  if (candidate.pinnedNetwork && selection.accept && String(selection.accept.network).toLowerCase() !== candidate.pinnedNetwork.toLowerCase()) {
+    return { kind: "skipped", settled: false, spent: 0n, skipReason: "pinned_network_not_selected" };
+  }
   // ここから先の台帳の network・別枠（reserveSpend の cappedChainFor）・残高の chain（payerChain）は
   // すべて「選んだ accept の network」で決まる——Base 先頭の exa の行を Arc の accept で買えば、
   // 行は eip155:5042・別枠 arc・残高 arc になる（tests/l1-lane-accept-preference.pg.test.ts）。

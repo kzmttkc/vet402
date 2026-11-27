@@ -18,7 +18,25 @@ export type PinnedPurchase = {
   requestedBy: string;
   approvedAt: string;
   maxPurchases: number;
+  /**
+   * 払う network（CAIP-2・省略可・2026-11-27）。省略した行は従来どおり主ネットワーク（カタログの accepts[0]）で買う。
+   * 書けるのは PINNED_NETWORK_LANES の network だけ。その行はそのレーンの候補として扱う（レーンの accept を先に選ぶ）。
+   * 受取先の照合・上限・別枠・残高の関門はレーンの通常の購入と同じ。その network で払えない回（レーンが閉じている・残高が無い・
+   * 壁にその accept が無い・受取先が宣言と合わない・その network で失敗済み）は買わない。主ネットワーク（Base）には落とさない
+   * （l1-runner の候補ループと purchaseOne・tests/l1-pinned-network.pg.test.ts）。
+   */
+  network?: string;
 };
+
+/** 予約に書ける network と、その候補を載せるレーン。Celo だけ（Prezenti M3・売り手ごとの Celo の証拠）。 */
+export const PINNED_NETWORK_LANES = { "eip155:42220": "celo" } as const;
+export type PinnedNetworkLane = (typeof PINNED_NETWORK_LANES)[keyof typeof PINNED_NETWORK_LANES];
+
+/** 予約行のレーン（network を書いた行だけ）。 */
+export function pinnedLaneChainOf(entry: PinnedPurchase): PinnedNetworkLane | null {
+  if (entry.network === undefined) return null;
+  return (PINNED_NETWORK_LANES as Record<string, PinnedNetworkLane>)[entry.network] ?? null;
+}
 
 import { PAYSH_PINNED_PURCHASES } from "./pay-skills-pinned-data";
 
@@ -39,11 +57,34 @@ const FACTGATE_PINNED_PURCHASES: readonly PinnedPurchase[] = [
   },
 ];
 
+// 2026-11-27: Prezenti M3（試した Celo の売り手）の証拠。x402atlas.xyz は 11/27 に Bazaar で Celo の accept
+// （payTo 0x2632a66e…・USDC 0xcebA9300…）を 7 口に出した。$0.005 以下の 4 口を Celo で 1 件ずつ（上限の合計 0.009 USDC）。
+// POST の chat/completions は目録が本文の例を宣言している。erc20 / erc721 は必須の引数に例が無いので、決済まで届かない
+// ことがある（その場合も 1 口 1 件のまま）。:address の口はパスの値を知らないので買わない。$0.02 の 2 口（images・q-verdict）は外した。
+const PREZENTI_M3_CELO_PINNED_PURCHASES: readonly PinnedPurchase[] = [
+  "https://x402atlas.xyz/api/chain/block-number",
+  "https://x402atlas.xyz/v1/chat/completions",
+  "https://x402atlas.xyz/api/chain/erc20-balance",
+  "https://x402atlas.xyz/api/chain/erc721-tokens",
+].map((url) => ({
+  url,
+  method: url.endsWith("/v1/chat/completions") ? ("POST" as const) : ("GET" as const),
+  network: "eip155:42220",
+  from: "2026-11-27T00:00:00.000Z",
+  to: "2026-11-29T23:59:59.999Z",
+  reason: "prezenti-m3-celo-x402atlas",
+  requestedBy: "grants session (Prezenti M3)",
+  // 2026-11-27 10:46 JST、グラントの会話の依頼（合計 0.02 USDC 以内・1 口 1 件）。
+  approvedAt: "2026-11-27T01:46:00.000Z",
+  maxPurchases: 1,
+}));
+
 // 2026-11-25: Prezenti M2 usebuy の 4 予約は目的が無くなったので外した（オーナー 14:58「現時点では外部開発者を巻き込まない。M2 の直接の打診は行わない」）。出品は operator の通常の巡回で測る。
 
-/** 正典リスト（版管理）。FactGate → pay.sh delivery（presign-gate-2611）の予約。 */
+/** 正典リスト（版管理）。FactGate → Prezenti M3 の Celo → pay.sh delivery（presign-gate-2611）の予約。 */
 export const PINNED_PURCHASES: readonly PinnedPurchase[] = [
   ...FACTGATE_PINNED_PURCHASES,
+  ...PREZENTI_M3_CELO_PINNED_PURCHASES,
   ...PAYSH_PINNED_PURCHASES,
 ];
 
@@ -73,6 +114,9 @@ export function validatePinnedPurchase(entry: PinnedPurchase, index: number): vo
   parseUtcMs(entry.approvedAt);
   if (typeof entry.requestedBy !== "string" || entry.requestedBy.trim() === "") {
     throw new Error(`${label}: requestedBy is required`);
+  }
+  if (entry.network !== undefined && pinnedLaneChainOf(entry) === null) {
+    throw new Error(`${label}: network must be one of ${Object.keys(PINNED_NETWORK_LANES).join(", ")}`);
   }
 }
 
@@ -263,8 +307,12 @@ export async function fetchPinnedCandidateRows<R>(
   let queries = 0;
   if (pinTargets.length === 0) return { rows, queries };
   const seen = new Set(existingIds);
-  const start = (Math.floor(nowMs / 86_400_000) * PINNED_FETCHES_PER_BATCH) % pinTargets.length;
-  const order = [...pinTargets.slice(start), ...pinTargets.slice(0, start)];
+  // network を書いた予約（数件）は日ごとのずらしの外で先に引く。ずらしの 40 件に入らない日に、窓のあいだ一度も候補に
+  // ならないのを防ぐ（2026-11-27・Celo）。件数と回数の上限は同じものを使う。
+  const laned = pinTargets.filter((t) => pinnedLaneChainOf(t.entry) !== null);
+  const rest = pinTargets.filter((t) => pinnedLaneChainOf(t.entry) === null);
+  const start = rest.length === 0 ? 0 : (Math.floor(nowMs / 86_400_000) * PINNED_FETCHES_PER_BATCH) % rest.length;
+  const order = [...laned, ...rest.slice(start), ...rest.slice(0, start)];
   for (const t of order) {
     if (seen.has(t.endpointId)) continue;
     if (rows.length >= PINNED_FETCHES_PER_BATCH || queries >= PINNED_QUERIES_PER_BATCH) break;
@@ -276,4 +324,34 @@ export async function fetchPinnedCandidateRows<R>(
     }
   }
   return { rows, queries };
+}
+
+/**
+ * network を書いた予約の窓のあいだ、同じホストのそのレーンの候補は予約の行だけにする（2026-11-27）。
+ * レーン枠（laneFloorCandidates）は 1 ホスト 2 件まで同点の並びで選ぶので、予約と同じ売り手の高い口（x402atlas の
+ * $0.02 の口）を同じバッチで足しうる。予約は窓の全体で効かせる（maxPurchases に届いた後も）。主候補・census など
+ * レーン以外の候補と、ほかのホストの候補は変えない。
+ */
+export function dropLaneCandidatesShadowedByNetworkPins<
+  T extends { id: string; resourceUrl: string; laneChain: string | null },
+>(candidates: readonly T[], nowMs: number, pinnedIds: ReadonlySet<string>, list: readonly PinnedPurchase[] = PINNED_PURCHASES): T[] {
+  const shadow = new Set<string>();
+  for (const e of pinnedPurchasesActiveAt(nowMs, list)) {
+    const lane = pinnedLaneChainOf(e);
+    if (lane === null) continue;
+    const c = canonicalUrl(e.url);
+    if (c === null) continue;
+    shadow.add(`${lane} ${new URL(c.url).hostname.toLowerCase()}`);
+  }
+  if (shadow.size === 0) return [...candidates];
+  return candidates.filter((c) => {
+    if (c.laneChain === null || pinnedIds.has(c.id)) return true;
+    let host: string;
+    try {
+      host = new URL(c.resourceUrl).hostname.toLowerCase();
+    } catch {
+      return true;
+    }
+    return !shadow.has(`${c.laneChain} ${host}`);
+  });
 }

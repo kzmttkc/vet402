@@ -10,6 +10,9 @@ import {
   fetchPinnedCandidateRows,
   PINNED_FETCHES_PER_BATCH,
   PINNED_QUERIES_PER_BATCH,
+  PINNED_NETWORK_LANES,
+  dropLaneCandidatesShadowedByNetworkPins,
+  pinnedLaneChainOf,
   type ActivePinnedTarget,
   loadActivePinnedPurchaseTargets,
   pinnedPurchaseMetaOf,
@@ -186,4 +189,83 @@ test("l1-runner fetches reservations only through fetchPinnedCandidateRows (no p
   assert.match(src, /fetchPinnedCandidateRows\(pinTargets/);
   assert.doesNotMatch(src, /for \(const t of pinTargets\)/);
   assert.match(src, /setupOverHalfBudget = true/);
+});
+
+// ---- 2026-11-27: network を書いた予約（Prezenti M3・x402atlas.xyz を Celo で） ----
+const CELO_PIN: PinnedPurchase = { ...SAMPLE, url: "https://seller.example/api/cheap", network: "eip155:42220" };
+
+test("network pins: only PINNED_NETWORK_LANES networks validate, and they map to the lane", () => {
+  assert.deepEqual(PINNED_NETWORK_LANES, { "eip155:42220": "celo" });
+  validatePinnedPurchase(CELO_PIN, 0);
+  assert.equal(pinnedLaneChainOf(CELO_PIN), "celo");
+  assert.equal(pinnedLaneChainOf(SAMPLE), null);
+  assert.throws(() => validatePinnedPurchase({ ...SAMPLE, network: "eip155:8453" }, 0), /network must be one of eip155:42220/);
+  assert.throws(() => validatePinnedPurchase({ ...SAMPLE, network: "celo" }, 0), /network must be one of/);
+});
+
+test("prezenti-m3 x402atlas: four listings, 1 each on Celo, window 11-27..11-29 UTC", () => {
+  const rows = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m3-celo-x402atlas");
+  assert.deepEqual(
+    rows.map((p) => `${p.method} ${p.url}`),
+    [
+      "GET https://x402atlas.xyz/api/chain/block-number",
+      "POST https://x402atlas.xyz/v1/chat/completions",
+      "GET https://x402atlas.xyz/api/chain/erc20-balance",
+      "GET https://x402atlas.xyz/api/chain/erc721-tokens",
+    ],
+  );
+  for (const p of rows) {
+    assert.equal(p.network, "eip155:42220");
+    assert.equal(p.maxPurchases, 1);
+    assert.equal(p.requestedBy, "grants session (Prezenti M3)");
+    assert.equal(pinnedWindowActive(p, Date.parse("2026-11-27T06:00:00.000Z")), true);
+    assert.equal(pinnedWindowActive(p, Date.parse("2026-11-29T18:00:00.000Z")), true);
+    assert.equal(pinnedWindowActive(p, Date.parse("2026-11-30T00:00:00.000Z")), false);
+  }
+  // 頭に置く（pay.sh の 349 件より前）: 予約の並びは先頭から買われる。
+  const firstPaysh = PINNED_PURCHASES.findIndex((p) => p.reason === "presign-gate-2611");
+  assert.ok(PINNED_PURCHASES.indexOf(rows[3]!) < firstPaysh);
+});
+
+test("pinned fetch: network pins are looked up first whatever the daily start", async () => {
+  const targets: ActivePinnedTarget[] = [
+    { entry: CELO_PIN, endpointId: "celo-0", settledCount: 0 },
+    ...manyPins(349).map((entry, i) => ({ entry, endpointId: `id-${i}`, settledCount: 0 })),
+  ];
+  const day = 86_400_000;
+  for (let d = 0; d < 12; d++) {
+    const ms = Date.parse("2026-11-27T06:00:00.000Z") + d * day;
+    const { rows } = await fetchPinnedCandidateRows(targets, new Set(), ms, async (t) => t.endpointId);
+    assert.equal(rows[0], "celo-0");
+    assert.equal(rows.length, PINNED_FETCHES_PER_BATCH);
+  }
+  // 主候補に既にあれば引かない（従来どおり）。
+  const again = await fetchPinnedCandidateRows(targets, new Set(["celo-0"]), Date.parse("2026-11-27T06:00:00.000Z"), async (t) => t.endpointId);
+  assert.equal(again.rows.includes("celo-0"), false);
+});
+
+test("lane candidates of a network-pinned host are dropped during the window, others are kept", () => {
+  const list = [CELO_PIN];
+  const inWindow = Date.parse("2027-01-11T12:00:00.000Z");
+  const cands = [
+    { id: "pin", resourceUrl: "https://seller.example/api/cheap", laneChain: "celo" },
+    { id: "dear", resourceUrl: "https://Seller.example/v1/images", laneChain: "celo" },
+    { id: "base", resourceUrl: "https://seller.example/v1/images", laneChain: null },
+    { id: "arb", resourceUrl: "https://seller.example/v1/images", laneChain: "arbitrum" },
+    { id: "other", resourceUrl: "https://other.example/x", laneChain: "celo" },
+  ];
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+  assert.deepEqual(ids(dropLaneCandidatesShadowedByNetworkPins(cands, inWindow, new Set(["pin"]), list)), ["pin", "base", "arb", "other"]);
+  // 予約が届いた後（pinnedIds に無い）も窓のあいだは同じホストの Celo の枠を外す。
+  assert.deepEqual(ids(dropLaneCandidatesShadowedByNetworkPins(cands, inWindow, new Set(), list)), ["base", "arb", "other"]);
+  // 窓の外、network の無い予約だけのときは何も外さない。
+  assert.deepEqual(ids(dropLaneCandidatesShadowedByNetworkPins(cands, Date.parse("2027-02-01T00:00:00.000Z"), new Set(), list)), ids(cands));
+  assert.deepEqual(ids(dropLaneCandidatesShadowedByNetworkPins(cands, inWindow, new Set(), [SAMPLE])), ids(cands));
+});
+
+test("l1-runner puts network pins on their lane and drops shadowed lane candidates", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../src/lib/observatory/l1-runner.ts", import.meta.url), "utf8");
+  assert.match(src, /laneChain: pinnedLaneChainOf\(t\.entry\) \?\? c\.laneChain/);
+  assert.match(src, /dropLaneCandidatesShadowedByNetworkPins\(candidates, now\(\)/);
 });
