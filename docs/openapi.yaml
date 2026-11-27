@@ -5411,6 +5411,37 @@ paths:
                   count: { type: integer }
                   note: { type: string }
 
+  /api/v1/reports/{month}:
+    get:
+      operationId: getMonthlyLedgerFreeze
+      tags: [Observatory]
+      summary: Monthly frozen purchase ledger summary
+      description: |
+        Summary of a frozen UTC month of purchase rows. The content hash covers
+        the same columns and order as the default export. Before vet402 stores a
+        freeze, the response is 404 with not_frozen_yet. An open month answers
+        400 with month_not_closed. Key-less. 120 requests per minute. Since 2026-11-27.
+      security: []
+      parameters:
+        - in: path
+          name: month
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}$"
+      responses:
+        "200":
+          description: Frozen month summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Month still open or invalid month
+        "404":
+          description: Not frozen yet
+
   /api/v1/usage/monthly:
     get:
       operationId: getMonthlyDecisionUsage
