@@ -7,6 +7,7 @@
 // 鍵は api_key などを除いた URL なので、呼び手の生の URL を含む diagnose_url は保存せず、要求ごとに作る。
 // 保存する本文は正規化した URL で読む（呼び手の長い URL が他の呼び手の一覧を削らない）。
 // spending_halted: true は読み取り失敗でも出る安全側の値なので再利用しない（復旧後に停止中と答え続けない）。
+// 期限の 12 秒前から裏で読み直し（鮮度の決まりはそのまま——まだ fresh な応答を返す間だけ走る）。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { diagnoseUrlFor } from "@/lib/api/diagnose-url";
@@ -15,9 +16,12 @@ import { classifyQuery } from "@/lib/resolve/classify";
 import type { CheckSellerOutput } from "@/lib/mcp/schemas";
 import { checkSeller, type CheckSellerDeps } from "@/lib/mcp/tools";
 import { isNoDataCacheError } from "@/lib/observatory/state-reads";
+import { keepAliveUntilSettled } from "@/lib/util/after-response";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export const CHECK_SELLER_CACHE_SECONDS = 60;
+/** fresh な間、期限の何秒前から裏読みを始めるか。 */
+export const CHECK_SELLER_PREFETCH_LEAD_SECONDS = 12;
 
 /** unstable_cache のキー要素。https 以外・壊れた URL は null。 */
 export function checkSellerCacheKeyParts(url: string, method?: string): readonly [string, string] | null {
@@ -32,6 +36,10 @@ export function checkSellerCacheKey(url: string, method?: string): string | null
   const parts = checkSellerCacheKeyParts(url, method);
   if (!parts) return null;
   return `${parts[0]}\0${parts[1]}`;
+}
+
+function storeKey(urlKey: string, methodKey: string): string {
+  return `${urlKey}\0${methodKey}`;
 }
 
 export type CheckSellerCachedPayload = {
@@ -70,6 +78,42 @@ function checkSellerForCaller(out: CheckSellerOutput, url: string): CheckSellerO
   return out.not_in_catalog ? { ...out, diagnose_url: diagnoseUrlFor(url) } : out;
 }
 
+function payloadFromFresh(
+  fresh: Awaited<ReturnType<typeof readCheckSellerFresh>>,
+  cacheReadAt: string,
+): CheckSellerCachedPayload {
+  return {
+    out: checkSellerForStore(fresh.out),
+    cacheReadAt: fresh.out.spending_halted === true ? "" : cacheReadAt,
+    usageNetwork: fresh.usageNetwork,
+  };
+}
+
+function deliverPrefetched(
+  deps: CheckSellerDeps,
+  payload: CheckSellerCachedPayload,
+  callerUrl: string,
+): CheckSellerOutput {
+  if (payload.usageNetwork) deps.captureUsageNetwork?.(payload.usageNetwork);
+  return checkSellerForCaller(stripCheckSellerCachedPayload(payload), callerUrl);
+}
+
+const prefetchedByStoreKey = new Map<string, CheckSellerCachedPayload>();
+const prefetchInflight = new Map<string, Promise<void>>();
+const freshInflight = new Map<string, Promise<{ out: CheckSellerOutput; usageNetwork?: string }>>();
+
+/** テスト用: 裏読み・同時リフレッシュの状態を消す。 */
+export function __resetCheckSellerLatencyHelpersForTests(): void {
+  prefetchedByStoreKey.clear();
+  prefetchInflight.clear();
+  freshInflight.clear();
+}
+
+/** 試験用: 裏読みが載せた payload を注入する。 */
+export function prefetchedByStoreKeyForTests(key: string, payload: CheckSellerCachedPayload): void {
+  prefetchedByStoreKey.set(key, payload);
+}
+
 type CacheFn = typeof unstable_cache;
 
 export type GetCheckSellerCached = (
@@ -97,6 +141,66 @@ function finishFreshRead(deps: CheckSellerDeps, fresh: Awaited<ReturnType<typeof
   return fresh.out;
 }
 
+async function coalescedFreshRead(
+  deps: CheckSellerDeps,
+  input: { url: string; method?: string },
+  inflightKey: string,
+): Promise<Awaited<ReturnType<typeof readCheckSellerFresh>>> {
+  const pending = freshInflight.get(inflightKey);
+  if (pending) return pending;
+  type Fresh = Awaited<ReturnType<typeof readCheckSellerFresh>>;
+  let release!: (value: Fresh) => void;
+  let fail!: (error: unknown) => void;
+  const slot = new Promise<Fresh>((resolve, reject) => {
+    release = resolve;
+    fail = reject;
+  });
+  freshInflight.set(inflightKey, slot);
+  void readCheckSellerFresh(deps, input).then(
+    (value) => {
+      freshInflight.delete(inflightKey);
+      release(value);
+    },
+    (error) => {
+      freshInflight.delete(inflightKey);
+      fail(error);
+    },
+  );
+  return slot;
+}
+
+function scheduleCheckSellerPrefetch(
+  deps: CheckSellerDeps,
+  storeK: string,
+  urlKey: string,
+  methodKey: string,
+  cacheReadAt: string,
+  warmUnstableCache: () => Promise<CheckSellerCachedPayload>,
+): void {
+  const readMs = Date.parse(cacheReadAt);
+  if (!Number.isFinite(readMs)) return;
+  const leadMs = CHECK_SELLER_PREFETCH_LEAD_SECONDS * 1000;
+  if (Date.now() - readMs < CHECK_SELLER_CACHE_SECONDS * 1000 - leadMs) return;
+  if (prefetchInflight.has(storeK)) return;
+  const work = (async () => {
+    try {
+      const cacheReadStarted = new Date().toISOString();
+      const fresh = await readCheckSellerFresh(deps, { url: urlKey, method: methodKey || undefined });
+      const payload = payloadFromFresh(fresh, cacheReadStarted);
+      if (isCheckSellerCachedReadFresh(payload.cacheReadAt)) {
+        prefetchedByStoreKey.set(storeK, payload);
+      }
+      await warmUnstableCache().catch(() => undefined);
+    } catch {
+      // 裏読みの失敗は呼び手に出さない。期限後はその場で読み直す。
+    } finally {
+      prefetchInflight.delete(storeK);
+    }
+  })();
+  prefetchInflight.set(storeK, work);
+  keepAliveUntilSettled(work);
+}
+
 export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
   return async (deps, input) => {
     const parts = checkSellerCacheKeyParts(input.url, input.method);
@@ -106,16 +210,13 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     }
 
     const [urlKey, methodKey] = parts;
+    const storeK = storeKey(urlKey, methodKey);
     const read = cache(
       async (): Promise<CheckSellerCachedPayload> => {
         // 読み始めの時刻で数える。読み終わりで数えると、読み取りにかかった分だけ 60 秒を超える。
         const cacheReadAt = new Date().toISOString();
         const fresh = await readCheckSellerFresh(deps, { ...input, url: urlKey });
-        return {
-          out: checkSellerForStore(fresh.out),
-          cacheReadAt: fresh.out.spending_halted === true ? "" : cacheReadAt,
-          usageNetwork: fresh.usageNetwork,
-        };
+        return payloadFromFresh(fresh, cacheReadAt);
       },
       ["check-seller:v2", urlKey, methodKey],
       { revalidate: CHECK_SELLER_CACHE_SECONDS, tags: ["check-seller"] },
@@ -124,12 +225,22 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     try {
       const cached = await read();
       if (isCheckSellerCachedReadFresh(cached.cacheReadAt)) {
+        scheduleCheckSellerPrefetch(deps, storeK, urlKey, methodKey, cached.cacheReadAt, read);
         if (cached.usageNetwork) deps.captureUsageNetwork?.(cached.usageNetwork);
         return checkSellerForCaller(stripCheckSellerCachedPayload(cached), input.url);
       }
-      return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
+
+      const prefetched = prefetchedByStoreKey.get(storeK);
+      if (prefetched && isCheckSellerCachedReadFresh(prefetched.cacheReadAt)) {
+        prefetchedByStoreKey.delete(storeK);
+        return deliverPrefetched(deps, prefetched, input.url);
+      }
+
+      return finishFreshRead(deps, await coalescedFreshRead(deps, { ...input, url: urlKey }, storeK));
     } catch (error) {
-      if (isNoDataCacheError(error)) return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
+      if (isNoDataCacheError(error)) {
+        return finishFreshRead(deps, await coalescedFreshRead(deps, { ...input, url: urlKey }, storeK));
+      }
       logServerErrorSafe("check_seller_cache", error);
       throw error;
     }
