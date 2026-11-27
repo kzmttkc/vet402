@@ -492,11 +492,12 @@ test("fetchFullCatalog: a page that stays throttled past its budget ends the day
 });
 
 test("fetchFullCatalog: one 429 pauses every worker until Retry-After has passed", async () => {
+  let nowMs = 1_000_000;
   const sent: { offset: number; at: number }[] = [];
   let throttledAt = 0;
   const fetchImpl = async (url: string) => {
     const offset = Number(new URL(url).searchParams.get("offset") ?? "0");
-    const at = Date.now();
+    const at = nowMs;
     sent.push({ offset, at });
     if (offset === 2 && throttledAt === 0) {
       throttledAt = at;
@@ -505,12 +506,22 @@ test("fetchFullCatalog: one 429 pauses every worker until Retry-After has passed
     const items = Array.from({ length: Math.min(2, 12 - offset) }, (_, i) => fakeItem(offset + i));
     return { ok: true, status: 200, headers: new Headers(), json: async () => page(items, 12) } as unknown as Response;
   };
-  const result = await fetchFullCatalog({ fetchImpl, pageLimit: 2, sleepMs: 1, concurrency: 3, maxRetriesPerPage: 1, maxThrottleRetries: 3 });
+  const result = await fetchFullCatalog({
+    fetchImpl,
+    pageLimit: 2,
+    sleepMs: 1,
+    concurrency: 3,
+    maxRetriesPerPage: 1,
+    maxThrottleRetries: 3,
+    now: () => nowMs,
+    sleep: async (ms) => {
+      nowMs += ms;
+    },
+  });
   assert.equal(result.complete, true);
-  // every request sent after the 429 (by any worker) waited out the 1s Retry-After, give or take timer slack
-  const after = sent.filter((s) => s.at > throttledAt + 5);
+  const after = sent.filter((s) => s.at > throttledAt);
   assert.ok(after.length > 0);
-  for (const s of after) assert.ok(s.at - throttledAt >= 950, `offset ${s.offset} went out ${s.at - throttledAt}ms after the 429`);
+  for (const s of after) assert.ok(s.at - throttledAt >= 1000, `offset ${s.offset} went out ${s.at - throttledAt}ms after the 429`);
 });
 
 test("retryAfterMs reads delta-seconds and HTTP dates, and ignores junk", () => {

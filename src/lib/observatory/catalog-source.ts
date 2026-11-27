@@ -264,6 +264,10 @@ export type FetchFullCatalogOptions = {
    * budget, still bounded by the deadline.
    */
   maxThrottleRetries?: number;
+  /** Test hook: replace wall clock (default `Date.now`). */
+  now?: () => number;
+  /** Test hook: replace politeness / Retry-After waits (default real timer). */
+  sleep?: (ms: number) => Promise<void>;
 };
 
 /** Longest a single 429 pause may last, whatever Retry-After says (the deadline still bounds the total). */
@@ -303,8 +307,10 @@ export async function fetchFullCatalog(
     concurrency = 1,
     deadlineMs,
     maxThrottleRetries = 0,
+    now = Date.now,
+    sleep: sleepFn = sleep,
   } = options;
-  const deadlineAt = deadlineMs === undefined ? Infinity : Date.now() + deadlineMs;
+  const deadlineAt = deadlineMs === undefined ? Infinity : now() + deadlineMs;
 
   /** Parsed, importable items per page, keyed by page index so the merge below is in offset order. */
   const pages = new Map<number, ParsedCatalogItem[]>();
@@ -320,9 +326,9 @@ export async function fetchFullCatalog(
   /** Shared by all workers: after a 429 nobody sends the next request before this time. */
   let pauseUntil = 0;
   const waitForPause = async () => {
-    for (let wait = pauseUntil - Date.now(); wait > 0 && sleepMs > 0; wait = pauseUntil - Date.now()) {
-      await sleep(Math.min(wait, Math.max(0, deadlineAt - Date.now())));
-      if (Date.now() >= deadlineAt) return;
+    for (let wait = pauseUntil - now(); wait > 0 && sleepMs > 0; wait = pauseUntil - now()) {
+      await sleepFn(Math.min(wait, Math.max(0, deadlineAt - now())));
+      if (now() >= deadlineAt) return;
     }
   };
 
@@ -353,19 +359,19 @@ export async function fetchFullCatalog(
           };
         }
       }
-      if (res?.status === 429 && throttled < maxThrottleRetries && Date.now() < deadlineAt) {
+      if (res?.status === 429 && throttled < maxThrottleRetries && now() < deadlineAt) {
         // Throttled: pause every worker, then retry this page without spending its ordinary tries.
         throttled++;
         attempt--;
-        const pause = Math.min(MAX_THROTTLE_PAUSE_MS, retryAfterMs(res) ?? 2_000 * 2 ** Math.min(throttled - 1, 4));
-        pauseUntil = Math.max(pauseUntil, Date.now() + pause);
+        const pause = Math.min(MAX_THROTTLE_PAUSE_MS, retryAfterMs(res, now()) ?? 2_000 * 2 ** Math.min(throttled - 1, 4));
+        pauseUntil = Math.max(pauseUntil, now() + pause);
         continue;
       }
-      if (attempt >= maxRetriesPerPage || Date.now() >= deadlineAt) {
+      if (attempt >= maxRetriesPerPage || now() >= deadlineAt) {
         giveUpError ??= res ? (res.ok ? "unreadable_body" : `http_${res.status}`) : "network_or_timeout";
         return null;
       }
-      await sleep(Math.min(10_000, 500 * 2 ** attempt) * (sleepMs === 0 ? 0 : 1));
+      await sleepFn(Math.min(10_000, 500 * 2 ** attempt) * (sleepMs === 0 ? 0 : 1));
     }
   };
 
@@ -420,7 +426,7 @@ export async function fetchFullCatalog(
   const worker = async () => {
     for (;;) {
       if (aborted) return;
-      if (Date.now() >= deadlineAt) {
+      if (now() >= deadlineAt) {
         aborted = true; // out of time: stop honestly, never read the gap as "delisted"
         stoppedBecause ??= "deadline";
         return;
@@ -431,7 +437,7 @@ export async function fetchFullCatalog(
       const got = await fetchPage(offset);
       if (got === null) {
         aborted = true;
-        stoppedBecause ??= Date.now() >= deadlineAt ? "deadline" : "page_failed";
+        stoppedBecause ??= now() >= deadlineAt ? "deadline" : "page_failed";
         return;
       }
       if (got.total !== null) {
