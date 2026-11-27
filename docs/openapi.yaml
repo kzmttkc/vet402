@@ -2127,6 +2127,108 @@ paths:
         "429": { description: Rate limited }
         "503": { description: Store unavailable }
 
+  /api/v1/check/presign:
+    post:
+      operationId: presignCheckX402Challenge
+      tags: [Observatory]
+      summary: Scan a 402 challenge before you sign — same verdict as GET /api/v1/check, plus per-accept terms
+      description: |
+        Send the 402 an x402 seller returned, before you sign a payment. No API key.
+        The body is the 402 JSON body itself (with `accepts`), or
+        `{ "challenge": <402 body or the base64 PAYMENT-REQUIRED header value>, "url"?: string, "method"?: string }`.
+        x402 v1 accepts (`network: "base"`, `maxAmountRequired`, `resource`) and v2 accepts are read.
+        The listing is found by `url`, else the 402's `resource.url`, else the first `accepts[].resource`.
+        The 402's own resource URL can name an internal host, so pass `url` when you know the URL you called.
+        `recommendation`, `reason_codes`, `verified_terms`, `verified_pay_to_by_network` and `rules_version`
+        come from the same cached read as `GET /api/v1/check` and are not changed.
+        `accepts[]` compares each accept with the terms vet402 paid and saw delivered, using the
+        same function the vet402 SDK `payOrRefuse` runs before it signs (`packages/sdk/src/terms-match.ts`).
+        The words are the SDK words: `payee_mismatch`, `price_above_declared`, `chain_or_asset_mismatch`,
+        `payee_unverified_on_rail`, `price_unverified`, `evidence_unavailable`. `terms_match` is null with
+        `resource_uncatalogued` when the URL is not in the catalog. This route does not apply caller limits
+        such as a per-transaction ceiling, and it does not pay.
+        Counts against the same per-IP limit as `GET /api/v1/check` and `GET /api/v1/resolve`, with the
+        same RateLimit-* headers. `Cache-Control: private, no-store`. The body is limited to 64 KB and 32 accepts.
+        `Server-Timing: presign;dur=<ms>` is the time from the start of the route handler to the response
+        (rate limit and lookup included, network and platform routing not included).
+        vet402 publishes its own measured p50 and p99 of that value at https://vet402.com/data/presign-latency.json.
+        vet402 does not store the 402 body or the URL. It adds 1 to a daily count per client name (route `rest:presign`).
+      security: []
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  description: The 402 JSON body as the seller sent it.
+                  required: [accepts]
+                  properties:
+                    x402Version: { type: integer }
+                    resource: {}
+                    accepts: { type: array, minItems: 1, maxItems: 32, items: { type: object } }
+                - type: object
+                  required: [challenge]
+                  additionalProperties: false
+                  properties:
+                    challenge:
+                      description: The 402 JSON body, or the base64 value of the PAYMENT-REQUIRED header.
+                      oneOf:
+                        - { type: object }
+                        - { type: string }
+                    url: { type: string, maxLength: 2048, description: The https URL you called. }
+                    method: { type: string, pattern: "^[A-Za-z]{1,10}$" }
+      responses:
+        "200":
+          description: Verdict from GET /api/v1/check and the per-accept terms.
+          headers:
+            Vet402-Signature:
+              $ref: "#/components/headers/Vet402Signature"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resource_url: { type: string }
+                  resource_url_source: { type: string, enum: [body, challenge] }
+                  canonical_url: { type: string, nullable: true }
+                  method: { type: string, nullable: true }
+                  not_in_catalog: { type: boolean }
+                  recommendation: { type: string, enum: [ALLOW, WARN, BLOCK], nullable: true }
+                  reason_codes: { type: array, items: { type: string } }
+                  next_action: { nullable: true }
+                  spending_halted: { type: boolean, nullable: true }
+                  verified_terms: { type: object, nullable: true }
+                  verified_pay_to_by_network: { type: array, items: { type: object } }
+                  x402_version: { type: integer, enum: [1, 2], nullable: true }
+                  accepts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index: { type: integer }
+                        readable: { type: boolean }
+                        scheme: { type: string, nullable: true }
+                        network: { type: string, nullable: true, description: CAIP-2 after v1 names are mapped. }
+                        asset: { type: string, nullable: true }
+                        amount: { type: string, nullable: true }
+                        pay_to: { type: string, nullable: true }
+                        terms_match: { type: boolean, nullable: true }
+                        reason_codes: { type: array, items: { type: string } }
+                  matching_accepts: { type: array, items: { type: integer } }
+                  terms_note: { type: string }
+                  record_url: { type: string, nullable: true }
+                  diagnose_url: { type: string, nullable: true }
+                  check_url: { type: string }
+                  rules_version: { type: string }
+                  as_of: { type: string }
+        "400":
+          description: invalid_query, invalid_body, invalid_challenge, invalid_url or invalid_method (with message).
+        "413": { description: body_too_large (over 64 KB). }
+        "429": { description: Rate limited }
+        "503": { description: Store unavailable }
+
   /api/v1/stats/keyless-callers:
     get:
       operationId: statsKeylessCallers
@@ -7690,6 +7792,9 @@ components:
             always use `invalid_request`.
           enum:
             - chain_unreadable
+            - invalid_body
+            - body_too_large
+            - invalid_challenge
             - invalid_include
             - invalid_week
             - week_required

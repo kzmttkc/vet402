@@ -1,0 +1,15 @@
+{
+  "endpoint": "POST /api/v1/check/presign",
+  "measured_at": null,
+  "measured_by": "vet402-presign-latency-probe/1",
+  "definition": "No measurement yet. scripts/presign-latency-probe.ts writes this file after it calls the production route.",
+  "seller_url": null,
+  "requests": 0,
+  "samples": 0,
+  "non_200": 0,
+  "server_ms": { "p50": null, "p99": null, "max": null },
+  "wall_ms": { "p50": null, "p99": null },
+  "target_p99_server_ms": 300,
+  "target_met": false,
+  "example": null
+}
