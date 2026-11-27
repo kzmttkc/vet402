@@ -197,3 +197,26 @@ test("integrity.md and erc-8004.md keep the page's limiting sentences", async ()
     }
   }
 });
+
+test("every hand-copied paragraph in the .md copies is on its page, sentence by sentence", async () => {
+  const { COPIED_PROSE, INTEGRITY_ABSTRACT, BUCKET_ROWS } = await import("@/lib/markdown/public-pages");
+  const integrityPage = read("src/app/integrity/page.tsx");
+  for (const r of BUCKET_ROWS) assert.ok(integrityPage.includes(`counts: "${r.counts}"`), `integrity page lacks counts "${r.counts}"`);
+  const cases: { page: string; md: string; texts: string[] }[] = [
+    { page: "src/app/integrity/page.tsx", md: await (await getIntegrityMd()).text(), texts: [INTEGRITY_ABSTRACT] },
+    { page: "src/app/x402/statistics/page.tsx", md: await (await getStatisticsMd()).text(), texts: [COPIED_PROSE.statistics] },
+    { page: "src/app/x402/glossary/page.tsx", md: await (await getGlossaryMd()).text(), texts: [COPIED_PROSE.glossary] },
+    {
+      page: "src/app/erc-8004/page.tsx",
+      md: await (await getErc8004Md()).text(),
+      texts: [COPIED_PROSE.erc8004Registration, COPIED_PROSE.erc8004Registries],
+    },
+  ];
+  for (const c of cases) {
+    const page = pageText(read(c.page));
+    for (const text of c.texts) {
+      assert.ok(c.md.includes(text), `${c.page}.md lacks its copied paragraph`);
+      for (const sentence of text.split(/(?<=\.)\s+/)) assert.ok(page.includes(sentence), `${c.page} lacks "${sentence}"`);
+    }
+  }
+});

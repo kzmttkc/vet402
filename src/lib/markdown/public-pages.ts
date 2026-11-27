@@ -28,22 +28,13 @@ import { citeAs, DATA_LICENSE_URL } from "@/lib/seo";
 import { BUCKET_DOCS, SELLER_CONFIRM_DAYS, ATTRIBUTION_REVIEW_NOTE, type Bucket } from "@/lib/sellers/fix-modes";
 import { DECISION_RULES_VERSION } from "@/lib/decision/rules";
 import { VERDICT_DOCS } from "@/lib/decision/rules-text";
+import {
+  STATISTICS_DEFINITIONS as STAT_DEFINITIONS,
+  STATISTICS_PAGE_DESCRIPTION as PAGE_DESCRIPTION,
+  STATISTICS_PAGE_TITLE as PAGE_TITLE,
+} from "@/app/x402/statistics/page";
 
-const PAGE_TITLE = "x402 statistics: paid purchases, settlement, and delivery";
-const PAGE_DESCRIPTION =
-  "Counts from vet402's real x402 purchases: attempts, on-chain settlement, delivery, and purchase results by chain, from the public observatory state.";
 
-const STAT_DEFINITIONS = {
-  attempts: "an attempt is a paid request whose payment was signed and sent, whatever the seller answered.",
-  settled: "l1.settled is the transfer vet402 re-read on-chain.",
-  delivered:
-    "l1.delivered is a settled attempt whose paid request also answered HTTP 2xx other than 202 Accepted, with a non-empty body.",
-  settledNotDelivered:
-    "Settled minus delivered minus inconclusiveSettled counts settled rows that are not delivered and not inconclusive (5xx, 202 Accepted, an empty 2xx body, or no HTTP status on record), not a 4xx vet402 could have malformed. l1.settledNotDelivered publishes that count directly.",
-  endpointsAttempted: "Distinct endpoints purchased from",
-  endpointsDelivered: "l1.endpointsDelivered counts endpoints, active or not, with at least one delivered row.",
-  byChain: "l1.byChain covers every chain an L1 attempt ran on and sums to the l1 totals.",
-} as const;
 
 function fmt(n: number): string {
   return n.toLocaleString("en-US");
@@ -55,7 +46,7 @@ function conditionOf(bucket: Bucket): string {
   return doc.startsWith(head) && doc.endsWith(")") ? doc.slice(head.length, -1) : doc;
 }
 
-const BUCKET_ROWS: readonly { bucket: Bucket; counts: string }[] = [
+export const BUCKET_ROWS: readonly { bucket: Bucket; counts: string }[] = [
   { bucket: "delivered", counts: "Counts for the seller" },
   { bucket: "pending", counts: "Neither way, until it is known whether money moved" },
   { bucket: "seller", counts: "Counts against the seller" },
@@ -64,7 +55,22 @@ const BUCKET_ROWS: readonly { bucket: Bucket; counts: string }[] = [
   { bucket: "not_bought", counts: "Neither way. It is not a purchase result" },
 ];
 
-const INTEGRITY_ABSTRACT =
+/**
+ * Prose copied by hand from the HTML pages (the pages write it inline in JSX).
+ * tests/seo-aeo-llmo-h-1127.test.ts checks every sentence against the page source.
+ */
+export const COPIED_PROSE = {
+  glossary:
+    "Protocol terms, one line each, with the primary source. Words vet402 uses for its own measurements (L0, L1, L2, delivered, inconclusive) are defined in the methodology.",
+  statistics:
+    "vet402 buys from public x402 sellers with real money. For each paid request it records whether the transfer settled on-chain and whether the response counted as delivered. The same figures appear on State of x402.",
+  erc8004Registration:
+    "A registration shows that an agent exists. It does not show that the agent delivers when it is paid. vet402 pays x402 sellers itself and matches each recipient to registered agents, so this page can say how many registered agents have a purchase record.",
+  erc8004Registries:
+    "ERC-8004 defines an Identity Registry, a Reputation Registry and a Validation Registry. The standard expects each registry to be deployed as a singleton per chain. vet402 reads agent identity on Base, Ethereum and BNB Chain for the match table above.",
+} as const;
+
+export const INTEGRITY_ABSTRACT =
   "A buyer relies on vet402 to say what a seller delivered. That is worth relying on when vet402 is held to rules a reader can check. This page lists those rules, each next to the page or the code where it is implemented, and shows how one purchase is sorted and which outcomes count against a seller. It describes how vet402 runs. It does not add to or change the Terms of Service, and where the two differ, the Terms of Service apply.";
 
 export function renderCheckASellerMarkdown(): string {
@@ -96,7 +102,7 @@ export function renderGlossaryMarkdown(): string {
   const lines = [
     "# x402 and ERC-8004 glossary",
     "",
-    "Protocol terms, one line each, with the primary source. Words vet402 uses for its own measurements (L0, L1, L2, delivered, inconclusive) are defined in the methodology.",
+    COPIED_PROSE.glossary,
     "",
   ];
   for (const t of GLOSSARY) {
@@ -151,7 +157,7 @@ export async function renderStatisticsMarkdown(): Promise<string> {
     "",
     answerLead,
     "",
-    "vet402 buys from public x402 sellers with real money. For each paid request it records whether the transfer settled on-chain and whether the response counted as delivered. The same figures appear on State of x402.",
+    COPIED_PROSE.statistics,
     "",
     "## 1. Headline counts",
     "",
@@ -220,7 +226,7 @@ export async function renderErc8004Markdown(): Promise<string> {
     "",
     ERC8004_FAQ[0].answer,
     "",
-    "A registration shows that an agent exists. It does not show that the agent delivers when it is paid. vet402 pays x402 sellers itself and matches each recipient to registered agents, so this page can say how many registered agents have a purchase record.",
+    COPIED_PROSE.erc8004Registration,
     "",
     "## Registered agents whose address matches a payTo vet402 paid",
     "",
@@ -255,7 +261,7 @@ export async function renderErc8004Markdown(): Promise<string> {
     "",
     "## The three registries",
     "",
-    "ERC-8004 defines an Identity Registry, a Reputation Registry and a Validation Registry. The standard expects each registry to be deployed as a singleton per chain. vet402 reads agent identity on Base, Ethereum and BNB Chain for the match table above.",
+    COPIED_PROSE.erc8004Registries,
     "",
     "## Questions",
     "",
