@@ -192,7 +192,11 @@ export async function listFrozenMonthlyLedger(db: Pick<AppDb, "execute">): Promi
   { month: string; contentSha256: string; frozenAt: string; summary: MonthlyFreezeSummary }[]
 > {
   const raw = await db.execute(sql`
-    SELECT month, content_sha256, summary_json::text AS summary_json, frozen_at::text AS frozen_at
+    SELECT
+      month,
+      content_sha256,
+      summary_json::text AS summary_json,
+      to_char(frozen_at AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS frozen_at_utc
     FROM ledger_monthly_frozen
     ORDER BY month ASC
   `);
@@ -200,15 +204,19 @@ export async function listFrozenMonthlyLedger(db: Pick<AppDb, "execute">): Promi
     month: string;
     content_sha256: string;
     summary_json: string;
-    frozen_at: string;
+    frozen_at_utc: string;
   }[];
   return rows.map((r) => {
     const summary = JSON.parse(r.summary_json) as MonthlyFreezeSummary;
+    const frozenAtUtc = String(r.frozen_at_utc);
+    const summaryWithFrozen: MonthlyFreezeSummary = summary.frozenAt
+      ? summary
+      : { ...summary, frozenAt: frozenAtUtc };
     return {
       month: String(r.month),
       contentSha256: String(r.content_sha256),
-      frozenAt: summary.frozenAt ?? String(r.frozen_at),
-      summary,
+      frozenAt: summaryWithFrozen.frozenAt,
+      summary: summaryWithFrozen,
     };
   });
 }
@@ -277,7 +285,7 @@ export type EnsurePriorMonthFrozenResult =
   | { status: "skipped"; reason: MonthlyFreezeError | "already_frozen" | "invalid_day"; month?: string }
   | { status: "inserted" | "unchanged"; month: string };
 
-/** 直前の暦月が公開可能で未凍結なら凍結する（日次錨定の前）。失敗は呼び手が握る。 */
+/** 直前の暦月が公開可能で未凍結なら凍結する（日次錨定の後）。失敗は呼び手が握る。 */
 export async function ensurePriorMonthFrozenIfDue(
   db: Pick<AppDb, "execute">,
   now: Date = new Date(),
@@ -333,19 +341,9 @@ export async function insertMonthlyFreeze(
       ${JSON.stringify(summary)}::jsonb
     )
     ON CONFLICT (month) DO NOTHING
-    RETURNING month, frozen_at::text AS frozen_at
+    RETURNING month
   `);
-  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
-    month: string;
-    frozen_at: string;
-  }[];
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { month: string }[];
   if (rows.length === 0) return "unchanged";
-  const frozenAt = String(rows[0]!.frozen_at);
-  const summaryWithFrozen: MonthlyFreezeSummary = { ...summary, frozenAt };
-  await db.execute(sql`
-    UPDATE ledger_monthly_frozen
-    SET summary_json = ${JSON.stringify(summaryWithFrozen)}::jsonb
-    WHERE month = ${rows[0]!.month}
-  `);
   return "inserted";
 }
