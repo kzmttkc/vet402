@@ -106,3 +106,6 @@ test("reader exposes delivered-window and payee-claim host sets", () => {
   assert.match(reader, /deliveredPredicate/);
   assert.match(reader, /verified_payees/);
 });
+test("sitemap.xml is regenerated at runtime so hosts that leave the gate leave the sitemap", () => {
+  assert.match(read("src/app/sitemap.ts"), /^export const revalidate = 3600;$/m);
+});

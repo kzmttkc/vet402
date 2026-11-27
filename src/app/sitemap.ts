@@ -6,6 +6,12 @@ import { LEGAL_PRIVACY_LAST_MODIFIED, LEGAL_TERMS_PRIVACY_LAST_MODIFIED } from "
 import { fetchLeaderboard } from "@/lib/db/leaderboard";
 import { SITE_URL } from "@/lib/site-url";
 
+// 2026-11-27 I4: without this the sitemap was rendered once at build and kept until the next deploy
+// (production showed last-modified = build time). The /sellers/{host} and /x402/sellers/{host} entries
+// follow the I4 gate, so a host that stops qualifying must leave sitemap.xml without waiting for a deploy.
+// Same hour as /sitemap-sellers.xml (Cache-Control max-age=3600).
+export const revalidate = 3600;
+
 function sitemapDay(iso: string | undefined, fallback: string): string {
   if (iso && /^\d{4}-\d{2}-\d{2}/.test(iso)) return iso.slice(0, 10);
   return fallback;
