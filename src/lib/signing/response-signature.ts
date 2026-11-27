@@ -37,6 +37,11 @@ export function resetResponseSigningCacheForTests(): void {
   warnedSigningFailed = false;
 }
 
+/** Loads VET402_RESPONSE_SIGNING_KEY once per warm instance so the first signed response does not pay PKCS#8 parse cost. */
+export function warmResponseSigningKey(): void {
+  loadSigningKey();
+}
+
 function requestPath(url: string): string {
   const u = new URL(url);
   return u.pathname + u.search;

@@ -12,6 +12,9 @@ import { rateLimitPolicyHeader } from "@/lib/api/ip-rate-limit";
 import { publicRateLimit } from "@/lib/api/public-route";
 import { mcpDeps } from "@/lib/mcp/deps";
 import type { CheckSellerDeps } from "@/lib/mcp/tools";
+import { warmResponseSigningKey } from "@/lib/signing/response-signature";
+
+warmResponseSigningKey();
 
 const KEYLESS_POLICY = rateLimitPolicyHeader(RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS);
 
