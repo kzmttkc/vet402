@@ -251,6 +251,13 @@ export type SettlementVerifierDeps = {
   verifySignature?: (auth: GatewayAuth, payer: string) => Promise<boolean>;
 };
 
+/** Hedera の行だけ、照合に払った tinybar と資産を渡す（他のチェーンの呼び出しは今までと同じ形）。 */
+function hederaExpected(row: { network: string; hedera_native_amount: string | null; hedera_native_asset: string | null }) {
+  return row.network.startsWith("hedera:")
+    ? { expectedNativeAmount: row.hedera_native_amount, expectedNativeAsset: row.hedera_native_asset }
+    : {};
+}
+
 export async function runSettlementVerification(options?: {
   limit?: number;
   budgetMs?: number;
@@ -340,6 +347,9 @@ export async function runSettlementVerification(options?: {
            pu.raw_response_meta->'namedTxPromotion' AS named_tx_promotion,
            -- 2026-09-29 独立レビュー: 「見つからない」だった UTC の日付（売り手の名指した tx の期限の条件）。
            pu.raw_response_meta->'txNotFound' AS tx_not_found_log,
+           -- 2026-11-27 Hedera: 払った tinybar と資産（amount_units は USD 6 桁なので照合に使えない）。
+           pu.raw_response_meta->'hedera'->>'nativeAmount' AS hedera_native_amount,
+           pu.raw_response_meta->'hedera'->>'asset' AS hedera_native_asset,
            -- 2026-09-04 監査 P1-1: 同じ (network, lower(tx_hash)) を主張している
            -- 他の購入行が居るか。決済 tx は 1 購入にしか属せないので、2 行以上が
            -- 同じ tx を指していたら**どちらも** settled にできない（どちらが
@@ -399,6 +409,8 @@ export async function runSettlementVerification(options?: {
     late_settlement: unknown;
     named_tx_promotion: unknown;
     tx_not_found_log: unknown;
+    hedera_native_amount: string | null;
+    hedera_native_asset: string | null;
     tx_claim_count: number | string | null;
   }[];
 
@@ -617,6 +629,7 @@ export async function runSettlementVerification(options?: {
       expectedPayer: row.payer!,
       expectedAmountUnits: row.amount_units!,
       expectedAuthNonce: row.auth_nonce,
+      ...hederaExpected(row),
     });
     return !again.ok && again.reason === "tx_not_found";
   }
@@ -791,6 +804,7 @@ export async function runSettlementVerification(options?: {
       expectedPayer: row.payer,
       expectedAmountUnits: row.amount_units,
       expectedAuthNonce: row.auth_nonce,
+      ...hederaExpected(row),
     });
     if (result.ok) {
       await settleRow(row, result);
@@ -876,6 +890,7 @@ export async function runSettlementVerification(options?: {
       expectedPayer: row.payer,
       expectedAmountUnits: row.amount_units,
       expectedAuthNonce: row.auth_nonce,
+      ...hederaExpected(row),
     });
 
     if (result.ok) {
