@@ -76,8 +76,15 @@ const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
 export const PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS = 40;
 const PAYER_ARC_LOG_CONCURRENCY = 1;
 const PAYER_ARC_DEFAULT_CHUNK_DELAY_MS = 100;
-/** Robinhood 公開 RPC は eth_getLogs で 429 が出やすい（2026-11-27 payer-reconcile）。 */
-const ROBINHOOD_PAYER_LOG_CHUNK_BLOCKS = 500n;
+/**
+ * Robinhood のブロックは約 0.11 秒（2026-11-27 公開 RPC で 10 万ブロックを実測）。2 日の窓は約 160 万ブロック。
+ * 500 刻みでは 3,000 回を超える getLogs になり、本番で締切切れになった。公開 RPC は 1 回 1,000 万ブロックまで受け、
+ * 払い手で絞った 160 万ブロックの getLogs は 0.2 秒で返った。だから 100 万刻みにする（数回で読み切る）。
+ */
+const ROBINHOOD_PAYER_LOG_CHUNK_BLOCKS = 1_000_000n;
+const ROBINHOOD_BLOCK_SECONDS = 0.11;
+/** 許容 30 秒をこのブロック間隔で覆う幅（30 / 0.11 ≒ 273）に余裕を足す。 */
+const ROBINHOOD_PAYER_MARGIN_BLOCKS = 600n;
 const PAYER_ROBINHOOD_LOG_CONCURRENCY = 1;
 const PAYER_ROBINHOOD_RATE_LIMIT_RETRIES = 5;
 const PAYER_ROBINHOOD_DEFAULT_CHUNK_DELAY_MS = 150;
@@ -1122,8 +1129,8 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     chainId: 4663,
     token: ROBINHOOD_USDG as Address,
     chunkBlocks: ROBINHOOD_PAYER_LOG_CHUNK_BLOCKS,
-    marginBlocks: 120n,
-    blockSeconds: 2,
+    marginBlocks: ROBINHOOD_PAYER_MARGIN_BLOCKS,
+    blockSeconds: ROBINHOOD_BLOCK_SECONDS,
     toleranceSeconds: 30,
     chainName: "Robinhood",
     client: () => robinhoodClient(20_000),
