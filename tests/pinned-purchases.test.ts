@@ -215,6 +215,8 @@ test("prezenti-m3 x402atlas: five listings, 1 each on Celo, window 11-27..11-29 
       "POST https://x402atlas.xyz/api/dashboard/q-verdict/resource",
     ],
   );
+  assert.equal(rows[4]!.approvedAt, "2026-11-27T02:50:00.000Z", "q-verdict was approved later, under the 0.03 USDC cap");
+  assert.ok(rows.slice(0, 4).every((p) => p.approvedAt === "2026-11-27T01:46:00.000Z"));
   // images/generations は予約しない（2026-11-27）。
   assert.equal(PINNED_PURCHASES.some((p) => p.url === "https://x402atlas.xyz/v1/images/generations"), false);
   for (const p of rows) {

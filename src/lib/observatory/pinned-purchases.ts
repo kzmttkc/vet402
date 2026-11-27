@@ -82,8 +82,9 @@ const PREZENTI_M3_CELO_PINNED_PURCHASES: readonly PinnedPurchase[] = [
   to: "2026-11-29T23:59:59.999Z",
   reason: "prezenti-m3-celo-x402atlas",
   requestedBy: "grants session (Prezenti M3)",
-  // 2026-11-27 10:46 JST、グラントの会話の依頼（合計 0.02 USDC 以内・1 口 1 件）。
-  approvedAt: "2026-11-27T01:46:00.000Z",
+  // 2026-11-27 10:46 JST、グラントの会話の依頼（合計 0.02 USDC 以内・1 口 1 件）。q-verdict だけは 11:50 JST、
+  // vet402 部門の判断（合計の上限 0.03 USDC）。
+  approvedAt: url.endsWith("/q-verdict/resource") ? "2026-11-27T02:50:00.000Z" : "2026-11-27T01:46:00.000Z",
   maxPurchases: 1,
 }));
 
