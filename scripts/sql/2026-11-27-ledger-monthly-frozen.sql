@@ -14,8 +14,19 @@ CREATE TABLE IF NOT EXISTS ledger_monthly_frozen (
   period_end_exclusive date NOT NULL,
   row_count integer NOT NULL,
   content_sha256 text NOT NULL,
+  content_csv text NOT NULL,
   summary_json jsonb NOT NULL,
   frozen_at timestamptz NOT NULL
 );
+
+ALTER TABLE ledger_monthly_frozen
+  ADD COLUMN IF NOT EXISTS content_csv text;
+
+UPDATE ledger_monthly_frozen
+  SET content_csv = ''
+  WHERE content_csv IS NULL;
+
+ALTER TABLE ledger_monthly_frozen
+  ALTER COLUMN content_csv SET NOT NULL;
 
 COMMIT;

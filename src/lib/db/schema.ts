@@ -1228,8 +1228,8 @@ export const probeContributions = pgTable(
  */
 /**
  * ledger_monthly_frozen — 締まった月の購入台帳凍結（F5・2026-11-27）。
- * scripts/monthly-freeze.ts が一度だけ INSERT する。日次 root は 2026-12-01 以降だけ
- * content_sha256 を 1 行足す。SQL: scripts/sql/2026-11-27-ledger-monthly-frozen.sql
+ * scripts/monthly-freeze.ts が一度だけ INSERT する。日次 root は凍結の frozen_at 以降に
+ * 封印する日だけ content_sha256 を 1 行足す。SQL: scripts/sql/2026-11-27-ledger-monthly-frozen.sql
  */
 export const ledgerMonthlyFrozen = pgTable("ledger_monthly_frozen", {
   month: text("month").primaryKey(),
@@ -1237,6 +1237,7 @@ export const ledgerMonthlyFrozen = pgTable("ledger_monthly_frozen", {
   periodEndExclusive: date("period_end_exclusive", { mode: "string" }).notNull(),
   rowCount: integer("row_count").notNull(),
   contentSha256: text("content_sha256").notNull(),
+  contentCsv: text("content_csv").notNull(),
   summaryJson: jsonb("summary_json").notNull(),
   frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
 });

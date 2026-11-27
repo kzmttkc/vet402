@@ -865,6 +865,18 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   },
   {
     method: "GET",
+    path: "/api/v1/reports/:month",
+    note: "Frozen UTC-month purchase ledger summary: row count, period, contentSha256, and frozen_at. The hash covers the stored CSV body (no header row) with the same columns and sort as the default export (attempted_at as second-precision ISO, then purchase_id). Key-less. 120 requests per minute per IP.",
+    response: `HTTP 200 when frozen. HTTP 400 invalid_month or month_not_closed. HTTP 404 not_frozen_yet. HTTP 503 unavailable.`,
+  },
+  {
+    method: "GET",
+    path: "/api/v1/reports/:month.csv",
+    note: "Frozen CSV body for one UTC month (no header row; same bytes that contentSha256 hashes). Key-less. 120 requests per minute per IP.",
+    response: `text/csv. HTTP 400 invalid_month or month_not_closed. HTTP 404 not_frozen_yet. HTTP 503 unavailable.`,
+  },
+  {
+    method: "GET",
     path: "/api/v1/usage/monthly",
     note: "Decision call counts made with a key, for one published chain and one closed UTC month. Figures come from keyed decision rows and are stored on the first read after 00:00 UTC on the 3rd day of the next month. Answers are summed by relation. A labeled relation shows the number of owners. Fewer than 3 owners shows <3 and leaves the call count out. An unclassified relation leaves the call count out. Key-less call counts by network are kept in client_usage_daily_network and are not listed in this table. The response leaves out the key, the email address, and the name. chain eip155:42220 is published. month is YYYY-MM from 2026 through 2100. Key-less. 60 requests per minute per IP.",
     response: `HTTP 200. chain, month, relations. HTTP 400 when chain or month is missing, unreadable, outside 2026 through 2100, still open, or not yet at the 3rd day of the next month. HTTP 503 when the usage tables could not be read.`,

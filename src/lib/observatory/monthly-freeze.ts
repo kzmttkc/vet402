@@ -3,7 +3,7 @@
 //
 // 凍結の内容は export.csv の既定 21 列・attempted_at 昇順（同時刻は purchase_id 昇順）と同じ。
 // contentSha256 はデータ行だけ（見出しなし）を csvCell で直列化した UTF-8 の sha256。
-// 日次 root への足し込みは 2026-12-01 以降の日だけ。1 凍結月あたり 1 行:
+// 日次 root への足し込みは、その月の frozen_at 以降に封印する UTC 日だけ。1 凍結月あたり 1 行:
 //   monthly-freeze:v1:YYYY-MM:<contentSha256>
 // ============================================================
 import { createHash } from "node:crypto";
@@ -36,6 +36,7 @@ export type MonthlyFreezeSummary = {
   contentSha256: string;
   columns: readonly string[];
   sort: readonly ["attempted_at", "purchase_id"];
+  /** Sort key: attempted_at as an ISO-8601 second string, then purchase_id. */
   frozenAt: string;
 };
 
@@ -104,15 +105,54 @@ function compareExportRows(a: Record<string, unknown>, b: Record<string, unknown
   return 0;
 }
 
-/** データ行だけを決定的に並べ、csvCell で直列化して sha256。 */
-export function hashMonthlyLedgerExportBody(
+/** データ行だけ（見出しなし）を attempted_at 昇順・csvCell で直列化した UTF-8 本文。 */
+export function serializeMonthlyLedgerExportBody(
   rows: readonly Record<string, unknown>[],
   columns: readonly string[] = EXPORT_CSV_COLUMNS,
 ): string {
   const sorted = [...rows].sort(compareExportRows);
   const lines = sorted.map((r) => columns.map((c) => csvCell(r[c])).join(","));
-  const body = lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+  return lines.length === 0 ? "" : `${lines.join("\n")}\n`;
+}
+
+/** データ行だけを決定的に並べ、csvCell で直列化して sha256。 */
+export function hashMonthlyLedgerExportBody(
+  rows: readonly Record<string, unknown>[],
+  columns: readonly string[] = EXPORT_CSV_COLUMNS,
+): string {
+  const body = serializeMonthlyLedgerExportBody(rows, columns);
   return createHash("sha256").update(body, "utf8").digest("hex");
+}
+
+export type MonthlyFreezeRecord = MonthlyFreezeSummary & { contentCsv: string };
+
+export function buildMonthlyFreezeRecord(
+  month: string,
+  rows: readonly Record<string, unknown>[],
+  columns: readonly string[],
+  frozenAt: Date = new Date(),
+): MonthlyFreezeRecord {
+  const parsed = parseMonthlyFreezeMonth(month);
+  if (!parsed.ok) throw new Error(`buildMonthlyFreezeRecord: invalid month ${month}`);
+  const match = MONTH_RE.exec(parsed.month)!;
+  const year = Number(match[1]);
+  const mon = Number(match[2]);
+  const periodStart = `${match[1]}-${match[2]}-01`;
+  const periodEndExclusive = nextMonthStart(year, mon);
+  const contentCsv = serializeMonthlyLedgerExportBody(rows, columns);
+  const contentSha256 = createHash("sha256").update(contentCsv, "utf8").digest("hex");
+  const summary: MonthlyFreezeSummary = {
+    v: 1,
+    month: parsed.month,
+    periodStart,
+    periodEndExclusive,
+    rowCount: rows.length,
+    contentSha256,
+    columns,
+    sort: ["attempted_at", "purchase_id"],
+    frozenAt: frozenAt.toISOString(),
+  };
+  return { ...summary, contentCsv };
 }
 
 export function buildMonthlyFreezeSummary(
@@ -121,41 +161,29 @@ export function buildMonthlyFreezeSummary(
   columns: readonly string[],
   frozenAt: Date = new Date(),
 ): MonthlyFreezeSummary {
-  const parsed = parseMonthlyFreezeMonth(month);
-  if (!parsed.ok) throw new Error(`buildMonthlyFreezeSummary: invalid month ${month}`);
-  const match = MONTH_RE.exec(parsed.month)!;
-  const year = Number(match[1]);
-  const mon = Number(match[2]);
-  const periodStart = `${match[1]}-${match[2]}-01`;
-  const periodEndExclusive = nextMonthStart(year, mon);
-  return {
-    v: 1,
-    month: parsed.month,
-    periodStart,
-    periodEndExclusive,
-    rowCount: rows.length,
-    contentSha256: hashMonthlyLedgerExportBody(rows, columns),
-    columns,
-    sort: ["attempted_at", "purchase_id"],
-    frozenAt: frozenAt.toISOString(),
-  };
+  const { contentCsv: _drop, ...summary } = buildMonthlyFreezeRecord(month, rows, columns, frozenAt);
+  return summary;
 }
 
 /** 錨定用: day 以前に公開済みの凍結月だけ、月の昇順で 1 行ずつ。 */
+function frozenAtUtcDay(iso: string): string {
+  return iso.slice(0, 10);
+}
+
 export function buildAnchorPayloadWithMonthlyLines(
   ledgerPayload: string,
   day: string,
-  frozen: readonly { month: string; contentSha256: string }[],
+  frozen: readonly { month: string; contentSha256: string; frozenAt: string }[],
 ): string {
-  if (day < MONTHLY_FREEZE_ANCHOR_FROM_DAY || frozen.length === 0) return ledgerPayload;
-  const publishCutoff = day;
+  if (frozen.length === 0) return ledgerPayload;
   const lines = frozen
     .filter((r) => {
       const pubDay = nextMonthStart(
         Number(r.month.slice(0, 4)),
         Number(r.month.slice(5, 7)),
       );
-      return pubDay <= publishCutoff;
+      if (pubDay > day) return false;
+      return day >= frozenAtUtcDay(r.frozenAt);
     })
     .sort((a, b) => a.month.localeCompare(b.month))
     .map((r) => monthlyFreezeAnchorLine(r.month, r.contentSha256));
@@ -164,10 +192,10 @@ export function buildAnchorPayloadWithMonthlyLines(
 }
 
 export async function listFrozenMonthlyLedger(db: Pick<AppDb, "execute">): Promise<
-  { month: string; contentSha256: string; summary: MonthlyFreezeSummary }[]
+  { month: string; contentSha256: string; frozenAt: string; summary: MonthlyFreezeSummary }[]
 > {
   const raw = await db.execute(sql`
-    SELECT month, content_sha256, summary_json::text AS summary_json
+    SELECT month, content_sha256, summary_json::text AS summary_json, frozen_at::text AS frozen_at
     FROM ledger_monthly_frozen
     ORDER BY month ASC
   `);
@@ -175,12 +203,17 @@ export async function listFrozenMonthlyLedger(db: Pick<AppDb, "execute">): Promi
     month: string;
     content_sha256: string;
     summary_json: string;
+    frozen_at: string;
   }[];
-  return rows.map((r) => ({
-    month: String(r.month),
-    contentSha256: String(r.content_sha256),
-    summary: JSON.parse(r.summary_json) as MonthlyFreezeSummary,
-  }));
+  return rows.map((r) => {
+    const summary = JSON.parse(r.summary_json) as MonthlyFreezeSummary;
+    return {
+      month: String(r.month),
+      contentSha256: String(r.content_sha256),
+      frozenAt: summary.frozenAt ?? String(r.frozen_at),
+      summary,
+    };
+  });
 }
 
 export async function anchorPayloadForDay(
@@ -193,7 +226,7 @@ export async function anchorPayloadForDay(
   return buildAnchorPayloadWithMonthlyLines(
     ledgerPayload,
     day,
-    frozen.map((r) => ({ month: r.month, contentSha256: r.contentSha256 })),
+    frozen.map((r) => ({ month: r.month, contentSha256: r.contentSha256, frozenAt: r.frozenAt })),
   );
 }
 
@@ -230,23 +263,46 @@ export async function computeMonthlyFreezeFromDb(
   db: Pick<AppDb, "execute">,
   month: string,
   frozenAt: Date = new Date(),
-): Promise<MonthlyFreezeSummary> {
+): Promise<MonthlyFreezeRecord> {
   const { rows, columns } = await readLedgerExportRows(db, { kind: "utc_month", month: month });
-  return buildMonthlyFreezeSummary(month, rows, columns, frozenAt);
+  return buildMonthlyFreezeRecord(month, rows, columns, frozenAt);
+}
+
+export async function loadMonthlyFreezeCsvBody(
+  db: Pick<AppDb, "execute">,
+  month: string,
+): Promise<{ contentCsv: string; contentSha256: string } | null> {
+  const raw = await db.execute(sql`
+    SELECT content_csv, content_sha256
+    FROM ledger_monthly_frozen
+    WHERE month = ${month}
+    LIMIT 1
+  `);
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+    content_csv: string;
+    content_sha256: string;
+  }[];
+  if (rows.length === 0) return null;
+  return {
+    contentCsv: String(rows[0]!.content_csv),
+    contentSha256: String(rows[0]!.content_sha256),
+  };
 }
 
 export async function insertMonthlyFreeze(
   db: Pick<AppDb, "execute">,
-  summary: MonthlyFreezeSummary,
+  record: MonthlyFreezeRecord,
 ): Promise<"inserted" | "unchanged"> {
+  const { contentCsv, ...summary } = record;
   const raw = await db.execute(sql`
-    INSERT INTO ledger_monthly_frozen (month, period_start, period_end_exclusive, row_count, content_sha256, summary_json, frozen_at)
+    INSERT INTO ledger_monthly_frozen (month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json, frozen_at)
     VALUES (
       ${summary.month},
       ${summary.periodStart}::date,
       ${summary.periodEndExclusive}::date,
       ${summary.rowCount},
       ${summary.contentSha256},
+      ${contentCsv},
       ${JSON.stringify(summary)}::jsonb,
       ${summary.frozenAt}::timestamptz
     )
