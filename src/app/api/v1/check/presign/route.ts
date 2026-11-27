@@ -11,8 +11,10 @@ export const maxDuration = 30;
 export async function POST(request: NextRequest) {
   const t0 = performance.now();
   const res = await handleKeylessCheckRoute(request, "rest:presign", handlePresign);
-  res.headers.set("Server-Timing", `presign;dur=${(performance.now() - t0).toFixed(1)}`);
-  return res;
+  const headers = new Headers(res.headers);
+  const prev = headers.get("Server-Timing");
+  headers.set("Server-Timing", prev ? `${prev}, presign;dur=${(performance.now() - t0).toFixed(1)}` : `presign;dur=${(performance.now() - t0).toFixed(1)}`);
+  return new Response(res.body, { status: res.status, headers });
 }
 const __disallowed = exportDisallowedMethodHandlers(["POST"]);
 export const { GET, PUT, PATCH, DELETE, OPTIONS, HEAD } = __disallowed;
