@@ -48,8 +48,10 @@ import { redactForLog } from "./redact";
  * "bnb"（2026-10-19）: 同じ EOA の USD1（18 桁）を 6 桁へ切り捨てる。読めなければ throw（署名しない側）。
  * "arbitrum"（2026-10-22）: 同じ EOA のネイティブ USDC。読めなければ throw（署名しない側）。
  * "avalanche"（2026-10-26）: 同じ EOA のネイティブ USDC。読めなければ throw（署名しない側）。
+ * "hedera"（2026-11-27）: 払い手の HBAR を mirror node で読み、Hedera ネットワークの為替で台帳の 6 桁へ切り捨てる。
+ *   手数料は facilitator（fee payer）が払うので、HBAR の手数料ぶんは引かない。読めなければ throw（署名しない側）。
  */
-export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway" | "avalanche";
+export type PayerChain = "base" | "solana" | "arc" | "tempo" | "xrpl" | "celo" | "stellar" | "bnb" | "arbitrum" | "arc_gateway" | "avalanche" | "hedera";
 
 /** 購入元（owner）の USDC 残高を基本単位（6 桁）で返す。読めなければ throw する。 */
 export type PayerUsdcBalanceReader = (input: { chain: PayerChain; owner: string }) => Promise<bigint>;
@@ -145,6 +147,12 @@ export const defaultPayerUsdcBalance: PayerUsdcBalanceReader = async ({ chain, o
   if (chain === "stellar") {
     const { readStellarUsdcLedgerUnits } = await import("./settlement-verify-stellar");
     return await readStellarUsdcLedgerUnits(owner);
+  }
+  if (chain === "hedera") {
+    const { hederaL1Network, ledgerUnitsFromTinybarsFloor, readHederaExchangeRate, readHederaHbarTinybars } = await import("./hedera402-payer");
+    const network = hederaL1Network();
+    const [tinybars, rate] = await Promise.all([readHederaHbarTinybars(network, owner), readHederaExchangeRate(network)]);
+    return ledgerUnitsFromTinybarsFloor(tinybars, rate);
   }
   if (chain === "arc") {
     const client = getArcPublicClient("live");

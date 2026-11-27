@@ -37,7 +37,13 @@ const XRPL_TX_RE = /^[0-9A-Fa-f]{64}$/;
  */
 const STELLAR_TX_RE = /^[0-9A-Fa-f]{64}$/;
 
-export type SettlementChain = "evm" | "solana" | "xrpl" | "stellar";
+/**
+ * Hedera（2026-11-27）: 取引 ID。`0.0.<口座>@<秒>.<ナノ秒>`（SDK の表記）か `0.0.<口座>-<秒>-<ナノ秒>`（mirror node の表記）。
+ * Hedera の取引は hash ではなく ID で引く（facilitator の fee payer の口座 + valid start）。
+ */
+const HEDERA_TX_RE = /^0\.0\.[0-9]{1,19}[@-][0-9]{1,19}[.-][0-9]{1,9}$/;
+
+export type SettlementChain = "evm" | "solana" | "xrpl" | "stellar" | "hedera";
 
 /**
  * 申告された決済識別子が、そのチェーンのトランザクションIDとして**あり得る形**か。
@@ -53,5 +59,6 @@ export function isWellFormedSettlementTx(
   if (chain === "solana") return SOLANA_SIG_RE.test(trimmed);
   if (chain === "xrpl") return XRPL_TX_RE.test(trimmed);
   if (chain === "stellar") return STELLAR_TX_RE.test(trimmed);
+  if (chain === "hedera") return HEDERA_TX_RE.test(trimmed);
   return EVM_TX_RE.test(trimmed);
 }
