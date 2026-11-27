@@ -3,7 +3,7 @@
 //
 // 凍結の内容は export.csv の既定 21 列・attempted_at 昇順（同時刻は purchase_id 昇順）と同じ。
 // contentSha256 はデータ行だけ（見出しなし）を csvCell で直列化した UTF-8 の sha256。
-// 日次 root への足し込みは、その月の frozen_at 以降に封印する UTC 日だけ。1 凍結月あたり 1 行:
+// 日次 root への足し込みは、その月の frozen_at の UTC 日付以降の日だけ。1 凍結月あたり 1 行:
 //   monthly-freeze:v1:YYYY-MM:<contentSha256>
 // ============================================================
 import { createHash } from "node:crypto";
@@ -124,13 +124,12 @@ export function hashMonthlyLedgerExportBody(
   return createHash("sha256").update(body, "utf8").digest("hex");
 }
 
-export type MonthlyFreezeRecord = MonthlyFreezeSummary & { contentCsv: string };
+export type MonthlyFreezeRecord = Omit<MonthlyFreezeSummary, "frozenAt"> & { contentCsv: string };
 
 export function buildMonthlyFreezeRecord(
   month: string,
   rows: readonly Record<string, unknown>[],
   columns: readonly string[],
-  frozenAt: Date = new Date(),
 ): MonthlyFreezeRecord {
   const parsed = parseMonthlyFreezeMonth(month);
   if (!parsed.ok) throw new Error(`buildMonthlyFreezeRecord: invalid month ${month}`);
@@ -141,7 +140,7 @@ export function buildMonthlyFreezeRecord(
   const periodEndExclusive = nextMonthStart(year, mon);
   const contentCsv = serializeMonthlyLedgerExportBody(rows, columns);
   const contentSha256 = createHash("sha256").update(contentCsv, "utf8").digest("hex");
-  const summary: MonthlyFreezeSummary = {
+  return {
     v: 1,
     month: parsed.month,
     periodStart,
@@ -150,18 +149,16 @@ export function buildMonthlyFreezeRecord(
     contentSha256,
     columns,
     sort: ["attempted_at", "purchase_id"],
-    frozenAt: frozenAt.toISOString(),
+    contentCsv,
   };
-  return { ...summary, contentCsv };
 }
 
 export function buildMonthlyFreezeSummary(
   month: string,
   rows: readonly Record<string, unknown>[],
   columns: readonly string[],
-  frozenAt: Date = new Date(),
-): MonthlyFreezeSummary {
-  const { contentCsv: _drop, ...summary } = buildMonthlyFreezeRecord(month, rows, columns, frozenAt);
+): Omit<MonthlyFreezeSummary, "frozenAt"> {
+  const { contentCsv: _drop, ...summary } = buildMonthlyFreezeRecord(month, rows, columns);
   return summary;
 }
 
@@ -262,10 +259,40 @@ export async function readMonthlyFreezePublic(
 export async function computeMonthlyFreezeFromDb(
   db: Pick<AppDb, "execute">,
   month: string,
-  frozenAt: Date = new Date(),
 ): Promise<MonthlyFreezeRecord> {
   const { rows, columns } = await readLedgerExportRows(db, { kind: "utc_month", month: month });
-  return buildMonthlyFreezeRecord(month, rows, columns, frozenAt);
+  return buildMonthlyFreezeRecord(month, rows, columns);
+}
+
+/** YYYY-MM-DD の UTC 日から直前の暦月 YYYY-MM。 */
+export function priorUtcMonthFromDay(day: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  const y = Number(day.slice(0, 4));
+  const m = Number(day.slice(5, 7));
+  if (m === 1) return `${String(y - 1).padStart(4, "0")}-12`;
+  return `${day.slice(0, 4)}-${pad2(m - 1)}`;
+}
+
+export type EnsurePriorMonthFrozenResult =
+  | { status: "skipped"; reason: MonthlyFreezeError | "already_frozen" | "invalid_day"; month?: string }
+  | { status: "inserted" | "unchanged"; month: string };
+
+/** 直前の暦月が公開可能で未凍結なら凍結する（日次錨定の前）。失敗は呼び手が握る。 */
+export async function ensurePriorMonthFrozenIfDue(
+  db: Pick<AppDb, "execute">,
+  now: Date = new Date(),
+): Promise<EnsurePriorMonthFrozenResult> {
+  const day = now.toISOString().slice(0, 10);
+  const month = priorUtcMonthFromDay(day);
+  if (!month) return { status: "skipped", reason: "invalid_day" };
+  const publication = monthlyFreezePublicationError(month, now);
+  if (publication === MONTHLY_FREEZE_STATUS_NOT_CLOSED) return { status: "skipped", reason: publication, month };
+  if (publication === MONTHLY_FREEZE_STATUS_NOT_FROZEN_YET) return { status: "skipped", reason: publication, month };
+  const stored = await loadMonthlyFreezeSummary(db, month);
+  if (stored) return { status: "skipped", reason: "already_frozen", month };
+  const record = await computeMonthlyFreezeFromDb(db, month);
+  const outcome = await insertMonthlyFreeze(db, record);
+  return { status: outcome, month };
 }
 
 export async function loadMonthlyFreezeCsvBody(
@@ -295,7 +322,7 @@ export async function insertMonthlyFreeze(
 ): Promise<"inserted" | "unchanged"> {
   const { contentCsv, ...summary } = record;
   const raw = await db.execute(sql`
-    INSERT INTO ledger_monthly_frozen (month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json, frozen_at)
+    INSERT INTO ledger_monthly_frozen (month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json)
     VALUES (
       ${summary.month},
       ${summary.periodStart}::date,
@@ -303,12 +330,22 @@ export async function insertMonthlyFreeze(
       ${summary.rowCount},
       ${summary.contentSha256},
       ${contentCsv},
-      ${JSON.stringify(summary)}::jsonb,
-      ${summary.frozenAt}::timestamptz
+      ${JSON.stringify(summary)}::jsonb
     )
     ON CONFLICT (month) DO NOTHING
-    RETURNING month
+    RETURNING month, frozen_at::text AS frozen_at
   `);
-  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as { month: string }[];
-  return rows.length > 0 ? "inserted" : "unchanged";
+  const rows = (Array.isArray(raw) ? raw : (raw as { rows?: unknown[] }).rows ?? []) as {
+    month: string;
+    frozen_at: string;
+  }[];
+  if (rows.length === 0) return "unchanged";
+  const frozenAt = String(rows[0]!.frozen_at);
+  const summaryWithFrozen: MonthlyFreezeSummary = { ...summary, frozenAt };
+  await db.execute(sql`
+    UPDATE ledger_monthly_frozen
+    SET summary_json = ${JSON.stringify(summaryWithFrozen)}::jsonb
+    WHERE month = ${rows[0]!.month}
+  `);
+  return "inserted";
 }

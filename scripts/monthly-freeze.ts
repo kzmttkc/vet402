@@ -37,13 +37,16 @@ async function main() {
     console.error("monthly-freeze: DATABASE_URL is not configured");
     process.exit(1);
   }
-  const summary = await computeMonthlyFreezeFromDb(db, parsed.month);
-  console.log(JSON.stringify(summary, null, 2));
+  const record = await computeMonthlyFreezeFromDb(db, parsed.month);
   if (dryRun) {
+    console.log(JSON.stringify(record, null, 2));
     console.error("monthly-freeze: dry run — nothing written");
     return;
   }
-  const outcome = await insertMonthlyFreeze(db, summary);
+  const outcome = await insertMonthlyFreeze(db, record);
+  const { loadMonthlyFreezeSummary } = await import("../src/lib/observatory/monthly-freeze");
+  const summary = await loadMonthlyFreezeSummary(db, parsed.month);
+  console.log(JSON.stringify(summary ?? record, null, 2));
   console.error(`monthly-freeze: ${outcome} for ${parsed.month}`);
 }
 

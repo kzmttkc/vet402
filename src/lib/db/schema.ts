@@ -1239,7 +1239,7 @@ export const ledgerMonthlyFrozen = pgTable("ledger_monthly_frozen", {
   contentSha256: text("content_sha256").notNull(),
   contentCsv: text("content_csv").notNull(),
   summaryJson: jsonb("summary_json").notNull(),
-  frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+  frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const ledgerAnchors = pgTable(

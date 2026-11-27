@@ -34,6 +34,19 @@ if (!TEST_DB) {
     await db.execute(sql`
       ALTER TABLE ledger_monthly_frozen ADD COLUMN IF NOT EXISTS content_csv text;
       UPDATE ledger_monthly_frozen SET content_csv = '' WHERE content_csv IS NULL;
+      ALTER TABLE ledger_monthly_frozen ALTER COLUMN frozen_at SET DEFAULT now();
+    `);
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'ledger_monthly_frozen_frozen_at_not_past'
+        ) THEN
+          ALTER TABLE ledger_monthly_frozen
+            ADD CONSTRAINT ledger_monthly_frozen_frozen_at_not_past
+            CHECK (frozen_at >= (CURRENT_TIMESTAMP - INTERVAL '5 minutes'));
+        END IF;
+      END $$;
     `);
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, x402_daily_metrics, ledger_anchors, ledger_monthly_frozen`);
     const [ep] = await db
@@ -67,9 +80,26 @@ if (!TEST_DB) {
       const a29 = await anchors.anchorDay("2026-11-29");
       const a30 = await anchors.anchorDay("2026-11-30");
       // 凍結を入れる（12/1 の公開後に走る想定の行）
-      const summary = await mf.computeMonthlyFreezeFromDb(db, "2026-11", new Date("2026-12-01T00:10:00Z"));
+      const summary = await mf.computeMonthlyFreezeFromDb(db, "2026-11");
+      const t0 = Date.now();
       assert.equal(await mf.insertMonthlyFreeze(db, summary), "inserted");
+      const stored = await mf.loadMonthlyFreezeSummary(db, "2026-11");
+      assert.ok(stored!.frozenAt);
+      assert.ok(Date.parse(stored!.frozenAt) >= t0 - 60_000, "frozen_at comes from the DB clock, not the caller");
       assert.equal(await mf.insertMonthlyFreeze(db, summary), "unchanged");
+
+      await assert.rejects(
+        () =>
+          db.execute(sql`
+            INSERT INTO ledger_monthly_frozen (
+              month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json, frozen_at
+            ) VALUES (
+              '2026-09', '2026-09-01'::date, '2026-10-01'::date, 0, ${"d".repeat(64)}, '', '{}'::jsonb,
+              '2020-01-01T00:00:00Z'::timestamptz
+            )
+          `),
+        /ledger_monthly_frozen_frozen_at_not_past|check constraint/i,
+      );
 
       for (const [day, a] of [["2026-11-29", a29], ["2026-11-30", a30]] as const) {
         const { payload } = await anchors.canonicalDayPayload(db, day);

@@ -29,4 +29,18 @@ UPDATE ledger_monthly_frozen
 ALTER TABLE ledger_monthly_frozen
   ALTER COLUMN content_csv SET NOT NULL;
 
+ALTER TABLE ledger_monthly_frozen
+  ALTER COLUMN frozen_at SET DEFAULT now();
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'ledger_monthly_frozen_frozen_at_not_past'
+  ) THEN
+    ALTER TABLE ledger_monthly_frozen
+      ADD CONSTRAINT ledger_monthly_frozen_frozen_at_not_past
+      CHECK (frozen_at >= (CURRENT_TIMESTAMP - INTERVAL '5 minutes'));
+  END IF;
+END $$;
+
 COMMIT;
