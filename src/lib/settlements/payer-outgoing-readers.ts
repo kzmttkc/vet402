@@ -12,6 +12,11 @@ import {
 } from "@/lib/chain/blockscout";
 import { getLogScanClient } from "@/lib/chain/client";
 import { AlchemyUnavailableError, fetchAssetTransfersPage, isAlchemyEnabled } from "@/lib/chain/alchemy";
+import {
+  makeRoutescanAvalanchePayerFetch,
+  RoutescanUnavailableError,
+  type RoutescanPayerTokenTxFetch,
+} from "@/lib/chain/routescan";
 import { toCaip2 } from "@/lib/observatory/chains";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
@@ -450,6 +455,73 @@ function makeAlchemyFirstEvmPayerOutgoingReader(cfg: EvmOutgoingConfig): PayerOu
     return rpcReader({ ...query, timeoutMs: remainingMs });
   };
 }
+
+/**
+ * Avalanche 払い手: Alchemy → Routescan tokentx → RPC getLogs（前が読めなかったときだけ次へ。Routescan は鍵なしで払い手の USDC 送金を新しい順に返す）。
+ */
+export function makeAvalanchePayerOutgoingReader(
+  cfg: EvmOutgoingConfig,
+  routescanFetch: RoutescanPayerTokenTxFetch = makeRoutescanAvalanchePayerFetch(),
+): PayerOutgoingReader {
+  const rpcReader = makeEvmPayerOutgoingReader(cfg);
+  const alchemyFetch = makeAlchemyPayerFetch(cfg.chainId);
+  return async (query) => {
+    if (query.network !== cfg.network) return payerOutgoingFail("wrong_network");
+    throwIfAborted(query.signal);
+    const deadline = typeof query.timeoutMs === "number" ? Date.now() + query.timeoutMs : Infinity;
+    if (isAlchemyEnabled(cfg.chainId)) {
+      try {
+        const viaAlchemy = await readPayerOutgoingViaTransferPages(
+          query.payer,
+          query.from,
+          query.to,
+          deadline,
+          query.signal,
+          (payer, opts) => alchemyFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+          { alchemyPagination: true },
+        );
+        if (viaAlchemy.ok) return viaAlchemy;
+      } catch (e) {
+        if (!(e instanceof AlchemyUnavailableError)) throwIfAborted(query.signal);
+      }
+    }
+    try {
+      const viaRoutescan = await readPayerOutgoingViaTransferPages(
+        query.payer,
+        query.from,
+        query.to,
+        deadline,
+        query.signal,
+        (payer, opts) => routescanFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+      );
+      if (viaRoutescan.ok) return viaRoutescan;
+    } catch (e) {
+      if (!(e instanceof RoutescanUnavailableError)) throwIfAborted(query.signal);
+    }
+    if (deadline === Infinity) return rpcReader(query);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return payerOutgoingFail("Error: transfer read ran past its time limit");
+    return rpcReader({ ...query, timeoutMs: remainingMs });
+  };
+}
+
+const AVALANCHE_PAYER_OUTGOING_CFG: EvmOutgoingConfig = {
+  network: AVALANCHE_CAIP2,
+  chainId: AVALANCHE_CHAIN_ID,
+  token: AVALANCHE_USDC_ADDRESS as Address,
+  chunkBlocks: AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
+  marginBlocks: AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
+  blockSeconds: 0.97,
+  toleranceSeconds: 30,
+  chainName: "Avalanche",
+  client: () => rpcClient(avalanche, process.env.AVALANCHE_RPC_URL?.trim(), 20_000),
+  binarySearchOnLocateFailure: true,
+  chunkedGetLogs: {
+    concurrency: PAYER_ARC_LOG_CONCURRENCY,
+    rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES,
+    delayMs: 0,
+  },
+};
 
 export function makeBasePayerOutgoingReader(
   client?: EvmLogClient,
@@ -1076,23 +1148,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     client: () => rpcClient(arbitrum, process.env.ARBITRUM_RPC_URL?.trim(), 20_000),
     binarySearchOnLocateFailure: true,
   }),
-  [AVALANCHE_CAIP2]: makeAlchemyFirstEvmPayerOutgoingReader({
-    network: AVALANCHE_CAIP2,
-    chainId: AVALANCHE_CHAIN_ID,
-    token: AVALANCHE_USDC_ADDRESS as Address,
-    chunkBlocks: AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
-    marginBlocks: AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
-    blockSeconds: 0.97,
-    toleranceSeconds: 30,
-    chainName: "Avalanche",
-    client: () => rpcClient(avalanche, process.env.AVALANCHE_RPC_URL?.trim(), 20_000),
-    binarySearchOnLocateFailure: true,
-    chunkedGetLogs: {
-      concurrency: PAYER_ARC_LOG_CONCURRENCY,
-      rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES,
-      delayMs: 0,
-    },
-  }),
+  [AVALANCHE_CAIP2]: makeAvalanchePayerOutgoingReader(AVALANCHE_PAYER_OUTGOING_CFG),
   [ARC_CAIP2]: makeEvmPayerOutgoingReader({
     network: ARC_CAIP2,
     chainId: ARC_CHAIN_ID,
