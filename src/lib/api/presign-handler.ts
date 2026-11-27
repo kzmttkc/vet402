@@ -227,7 +227,7 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
     const tCache = performance.now();
     const out: CheckSellerOutput = await getCheckSellerCached(deps, { url, method: parsed.method ?? undefined }, cacheTiming);
     const cacheMs = performance.now() - tCache;
-    const cachePath = cacheTiming.path ?? "unknown";
+    const cachePath = cacheTiming.path ?? "";
     const tTerms = performance.now();
     let decision: TermsDecision | null = null;
     if (!out.not_in_catalog) {
