@@ -18,7 +18,7 @@ import {
   txHashOnLedger,
   normalizePayerForKey,
 } from "@/lib/settlements/payer-reconcile";
-import { ARBITRUM_CAIP2 } from "@/lib/chain/arbitrum";
+import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
 import { AVALANCHE_CAIP2 } from "@/lib/chain/avalanche";
 import { BNB_CAIP2 } from "@/lib/chain/bnb";
 import { exclusionReasonForPayerTransfer, type OwnWalletContext } from "@/lib/settlements/own-wallets";
@@ -27,6 +27,7 @@ import {
   formatPayerOutgoingFailure,
   locateEvmBlockBinarySearch,
   makeBasePayerOutgoingReader,
+  makeChainPayerOutgoingReader,
   makeEvmPayerOutgoingReader,
   makeStellarPayerOutgoingReader,
   payerOutgoingFail,
@@ -1284,5 +1285,328 @@ test("Base payer reader: an Alchemy row without a block time is not dropped; the
     globalThis.fetch = realFetch;
     if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
     else process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
+
+function alchemyPayerFetchMock(
+  host: string,
+  bodies: Record<string, unknown>[],
+  pages: { transfers: Record<string, unknown>[]; pageKey?: string }[],
+) {
+  let call = 0;
+  return (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (!u.includes(host)) throw new Error(`unexpected fetch ${u}`);
+    const body = JSON.parse(String(init?.body));
+    bodies.push(body.params[0]);
+    const page = pages[call] ?? { transfers: [] };
+    call++;
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: { transfers: page.transfers, ...(page.pageKey ? { pageKey: page.pageKey } : {}) },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
+function alchemyErc20Row(hash: string, iso: string, value: string, usdc: string) {
+  return {
+    uniqueId: `${hash}:log:0`,
+    hash,
+    blockNum: "0x10",
+    from: EVM_PAYER.toLowerCase(),
+    to: "0x000000000000000000000000000000000000beef",
+    category: "erc20",
+    rawContract: { value, address: usdc, decimal: "0x6" },
+    metadata: { blockTimestamp: iso },
+  };
+}
+
+test("Arbitrum payer reader: Alchemy first when its key is set, pages by pageKey, window kept", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  const from = new Date("2026-11-23T20:00:00.000Z");
+  const to = new Date("2026-11-25T20:00:00.000Z");
+  const usdc = ARBITRUM_USDC_ADDRESS.toLowerCase();
+  const bodies: Record<string, unknown>[] = [];
+  globalThis.fetch = alchemyPayerFetchMock("arb-mainnet.g.alchemy.com", bodies, [
+    {
+      transfers: [alchemyErc20Row("0xaa", "2026-11-26T10:00:00.000Z", "0x2710", usdc)],
+      pageKey: "k2",
+    },
+    {
+      transfers: [
+        alchemyErc20Row("0xbb", "2026-11-24T00:00:00.000Z", "0x1e8480", usdc),
+        alchemyErc20Row("0xcc", "2026-11-20T00:00:00.000Z", "0x01", usdc),
+      ],
+    },
+  ]);
+  try {
+    const out = await makeChainPayerOutgoingReader()({ network: ARBITRUM_CAIP2, payer: EVM_PAYER, from, to, timeoutMs: 5_000 });
+    assert.equal(out.ok, true, out.ok ? "" : out.detail);
+    if (out.ok) {
+      assert.deepEqual(out.transfers.map((t) => [t.txHash, t.value]), [["0xbb", "2000000"]]);
+    }
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0]!.fromAddress, EVM_PAYER);
+    assert.deepEqual((bodies[0]!.contractAddresses as string[]).map((a) => a.toLowerCase()), [usdc]);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
+
+test("Arbitrum payer reader: Alchemy row without block time falls back and fails, not empty success", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevArb = process.env.ARBITRUM_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  process.env.ARBITRUM_RPC_URL = "https://arb1.arbitrum.io/rpc";
+  let alchemyCalls = 0;
+  const usdc = ARBITRUM_USDC_ADDRESS.toLowerCase();
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    if (String(url).includes("arb-mainnet.g.alchemy.com")) {
+      alchemyCalls++;
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            transfers: [
+              {
+                uniqueId: "0xdd:log:0",
+                hash: "0xdd",
+                blockNum: "0x10",
+                from: EVM_PAYER.toLowerCase(),
+                to: "0xbeef",
+                category: "erc20",
+                rawContract: { value: "0x01", address: usdc },
+                metadata: {},
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    throw new Error("unexpected fetch");
+  }) as typeof fetch;
+  try {
+    const out = await makeChainPayerOutgoingReader()({
+      network: ARBITRUM_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-23T20:00:00.000Z"),
+      to: new Date("2026-11-25T20:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.equal(alchemyCalls, 1);
+    assert.equal(out.ok, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevArb === undefined) delete process.env.ARBITRUM_RPC_URL;
+    else process.env.ARBITRUM_RPC_URL = prevArb;
+  }
+});
+
+test("Avalanche payer reader: Alchemy first when its key is set, pages by pageKey, window kept", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  const from = new Date("2026-11-23T20:00:00.000Z");
+  const to = new Date("2026-11-25T20:00:00.000Z");
+  const usdc = AVALANCHE_USDC_ADDRESS.toLowerCase();
+  const bodies: Record<string, unknown>[] = [];
+  globalThis.fetch = alchemyPayerFetchMock("avax-mainnet.g.alchemy.com", bodies, [
+    {
+      transfers: [alchemyErc20Row("0xaa", "2026-11-26T10:00:00.000Z", "0x2710", usdc)],
+      pageKey: "k2",
+    },
+    { transfers: [alchemyErc20Row("0xbb", "2026-11-24T00:00:00.000Z", "0x1e8480", usdc)] },
+  ]);
+  try {
+    const out = await makeChainPayerOutgoingReader()({ network: AVALANCHE_CAIP2, payer: EVM_PAYER, from, to, timeoutMs: 5_000 });
+    assert.equal(out.ok, true, out.ok ? "" : out.detail);
+    if (out.ok) assert.equal(out.transfers[0]?.txHash, "0xbb");
+    assert.equal(bodies.length, 2);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
+
+test("Avalanche payer reader: Alchemy row without block time is not dropped; read fails honestly", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevAvax = process.env.AVALANCHE_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  process.env.AVALANCHE_RPC_URL = "https://api.avax.network/ext/bc/C/rpc";
+  let alchemyCalls = 0;
+  const usdc = AVALANCHE_USDC_ADDRESS.toLowerCase();
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    if (String(url).includes("avax-mainnet.g.alchemy.com")) {
+      alchemyCalls++;
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            transfers: [
+              {
+                uniqueId: "x",
+                hash: "0xdd",
+                blockNum: "0x1",
+                from: EVM_PAYER.toLowerCase(),
+                to: "0xbeef",
+                category: "erc20",
+                rawContract: { value: "0x01", address: usdc },
+                metadata: {},
+              },
+            ],
+          },
+        }),
+        { status: 200 },
+      );
+    }
+    return new Response("<!DOCTYPE html>", { status: 503, headers: { "content-type": "text/html" } });
+  }) as typeof fetch;
+  try {
+    const out = await makeChainPayerOutgoingReader()({
+      network: AVALANCHE_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-23T20:00:00.000Z"),
+      to: new Date("2026-11-25T20:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.equal(alchemyCalls, 1);
+    assert.equal(out.ok, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
+    else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+test("Robinhood payer getLogs retries HTTP 429 and completes when RPC cooperates", async () => {
+  __resetLearnedRangeCapsForTests();
+  let calls = 0;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headNum = 20_000n;
+  const client = {
+    getChainId: async () => 4663,
+    getBlock: async (q: { blockNumber?: bigint; blockTag?: string }) => {
+      if (q.blockTag === "latest") return { number: headNum, timestamp: BigInt(nowSec) };
+      const n = q.blockNumber ?? 0n;
+      const behind = Number(headNum - n);
+      return { number: n, timestamp: BigInt(nowSec - behind * 2) };
+    },
+    getLogs: async () => {
+      calls++;
+      if (calls <= 2) {
+        throw Object.assign(new Error("Too Many Requests"), { name: "HttpRequestError", status: 429 });
+      }
+      return [];
+    },
+  };
+  const reader = makeEvmPayerOutgoingReader({
+    network: ROBINHOOD_CAIP2,
+    chainId: 4663,
+    token: "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+    chunkBlocks: 500n,
+    marginBlocks: 120n,
+    blockSeconds: 2,
+    toleranceSeconds: 30,
+    chainName: "Robinhood",
+    binarySearchOnLocateFailure: true,
+    client: () => client as never,
+    chunkedGetLogs: { concurrency: 1, rateLimitMaxRetries: 5, delayMs: 0 },
+  });
+  const from = new Date((nowSec - 7_200) * 1000);
+  const to = new Date((nowSec - 3_600) * 1000);
+  const out = await reader({ network: ROBINHOOD_CAIP2, payer: EVM_PAYER, from, to, timeoutMs: 60_000 });
+  assert.equal(out.ok, true);
+  assert.ok(calls >= 3, `expected 429 retries, got ${calls} getLogs calls`);
+});
+
+test("Robinhood payer getLogs: 429 on every try ends as a failed read, never ok with what was read", async () => {
+  __resetLearnedRangeCapsForTests();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headNum = 20_000n;
+  let calls = 0;
+  const client = {
+    getChainId: async () => 4663,
+    getBlock: async (q: { blockNumber?: bigint; blockTag?: string }) => {
+      if (q.blockTag === "latest") return { number: headNum, timestamp: BigInt(nowSec) };
+      const n = q.blockNumber ?? 0n;
+      return { number: n, timestamp: BigInt(nowSec - Number(headNum - n) * 2) };
+    },
+    getLogs: async () => {
+      calls++;
+      throw Object.assign(new Error("Too Many Requests"), { name: "HttpRequestError", status: 429 });
+    },
+  };
+  const reader = makeEvmPayerOutgoingReader({
+    network: ROBINHOOD_CAIP2,
+    chainId: 4663,
+    token: "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+    chunkBlocks: 500n,
+    marginBlocks: 120n,
+    blockSeconds: 2,
+    toleranceSeconds: 30,
+    chainName: "Robinhood",
+    binarySearchOnLocateFailure: true,
+    client: () => client as never,
+    chunkedGetLogs: { concurrency: 1, rateLimitMaxRetries: 2, delayMs: 0 },
+  });
+  const out = await reader({
+    network: ROBINHOOD_CAIP2,
+    payer: EVM_PAYER,
+    from: new Date((nowSec - 7_200) * 1000),
+    to: new Date((nowSec - 3_600) * 1000),
+    timeoutMs: 30_000,
+  });
+  assert.equal(out.ok, false);
+  assert.ok(calls >= 1);
+});
+
+test("Arbitrum payer reader: a thrown Alchemy error falls back to the RPC with only the time left", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevArb = process.env.ARBITRUM_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  process.env.ARBITRUM_RPC_URL = "https://arb-rpc.test/rpc";
+  let rpcCalls = 0;
+  globalThis.fetch = (async (url: string | URL) => {
+    if (String(url).includes("arb-mainnet.g.alchemy.com")) throw new TypeError("fetch failed");
+    rpcCalls++;
+    return new Response("<!DOCTYPE html>", { status: 503, headers: { "content-type": "text/html" } });
+  }) as typeof fetch;
+  try {
+    const out = await makeChainPayerOutgoingReader()({
+      network: ARBITRUM_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-23T20:00:00.000Z"),
+      to: new Date("2026-11-25T20:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.ok(rpcCalls >= 1, "expected the RPC fallback to be tried");
+    assert.equal(out.ok, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevArb === undefined) delete process.env.ARBITRUM_RPC_URL;
+    else process.env.ARBITRUM_RPC_URL = prevArb;
   }
 });

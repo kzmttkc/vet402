@@ -76,6 +76,18 @@ const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
 export const PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS = 40;
 const PAYER_ARC_LOG_CONCURRENCY = 1;
 const PAYER_ARC_DEFAULT_CHUNK_DELAY_MS = 100;
+/** Robinhood 公開 RPC は eth_getLogs で 429 が出やすい（2026-11-27 payer-reconcile）。 */
+const ROBINHOOD_PAYER_LOG_CHUNK_BLOCKS = 500n;
+const PAYER_ROBINHOOD_LOG_CONCURRENCY = 1;
+const PAYER_ROBINHOOD_RATE_LIMIT_RETRIES = 5;
+const PAYER_ROBINHOOD_DEFAULT_CHUNK_DELAY_MS = 150;
+
+function robinhoodPayerLogDelayMs(): number {
+  const raw = process.env.GET_LOGS_CHUNK_DELAY_MS;
+  if (!raw) return PAYER_ROBINHOOD_DEFAULT_CHUNK_DELAY_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : PAYER_ROBINHOOD_DEFAULT_CHUNK_DELAY_MS;
+}
 
 function arcPayerLogDelayMs(): number {
   const raw = process.env.GET_LOGS_CHUNK_DELAY_MS;
@@ -228,13 +240,16 @@ export async function locateEvmBlockBinarySearch(
   return lo;
 }
 
-async function readBasePayerOutgoingViaBlockscout(
+type TransferPageReadOpts = { /** Alchemy は満たないページでも pageKey で続けうる。 */ alchemyPagination?: boolean };
+
+async function readPayerOutgoingViaTransferPages(
   payer: string,
   from: Date,
   to: Date,
   deadline: number,
   signal: AbortSignal | undefined,
   fetchPage: BasePayerBlockscoutFetch,
+  pageOpts: TransferPageReadOpts = {},
 ): Promise<PayerOutgoingReadResult> {
   const fromSec = Math.floor(from.getTime() / 1000);
   const toSec = Math.floor(to.getTime() / 1000);
@@ -284,7 +299,11 @@ async function readBasePayerOutgoingViaBlockscout(
       break;
     }
     // 次のページの鍵が無ければ終わり。Blockscout は満たないページで終わる（Alchemy は満たないページでも pageKey を返しうる）。
-    if (!page.nextCursor || (fetchPage !== alchemyBasePayerFetch && page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE)) {
+    const alchemyPagination = pageOpts.alchemyPagination === true;
+    if (
+      !page.nextCursor ||
+      (!alchemyPagination && page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE)
+    ) {
       reachedPastWindow = true;
       break;
     }
@@ -292,6 +311,18 @@ async function readBasePayerOutgoingViaBlockscout(
   }
   if (!reachedPastWindow) return payerOutgoingFail("blockscout_scan_incomplete");
   return payerOutgoingOk(out);
+}
+
+async function readBasePayerOutgoingViaBlockscout(
+  payer: string,
+  from: Date,
+  to: Date,
+  deadline: number,
+  signal: AbortSignal | undefined,
+  fetchPage: BasePayerBlockscoutFetch,
+  pageOpts?: TransferPageReadOpts,
+): Promise<PayerOutgoingReadResult> {
+  return readPayerOutgoingViaTransferPages(payer, from, to, deadline, signal, fetchPage, pageOpts);
 }
 
 async function readBasePayerOutgoingViaRpc(
@@ -348,33 +379,70 @@ async function readBasePayerOutgoingViaRpc(
   return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
 }
 
+/** 払い手 reconciliation 用の Alchemy 1 ページ取得（chainId 固定）。 */
+export function makeAlchemyPayerFetch(chainId: number): BasePayerBlockscoutFetch {
+  return async (payer, opts) => {
+    const page = await fetchAssetTransfersPage({
+      address: payer,
+      direction: "from",
+      categories: ["erc20"],
+      contractAddress: opts.contractAddress,
+      limit: 1000,
+      order: "desc",
+      chainId,
+      budgetMs: opts.budgetMs,
+      pageKey: opts.cursor?.pageKey ?? null,
+    });
+    let pageOldestSec: number | null = null;
+    const rows = page.transfers.map((t) => {
+      const sec = Number(t.timeStamp);
+      // 時刻の無い行は窓の外として捨てると、記録に無い送金を黙って見逃す。読めなかったことにして従来の読み先へ戻す。
+      if (!Number.isFinite(sec) || sec <= 0) throw new AlchemyUnavailableError("alchemy_missing_block_timestamp");
+      if (Number.isFinite(sec) && sec > 0 && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
+      return { hash: t.hash, blockNumber: t.blockNumber, timeStamp: t.timeStamp, from: t.from, to: t.to, value: t.value };
+    });
+    return { rows, rawItemCount: page.rawCount, pageOldestSec, nextCursor: page.pageKey ? { pageKey: page.pageKey } : null };
+  };
+}
+
 /**
  * Base の払い手の USDC 送金を Alchemy の alchemy_getAssetTransfers（fromAddress・新しい順・pageKey）で読む。
  * readBasePayerOutgoingViaBlockscout と同じページの形で返し、窓の判定はそちらに任せる（2026-11-27:
  * base.blockscout.com が Cloudflare の確認画面で 403 を返し、公開 RPC は getLogs を回数で断った）。
  */
-export const alchemyBasePayerFetch: BasePayerBlockscoutFetch = async (payer, opts) => {
-  const page = await fetchAssetTransfersPage({
-    address: payer,
-    direction: "from",
-    categories: ["erc20"],
-    contractAddress: opts.contractAddress,
-    limit: 1000,
-    order: "desc",
-    chainId: opts.chainId,
-    budgetMs: opts.budgetMs,
-    pageKey: opts.cursor?.pageKey ?? null,
-  });
-  let pageOldestSec: number | null = null;
-  const rows = page.transfers.map((t) => {
-    const sec = Number(t.timeStamp);
-    // 時刻の無い行は窓の外として捨てると、記録に無い送金を黙って見逃す。読めなかったことにして従来の読み先へ戻す。
-    if (!Number.isFinite(sec) || sec <= 0) throw new AlchemyUnavailableError("alchemy_missing_block_timestamp");
-    if (Number.isFinite(sec) && sec > 0 && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
-    return { hash: t.hash, blockNumber: t.blockNumber, timeStamp: t.timeStamp, from: t.from, to: t.to, value: t.value };
-  });
-  return { rows, rawItemCount: page.rawCount, pageOldestSec, nextCursor: page.pageKey ? { pageKey: page.pageKey } : null };
-};
+export const alchemyBasePayerFetch: BasePayerBlockscoutFetch = makeAlchemyPayerFetch(BASE_CHAIN_ID);
+
+function makeAlchemyFirstEvmPayerOutgoingReader(cfg: EvmOutgoingConfig): PayerOutgoingReader {
+  const rpcReader = makeEvmPayerOutgoingReader(cfg);
+  const alchemyFetch = makeAlchemyPayerFetch(cfg.chainId);
+  return async (query) => {
+    if (query.network !== cfg.network) return payerOutgoingFail("wrong_network");
+    throwIfAborted(query.signal);
+    const deadline = typeof query.timeoutMs === "number" ? Date.now() + query.timeoutMs : Infinity;
+    if (isAlchemyEnabled(cfg.chainId)) {
+      try {
+        const viaAlchemy = await readPayerOutgoingViaTransferPages(
+          query.payer,
+          query.from,
+          query.to,
+          deadline,
+          query.signal,
+          (payer, opts) => alchemyFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+          { alchemyPagination: true },
+        );
+        if (viaAlchemy.ok) return viaAlchemy;
+      } catch (e) {
+        // 読めなかった（AlchemyUnavailableError ほか）: Base と同じく止めずに従来の RPC へ。中断だけは投げる。
+        if (!(e instanceof AlchemyUnavailableError)) throwIfAborted(query.signal);
+      }
+    }
+    // RPC へ戻るときは残り時間だけを渡す（Alchemy で使った時間を足し直して照合の締切を越えない）。
+    if (deadline === Infinity) return rpcReader(query);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return payerOutgoingFail("Error: transfer read ran past its time limit");
+    return rpcReader({ ...query, timeoutMs: remainingMs });
+  };
+}
 
 export function makeBasePayerOutgoingReader(
   client?: EvmLogClient,
@@ -392,7 +460,15 @@ export function makeBasePayerOutgoingReader(
     // 索引は最新のブロックまでなので、読めた窓をそのまま返す。読めなければ従来の Blockscout → RPC へ。
     if (!blockscoutFetch && isAlchemyEnabled(BASE_CHAIN_ID)) {
       try {
-        const viaAlchemy = await readBasePayerOutgoingViaBlockscout(payer, from, to, deadline, signal, alchemyBasePayerFetch);
+        const viaAlchemy = await readBasePayerOutgoingViaBlockscout(
+          payer,
+          from,
+          to,
+          deadline,
+          signal,
+          alchemyBasePayerFetch,
+          { alchemyPagination: true },
+        );
         if (viaAlchemy.ok) return viaAlchemy;
       } catch (e) {
         // 読めなかった（AlchemyUnavailableError ほか）: 止めずに従来の読み先へ。中断だけは従来どおり投げる。
@@ -981,7 +1057,7 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
       return v === null ? null : v.toString();
     },
   }),
-  [ARBITRUM_CAIP2]: makeEvmPayerOutgoingReader({
+  [ARBITRUM_CAIP2]: makeAlchemyFirstEvmPayerOutgoingReader({
     network: ARBITRUM_CAIP2,
     chainId: ARBITRUM_CHAIN_ID,
     token: ARBITRUM_USDC_ADDRESS as Address,
@@ -991,8 +1067,9 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     toleranceSeconds: 30,
     chainName: "Arbitrum",
     client: () => rpcClient(arbitrum, process.env.ARBITRUM_RPC_URL?.trim(), 20_000),
+    binarySearchOnLocateFailure: true,
   }),
-  [AVALANCHE_CAIP2]: makeEvmPayerOutgoingReader({
+  [AVALANCHE_CAIP2]: makeAlchemyFirstEvmPayerOutgoingReader({
     network: AVALANCHE_CAIP2,
     chainId: AVALANCHE_CHAIN_ID,
     token: AVALANCHE_USDC_ADDRESS as Address,
@@ -1003,6 +1080,11 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     chainName: "Avalanche",
     client: () => rpcClient(avalanche, process.env.AVALANCHE_RPC_URL?.trim(), 20_000),
     binarySearchOnLocateFailure: true,
+    chunkedGetLogs: {
+      concurrency: PAYER_ARC_LOG_CONCURRENCY,
+      rateLimitMaxRetries: PAYER_BASE_RATE_LIMIT_RETRIES,
+      delayMs: 0,
+    },
   }),
   [ARC_CAIP2]: makeEvmPayerOutgoingReader({
     network: ARC_CAIP2,
@@ -1039,13 +1121,18 @@ const EVM_READERS: Record<string, PayerOutgoingReader> = {
     network: ROBINHOOD_CAIP2,
     chainId: 4663,
     token: ROBINHOOD_USDG as Address,
-    chunkBlocks: 2_000n,
+    chunkBlocks: ROBINHOOD_PAYER_LOG_CHUNK_BLOCKS,
     marginBlocks: 120n,
     blockSeconds: 2,
     toleranceSeconds: 30,
     chainName: "Robinhood",
     client: () => robinhoodClient(20_000),
     binarySearchOnLocateFailure: true,
+    chunkedGetLogs: {
+      concurrency: PAYER_ROBINHOOD_LOG_CONCURRENCY,
+      rateLimitMaxRetries: PAYER_ROBINHOOD_RATE_LIMIT_RETRIES,
+      delayMs: robinhoodPayerLogDelayMs(),
+    },
   }),
 };
 

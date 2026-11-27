@@ -1,4 +1,4 @@
-import { DEFAULT_CHAIN_ID, chainById } from "./chains";
+import { DEFAULT_CHAIN_ID } from "./chains";
 import { createDeadline } from "@/lib/util/deadline";
 import type { Address } from "viem";
 
@@ -67,6 +67,8 @@ export type AssetCategory = "external" | "erc20";
 const ALCHEMY_NETWORKS: Record<number, string> = {
   8453: "base-mainnet",
   1: "eth-mainnet",
+  42161: "arb-mainnet",
+  43114: "avax-mainnet",
 };
 
 const MAX_ATTEMPTS = 3;
@@ -99,8 +101,6 @@ export function alchemyUrl(chainId?: number): string | null {
   const network = ALCHEMY_NETWORKS[id];
   const key = apiKey();
   if (!network || !key) return null;
-  // A chain we do not have in the registry is not a chain we score.
-  if (!chainById(id)) return null;
   return `https://${network}.g.alchemy.com/v2/${key}`;
 }
 
