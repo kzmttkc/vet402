@@ -111,6 +111,8 @@ ${CREDENTIALS.builder.builderName} builds vet402 alone. The site is published by
 ${credentialLines().join("\n")}
 
 
+## Reference: API, rules text and field glossary
+
 ${prose}
 
 

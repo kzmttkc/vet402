@@ -49,7 +49,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 ## Machine-readable pages
 
-Markdown versions of key pages, built from the same modules as the HTML. methodology.md is a summary: the section headings, the 60-second summary and the one-line definitions. The full text of each section is on the HTML page.
+Markdown versions of key pages. Lists, terms, definitions and live counts come from the same modules as the HTML. The remaining prose is copied from each page and tests compare it with the page source. methodology.md is a summary: the section headings, the 60-second summary and the one-line definitions. The full text of each section is on the HTML page.
 
 - https://vet402.com/x402/check-a-seller.md: how to check a seller before paying
 - https://vet402.com/observatory/methodology.md: L0, L1 and L2 definitions
@@ -66,7 +66,7 @@ Markdown versions of key pages, built from the same modules as the HTML. methodo
 
 ## Optional
 
-- [Full text for language models](https://vet402.com/llms-full.txt): API reference, rules, FAQ and field glossary (generated with the HTML modules).
+- [Full text for language models](https://vet402.com/llms-full.txt): API reference, rules text, FAQ and field glossary.
 
 ## Freshness
 

@@ -162,3 +162,38 @@ test("check-a-seller .md bodies say what the page says", async () => {
     }
   }
 });
+
+// Sentences the .md copies by hand from integrity and erc-8004. Each must be on the page and in the .md,
+// so neither side can drop a limit (what ALLOW promises, what a match is) without a red test.
+test("integrity.md and erc-8004.md keep the page's limiting sentences", async () => {
+  const cases: { page: string; md: string; sentences: string[] }[] = [
+    {
+      page: "src/app/integrity/page.tsx",
+      md: await (await getIntegrityMd()).text(),
+      sentences: [
+        "An outcome that counts neither way can still keep a check from ALLOW.",
+        "ALLOW, WARN and BLOCK are recommendations to the customer who asked.",
+        "vet402 does not accept, refuse, delay or reverse anyone's payment.",
+        "An ALLOW is the fact that the terms vet402 paid were delivered, not a promise about a different recipient or a higher price.",
+        "A buyer relies on vet402 to say what a seller delivered.",
+      ],
+    },
+    {
+      page: "src/app/erc-8004/page.tsx",
+      md: await (await getErc8004Md()).text(),
+      sentences: [
+        "A registration shows that an agent exists.",
+        "Names and endpoint URLs are not used.",
+        "It needs no key. The same check is the MCP tool check_8004_agent.",
+        "The standard expects each registry to be deployed as a singleton per chain.",
+      ],
+    },
+  ];
+  for (const c of cases) {
+    const page = pageText(read(c.page));
+    for (const s of c.sentences) {
+      assert.ok(page.includes(s), `${c.page} lacks "${s}"`);
+      assert.ok(c.md.includes(s), `${c.page}.md lacks "${s}"`);
+    }
+  }
+});

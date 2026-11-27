@@ -131,7 +131,7 @@ export function renderIntegrityMarkdown(): string {
   for (const r of BUCKET_ROWS) {
     lines.push(`| ${r.bucket} | ${conditionOf(r.bucket)} | ${r.counts} |`);
   }
-  lines.push("", `WARN means: ${VERDICT_DOCS.WARN}`, "", ATTRIBUTION_REVIEW_NOTE, "", "## 3. What vet402 does not do", "", `${DOES_NOT_TEXT} ALLOW, WARN and BLOCK are recommendations to the customer who asked.`);
+  lines.push("", `An outcome that counts neither way can still keep a check from ALLOW. WARN means: ${VERDICT_DOCS.WARN}`, "", ATTRIBUTION_REVIEW_NOTE, "", "## 3. What vet402 does not do", "", `${DOES_NOT_TEXT} ALLOW, WARN and BLOCK are recommendations to the customer who asked. vet402 does not accept, refuse, delay or reverse anyone's payment. An ALLOW is the fact that the terms vet402 paid were delivered, not a promise about a different recipient or a higher price.`);
   lines.push("", `Every paid purchase carries User-Agent: ${L1_USER_AGENT}.`);
   lines.push("", `Canonical HTML: ${SITE_URL}/integrity`);
   return lines.join("\n");
@@ -247,9 +247,9 @@ export async function renderErc8004Markdown(): Promise<string> {
         lines.push(`| ${erc8004HeadlineChainLabel(chain)} | ${fmt(frac.scanned)} | ${fmt(frac.matched)} |`);
       }
     }
-    lines.push("", `Match details: ${SITE_URL}/observatory/erc8004`);
+    lines.push("", `Match rule, agent list and purchase counts: ${SITE_URL}/observatory/erc8004. A match is exact lowercase address equality. Names and endpoint URLs are not used.`);
   } else {
-    lines.push(`The index could not be read. Match table: ${SITE_URL}/observatory/erc8004`);
+    lines.push(`The index could not be read. Match table: ${SITE_URL}/observatory/erc8004. A match is exact lowercase address equality. Names and endpoint URLs are not used.`);
   }
   lines.push(
     "",
@@ -270,7 +270,7 @@ export async function renderErc8004Markdown(): Promise<string> {
   lines.push(
     "## Check one agent",
     "",
-    "GET /api/v1/erc8004/check reads one Reputation Registry feedback on Base, fetches its feedbackURI, and re-reads the payment evidence on-chain. It needs no key.",
+    "GET /api/v1/erc8004/check reads one Reputation Registry feedback on Base, fetches its feedbackURI, and re-reads the payment evidence on-chain. It needs no key. The same check is the MCP tool check_8004_agent. API reference: " + `${SITE_URL}/docs/api`,
     "",
     "## Sources",
     "",
