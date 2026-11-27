@@ -500,6 +500,7 @@ function publicSurfaces(): string[] {
   // 2026-10-21: public/llms.txt は静的ファイルで、page.tsx の走査に入らない。
   // 機械が引用する正典なので、同じ関門に名指しで足す。
   out.push(relative(ROOT, join(ROOT, "public/llms.txt")));
+  out.push(relative(ROOT, join(ROOT, "public/llms-full-prose.txt")));
   // 2026-10-24: 他社の測定 payer 一覧。basis と sourceQuote を方法論の表にそのまま出す。
   out.push(relative(ROOT, join(ROOT, "src/lib/settlements/measurement-payers.ts")));
   // 2026-10-28: MCP の入口（/mcp）の tool の説明と出力の固定文。エージェントがそのまま読み、引用する。
@@ -600,7 +601,8 @@ const DETECTION_FLOOR: Record<string, number> = {
   "src/components/site/faq-data.ts": 15,
   "src/lib/observatory/vocabulary.ts": 15,
   // 2026-10-21: public/llms.txt を走査に加えた時点の検出数。バッククォートで切れた断片。
-  "public/llms.txt": 19, // 2026-11-02: the count follows quote and backtick fragments; edits shifted them.
+  "public/llms.txt": 2, // 2026-11-27: index only; long prose moved to llms-full-prose.txt.
+  "public/llms-full-prose.txt": 17, // 2026-11-27: former llms.txt API body (backtick fragments).
   // 2026-09-28: /sellers の 5 面（src/app/sellers/**/page.tsx・src/components/site/sellers/SellersViews.tsx・
   // src/lib/sellers/fix-modes.ts）は断定語を使わずに書いたので検出が 0 件。床を 0 で書いても何も守らないので置かない。
   // 事実の主張は docs/claims.yaml に sellers_* として引用で登録してある（引用が面から消えたら「every registered quote」が赤）。
