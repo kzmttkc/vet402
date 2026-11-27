@@ -208,7 +208,28 @@ function SearchForm({ q }: { q: string }) {
  * 640px 未満の売り手一覧（2026-09-28 監査）。9 列の表は電話の幅で横スクロールになり、host と
  * 数字が同じ画面に並ばなかった。行ごとにラベル付きの縦並びへ組み替える。数字は表と同じ props から出す。
  */
-function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
+/**
+ * I4 (2026-11-27): every host stays clickable so a seller can reach their own record from /sellers.
+ * Hosts outside the index gate get rel="nofollow" so this noindex list passes no link signal to their pages.
+ */
+function sellerLinkRel(host: string, linkHosts?: ReadonlySet<string>): "nofollow" | undefined {
+  return linkHosts !== undefined && !linkHosts.has(host) ? "nofollow" : undefined;
+}
+
+function SellerHostName({ host, linkHosts }: { host: string; linkHosts?: ReadonlySet<string> }) {
+  return (
+    <Link
+      href={sellerPath(host)}
+      rel={sellerLinkRel(host, linkHosts)}
+      className="flex min-h-11 items-center font-semibold underline decoration-1 hover:decoration-2 [overflow-wrap:anywhere]"
+      title={host}
+    >
+      {host}
+    </Link>
+  );
+}
+
+function SellersCards({ sellers, label, linkHosts }: { sellers: readonly SellerSummary[]; label: string; linkHosts?: ReadonlySet<string> }) {
   const facts: { label: string; value: (s: SellerSummary) => string }[] = [
     { label: "Listings", value: (s) => n(s.listings) },
     { label: "Delivered", value: (s) => n(s.delivered) },
@@ -224,9 +245,7 @@ function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; l
     <ul aria-label={label} className="mt-4 list-none border-t border-hair p-0 sm:hidden">
       {sellers.map((s) => (
         <li key={s.host} className="border-b border-hair py-3">
-          <Link href={sellerPath(s.host)} className="flex min-h-11 items-center font-semibold underline decoration-1 hover:decoration-2 [overflow-wrap:anywhere]">
-            {s.host}
-          </Link>
+          <SellerHostName host={s.host} linkHosts={linkHosts} />
           <dl className="mt-2 grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 text-[0.84375rem]">
             {facts.map((f) => (
               <div key={f.label} className="contents">
@@ -241,19 +260,35 @@ function SellersCards({ sellers, label }: { sellers: readonly SellerSummary[]; l
   );
 }
 
-function SellersTable({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
+function SellersTable({
+  sellers,
+  label,
+  linkHosts,
+}: {
+  sellers: readonly SellerSummary[];
+  label: string;
+  linkHosts?: ReadonlySet<string>;
+}) {
   return (
     <>
-      <SellersCards sellers={sellers} label={label} />
+      <SellersCards sellers={sellers} label={label} linkHosts={linkHosts} />
       {/* デスクトップ（640px 以上）は表のまま。 */}
       <div className="hidden sm:block">
-        <SellersTableWide sellers={sellers} label={label} />
+        <SellersTableWide sellers={sellers} label={label} linkHosts={linkHosts} />
       </div>
     </>
   );
 }
 
-function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[]; label: string }) {
+function SellersTableWide({
+  sellers,
+  label,
+  linkHosts,
+}: {
+  sellers: readonly SellerSummary[];
+  label: string;
+  linkHosts?: ReadonlySet<string>;
+}) {
   return (
     <TableScroll label={label}>
       <table className="fact-table">
@@ -293,7 +328,12 @@ function SellersTableWide({ sellers, label }: { sellers: readonly SellerSummary[
           {sellers.map((s) => (
             <tr key={s.host}>
               <td className="whitespace-nowrap">
-                <Link href={sellerPath(s.host)} className="flex min-h-11 min-w-0 max-w-[14rem] items-center underline decoration-1 hover:decoration-2 sm:max-w-[24rem]" title={s.host}>
+                <Link
+                  href={sellerPath(s.host)}
+                  rel={sellerLinkRel(s.host, linkHosts)}
+                  className="flex min-h-11 min-w-0 max-w-[14rem] items-center underline decoration-1 hover:decoration-2 sm:max-w-[24rem]"
+                  title={s.host}
+                >
                   <span className="min-w-0 truncate">{s.host}</span>
                 </Link>
               </td>
@@ -397,6 +437,7 @@ export function SellersIndexView({
   search,
   side = null,
   purchasedLookupFailed = false,
+  indexableHosts = null,
 }: {
   board: SellerBoard;
   page: number;
@@ -406,7 +447,11 @@ export function SellersIndexView({
   side?: SellerSideFilter | null;
   /** 購入ホストの読み取りに失敗した（空の結果とは別）。 */
   purchasedLookupFailed?: boolean;
+  /** Hosts whose /sellers/{host} page is indexable (I4). Omitted in tests → all hosts stay linkable. */
+  indexableHosts?: readonly string[] | null;
 }) {
+  const linkHosts =
+    indexableHosts === null ? undefined : new Set(indexableHosts);
   const listed = filterSellersBySide(board.sellers, side);
   const totalPages = Math.max(1, Math.ceil(listed.length / SELLERS_PAGE_SIZE));
   const p = Math.min(Math.max(1, page), totalPages);
@@ -431,6 +476,20 @@ export function SellersIndexView({
         against the decision and the purchases vet402 has already made.
       </p>
       <SearchForm q={q} />
+      {indexableHosts && indexableHosts.length > 0 ? (
+        <p className="doc-p mt-4">
+          Seller records with a delivery in the last 30 days or a signed payee claim ({n(indexableHosts.length)}):{" "}
+          {indexableHosts.slice(0, 12).map((h, i) => (
+            <span key={h}>
+              {i > 0 ? ", " : ""}
+              <Link href={sellerPath(h)} className="underline">
+                {h}
+              </Link>
+            </span>
+          ))}
+          {indexableHosts.length > 12 ? ". Use search for other domains on Base." : "."}
+        </p>
+      ) : null}
       <nav aria-label="Purchase results by chain" className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-[0.84375rem]">
         <span className="font-semibold text-brand-deep" aria-current="page">
           Base
@@ -447,7 +506,7 @@ export function SellersIndexView({
         <section aria-label="Search results" className="mt-6">
           {search.exact ? (
             <p className="doc-p">
-              <Link href={sellerPath(search.exact.host)} className="underline">
+              <Link href={sellerPath(search.exact.host)} rel={sellerLinkRel(search.exact.host, linkHosts)} className="underline">
                 {search.exact.host}
               </Link>{" "}
               — {n(search.exact.listings)} Base {search.exact.listings === 1 ? "listing" : "listings"}.
@@ -466,7 +525,7 @@ export function SellersIndexView({
           {search.matches.length > 0 && (
             <>
               <AttributionReviewNote />
-              <SellersTable sellers={search.matches} label="Sellers whose host contains the search" />
+              <SellersTable sellers={search.matches} label="Sellers whose host contains the search" linkHosts={linkHosts} />
             </>
           )}
         </section>
@@ -503,6 +562,7 @@ export function SellersIndexView({
         <SellersTable
           sellers={shown}
           label={side ? `Sellers on Base with a listing whose latest attempt is ${SIDE_FILTER_PHRASE[side]}, most recent purchase first` : "Sellers on Base, most recent purchase first"}
+          linkHosts={linkHosts}
         />
       )}
       <Pager page={p} totalPages={totalPages} href={(x) => sellersIndexHref(side, x)} label="Seller pages" />

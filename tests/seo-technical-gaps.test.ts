@@ -152,6 +152,7 @@ test("公開の読み取り API は * と AI クローラに名指しで開け�
 
 test("売り手の sitemap は /sellers の一覧と同じデータ源から、頁が受け付けるホストだけを出す（2026-09-28）", async () => {
   const route = readFileSync(join(ROOT, "src/app/sitemap-sellers.xml/route.ts"), "utf8");
+  assert.ok(route.includes("getIndexableSellerHostsCached"), "I4 の index gate と同じ源");
   assert.ok(route.includes("getSellerBoardCached"), "一覧と別の読みから出すと件数が食い違う");
   assert.ok(route.includes("parseSellerHostParam"), "404 になるホストを載せない");
   assert.ok(route.includes("x-vet402-truncated"), "上限で切れたことを黙らせない");

@@ -238,16 +238,17 @@ test("索引に無い host は Base の売り手頁へ転送する", async () =>
   await assert.rejects(() => ReputationSellerPage({ params: Promise.resolve({ host }) }), redirectError);
 });
 
-test("評判 sitemap GET は 50 件以下の URL を出す", async () => {
+test("seller index sitemap GET は I4 対象の /sellers/ URL を出す", async () => {
   const res = await getSitemapSellers();
   if (res.status === 503) return;
   assert.equal(res.status, 200);
   const rows = Number(res.headers.get("x-vet402-rows"));
   assert.ok(Number.isFinite(rows));
-  assert.ok(rows <= 50);
+  const indexable = Number(res.headers.get("x-vet402-indexable-pages"));
+  assert.equal(indexable, rows);
   const locs = [...(await res.text()).matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
   assert.equal(locs.length, rows);
-  assert.ok(locs.every((u) => u.includes("/x402/sellers/")));
+  assert.ok(locs.every((u) => u.includes("/sellers/") && !u.includes("/x402/sellers/")));
 });
 
 test("newestDeliveredPurchase: 他チェーンの届いた購入が Base より新しければそちらを出す", () => {

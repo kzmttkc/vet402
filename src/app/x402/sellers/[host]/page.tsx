@@ -21,6 +21,7 @@ import {
   reputationSummarySentence,
 } from "@/lib/sellers/reputation";
 import { getSellerDetailCached } from "@/lib/sellers/cached";
+import { getIndexableSellerHostsCached } from "@/lib/sellers/seller-index";
 import { parseSellerHostParam } from "@/lib/sellers/host";
 import type { SellerDetail } from "@/lib/sellers/board";
 import { sellerPath } from "@/components/site/sellers/SellersViews";
@@ -33,8 +34,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { host: raw } = await params;
   const host = parseSellerHostParam(raw);
   if (!host) notFound();
-  const allowed = await getReputationHostsCached().catch(() => null);
+  const [allowed, indexHosts] = await Promise.all([
+    getReputationHostsCached().catch(() => null),
+    getIndexableSellerHostsCached().catch(() => [] as string[]),
+  ]);
   if (!allowed?.includes(host)) redirect(sellerPath(host));
+  const indexable = indexHosts.includes(host);
   const detail = await getSellerDetailCached(host).catch(() => null);
   // 2026-11-24 SEO: the stale headline ("... Latest delivery is older than 30 days") made titles of
   // 90+ characters that search engines cut. The H1 keeps the full sentence. The title keeps the
@@ -48,12 +53,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description: `vet402 purchase records for ${host}: each listing vet402 bought with a real x402 payment where the latest purchase delivered a response, with delivery age on each row.`,
       path: reputationSellerPath(host),
+      noindex: !indexable,
     }),
     title: { absolute: title },
   };
 }
 
-export function ReputationSellerArticle({ detail, nonce }: { detail: SellerDetail; nonce?: string }) {
+export function ReputationSellerArticle({
+  detail,
+  nonce,
+  indexable = true,
+}: {
+  detail: SellerDetail;
+  nonce?: string;
+  indexable?: boolean;
+}) {
   const host = detail.host;
   const listings = deliveredListings(detail);
   const ageByEndpoint = new Map(reputationListingAges(detail).map((a) => [a.endpointId, a]));
@@ -69,23 +83,27 @@ export function ReputationSellerArticle({ detail, nonce }: { detail: SellerDetai
   ]);
   // 2026-11-27 SEO: the page had only a BreadcrumbList. ItemPage names the seller host the record is
   // about and dates it with the read time, like the ERC-8004 agent pages.
-  const itemPage = {
-    "@context": "https://schema.org",
-    "@type": "ItemPage",
-    name: headline,
-    url: `${SITE_URL}${path}`,
-    dateModified: detail.fetchedAt,
-    isBasedOn: `${SITE_URL}/observatory/methodology`,
-    publisher: publisherOrg(),
-    about: { "@type": "Thing", name: host, identifier: host },
-  };
+  const itemPage = indexable
+    ? {
+        "@context": "https://schema.org",
+        "@type": "ItemPage",
+        name: headline,
+        url: `${SITE_URL}${path}`,
+        dateModified: detail.fetchedAt,
+        isBasedOn: `${SITE_URL}/observatory/methodology`,
+        publisher: publisherOrg(),
+        about: { "@type": "Thing", name: host, identifier: host },
+      }
+    : null;
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet">
-        {[itemPage, breadcrumb].map((doc, i) => (
-          <script key={i} type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(doc) }} />
-        ))}
+        {(indexable ? [itemPage, breadcrumb] : [])
+          .filter((doc): doc is NonNullable<typeof doc> => doc !== null)
+          .map((doc, i) => (
+            <script key={i} type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(doc) }} />
+          ))}
 
         <h1 className="doc-title mt-8">{headline}</h1>
         <p className="doc-p">
@@ -173,6 +191,10 @@ export default async function ReputationSellerPage({ params }: Props) {
   const detail = await getSellerDetailCached(host).catch(() => null);
   if (!detail || !reputationPageEligible(detail)) redirect(sellerPath(host));
 
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
-  return <ReputationSellerArticle detail={detail} nonce={nonce} />;
+  const [nonce, indexHosts] = await Promise.all([
+    headers().then((h) => h.get("x-nonce") ?? undefined),
+    getIndexableSellerHostsCached().catch(() => [] as string[]),
+  ]);
+  const indexable = indexHosts.includes(host);
+  return <ReputationSellerArticle detail={detail} nonce={nonce} indexable={indexable} />;
 }

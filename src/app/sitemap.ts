@@ -118,8 +118,8 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
     // 抜けていた。corrections と同じ「公開していること自体が内容」の帳簿。
     { url: `${SITE_URL}/operator-log`, lastModified: SITE_REVISION, changeFrequency: "weekly", priority: 0.5 },
     // 2026-09-28: 売り手がドメインで自分の購入結果を探す入口。2026-09-29 敵対的監査で帰属の誤りが見つかり、
-    // 見直しが済むまで /sellers と /sellers/fix-first を外した（頁は noindex で残す）。
-    // 個々の /sellers/:host はここでは列挙しない。/sitemap-sellers.xml（一覧と同じデータ源）が出す。
+    // /sellers と /sellers/fix-first は noindex の入口のまま。index 対象の /sellers/:host は
+    // sellerIndexSitemapEntries() が I4 の条件で毎回読み直して足す（2026-11-27）。
     // 2026-09-28: RWA の公開頁。
     { url: `${SITE_URL}/rwa`, lastModified: "2026-09-28", changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/faq`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.7 },
@@ -194,12 +194,17 @@ async function reputationSitemapEntries(): Promise<MetadataRoute.Sitemap> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const { getReputationHostsCached } = await import("@/lib/sellers/reputation");
-    const hosts = await Promise.race([
-      getReputationHostsCached(),
+    const { getIndexableSellerHostsCached } = await import("@/lib/sellers/seller-index");
+    // 2026-11-27 I4: /x402/sellers/{host} is noindex unless the host passes the I4 gate, so list only those.
+    // If either read fails, list none (a sitemap must not point at noindex pages or name undelivered sellers).
+    const [reputationHosts, indexable] = await Promise.race([
+      Promise.all([getReputationHostsCached(), getIndexableSellerHostsCached()]),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => reject(new Error("reputation hosts read timeout")), REPUTATION_SITEMAP_READ_MS);
       }),
     ]);
+    const indexableSet = new Set(indexable);
+    const hosts = reputationHosts.filter((h) => indexableSet.has(h));
     return hosts.map((host) => ({
       url: `${SITE_URL}/x402/sellers/${encodeURIComponent(host)}`,
       lastModified: REV_2026_11_16,
@@ -213,6 +218,39 @@ async function reputationSitemapEntries(): Promise<MetadataRoute.Sitemap> {
   }
 }
 
+/** 2026-11-27 I4: /sellers/{host} for hosts that pass the index gate (re-read every sitemap build). */
+async function sellerIndexSitemapEntries(): Promise<MetadataRoute.Sitemap> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const { getIndexableSellerHostsCached } = await import("@/lib/sellers/seller-index");
+    const { getSellerBoardCached } = await import("@/lib/sellers/cached");
+    const hosts = await Promise.race([
+      getIndexableSellerHostsCached(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("seller index hosts read timeout")), REPUTATION_SITEMAP_READ_MS);
+      }),
+    ]);
+    const board = await getSellerBoardCached().catch(() => null);
+    const lastByHost = new Map(board?.sellers.map((s) => [s.host, s.lastAttemptAt]) ?? []);
+    return hosts.map((host) => {
+      const lastAttemptAt = lastByHost.get(host);
+      const lastModified = lastAttemptAt ? sitemapDay(lastAttemptAt, REV_2026_11_27) : REV_2026_11_27;
+      return {
+        url: `${SITE_URL}/sellers/${encodeURIComponent(host)}`,
+        lastModified,
+        changeFrequency: "daily" as const,
+        priority: 0.45,
+      };
+    });
+  } catch {
+    return [];
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+const REV_2026_11_27 = "2026-11-27";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  return [...(await coreStaticSitemap()), ...(await reputationSitemapEntries())];
+  return [...(await coreStaticSitemap()), ...(await reputationSitemapEntries()), ...(await sellerIndexSitemapEntries())];
 }

@@ -3,12 +3,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import sitemap from "@/app/sitemap";
+import { SITE_URL } from "@/lib/site-url";
 import { LLM_QUESTIONS } from "@/components/site/x402-answers";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 
 const REV = "2026-10-26";
 
-test("回答頁とチェーン頁は静的 sitemap に入り、売り手頁は入らない", async () => {
+test("回答頁とチェーン頁は静的 sitemap に入り、/sellers 入口は入らない（I4 の /sellers/{host} は可）", async () => {
   const urls = await sitemap();
   for (const q of LLM_QUESTIONS) {
     if (q.path.startsWith("/blog/")) continue;
@@ -22,10 +23,10 @@ test("回答頁とチェーン頁は静的 sitemap に入り、売り手頁は�
     assert.ok(hit, chain.slug);
     assert.equal(String(hit.lastModified).slice(0, 10), REV);
   }
-  assert.equal(
-    urls.some((e) => e.url.includes("/sellers") && !e.url.includes("/x402/sellers/")),
-    false,
-  );
+  assert.equal(urls.some((e) => e.url === `${SITE_URL}/sellers` || e.url.endsWith("/sellers/fix-first")), false);
+  for (const entry of urls.filter((e) => e.url.includes("/sellers/") && !e.url.includes("/x402/sellers/"))) {
+    assert.match(entry.url, /\/sellers\/[^/]+$/);
+  }
 });
 
 test("llms.txt は各回答の先導文と日付を持つ", () => {
