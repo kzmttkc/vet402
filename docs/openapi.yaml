@@ -5411,6 +5411,78 @@ paths:
                   count: { type: integer }
                   note: { type: string }
 
+  /api/v1/reports/{month}:
+    get:
+      operationId: getMonthlyLedgerFreeze
+      tags: [Observatory]
+      summary: Monthly frozen purchase ledger summary
+      description: |
+        Summary of a frozen UTC month of purchase rows. The content hash is SHA-256
+        over the frozen CSV body (data rows only, no header): same columns as the
+        default export. Rows in the hash are sorted by attempted_at as a
+        second-precision ISO-8601 string, then purchase_id (the live export sorts by
+        full attempted_at first, so sub-second ties can differ). GET /api/v1/reports/{month}.csv
+        returns that body. Before
+        vet402 stores a freeze, the response is 404 with not_frozen_yet. An open month
+        answers 400 with month_not_closed. Key-less. 120 requests per minute. Since 2026-11-27.
+      security: []
+      parameters:
+        - in: path
+          name: month
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}$"
+      responses:
+        "200":
+          description: Frozen month summary
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "400":
+          description: Month still open or invalid month
+        "404":
+          description: Not frozen yet
+        "503":
+          description: Store unavailable (`unavailable`)
+
+  /api/v1/reports/{month}.csv:
+    get:
+      operationId: getMonthlyLedgerFreezeCsv
+      tags: [Observatory]
+      summary: Frozen purchase ledger CSV body for one UTC month
+      description: |
+        The stored frozen CSV body for one closed UTC month (data rows only, no
+        header). The response bytes are what contentSha256 in the JSON summary
+        hashes. Same columns as the default export. Rows are sorted by attempted_at as a
+        second-precision ISO string, then purchase_id (the live export uses full
+        attempted_at before purchase_id, so ties within one UTC second can differ). Before vet402 stores a
+        freeze, 404 with not_frozen_yet. An open month answers 400 with
+        month_not_closed. Key-less. 120 requests per minute. Since 2026-11-27.
+      security: []
+      parameters:
+        - in: path
+          name: month
+          required: true
+          schema:
+            type: string
+            pattern: "^\\d{4}-\\d{2}$"
+      responses:
+        "200":
+          description: Frozen CSV body
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Month still open or invalid month
+        "404":
+          description: Not frozen yet
+        "503":
+          description: Store unavailable (`unavailable`)
+
   /api/v1/usage/monthly:
     get:
       operationId: getMonthlyDecisionUsage
@@ -7762,6 +7834,7 @@ components:
             - invalid_cursor
             - invalid_payee_id
             - unavailable
+            - invalid_month
             # --- §9.1 /decision ---
             - invalid_role
             - invalid_caller_dialect

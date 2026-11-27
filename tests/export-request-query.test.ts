@@ -76,7 +76,7 @@ test("ランナーはこの 2 つのキー名で行に書く（名前が動く�
 test("列: 2026-09-21 の追加は request_query と request_query_sha256 の 2 つ", () => {
   assert.deepEqual([...EXPORT_CSV_COLUMNS_SINCE_2026_09_21], ["request_query", "request_query_sha256"]);
   // route がその 2 列を、この file の式で出している（別の手書き SQL を持たない）。
-  const route = read("src/app/api/v1/observatory/export.csv/route.ts");
+  const route = read("src/lib/observatory/ledger-export.ts");
   assert.ok(route.includes('requestQueryKindSql("pu"))}) AS request_query'), "request_query は request-query.ts の式から");
   assert.ok(route.includes('requestQuerySha256Sql("pu"))}) AS request_query_sha256'), "hash も同じ file の式から");
 });

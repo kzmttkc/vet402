@@ -2551,3 +2551,10 @@ claims:
     check: null
     why_unverifiable: "集計の和は src/lib/observatory/reader.ts が固定する。tests/observatory-state-api.test.ts が byChain の形を固定する"
     verified_at: 2026-11-27
+  - id: reports_monthly_freeze_line_after_frozen_at
+    surface: src/app/reports/[month]/page.tsx
+    quote: "Daily roots for UTC days on or after the"
+    means: "日次 root の正規化ペイロードは、その凍結月の frozen_at の UTC 日付以降の日々の根にだけ monthly-freeze:v1:<month>:<contentSha256> 行を 1 行足す（src/lib/observatory/monthly-freeze.ts の buildAnchorPayloadWithMonthlyLines）。公開前の月や frozen_at より前に既に封印した日の root は変えない。"
+    check: null
+    why_unverifiable: "封印日ごとの有無は /api/v1/observatory/anchors を日付単位で読めるが、全日を1つの JSON 式で固定できない。tests/monthly-freeze.test.ts と tests/monthly-freeze-before-after.pg.test.ts が規則を固定する"
+    verified_at: 2026-11-27

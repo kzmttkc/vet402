@@ -97,6 +97,7 @@ export const API_ENDPOINT_TOC: readonly ApiEndpointTocItem[] = [
   { method: "GET", path: "/api/badge/endpoint/:id.svg" },
   { method: "GET", path: "/api/badge/host/:host.svg" },
   { method: "GET", path: "/api/transparency/operator-overrides" },
+  { method: "GET", path: "/api/v1/reports/:month" },
   { method: "GET", path: "/api/v1/usage/monthly" },
   { method: "GET", path: "/api/health" },
 ].map((e) => ({ ...e, id: apiEndpointId(e.method, e.path) }));

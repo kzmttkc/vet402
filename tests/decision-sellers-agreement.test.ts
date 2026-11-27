@@ -285,6 +285,6 @@ test("L2 の読み直し（古い行の切れた本文）は判定・記録頁�
   const read = (f: string) => readFileSync(join(process.cwd(), f), "utf8");
   assert.match(read("src/lib/observatory/reader.ts"), /l2ReadingOf\(/);
   assert.match(read("src/lib/observatory/reader.ts"), /l2ReadingLabelOf\(/);
-  assert.match(read("src/app/api/v1/observatory/export.csv/route.ts"), /l2_reading: l2Schema === null \? null : l2ReadingOf\(/);
+  assert.match(read("src/lib/observatory/ledger-export.ts"), /l2Schema === null[\s\S]*l2ReadingOf\(/);
   assert.match(read("src/app/observatory/e/[id]/page.tsx"), /L2 \{p\.l2ReadingLabel \?\? p\.l2Reading \?\? p\.l2Schema/);
 });

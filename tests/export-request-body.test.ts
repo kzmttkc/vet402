@@ -406,8 +406,9 @@ test("confirmed_units: settled の行だけが spent_units を持ち、他は 0"
   const expr = confirmedUnitsSql("pu");
   assert.match(expr, /WHEN pu\.status = 'settled' THEN coalesce\(pu\.spent_units::text, '0'\) ELSE '0' END/);
   assert.throws(() => confirmedUnitsSql("pu; drop"));
+  const lib = read("src/lib/observatory/ledger-export.ts");
+  assert.ok(lib.includes('confirmedUnitsSql("pu"))}) AS confirmed_units'), "ledger-export は同じ式から列を出す");
   const route = read("src/app/api/v1/observatory/export.csv/route.ts");
-  assert.ok(route.includes('confirmedUnitsSql("pu"))}) AS confirmed_units'), "route は同じ式から列を出す");
   assert.ok(route.includes('"x-vet402-column-notes": EXPORT_CSV_COLUMN_NOTES'), "列の注記をヘッダで運ぶ");
   assert.ok(/^[\x20-\x7e]+$/.test(EXPORT_CSV_COLUMN_NOTES), "ヘッダ値は ASCII のみ");
   for (const file of ["docs/openapi.yaml", "public/llms.txt", "src/app/observatory/methodology/page.tsx"]) {
