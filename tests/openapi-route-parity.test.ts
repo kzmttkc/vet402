@@ -61,6 +61,7 @@ const ALLOWLIST = new Set([
   "/api/v1/guarantee/quote", // DORMANT — must stay undiscoverable until enabled
   "/api/v1/site-events", // first-party page metrics beacon from vet402.com pages, not a public data API
   "/api/v1/sellers/fix-first-board", // hydrates /sellers/fix-first client-side for smaller first HTML, not an integrator API
+  "/api/v1/reports/csv/{month}", // internal handler; public URL is /api/v1/reports/{month}.csv via next.config rewrite
 ]);
 
 test("every public API route is documented in openapi.yaml", () => {

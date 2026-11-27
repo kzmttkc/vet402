@@ -52,7 +52,7 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
     }
   }
 
-  const jsonUrl = `${SITE_URL}/api/v1/reports/${parsed.month}`;
+  const jsonUrl = `${SITE_URL}/api/v1/reports/${parsed.month}.json`;
   const csvUrl = `${SITE_URL}/api/v1/reports/${parsed.month}.csv`;
 
   return (
@@ -66,7 +66,7 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
           </a>
           . Rows in the hash use the same columns as that export. vet402 sorts them by <code>attempted_at</code> as a
           second-precision ISO string, then <code>purchase_id</code>. That export orders by full <code>attempted_at</code>{" "}
-          (milliseconds) before <code>purchase_id</code>, so rows that share the same UTC second can appear in a different
+          full precision before <code>purchase_id</code>, so rows that share the same UTC second can appear in a different
           order than in the frozen body. Daily roots for UTC days on or after the <code>frozen_at</code> date append one{" "}
           <code>monthly-freeze:v1:</code> line with <code>contentSha256</code>.
         </p>

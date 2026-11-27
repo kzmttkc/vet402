@@ -88,6 +88,7 @@ const nextConfig: NextConfig = {
       // 2026-10-28: MCP の入口の公開 URL（https://vet402.com/mcp）。実体は src/app/api/mcp/route.ts。
       { source: "/mcp", destination: "/api/mcp" },
       { source: "/api/v1/reports/:month.json", destination: "/api/v1/reports/:month" },
+      { source: "/api/v1/reports/:month.csv", destination: "/api/v1/reports/csv/:month" },
     ];
   },
   // 2026-08-06 (JS-disabled / navigation audit): the header's "Pricing" item
