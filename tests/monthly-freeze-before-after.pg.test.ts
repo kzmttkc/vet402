@@ -40,7 +40,8 @@ if (!TEST_DB) {
     const db = getDb()!;
 
     const migrationSql = readFileSync(join(process.cwd(), "scripts/sql/2026-11-27-ledger-monthly-frozen.sql"), "utf8");
-    await db.execute(sql.raw(migrationSql));
+    // 本番では psql が1トランザクションで流す。試験のドライバは BEGIN/COMMIT を1文に混ぜられないので外して流す。
+    await db.execute(sql.raw(migrationSql.replace(/^(BEGIN|COMMIT);$/gm, "").replace("SET LOCAL lock_timeout", "SET lock_timeout")));
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, x402_daily_metrics, ledger_anchors, ledger_monthly_frozen`);
     const [ep] = await db
       .insert(schema.x402Endpoints)
@@ -88,7 +89,20 @@ if (!TEST_DB) {
             SET frozen_at = '2020-01-01T00:00:00Z'::timestamptz
             WHERE month = '2026-11'
           `),
-        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen immutable columns/i),
+        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen rows are immutable/i),
+      );
+      // summary_json（frozenAt を含む）・month の書き換えと DELETE も拒む（点検 4 回目）
+      await assert.rejects(
+        () => db.execute(sql`UPDATE ledger_monthly_frozen SET summary_json = summary_json || '{"frozenAt":"2020-01-01T00:00:00.000000Z"}'::jsonb WHERE month = '2026-11'`),
+        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen rows are immutable/i),
+      );
+      await assert.rejects(
+        () => db.execute(sql`UPDATE ledger_monthly_frozen SET month = '2026-10' WHERE month = '2026-11'`),
+        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen rows are immutable/i),
+      );
+      await assert.rejects(
+        () => db.execute(sql`DELETE FROM ledger_monthly_frozen WHERE month = '2026-11'`),
+        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen rows are immutable/i),
       );
       await db.execute(sql`
         INSERT INTO ledger_monthly_frozen (
@@ -101,7 +115,10 @@ if (!TEST_DB) {
       const legacy = (await mf.listFrozenMonthlyLedger(db)).find((r) => r.month === "2026-09");
       assert.ok(legacy);
       assert.ok(Date.parse(legacy!.frozenAt) >= t0 - 60_000, "insert trigger ignores caller frozen_at");
+      // 試験の後片付けだけ: 書き換え禁止のトリガを一時的に外して 2026-09 の行を消す（本番の行は消せない）
+      await db.execute(sql`ALTER TABLE ledger_monthly_frozen DISABLE TRIGGER ledger_monthly_frozen_immutable_cols`);
       await db.execute(sql`DELETE FROM ledger_monthly_frozen WHERE month = '2026-09'`);
+      await db.execute(sql`ALTER TABLE ledger_monthly_frozen ENABLE TRIGGER ledger_monthly_frozen_immutable_cols`);
 
       for (const [day, a] of [["2026-11-29", a29], ["2026-11-30", a30]] as const) {
         const { payload } = await anchors.canonicalDayPayload(db, day);

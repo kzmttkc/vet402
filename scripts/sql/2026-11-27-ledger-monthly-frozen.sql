@@ -1,11 +1,15 @@
 -- vet402 2026-11-27 — 月次の購入台帳凍結（F5）。
 --
--- Safe to re-run. Only creates the table and immutability triggers.
+-- Safe to re-run. Only creates the table and immutability triggers. Runs in one transaction.
+-- A frozen month is written once: INSERT stamps frozen_at with the DB clock; UPDATE and DELETE are refused.
+-- Restoring a data-only dump into a migrated DB: use pg_restore/psql with --disable-triggers, or the INSERT
+-- trigger restamps frozen_at. A full dump (schema + data) restores the original values (data before triggers).
 --
 -- Apply with:
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/sql/2026-11-27-ledger-monthly-frozen.sql
 
-SET lock_timeout = '3s';
+BEGIN;
+SET LOCAL lock_timeout = '3s';
 
 CREATE TABLE IF NOT EXISTS ledger_monthly_frozen (
   month text NOT NULL PRIMARY KEY,
@@ -47,14 +51,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION ledger_monthly_frozen_immutable_cols() RETURNS trigger AS $$
 BEGIN
-  IF OLD.frozen_at IS DISTINCT FROM NEW.frozen_at
-     OR OLD.content_csv IS DISTINCT FROM NEW.content_csv
-     OR OLD.content_sha256 IS DISTINCT FROM NEW.content_sha256
-     OR OLD.row_count IS DISTINCT FROM NEW.row_count
-  THEN
-    RAISE EXCEPTION 'ledger_monthly_frozen immutable columns (% refused)', TG_OP;
-  END IF;
-  RETURN NEW;
+  RAISE EXCEPTION 'ledger_monthly_frozen rows are immutable (% refused)', TG_OP;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -65,5 +62,7 @@ CREATE TRIGGER ledger_monthly_frozen_set_frozen_at
 
 DROP TRIGGER IF EXISTS ledger_monthly_frozen_immutable_cols ON ledger_monthly_frozen;
 CREATE TRIGGER ledger_monthly_frozen_immutable_cols
-  BEFORE UPDATE ON ledger_monthly_frozen
+  BEFORE UPDATE OR DELETE ON ledger_monthly_frozen
   FOR EACH ROW EXECUTE FUNCTION ledger_monthly_frozen_immutable_cols();
+
+COMMIT;

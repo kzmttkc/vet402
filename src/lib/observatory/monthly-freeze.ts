@@ -209,13 +209,12 @@ export async function listFrozenMonthlyLedger(db: Pick<AppDb, "execute">): Promi
   return rows.map((r) => {
     const summary = JSON.parse(r.summary_json) as MonthlyFreezeSummary;
     const frozenAtUtc = String(r.frozen_at_utc);
-    const summaryWithFrozen: MonthlyFreezeSummary = summary.frozenAt
-      ? summary
-      : { ...summary, frozenAt: frozenAtUtc };
+    // frozenAt は常に列（DB の時刻で入れたもの）から UTC で読む。summary_json の値は信じない（点検 4 回目）。
+    const summaryWithFrozen: MonthlyFreezeSummary = { ...summary, frozenAt: frozenAtUtc };
     return {
       month: String(r.month),
       contentSha256: String(r.content_sha256),
-      frozenAt: summaryWithFrozen.frozenAt,
+      frozenAt: frozenAtUtc,
       summary: summaryWithFrozen,
     };
   });
