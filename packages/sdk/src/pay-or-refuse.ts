@@ -58,6 +58,8 @@ import { readSubgraphReceipts, X402_BASE_SUBGRAPH_ID, type SubgraphReceipts } fr
 import { isBlockVerdict, isDecimalUnits, isPlainObject, isUnknownVerdict, scoreQualityDefect } from "./verdict-shape.js";
 import { DECISION_FRESHNESS_SKEW_MS, DEFAULT_MAX_SCORE_AGE_MS } from "./spend-guard.js";
 import { keccak256Bytes } from "./keccak256.js";
+// 402 と判定の照合（2026-11-27 F7 に移した・中身は同じ）。import は verdict-shape と chain-profile だけ。
+import { matchDeclaredPayTerms, normalizeAccept as normalizeTermsAccept, sameAddress } from "./terms-match.js";
 // 支払いチェーンの定数表（Tokyo B3）。import を持たない定数だけのモジュールなので静的 import でよい。
 import { CHAIN_PROFILES, profileFor, type ChainProfile, type ChainProfileName } from "./chain-profile.js";
 // vet402 の API へ名乗る User-Agent（0.7.1）。import を持たない定数だけのモジュールなので静的 import でよい。
@@ -667,26 +669,9 @@ const WALLET_RE = /^0x[a-fA-F0-9]{40}$/;
 const SOLANA_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const USDC_DECIMALS = 6;
 
-function sameAddress(a: unknown, b: unknown): boolean {
-  return typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
-}
-
-function caip10Parts(value: string): { network: string | null; address: string } {
-  const m = /^(.*):([^:]+)$/.exec(value);
-  if (!m) return { network: null, address: value };
-  const head = m[1]!;
-  const address = m[2]!;
-  if (/^eip155:\d+$/i.test(head)) return { network: head, address };
-  if (/^0x[a-fA-F0-9]{40}$/i.test(value)) return { network: null, address: value };
-  return { network: null, address: value };
-}
-
-function payeeMatchesDeclared(payee: string, acceptPayTo: string, acceptNetwork: string): boolean {
-  const left = caip10Parts(payee);
-  const right = caip10Parts(acceptPayTo);
-  if (!sameAddress(left.address, right.address)) return false;
-  if (left.network !== null && left.network !== acceptNetwork) return false;
-  return true;
+/** v1 の綴りを v2 の形へ揃える（terms-match.ts の normalizeAccept・X402Accept と同じ欄）。 */
+function normalizeAccept(raw: unknown): X402Accept | null {
+  return normalizeTermsAccept(raw) as X402Accept | null;
 }
 
 /** Initial seller GET for the 402 challenge (audit R3: bounded wait). */
@@ -768,138 +753,6 @@ function eip55AddressValid(payTo: string): boolean {
 }
 
 /**
- * 網ごとの USDC（どれも 6 桁）。vet402 が別の網で確かめた額を、Base などで払う額と比べてよいのは、
- * 両方がこの表の USDC の時だけ（11/22 証明の監査 proof-payaudit-1。表に無い資産・18 桁の資産は比べない）。
- * 住所は小文字で持ち、照合も小文字で行う（Stellar の契約 id と Solana の mint は大文字小文字を区別するので、そのまま持つ）。
- */
-const KNOWN_USDC_6: Readonly<Record<string, string>> = {
-  "eip155:1": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-  "eip155:10": "0x0b2c639c533813f4aa9d7837caf62653d097ff85",
-  "eip155:137": "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359",
-  "eip155:8453": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-  "eip155:42161": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
-  "eip155:42220": "0xceba9300f2b948710d2653dd7b07f33a8b32118c",
-  "eip155:43114": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
-  "eip155:5042": "0x3600000000000000000000000000000000000000",
-  "stellar:pubnet": "CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75",
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-};
-
-function isKnownUsdc6(network: string | null, asset: unknown): boolean {
-  if (network === null || typeof asset !== "string") return false;
-  const known = KNOWN_USDC_6[network];
-  if (known === undefined) return false;
-  return network.startsWith("eip155:") ? asset.toLowerCase() === known : asset === known;
-}
-
-function payeesFromFacts(decision: DecisionResult | null): string[] {
-  if (decision === null) return [];
-  const facts = decision.facts as Record<string, unknown>;
-  if (!isPlainObject(facts) || !Array.isArray(facts.payees)) return [];
-  return facts.payees.filter((p): p is string => typeof p === "string");
-}
-
-function verifiedPayToByNetwork(decision: DecisionResult): unknown[] | null {
-  const body = decision as DecisionResult & { verified_pay_to_by_network?: unknown };
-  if (!Object.hasOwn(body, "verified_pay_to_by_network")) return null;
-  const raw = body.verified_pay_to_by_network;
-  if (!Array.isArray(raw)) return [];
-  return raw;
-}
-
-/** 402 の (network, payTo) が verified_pay_to_by_network の行と一致するか。EVM は小文字で比べる。 */
-function acceptInVerifiedPayToList(list: unknown[], accept: X402Accept): boolean {
-  return list.some((row) => {
-    if (!isPlainObject(row)) return false;
-    const network = typeof row.network === "string" ? row.network : null;
-    const payTo = typeof row.pay_to === "string" ? row.pay_to : null;
-    if (network === null || payTo === null) return false;
-    if (network !== accept.network) return false;
-    return payeeMatchesDeclared(payTo, accept.payTo, accept.network);
-  });
-}
-
-/**
- * vet402 が記録した payTo・額と accept を照合する。
- * `verified_terms` があるときは判定語（ALLOW かどうか）や WARN 免除に関わらず照合する（N7）。
- * `verified_terms` が null のときは recommendation に関わらず `facts.payees` で照合する。
- */
-function matchDeclaredPayTerms(
-  decision: DecisionResult | null,
-  accept: X402Accept,
-  profile: ChainProfile,
-  requireVet402Allow: boolean,
-): PayRefuseReason[] | null {
-  if (decision === null) return null;
-  const body = decision as DecisionResult & { verified_terms?: unknown };
-  const hasKey = Object.hasOwn(body, "verified_terms");
-  const vtRaw = body.verified_terms;
-
-  const payeesCheck = (): PayRefuseReason[] | null => {
-    const payees = payeesFromFacts(decision);
-    if (payees.length === 0) return ["evidence_unavailable"];
-    if (!payees.some((p) => payeeMatchesDeclared(p, accept.payTo, profile.network))) return ["payee_mismatch"];
-    return null;
-  };
-
-  if (hasKey && vtRaw !== null && vtRaw !== undefined && isPlainObject(vtRaw)) {
-    const payTo = typeof vtRaw.pay_to === "string" ? vtRaw.pay_to : null;
-    const amount = typeof vtRaw.amount === "string" ? vtRaw.amount : null;
-    const vtNetwork = typeof vtRaw.network === "string" ? vtRaw.network : null;
-    const vtDecimals = typeof vtRaw.decimals === "number" && Number.isInteger(vtRaw.decimals) ? vtRaw.decimals : null;
-
-    if (vtNetwork !== null && vtNetwork !== accept.network) {
-      const verifiedList = verifiedPayToByNetwork(decision);
-      if (verifiedList !== null) {
-        if (!acceptInVerifiedPayToList(verifiedList, accept)) return ["payee_unverified_on_rail"];
-      } else {
-        const payees = payeesFromFacts(decision);
-        if (payees.length === 0) return ["evidence_unavailable"];
-        const inFacts = payees.some((p) => payeeMatchesDeclared(p, accept.payTo, profile.network));
-        if (!inFacts) return ["payee_unverified_on_rail"];
-      }
-      // 両方が網ごとの USDC（6 桁）なら、同じ単位なのでそのまま比べる。それ以外は比べない。
-      const bothUsdc =
-        isKnownUsdc6(vtNetwork, vtRaw.asset) &&
-        isKnownUsdc6(accept.network, accept.asset) &&
-        (vtDecimals === null || vtDecimals === USDC_DECIMALS);
-      if (!bothUsdc || amount === null || !isDecimalUnits(amount)) return ["price_unverified"];
-      if (BigInt(accept.amount) > BigInt(amount)) return ["price_above_declared"];
-      return null;
-    }
-
-    if (payTo === null || amount === null || !isDecimalUnits(amount)) {
-      return ["evidence_unavailable"];
-    }
-    if (!sameAddress(accept.payTo, payTo) && !payeeMatchesDeclared(payTo, accept.payTo, profile.network)) {
-      return ["payee_mismatch"];
-    }
-
-    const decimalsKnown = vtDecimals === null || vtDecimals === USDC_DECIMALS;
-    const sameRail =
-      (vtNetwork === null || vtNetwork === accept.network) &&
-      (typeof vtRaw.asset !== "string" || sameAddress(accept.asset, vtRaw.asset)) &&
-      decimalsKnown;
-    if (sameRail) {
-      if (BigInt(accept.amount) > BigInt(amount)) return ["price_above_declared"];
-    } else {
-      return ["price_unverified"];
-    }
-
-    const sameChain = vtNetwork === null || vtNetwork === accept.network;
-    if (sameChain) {
-      if (typeof vtRaw.asset === "string" && !sameAddress(accept.asset, vtRaw.asset)) return ["chain_or_asset_mismatch"];
-      if (typeof vtRaw.scheme === "string" && accept.scheme !== vtRaw.scheme) return ["chain_or_asset_mismatch"];
-    }
-    return null;
-  }
-
-  const payeeErr = payeesCheck();
-  if (payeeErr) return payeeErr;
-  return ["price_unverified"];
-}
-
-/**
  * 資源 ID。WINDOW_PLAN §3.1 の実測で示された規則は sha256("<METHOD> <正規化URL>")。
  * 正規化規則はサーバ側が正典なので、食い違ったときのために `resourceId` を渡せる。
  */
@@ -920,41 +773,6 @@ function readHeader(headers: unknown, name: string): string | null {
     if (typeof value === "string" && value.length > 0) return value;
   }
   return null;
-}
-
-/**
- * v1 の綴りを v2 の形へ揃える。実在する v1 の壁は `network: "base"` と
- * `maxAmountRequired` を使う（本番 `x402-payer.ts` の normalizeAccept と同じ規則）。
- * ここで揃えておかないと、金銭ゲートが v1 を丸ごと chain_or_asset_mismatch で落とし、
- * v1 の transport（X-PAYMENT）が届かない死んだ枝になる。
- */
-function normalizeAccept(raw: unknown): X402Accept | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const rec = raw as Record<string, unknown>;
-  const amount =
-    typeof rec.amount === "string" ? rec.amount
-    : typeof rec.maxAmountRequired === "string" ? rec.maxAmountRequired
-    : null;
-  const payTo = typeof rec.payTo === "string" ? rec.payTo : null;
-  if (amount === null || payTo === null) return null;
-  if (typeof rec.scheme !== "string" || typeof rec.asset !== "string") return null;
-  const network =
-    rec.network === "base" ? BASE_CHAIN
-    : rec.network === "base-sepolia" ? "eip155:84532"
-    // v1 の Solana スラグ（本番 `x402-payer.ts` の normalizeAccept と同じ）。v1 の壁は Solana では払わない
-    // （SVM の選別が x402 v2 を要求する）が、「何を提示されたか」は正規形で残す。
-    : rec.network === "solana" ? SOLANA_MAINNET
-    : typeof rec.network === "string" ? rec.network
-    : "";
-  return {
-    scheme: rec.scheme,
-    network,
-    amount,
-    asset: rec.asset,
-    payTo,
-    ...(typeof rec.maxTimeoutSeconds === "number" ? { maxTimeoutSeconds: rec.maxTimeoutSeconds } : {}),
-    ...(typeof rec.extra === "object" && rec.extra !== null ? { extra: rec.extra as X402Accept["extra"] } : {}),
-  };
 }
 
 /**

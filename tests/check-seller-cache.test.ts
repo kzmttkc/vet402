@@ -416,7 +416,9 @@ test("as_of string is shared by body, header, and verdict receipt", async () => 
 
 test("keyless route records usage after handleCheck on 200 (not inside cached checkSeller)", () => {
   const routeSrc = readFileSync("src/lib/api/keyless-check-route.ts", "utf8");
-  assert.match(routeSrc, /await publicRateLimit[\s\S]*await handleCheck\(request, deps\)/);
+  // 2026-11-27 F7: handler を引数にした（既定は handleCheck・presign が差し替える）。順序の検査は同じ。
+  assert.match(routeSrc, /handler: \(request: NextRequest, deps: CheckSellerDeps\) => Promise<Response> = handleCheck/);
+  assert.match(routeSrc, /await publicRateLimit[\s\S]*await handler\(request, deps\)/);
   assert.match(
     routeSrc,
     /if \(res\.status === 200 && keyless\)\s*\{[\s\S]*recordClientUsage\(request\.headers, usageRoute/,
