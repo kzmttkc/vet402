@@ -134,6 +134,8 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/x402/check-a-seller`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/refunds`, lastModified: REV_2026_11_12, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/glossary`, lastModified: REV_2026_11_24, changeFrequency: "monthly", priority: 0.7 },
+    // 2026-11-27 F9: Integrity Terms と失敗の帰属の一覧。
+    { url: `${SITE_URL}/integrity`, lastModified: "2026-11-27", changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/erc-8004`, lastModified: REV_2026_11_24, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/x402/ways-to-check-a-seller`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/pricing`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },

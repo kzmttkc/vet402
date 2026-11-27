@@ -17,6 +17,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 - [What is ERC-8004?](https://vet402.com/erc-8004): ERC-8004 (Trustless Agents) is an Ethereum standard with three registries for AI agents: identity, reputation and validation. Payments are out of its scope.
 - [Glossary](https://vet402.com/x402/glossary): facilitator, payTo, PAYMENT-REQUIRED, exact, upto, batch settlement, Bazaar, CAIP-2, agentId, feedbackURI.
 - [Methodology](https://vet402.com/observatory/methodology): what L0 (unpaid probe), L1 (real purchase) and L2 (output check against the seller's declaration) mean, and when a failure counts against a seller.
+- [Integrity Terms](https://vet402.com/integrity): the rules vet402 holds itself to, each with its source, the six outcomes one purchase is sorted into and which count against a seller, and what vet402 does not do.
 
 ## Check a seller before paying
 
