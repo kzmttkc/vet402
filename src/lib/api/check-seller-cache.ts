@@ -7,7 +7,7 @@
 // 鍵は api_key などを除いた URL なので、呼び手の生の URL を含む diagnose_url は保存せず、要求ごとに作る。
 // 保存する本文は正規化した URL で読む（呼び手の長い URL が他の呼び手の一覧を削らない）。
 // spending_halted: true は読み取り失敗でも出る安全側の値なので再利用しない（復旧後に停止中と答え続けない）。
-// 期限の 12 秒前から裏で読み直し（鮮度の決まりはそのまま——まだ fresh な応答を返す間だけ走る）。
+// 期限の CHECK_SELLER_PREFETCH_LEAD_SECONDS 秒前から裏で読み直し（鮮度の決まりはそのまま——まだ fresh な応答を返す間だけ走る）。
 // ============================================================
 import { unstable_cache } from "next/cache";
 import { diagnoseUrlFor } from "@/lib/api/diagnose-url";
@@ -20,8 +20,8 @@ import { keepAliveUntilSettled } from "@/lib/util/after-response";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 
 export const CHECK_SELLER_CACHE_SECONDS = 60;
-/** fresh な間、期限の何秒前から裏読みを始めるか。 */
-export const CHECK_SELLER_PREFETCH_LEAD_SECONDS = 12;
+/** fresh な間、期限の何秒前から裏読みを始めるか（60 秒 TTL のうち後半で裏読みし、期限直前の表読みを避ける）。 */
+export const CHECK_SELLER_PREFETCH_LEAD_SECONDS = 20;
 
 /** unstable_cache のキー要素。https 以外・壊れた URL は null。 */
 export function checkSellerCacheKeyParts(url: string, method?: string): readonly [string, string] | null {
@@ -127,11 +127,23 @@ export function prefetchedByStoreKeyForTests(key: string, payload: CheckSellerCa
   prefetchedByStoreKey.set(key, payload);
 }
 
+/** 試験用: 裏読みが走り途中のときに表が待つ経路を再現する。 */
+export function prefetchInflightForTests(storeK: string, work: Promise<void>): void {
+  prefetchInflight.set(storeK, work);
+}
+
 type CacheFn = typeof unstable_cache;
+
+export type CheckSellerCachePath = "direct" | "fresh" | "prefetch" | "coalesced";
+
+export type CheckSellerCacheTiming = {
+  path?: CheckSellerCachePath;
+};
 
 export type GetCheckSellerCached = (
   deps: CheckSellerDeps,
   input: { url: string; method?: string },
+  timing?: CheckSellerCacheTiming,
 ) => Promise<CheckSellerOutput>;
 
 async function readCheckSellerFresh(
@@ -226,11 +238,34 @@ function scheduleCheckSellerPrefetch(
   keepAliveUntilSettled(work);
 }
 
+function markPath(timing: CheckSellerCacheTiming | undefined, path: CheckSellerCachePath): void {
+  if (timing) timing.path = path;
+}
+
+async function deliverPrefetchOrWait(
+  deps: CheckSellerDeps,
+  storeK: string,
+  callerUrl: string,
+  timing: CheckSellerCacheTiming | undefined,
+): Promise<CheckSellerOutput | null> {
+  const prefetched = prefetchedByStoreKey.get(storeK);
+  if (prefetched) prefetchedByStoreKey.delete(storeK);
+  if (prefetched && isCheckSellerCachedReadFresh(prefetched.cacheReadAt)) {
+    markPath(timing, "prefetch");
+    return deliverPrefetched(deps, prefetched, callerUrl);
+  }
+  const inflight = prefetchInflight.get(storeK);
+  if (!inflight) return null;
+  await inflight;
+  return deliverPrefetchOrWait(deps, storeK, callerUrl, timing);
+}
+
 export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
-  return async (deps, input) => {
+  return async (deps, input, timing) => {
     const parts = checkSellerCacheKeyParts(input.url, input.method);
     // 正規化で伸びて照会の上限を超える URL は、正規化した形では引けないのでキャッシュを通さない。
     if (parts === null || classifyQuery(parts[0]).kind !== "url") {
+      markPath(timing, "direct");
       return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
     }
 
@@ -250,20 +285,20 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     try {
       const cached = await read();
       if (isCheckSellerCachedReadFresh(cached.cacheReadAt)) {
+        markPath(timing, "fresh");
         scheduleCheckSellerPrefetch(deps, storeK, urlKey, methodKey, cached.cacheReadAt, read);
         if (cached.usageNetwork) deps.captureUsageNetwork?.(cached.usageNetwork);
         return checkSellerForCaller(stripCheckSellerCachedPayload(cached), input.url);
       }
 
-      const prefetched = prefetchedByStoreKey.get(storeK);
-      if (prefetched) prefetchedByStoreKey.delete(storeK);
-      if (prefetched && isCheckSellerCachedReadFresh(prefetched.cacheReadAt)) {
-        return deliverPrefetched(deps, prefetched, input.url);
-      }
+      const prefetched = await deliverPrefetchOrWait(deps, storeK, input.url, timing);
+      if (prefetched) return prefetched;
 
+      markPath(timing, "coalesced");
       return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
     } catch (error) {
       if (isNoDataCacheError(error)) {
+        markPath(timing, "coalesced");
         return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
       }
       logServerErrorSafe("check_seller_cache", error);
