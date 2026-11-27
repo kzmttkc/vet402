@@ -65,15 +65,6 @@ export async function GET(request: NextRequest) {
     const { lookbackDays, days, driftDaysRecomputed } = await metricsRollupCronRollupsFn({
       endDay: utcDayString(),
     });
-    let monthlyFreeze: Awaited<ReturnType<typeof defaultEnsurePriorMonthFrozenIfDue>> | null = null;
-    try {
-      const db = getDb();
-      if (db) {
-        monthlyFreeze = await ensurePriorMonthFrozenIfDueFn(db, new Date());
-      }
-    } catch (error) {
-      logServerErrorSafe("cron.metrics-rollup.monthly-freeze", error);
-    }
     // 台帳ハッシュチェーン: 完結した前日だけをアンカーする（当日は行が増える）。
     // conflict_frozen（刻印済みrootと現データの食い違い）は整合性イベント——
     // 握りつぶさず監視ログに出す。
@@ -111,6 +102,15 @@ export async function GET(request: NextRequest) {
       }
     } catch (error) {
       logServerErrorSafe("cron.metrics-rollup.nearai-anchor", error);
+    }
+    let monthlyFreeze: Awaited<ReturnType<typeof defaultEnsurePriorMonthFrozenIfDue>> | null = null;
+    try {
+      const db = getDb();
+      if (db) {
+        monthlyFreeze = await ensurePriorMonthFrozenIfDueFn(db, new Date());
+      }
+    } catch (error) {
+      logServerErrorSafe("cron.metrics-rollup.monthly-freeze", error);
     }
     return NextResponse.json({
       ok: true,
