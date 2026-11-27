@@ -64,3 +64,29 @@ test("出どころの正典: 本番は掲載の出どころ（aux の cron）、
   assert.ok(SNAPSHOT_ONLY_SOURCES.some((s) => s.url === BLOCKY402_TESTNET_DISCOVERY_URL));
   assert.equal(BLOCKY402_TESTNET_DISCOVERY_URL, "https://api.testnet.blocky402.com/discovery/resources");
 });
+
+test("L0: Hedera の HBAR は壁の額が宣言以下なら price 一致、宣言より高ければ price_mismatch", async () => {
+  const { probeEndpoint } = await import("@/lib/observatory/l0-probe");
+  const target = {
+    resourceUrl: "https://hederaseller.example/v1/util/id-mint",
+    method: "GET",
+    payTo: "0.0.10963430",
+    network: "hedera:mainnet",
+    priceAmount: "5802334",
+    priceAsset: "0.0.0",
+  };
+  const wall = (amount: string) => async () =>
+    new Response(JSON.stringify({ x402Version: 2, accepts: [{ ...ITEM.accepts[0], amount }] }), {
+      status: 402,
+      headers: { "content-type": "application/json" },
+    });
+  const lower = await probeEndpoint(target, { fetchImpl: wall("5473255") });
+  assert.equal(lower.verdict, "pass");
+  assert.equal(lower.priceConsistent, true);
+  const higher = await probeEndpoint(target, { fetchImpl: wall("5802335") });
+  assert.equal(higher.verdict, "fail");
+  assert.equal(higher.failReason, "price_mismatch");
+  // 宣言の網が Hedera でない（Base が先頭の）出品には掛けない。
+  const base = await probeEndpoint({ ...target, network: "eip155:8453", priceAsset: "0.0.0" }, { fetchImpl: wall("5473255") });
+  assert.notEqual(base.priceConsistent, true);
+});
