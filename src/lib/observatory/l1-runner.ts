@@ -181,8 +181,10 @@ import {
 } from "./seller-retest";
 import {
   PINNED_PURCHASE_SELECTION,
+  dropLaneCandidatesShadowedByNetworkPins,
   fetchPinnedCandidateRows,
   loadActivePinnedPurchaseTargets,
+  pinnedLaneChainOf,
   pinnedPurchaseMetaOf,
   promotePinnedPurchaseCandidates,
   type PinnedPurchaseMeta,
@@ -2949,6 +2951,8 @@ export async function runL1Batch(
   if (!onlyEndpointId) {
     try {
       const pinTargets = await loadActivePinnedPurchaseTargets(db, now());
+      // network を書いた予約の窓のあいだ、同じホストのそのレーンの枠の候補は外す（予約が届いた後も・2026-11-27）。
+      candidates = dropLaneCandidatesShadowedByNetworkPins(candidates, now(), new Set(pinTargets.map((t) => t.endpointId)));
       if (pinTargets.length > 0) {
         summary.pinnedActive = pinTargets.length;
         // 主候補に無い予約は 1 件ずつ引く。件数と回数の上限・日ごとのずらしは fetchPinnedCandidateRows
@@ -2970,8 +2974,10 @@ export async function runL1Batch(
         });
         summary.pinnedFetchQueries = fetched.queries;
         for (const row of fetched.rows) candidates.push(rowToCandidate(row));
+        // network を書いた予約（Celo・2026-11-27）はそのレーンの候補として買う（下の laneChain）。
         candidates = promotePinnedPurchaseCandidates(candidates, pinTargets, (c, t) => ({
           ...c,
+          laneChain: pinnedLaneChainOf(t.entry) ?? c.laneChain,
           selection: PINNED_PURCHASE_SELECTION,
           pinnedPurchaseMeta: pinnedPurchaseMetaOf(t.entry),
         }));
