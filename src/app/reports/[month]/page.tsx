@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { getDb } from "@/lib/db/client";
 import {
   MONTHLY_FREEZE_STATUS_NOT_CLOSED,
@@ -42,11 +41,19 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
   }
 
   const db = getDb();
-  const state = !db
-    ? ({ status: "unavailable" as const, month: parsed.month } as const)
-    : await readMonthlyFreezePublic(db, parsed.month);
+  let state:
+    | { status: "unavailable"; month: string }
+    | Awaited<ReturnType<typeof readMonthlyFreezePublic>> = { status: "unavailable", month: parsed.month };
+  if (db) {
+    try {
+      state = await readMonthlyFreezePublic(db, parsed.month);
+    } catch {
+      state = { status: "unavailable", month: parsed.month };
+    }
+  }
 
   const jsonUrl = `${SITE_URL}/api/v1/reports/${parsed.month}`;
+  const csvUrl = `${SITE_URL}/api/v1/reports/${parsed.month}.csv`;
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
@@ -54,10 +61,12 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
         <h1 className="doc-title">Monthly ledger freeze: {parsed.month}</h1>
         <p className="doc-p">
           vet402 freezes one UTC month of purchase rows in the same column order as{" "}
-          <Link href="/api/v1/observatory/export.csv" className="underline">
+          <a href="/api/v1/observatory/export.csv" className="underline">
             /api/v1/observatory/export.csv
-          </Link>
-          . The content hash may be included in daily ledger roots from 2026-12-01 onward when a freeze exists.
+          </a>
+          . Rows in the hash use the same sort as that export: <code>attempted_at</code> as a second-precision ISO
+          string, then <code>purchase_id</code>. Ledger roots sealed on or after <code>frozen_at</code> append one{" "}
+          <code>monthly-freeze:v1:</code> line with <code>contentSha256</code>.
         </p>
 
         {state.status === "unavailable" ? (
@@ -93,6 +102,14 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
 
         <p className="doc-p">
           <a href={jsonUrl}>JSON summary</a>
+          {state.status === "frozen" ? (
+            <>
+              {" "}
+              · <a href={csvUrl}>frozen CSV body</a>
+            </>
+          ) : null}
+          {" "}
+          · <a href="/reports">Month index</a>
         </p>
       </article>
     </main>
