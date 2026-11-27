@@ -64,8 +64,10 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
           <a href="/api/v1/observatory/export.csv" className="underline">
             /api/v1/observatory/export.csv
           </a>
-          . Rows in the hash use the same sort as that export: <code>attempted_at</code> as a second-precision ISO
-          string, then <code>purchase_id</code>. Ledger roots sealed on or after <code>frozen_at</code> append one{" "}
+          . Rows in the hash use the same columns as that export. vet402 sorts them by <code>attempted_at</code> as a
+          second-precision ISO string, then <code>purchase_id</code>. That export orders by full <code>attempted_at</code>{" "}
+          (milliseconds) before <code>purchase_id</code>, so rows that share the same UTC second can appear in a different
+          order than in the frozen body. Daily roots for UTC days on or after the <code>frozen_at</code> date append one{" "}
           <code>monthly-freeze:v1:</code> line with <code>contentSha256</code>.
         </p>
 

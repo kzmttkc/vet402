@@ -866,7 +866,7 @@ api.example.com,521e929e-…,api.example.com/v1/x,delivered,,,,,2026-09-29T00:02
   {
     method: "GET",
     path: "/api/v1/reports/:month",
-    note: "Frozen UTC-month purchase ledger summary: row count, period, contentSha256, and frozen_at. The hash covers the stored CSV body (no header row) with the same columns and sort as the default export (attempted_at as second-precision ISO, then purchase_id). Key-less. 120 requests per minute per IP.",
+    note: "Frozen UTC-month purchase ledger summary: row count, period, contentSha256, and frozen_at. The hash covers the stored CSV body (no header row) with the same columns as the default export; rows are sorted by attempted_at as a second-precision ISO string, then purchase_id (the live export orders by full attempted_at first). Key-less. 120 requests per minute per IP.",
     response: `HTTP 200 when frozen. HTTP 400 invalid_month or month_not_closed. HTTP 404 not_frozen_yet. HTTP 503 unavailable.`,
   },
   {
