@@ -31,6 +31,7 @@ export type FaqItem = { question: string; answer: string; id?: string };
 const BAZAAR = listingSource("cdp_bazaar");
 const MPP = listingSource("mpp_directory");
 const CIRCLE = listingSource("circle_discovery");
+const BLOCKY402 = listingSource("blocky402_discovery");
 
 export const FAQS: FaqItem[] = [
   {
@@ -122,6 +123,7 @@ export const FAQS: FaqItem[] = [
       `So your route appears on vet402 after a sync that reads the page with your route. ` +
       `vet402 also reads the ${CIRCLE.name} (${CIRCLE.url}). The sync of that catalog starts at ${syncTimesText(CIRCLE.sync_times_utc)}. ` +
       `For Tempo, vet402 also reads the MPP directory (${MPP.url}), with a sync that starts at ${syncTimesText(MPP.sync_times_utc)}. ` +
+      `For Hedera, vet402 also reads the ${BLOCKY402.name} list (${BLOCKY402.url}), with a sync that starts at ${syncTimesText(BLOCKY402.sync_times_utc)}. ` +
       `There is no application to vet402 and no fee. ` +
       `The CDP Bazaar belongs to CDP. Whether a route enters the CDP Bazaar is decided by CDP's index, not by vet402. ` +
       `CDP's docs say a route is indexed after it declares the Bazaar extension, answers 402, and a payment for it settles through the CDP facilitator. ` +

@@ -33,10 +33,18 @@ export const PAYAI_DISCOVERY_PUBLIC_URL = "https://facilitator.payai.network/dis
 /** Rail402 discovery（Stellar・snapshot の件数写しだけ）。 */
 export const RAIL402_DISCOVERY_URL = "https://mainnet.rail402.dev/discovery/resources";
 
+/** Blocky402 discovery（Hedera の facilitator・2026-11-27）。x402_endpoints.source に入る値と URL。 */
+export const BLOCKY402_DISCOVERY_SOURCE = "blocky402_discovery";
+export const BLOCKY402_DISCOVERY_URL = "https://api.blocky402.com/discovery/resources";
+/** Blocky402 の試験網（hedera:testnet）。件数の写しだけ。 */
+export const BLOCKY402_TESTNET_DISCOVERY_SOURCE = "blocky402_testnet_discovery";
+export const BLOCKY402_TESTNET_DISCOVERY_URL = "https://api.testnet.blocky402.com/discovery/resources";
+
 /** 件数の写しだけ。x402_endpoints には入れない・L0/L1 の対象ではない。 */
 export const SNAPSHOT_ONLY_SOURCES = [
   { source: "payai_discovery", name: "PayAI facilitator discovery", url: PAYAI_DISCOVERY_PUBLIC_URL },
   { source: "rail402_discovery", name: "Rail402 discovery (Stellar)", url: RAIL402_DISCOVERY_URL },
+  { source: BLOCKY402_TESTNET_DISCOVERY_SOURCE, name: "Blocky402 discovery (Hedera testnet)", url: BLOCKY402_TESTNET_DISCOVERY_URL },
 ] as const;
 
 export const CATALOG_SOURCES_NOT_READ = [
@@ -86,6 +94,14 @@ export const LISTING_SOURCES: readonly ListingSource[] = [
     // 新しい cron は足さない。既存の aux（01:30 UTC）の中で MPP の後に取る。
     sync_times_utc: ["01:30"],
   },
+  {
+    source: BLOCKY402_DISCOVERY_SOURCE,
+    name: "Blocky402 discovery (Hedera)",
+    url: BLOCKY402_DISCOVERY_URL,
+    protocol: "x402",
+    // 新しい cron は足さない。既存の aux（01:30 UTC）の中で Circle の後に取る（2026-11-27）。
+    sync_times_utc: ["01:30"],
+  },
 ];
 
 /** 取り込みの cron の経路。テストが vercel.json と突き合わせる。 */
@@ -93,6 +109,7 @@ export const LISTING_SYNC_CRON_PATHS: Record<string, string> = {
   cdp_bazaar: "/api/cron/catalog-sync",
   mpp_directory: "/api/cron/catalog-sync-aux",
   circle_discovery: "/api/cron/catalog-sync-aux",
+  blocky402_discovery: "/api/cron/catalog-sync-aux",
 };
 
 /** /faq の節の id。resolver の documentation はここを指す。 */

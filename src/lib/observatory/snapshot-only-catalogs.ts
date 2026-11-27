@@ -35,7 +35,12 @@ export type SnapshotOnlyDeps = {
   today?: string;
 };
 
-export async function syncRail402Discovery(deps: SnapshotOnlyDeps = {}): Promise<{
+/** 件数の写しを 1 つの出どころについて取る（Rail402・Blocky402 の試験網）。取れなければ失敗の写しを残す。 */
+export async function syncSnapshotOnlyCatalog(
+  source: string,
+  baseUrl: string,
+  deps: SnapshotOnlyDeps = {},
+): Promise<{
   source: string;
   totalCount: number;
   fetchedCount: number;
@@ -48,16 +53,20 @@ export async function syncRail402Discovery(deps: SnapshotOnlyDeps = {}): Promise
   const record = deps.record ?? recordSnapshotOnlyCatalog;
   let result: CatalogFetchResult | null = null;
   try {
-    result = await fetchCatalog({ baseUrl: RAIL402_DISCOVERY_URL, pageLimit: 100, deadlineMs: 20_000 });
+    result = await fetchCatalog({ baseUrl, pageLimit: 100, deadlineMs: 20_000 });
   } catch {
     result = null;
   }
-  await record(db, "rail402_discovery", result, today);
-  if (!result) return { source: "rail402_discovery", totalCount: 0, fetchedCount: 0, complete: false };
+  await record(db, source, result, today);
+  if (!result) return { source, totalCount: 0, fetchedCount: 0, complete: false };
   return {
-    source: "rail402_discovery",
+    source,
     totalCount: result.totalCount,
     fetchedCount: result.fetchedCount,
     complete: result.complete,
   };
+}
+
+export async function syncRail402Discovery(deps: SnapshotOnlyDeps = {}) {
+  return syncSnapshotOnlyCatalog("rail402_discovery", RAIL402_DISCOVERY_URL, deps);
 }

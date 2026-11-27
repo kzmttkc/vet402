@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
+import { syncBlocky402Discovery, syncBlocky402TestnetDiscovery } from "@/lib/observatory/blocky402-discovery";
 import { syncCircleDiscovery } from "@/lib/observatory/circle-discovery";
 import { syncMppDirectory } from "@/lib/observatory/mpp-directory";
 import { syncOperatorListings } from "@/lib/observatory/operator-sync";
@@ -16,6 +17,8 @@ import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-no
 // blocks the others. Circle's own fetch deadline is 60s, inside this function's 300s.
 // The operator list (source = operator, src/lib/observatory/operator-listings.ts) runs after Circle
 // (2026-11-22): sellers vet402 adds itself. No fetch, the list is in the repo.
+// Blocky402's Hedera discovery (source = blocky402_discovery) runs after Circle (2026-11-27); its testnet
+// list is kept as a count snapshot only (source = blocky402_testnet_discovery), not as listings.
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
@@ -46,6 +49,21 @@ export async function GET(request: NextRequest) {
     logServerErrorSafe("cron.catalog-sync-aux.circle-discovery", error);
     circleDiscovery = { error: "circle_discovery_failed" };
   }
+  let blocky402Discovery: unknown = null;
+  try {
+    const b = await syncBlocky402Discovery();
+    blocky402Discovery = { totalCount: b.totalCount, fetchedCount: b.fetchedCount, complete: b.complete, upserted: b.upserted, skipped: b.skipped, delisted: b.events.filter((e) => e.eventType === "delisted").length };
+  } catch (error) {
+    logServerErrorSafe("cron.catalog-sync-aux.blocky402-discovery", error);
+    blocky402Discovery = { error: "blocky402_discovery_failed" };
+  }
+  let blocky402TestnetDiscovery: unknown = null;
+  try {
+    blocky402TestnetDiscovery = await syncBlocky402TestnetDiscovery();
+  } catch (error) {
+    logServerErrorSafe("cron.catalog-sync-aux.blocky402-testnet-discovery", error);
+    blocky402TestnetDiscovery = { error: "blocky402_testnet_discovery_failed" };
+  }
   let operatorListings: unknown = null;
   try {
     const o = await syncOperatorListings();
@@ -69,7 +87,7 @@ export async function GET(request: NextRequest) {
     logServerErrorSafe("cron.catalog-sync-aux.rail402-discovery", error);
     rail402Discovery = { error: "rail402_discovery_failed" };
   }
-  return NextResponse.json({ ok: true, discoveryPayees, mppDirectory, circleDiscovery, operatorListings, paySkillsListings, rail402Discovery });
+  return NextResponse.json({ ok: true, discoveryPayees, mppDirectory, circleDiscovery, blocky402Discovery, blocky402TestnetDiscovery, operatorListings, paySkillsListings, rail402Discovery });
 }
 const __disallowed = exportDisallowedMethodHandlers(["GET"]);
 export const { POST, PUT, PATCH, DELETE, OPTIONS } = __disallowed;
