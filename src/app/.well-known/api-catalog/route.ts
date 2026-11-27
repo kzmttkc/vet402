@@ -9,6 +9,16 @@ export const dynamic = "force-static";
 export function GET() {
   const body = {
     linkset: [
+      // RFC 9727 section 4.1: the catalog itself lists each API with the "item" relation.
+      {
+        anchor: `${SITE_URL}/.well-known/api-catalog`,
+        item: [
+          { href: `${SITE_URL}/api/v1` },
+          { href: `${SITE_URL}/api/v1/check` },
+          { href: `${SITE_URL}/api/v1/observatory/state` },
+          { href: `${SITE_URL}/mcp` },
+        ],
+      },
       {
         anchor: `${SITE_URL}/api/v1`,
         "service-desc": [

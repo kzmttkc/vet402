@@ -326,7 +326,9 @@ test("CC BY 4.0 の範囲は l0 export と sellers export と /impact の数字�
   const licence = read("public/llms-full-prose.txt").match(/That licence covers [^.]+/)?.[0] ?? "";
   assert.equal(licence.includes("/api/v1/accuracy"), false);
   assert.equal(licence.includes("census"), false);
-  assert.equal(read("public/llms-full-prose.txt").includes("Three endpoints"), false);
+  for (const f of ["public/llms.txt", "public/llms-full-prose.txt"]) {
+    assert.equal(read(f).includes("Three endpoints"), false, f);
+  }
 });
 
 test("observatory の説明は L0 の生存確認に agent payments の文を足さない", () => {

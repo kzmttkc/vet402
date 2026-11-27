@@ -41,6 +41,7 @@ test("手で書いた古い規則の文が面に残っていない（旧版の�
   const surfaces = [
     "src/app/docs/api/page.tsx",
     "src/app/llms-full.txt/route.ts",
+    "public/llms.txt",
     "public/llms-full-prose.txt",
     "docs/openapi.yaml",
     "packages/mcp-server/src/index.ts",

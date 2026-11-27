@@ -164,7 +164,7 @@ test("settlement_source: tx を名指したのが売り手か vet402 の索引�
 test("列の説明: 足した列は openapi・methodology・llms.txt のどれにも名前で出る", () => {
   const surfaces = [
     "docs/openapi.yaml",
-    "public/llms.txt",
+    "public/llms-full-prose.txt",
     "src/app/observatory/methodology/page.tsx",
   ];
   for (const file of surfaces) {
@@ -410,7 +410,7 @@ test("confirmed_units: settled の行だけが spent_units を持ち、他は 0"
   assert.ok(route.includes('confirmedUnitsSql("pu"))}) AS confirmed_units'), "route は同じ式から列を出す");
   assert.ok(route.includes('"x-vet402-column-notes": EXPORT_CSV_COLUMN_NOTES'), "列の注記をヘッダで運ぶ");
   assert.ok(/^[\x20-\x7e]+$/.test(EXPORT_CSV_COLUMN_NOTES), "ヘッダ値は ASCII のみ");
-  for (const file of ["docs/openapi.yaml", "public/llms.txt", "src/app/observatory/methodology/page.tsx"]) {
+  for (const file of ["docs/openapi.yaml", "public/llms-full-prose.txt", "src/app/observatory/methodology/page.tsx"]) {
     const text = read(file).replace(/\s+/g, " ");
     assert.ok(text.includes("spent_units"), `${file} が spent_units を説明していない`);
     assert.match(

@@ -573,10 +573,10 @@ test("diagnose source does not call payment or signing functions", () => {
   const route = readFileSync("src/app/api/v1/diagnose/route.ts", "utf8");
   assert.ok(route.includes("publicRateLimit"));
   assert.ok(route.includes("diagnose"));
-  assert.ok(readFileSync("public/llms.txt", "utf8").includes("/api/v1/diagnose"));
+  assert.ok((readFileSync("public/llms-full-prose.txt", "utf8") + "\n" + readFileSync("public/llms.txt", "utf8")).includes("/api/v1/diagnose"));
   assert.ok(apiDocsPageText().includes("/api/v1/diagnose"));
   assert.ok(readFileSync("docs/openapi.yaml", "utf8").includes("/api/v1/diagnose"));
-  const llms = readFileSync("public/llms.txt", "utf8");
+  const llms = (readFileSync("public/llms-full-prose.txt", "utf8") + "\n" + readFileSync("public/llms.txt", "utf8"));
   const line = llms.split("\n").find((row) => row.includes("/api/v1/diagnose"));
   assert.ok(line);
   assert.deepEqual(publicEnglishFaults(line!), []);

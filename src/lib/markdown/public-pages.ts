@@ -290,6 +290,8 @@ export function renderMethodologyMarkdown(): string {
     "",
     METHODOLOGY_BLURB,
     "",
+    `This Markdown is a summary of ${SITE_URL}/observatory/methodology: the section headings, the 60-second summary and the one-line definitions of section 10. The full text of sections 0 to 9 is on the HTML page.`,
+    "",
     METHODOLOGY_IN_60,
     "",
     `Chain guides: ${SITE_URL}/x402/chains`,
@@ -307,7 +309,7 @@ export function renderMethodologyMarkdown(): string {
         lines.push("");
       }
     } else {
-      lines.push(`Full prose for this section: ${SITE_URL}/observatory/methodology`);
+      lines.push(`Full text: ${SITE_URL}/observatory/methodology`);
     }
   }
   lines.push("", `Canonical HTML: ${SITE_URL}/observatory/methodology`);

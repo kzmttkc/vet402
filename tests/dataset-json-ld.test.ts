@@ -59,7 +59,7 @@ test("llms.txt の Cite as は型で、時刻を渡した creditText はその�
   const template = citeAs("observatory", `${SITE_URL}/api/v1/observatory/state`);
   assert.equal(sample.creditText, template);
   assert.ok(template.includes("retrieved YYYY-MM-DD"), "型は取得日の位置を YYYY-MM-DD で示す");
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   assert.ok(
     llms.includes(`Cite as: ${template}`),
     `llms.txt の定型が citeAs の省略形と違う。期待: ${template}`,
@@ -99,7 +99,7 @@ test("Dataset を出す頁は共通ビルダを通る（手書きの Dataset を
 });
 
 test("構造化データに書く配布 URL は llms.txt が公開だと宣言した面だけ", () => {
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   const declared = [
     "/api/v1/observatory/state",
     "/api/v1/observatory/history",

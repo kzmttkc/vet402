@@ -56,7 +56,7 @@ test("A-06 keeps the decision enum and states when conform, mismatch, not_checke
   assert.match(home, /output: "match \/ mismatch \/ no_declaration \/ not_checked"/);
   assert.match(flat(home), L2_MAP);
   assert.equal(home.includes("undeclared is no_declaration"), false);
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   const full = read("src/app/llms-full.txt/route.ts");
   const llmsMap =
     /in the other cases the decision word is not_checked when the current declaration names output \(a required key or an example property\) or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds/;

@@ -61,7 +61,7 @@ test("export の 1 行の説明: 依頼の記録を含むと面で同じに言�
   for (const [p, body] of [
     ["src/lib/sellers/export.ts", read("src/lib/sellers/export.ts")],
     ["src/app/docs/api", apiDocsPageText()],
-    ["public/llms.txt", read("public/llms.txt")],
+    ["public/llms.txt", (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"))],
   ] as const) {
     assert.match(body, /records opened for a seller's re-test request included/, p);
   }

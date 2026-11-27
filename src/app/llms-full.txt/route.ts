@@ -20,12 +20,9 @@ export const dynamic = "force-static";
  * llmstxt.org optional companion: the full citable text, generated from the
  * same modules the HTML pages render so a second copy cannot drift.
  */
+// No fallback: a missing file must fail the build, not ship llms-full.txt without the rules text.
 function llmsFullProse(): string {
-  try {
-    return readFileSync(join(process.cwd(), "public/llms-full-prose.txt"), "utf8").trimEnd();
-  } catch {
-    return "";
-  }
+  return readFileSync(join(process.cwd(), "public/llms-full-prose.txt"), "utf8").trimEnd();
 }
 
 export function GET() {
@@ -113,7 +110,9 @@ ${CREDENTIALS.builder.builderName} builds vet402 alone. The site is published by
 
 ${credentialLines().join("\n")}
 
-${prose ? `\n${prose}\n` : ""}
+
+${prose}
+
 
 ## Freshness
 

@@ -276,7 +276,7 @@ test("CSV のセル: カンマ・引用符・改行を引用する", () => {
 test("面: 新しい export と訂正ログの頁送りが openapi・llms.txt・docs/api・llms-full に出ている", () => {
   const surfaces: [string, string][] = [
     ["docs/openapi.yaml", read("docs/openapi.yaml")],
-    ["public/llms.txt", read("public/llms.txt")],
+    ["public/llms.txt", (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"))],
     ["src/app/docs/api", apiDocsPageText()],
     ["src/app/llms-full.txt/route.ts", read("src/app/llms-full.txt/route.ts")],
   ];
@@ -287,13 +287,13 @@ test("面: 新しい export と訂正ログの頁送りが openapi・llms.txt・
   }
   for (const [f, body] of [
     ["docs/openapi.yaml", read("docs/openapi.yaml")],
-    ["public/llms.txt", read("public/llms.txt")],
+    ["public/llms.txt", (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"))],
     ["src/app/docs/api", apiDocsPageText()],
   ] as const) {
     assert.ok(body.includes("seller_named_tx_promoted"), `${f} に seller_named_tx_promoted が無い`);
   }
   // llms.txt は「通常 1 日以内に settled」と言い切らない（照合待ちが 17 日の行があった）
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   assert.doesNotMatch(llms, /normally promoted from `settle_claimed` to `settled` within a day/);
   assert.ok(llms.includes("l1.awaitingRereadOlderThan7d"));
   // /corrections は見出しの数の定義と、全件へ遡る道を書く

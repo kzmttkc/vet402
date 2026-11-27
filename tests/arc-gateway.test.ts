@@ -563,7 +563,7 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   once("src/lib/observatory/reader.ts", "settlementSourceOf({ txHash: rest.txHash, lateSettlement, circleGateway })");
   const sqlText = settlementSourceSql("pu");
   assert.ok(sqlText.indexOf("'circle_gateway'") < sqlText.indexOf("tx_hash IS NULL"));
-  assert.ok(read("public/llms.txt").includes("`circle_gateway` (a Circle Gateway batch transaction kept beside the row)"));
+  assert.ok((read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt")).includes("`circle_gateway` (a Circle Gateway batch transaction kept beside the row)"));
   assert.ok(read("docs/openapi.yaml").includes("circle_gateway"));
   assert.ok(!read("src/components/site/supported-chains-data.ts").includes('chain: "Circle Gateway"'));
   const env = read(".env.example");
@@ -578,7 +578,7 @@ test("関門の文は 1 箇所だけ（変異が文字列を消したら落ち�
   assert.ok(block.includes("pending row does not expire"));
   assert.equal(block.includes("getBalances"), false);
   const absent = "This value is absent while the Arc Gateway lane flag is off.";
-  assert.ok(read("public/llms.txt").includes(absent));
+  assert.ok((read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt")).includes(absent));
   assert.ok(read("docs/openapi.yaml").includes(absent));
   assert.equal(read("src/lib/observatory/l1-runner.ts").includes("gateway_not_charged_expired"), false);
   assert.equal(read("src/lib/observatory/decisions.ts").includes("gateway_not_charged_expired"), false);

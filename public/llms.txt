@@ -49,18 +49,18 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 ## Machine-readable pages
 
-Markdown mirrors of key pages (same facts as the HTML, retrieved from the same modules):
+Markdown versions of key pages, built from the same modules as the HTML. methodology.md is a summary: the section headings, the 60-second summary and the one-line definitions. The full text of each section is on the HTML page.
 
-- https://vet402.com/x402/check-a-seller.md — how to check a seller before paying
-- https://vet402.com/observatory/methodology.md — L0, L1 and L2 definitions
-- https://vet402.com/x402/glossary.md — x402 and ERC-8004 terms
-- https://vet402.com/integrity.md — integrity terms and failure attribution
-- https://vet402.com/x402/statistics.md — paid purchase counts from the observatory state
-- https://vet402.com/erc-8004.md — ERC-8004 and payTo match counts
+- https://vet402.com/x402/check-a-seller.md: how to check a seller before paying
+- https://vet402.com/observatory/methodology.md: L0, L1 and L2 definitions
+- https://vet402.com/x402/glossary.md: x402 and ERC-8004 terms
+- https://vet402.com/integrity.md: integrity terms and failure attribution
+- https://vet402.com/x402/statistics.md: paid purchase counts from the observatory state
+- https://vet402.com/erc-8004.md: ERC-8004 and payTo match counts
 
 ## API discovery
 
-- https://vet402.com/.well-known/api-catalog — RFC 9727 linkset for public API endpoints and OpenAPI
+- https://vet402.com/.well-known/api-catalog: RFC 9727 linkset for public API endpoints and OpenAPI
 - OpenAPI 3.1: https://vet402.com/openapi.yaml and https://vet402.com/openapi.json
 
 

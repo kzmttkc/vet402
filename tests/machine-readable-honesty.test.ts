@@ -115,8 +115,8 @@ test("the caveats describe the live benchmark shape, whatever it is", () => {
 });
 
 test("llms.txt does not tell a machine the JSON is enough unless it is", () => {
-  const llms = read("public/llms.txt") + read("public/llms-full-prose.txt");
-  const line = llms.split("\n").find((l) => l.includes("GET /api/v1/accuracy") && l.includes("interpretation"));
+  const llms = read("public/llms-full-prose.txt");
+  const line = llms.split("\n").find((l) => l.startsWith("- `GET /api/v1/accuracy`"));
   assert.ok(line, "llms.txt must still list the accuracy endpoint");
   assert.match(
     line,

@@ -536,7 +536,7 @@ test("verified_payment_unlinked_client — Stellar tx と EVM client（払い手
 });
 
 test("llms.txt・docs・openapi に erc8004/check がある", () => {
-  const llms = readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8");
+  const llms = (readFileSync(new URL("../public/llms-full-prose.txt", import.meta.url), "utf8") + "\n" + readFileSync(new URL("../public/llms.txt", import.meta.url), "utf8"));
   assert.ok(llms.includes("GET /api/v1/erc8004/check"));
   const docs = apiDocsPageText();
   assert.ok(docs.includes('path: "/api/v1/erc8004/check"'));

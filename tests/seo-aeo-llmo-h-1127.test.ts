@@ -62,7 +62,11 @@ test("api-catalog returns valid RFC 9727 linkset JSON", async () => {
   assert.ok(api?.["service-desc"]?.some((l: { href: string }) => l.href.endsWith("/openapi.json")));
   assert.ok(body.linkset.some((e: { anchor: string }) => e.anchor.endsWith("/api/v1/check")));
   assert.ok(body.linkset.some((e: { anchor: string }) => e.anchor.endsWith("/api/v1/observatory/state")));
-  assert.match(res.headers.get("content-type") ?? "", /linkset\+json/);
+  assert.match(res.headers.get("content-type") ?? "", /^application\/linkset\+json; profile="https:\/\/www\.rfc-editor\.org\/info\/rfc9727"$/);
+  // RFC 9727 section 4.1: the catalog anchor lists every described API as an "item".
+  const self = body.linkset.find((e: { anchor: string }) => e.anchor.endsWith("/.well-known/api-catalog"));
+  const items = new Set((self?.item ?? []).map((l: { href: string }) => l.href));
+  for (const e of body.linkset) if (e !== self) assert.ok(items.has(e.anchor), `item missing for ${e.anchor}`);
 });
 
 const MD_ROUTES: { path: string; get: () => Response | Promise<Response> }[] = [
@@ -117,4 +121,44 @@ test("methodology .md lists the same main h2 titles as the page outline", async 
     md.h2,
     METHODOLOGY_H2.map((t) => t),
   );
+});
+// 2026-11-27 review: the .md copies share strings with the pages, but some pages still write
+// their prose inline. These checks read the page source so a page edit that leaves the .md
+// behind turns red, instead of comparing the .md with its own constants.
+function pageText(src: string): string {
+  return src
+    .replace(/\{"\{resourceId\}"\}/g, "{resourceId}")
+    .replace(/\{" "\}/g, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&apos;/g, "'")
+    .replace(/\s+/g, " ")
+    .replace(/ ([.,])/g, "$1");
+}
+
+test("methodology page h2 titles and 60-second summary match the shared copy the .md uses", async () => {
+  const src = read("src/app/observatory/methodology/page.tsx");
+  const h2 = [...src.matchAll(/<h2 className="sec-head"[^>]*>\s*<span className="sec-no">[^<]*<\/span>\s*<span>([^<]+)<\/span>/g)].map(
+    (m) => m[1]!.trim(),
+  );
+  assert.deepEqual(h2, [...METHODOLOGY_H2]);
+  const { METHODOLOGY_IN_60 } = await import("@/lib/observatory/methodology-copy");
+  assert.ok(pageText(src).includes(METHODOLOGY_IN_60.replace(/\.$/, "")), "In 60 seconds drifted from METHODOLOGY_IN_60");
+  const md = await (await getMethodologyMd()).text();
+  assert.match(md, /This Markdown is a summary/, "methodology.md must say it is a summary");
+});
+
+test("check-a-seller .md bodies say what the page says", async () => {
+  const { KEYLESS_READ_STOP, keylessDecisionPerMinute } = await import("@/lib/api/keyless-limits");
+  const page = pageText(read("src/app/x402/check-a-seller/page.tsx"));
+  for (const [key, section] of Object.entries(CHECK_SELLER_SECTIONS)) {
+    const body = section.body
+      .replace(KEYLESS_READ_STOP, "{KEYLESS_READ_STOP}")
+      .replace(`at ${keylessDecisionPerMinute()} requests`, "at {keylessDecisionPerMinute()} requests");
+    for (const sentence of body.split(/(?<=\.)\s+/)) {
+      // Interpolated values and link text differ in form between JSX and Markdown; the rest must match.
+      if (/https?:\/\/|Shapes are in|^Start from|as the FAQ states|^Do not proceed/.test(sentence)) continue;
+      if (sentence.length < 20) continue;
+      assert.ok(page.includes(sentence), `${key}: page lacks "${sentence}"`);
+    }
+  }
 });
