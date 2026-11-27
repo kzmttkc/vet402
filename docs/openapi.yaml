@@ -2152,7 +2152,7 @@ paths:
         same RateLimit-* headers. `Cache-Control: private, no-store`. The body is limited to 64 KB and 32 accepts.
         `Server-Timing: presign;dur=<ms>` is the time from the start of the route handler to the response
         (rate limit and lookup included, network and platform routing not included).
-        vet402 publishes the p50 and p99 of that value measured by its own probe, with the run time, at https://vet402.com/data/presign-latency.json (null before the first published run).
+        vet402 publishes the cold-start time, and the p50 and p99 of the remaining probe calls, measured by its own probe with the run time, at https://vet402.com/data/presign-latency.json (null before the first published run).
         vet402 does not store the 402 body or the URL. It adds 1 to a daily count per client name (route `rest:presign`).
       security: []
       parameters: []

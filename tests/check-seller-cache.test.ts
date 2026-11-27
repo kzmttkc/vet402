@@ -8,15 +8,19 @@ import { NextRequest } from "next/server";
 import { privateKeyToAccount } from "viem/accounts";
 import { handleCheck } from "@/lib/api/check-handler";
 import {
+  __resetCheckSellerLatencyHelpersForTests,
   __setCheckSellerCacheForTests,
   CHECK_SELLER_CACHE_SECONDS,
+  CHECK_SELLER_PREFETCH_LEAD_SECONDS,
   checkSellerCacheKey,
   checkSellerCacheKeyParts,
   checkSellerFreezeForCache,
   isCheckSellerCachedReadFresh,
   makeGetCheckSellerCached,
+  prefetchedByStoreKeyForTests,
   type CheckSellerCachedPayload,
 } from "@/lib/api/check-seller-cache";
+import { setAfterResponseSchedulerForTest } from "@/lib/util/after-response";
 import { RESOLVE_KEYLESS_LIMIT } from "@/lib/api/keyless-limits";
 import { setMcpDepsForTest } from "@/lib/mcp/deps";
 import type { McpDeps } from "@/lib/mcp/tools";
@@ -143,6 +147,8 @@ const savedProxyHeaderSource = process.env.PROXY_HEADER_SOURCE;
 
 afterEach(() => {
   __setCheckSellerCacheForTests(null);
+  __resetCheckSellerLatencyHelpersForTests();
+  setAfterResponseSchedulerForTest(null);
   setMcpDepsForTest(null);
   delete process.env[SIGNER_ENV];
   if (savedProxyHeaderSource === undefined) delete process.env.PROXY_HEADER_SOURCE;
@@ -625,4 +631,180 @@ test("isCheckSellerCachedReadFresh respects CHECK_SELLER_CACHE_SECONDS", () => {
   const now = Date.parse("2026-11-18T10:01:00.000Z");
   assert.equal(isCheckSellerCachedReadFresh("2026-11-18T10:00:00.000Z", now), true);
   assert.equal(isCheckSellerCachedReadFresh("2026-11-18T09:59:00.000Z", now), false);
+});
+
+test("stale cacheReadAt uses a prefetched read when it is still fresh", async (t) => {
+  const tasks: (() => Promise<void>)[] = [];
+  setAfterResponseSchedulerForTest((task) => {
+    tasks.push(task);
+  });
+  const store = new Map<string, { value: CheckSellerCachedPayload; expiresAt: number }>();
+  const storing = ((fn: () => Promise<unknown>, keys: string[]) => {
+    return async () => {
+      const k = keys.join("|");
+      const hit = store.get(k);
+      const now = Date.now();
+      if (hit && hit.expiresAt > now) return hit.value;
+      if (hit) store.delete(k);
+      const value = (await fn()) as CheckSellerCachedPayload;
+      store.set(k, { value, expiresAt: now + CHECK_SELLER_CACHE_SECONDS * 1000 });
+      return value;
+    };
+  }) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  __setCheckSellerCacheForTests(storing);
+
+  const asOfFirst = "2026-11-18T10:00:00.000Z";
+  const deps = depsWithDecision(false, asOfFirst);
+  const read = makeGetCheckSellerCached(storing);
+
+  const at48s = Date.parse(asOfFirst) + (CHECK_SELLER_CACHE_SECONDS - CHECK_SELLER_PREFETCH_LEAD_SECONDS) * 1000;
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(asOfFirst) });
+  await read(deps, { url: URL_A });
+  assert.equal(deps.counts.resolve, 1);
+  t.mock.timers.setTime(at48s);
+  await read(deps, { url: URL_A });
+  for (const task of tasks) await task();
+  assert.equal(deps.counts.resolve, 2, "prefetch started a background read while the cached verdict stayed fresh");
+  assert.equal(tasks.length, 1, "one after-response prefetch task");
+});
+
+test("prefetched payload is used when unstable_cache cacheReadAt is stale", async (t) => {
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const storeK = checkSellerCacheKey(URL_A)!;
+  const prefetchedAt = "2026-11-18T10:00:48.000Z";
+  __resetCheckSellerLatencyHelpersForTests();
+  prefetchedByStoreKeyForTests(storeK, {
+    out: checkSellerFreezeForCache({
+      evidence_age: null,
+      canonical_url: URL_A,
+      method: "GET",
+      not_in_catalog: false,
+      recommendation: "ALLOW",
+      reason_codes: [],
+      reasons: [],
+      delivery: null,
+      l0_status: null,
+      verified_terms: null,
+      verified_pay_to_by_network: [],
+      spending_halted: false,
+      refunds: null,
+      freshness: null,
+      l1_purchases: [],
+      same_host_listings: [],
+      listing_sources: [],
+      note: null,
+      record_url: null,
+      diagnose_url: null,
+      method_url: "https://vet402.com/docs/methodology",
+      as_of: asOf,
+      truncated: false,
+      next_action: verdictNextStep("ALLOW"),
+      rules_version: DECISION_RULES_VERSION,
+    }),
+    cacheReadAt: prefetchedAt,
+  });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-18T10:00:55.000Z") });
+  const staleOnly = (() => async () => ({
+    out: checkSellerFreezeForCache({
+      evidence_age: null,
+      canonical_url: URL_A,
+      method: "GET",
+      not_in_catalog: false,
+      recommendation: "ALLOW",
+      reason_codes: [],
+      reasons: [],
+      delivery: null,
+      l0_status: null,
+      verified_terms: null,
+      verified_pay_to_by_network: [],
+      spending_halted: false,
+      refunds: null,
+      freshness: null,
+      l1_purchases: [],
+      same_host_listings: [],
+      listing_sources: [],
+      note: null,
+      record_url: null,
+      diagnose_url: null,
+      method_url: "https://vet402.com/docs/methodology",
+      as_of: "2026-11-18T09:00:00.000Z",
+      truncated: false,
+      next_action: verdictNextStep("ALLOW"),
+      rules_version: DECISION_RULES_VERSION,
+    }),
+    cacheReadAt: "2026-11-18T09:58:00.000Z",
+  })) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  __setCheckSellerCacheForTests(staleOnly);
+  const deps = countingDeps(asOf);
+  const body = await makeGetCheckSellerCached(staleOnly)(deps, { url: URL_A });
+  assert.equal(body.as_of, asOf);
+  assert.equal(deps.counts.resolve, 0, "prefetch slot served the stale-cache miss");
+});
+
+test("stale refresh coalesces in-flight reads per cache key", () => {
+  const src = readFileSync("src/lib/api/check-seller-cache.ts", "utf8");
+  assert.match(src, /freshInflight/, "foreground stale reads share one in-flight checkSeller per URL/method");
+});
+function staleCacheFor(asOfStale: string) {
+  return ((fn: () => Promise<unknown>) => async () => {
+    const live = (await fn()) as CheckSellerCachedPayload;
+    return { ...live, out: { ...live.out, as_of: asOfStale }, cacheReadAt: "2026-11-18T09:58:00.000Z" };
+  }) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+}
+
+test("an expired prefetched read is not returned; the call reads again", async (t) => {
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const storeK = checkSellerCacheKey(URL_A)!;
+  const old = await makeGetCheckSellerCached(((fn: () => Promise<unknown>) => fn) as never)(countingDeps("2026-11-18T09:00:00.000Z"), { url: URL_A });
+  prefetchedByStoreKeyForTests(storeK, { out: old, cacheReadAt: "2026-11-18T09:59:00.000Z" });
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-18T10:00:30.000Z") });
+  const cache = staleCacheFor("2026-11-18T09:00:00.000Z");
+  __setCheckSellerCacheForTests(cache);
+  const deps = countingDeps(asOf);
+  const body = await makeGetCheckSellerCached(cache)(deps, { url: URL_A });
+  assert.equal(body.as_of, asOf, "the expired prefetched verdict is not served");
+});
+
+test("a failed prefetch leaves nothing behind for the next caller", async (t) => {
+  const tasks: (() => Promise<void>)[] = [];
+  setAfterResponseSchedulerForTest((task) => {
+    tasks.push(task);
+  });
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const cache = storingCache();
+  __setCheckSellerCacheForTests(cache);
+  const read = makeGetCheckSellerCached(cache);
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(asOf) });
+  const deps = countingDeps(asOf);
+  await read(deps, { url: URL_A });
+  let failing = true;
+  const flaky = {
+    ...deps,
+    resolve: (async (...args: unknown[]) => {
+      if (failing) throw new Error("db down");
+      return (deps.resolve as (...a: unknown[]) => unknown)(...args);
+    }) as typeof deps.resolve,
+  };
+  t.mock.timers.setTime(Date.parse(asOf) + (CHECK_SELLER_CACHE_SECONDS - CHECK_SELLER_PREFETCH_LEAD_SECONDS + 1) * 1000);
+  await read(flaky, { url: URL_A });
+  for (const task of tasks) await task();
+  failing = false;
+  t.mock.timers.setTime(Date.parse(asOf) + (CHECK_SELLER_CACHE_SECONDS + 5) * 1000);
+  const before = deps.counts.resolve;
+  await read(deps, { url: URL_A });
+  assert.ok(deps.counts.resolve > before, "after expiry the caller reads again instead of a stored value");
+});
+
+test("concurrent stale reads of one key share one checkSeller call", async () => {
+  const asOf = "2026-11-18T10:00:00.000Z";
+  const cache = (() => async () => ({ out: {} as never, cacheReadAt: "2026-11-18T09:00:00.000Z" })) as unknown as Parameters<
+    typeof makeGetCheckSellerCached
+  >[0];
+  __setCheckSellerCacheForTests(cache);
+  const deps = countingDeps(asOf);
+  const read = makeGetCheckSellerCached(cache);
+  const [a, b] = await Promise.all([read(deps, { url: URL_A }), read(deps, { url: URL_A })]);
+  assert.equal(deps.counts.resolve, 1);
+  assert.equal(a.as_of, asOf);
+  assert.equal(b.as_of, asOf);
 });
