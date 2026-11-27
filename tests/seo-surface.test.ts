@@ -45,6 +45,7 @@ test("every public indexable route is in the sitemap", async () => {
     "/x402/check-a-seller",
     "/x402/report/2026-11",
     "/x402/chains",
+    "/x402/statistics",
     "/x402/chains/base",
     "/x402/chains/solana",
     "/x402/chains/tempo",
