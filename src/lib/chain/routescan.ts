@@ -47,14 +47,9 @@ function budgetSignal(budgetMs?: number): AbortSignal | undefined {
   return AbortSignal.timeout(Math.max(1, budgetMs));
 }
 
+/** Etherscan 互換の空応答だけを空として扱う。ほかの status "0"（窓が大きすぎる・レート制限など）は読めなかった。 */
 function isEmptyResultMessage(message: string): boolean {
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("no transactions") ||
-    lower.includes("no records") ||
-    lower.includes("no token") ||
-    lower.includes("not found")
-  );
+  return message.trim().toLowerCase() === "no transactions found";
 }
 
 function looksLikeHtml(text: string): boolean {
@@ -174,11 +169,14 @@ export async function fetchRoutescanPayerTokenTxPage(
     const from = item.from ?? "";
     const to = item.to ?? "";
     const value = item.value ?? "";
-    if (!hash || !from || !to || value === "") continue;
+    // 窓の中の行を黙って捨てない: 欠けた行が1つでもあれば読めなかった扱い。
+    if (!hash || !from || !to || !/^\d+$/.test(value) || !/^\d+$/.test(String(item.blockNumber ?? ""))) {
+      throw new RoutescanUnavailableError("routescan_bad_row");
+    }
 
     rows.push({
       hash,
-      blockNumber: String(item.blockNumber ?? 0),
+      blockNumber: String(item.blockNumber),
       timeStamp: String(sec),
       from,
       to,

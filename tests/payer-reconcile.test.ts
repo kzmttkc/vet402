@@ -1904,3 +1904,79 @@ test("Robinhood payer reader (production config): a two-day window at ~0.11s blo
     else process.env.RWA_RPC_URL = prevRpc;
   }
 });
+
+// 点検（2026-11-27）: 空として扱うのは "No transactions found" と実測の status "1"・result [] だけ。
+// ほかの status "0"・HTML・429・欠けた行は読めなかった（RPC へ落ち、テストでは RPC が無いので ok=false）。
+async function avaxReadWithRoutescanResponse(make: () => Response) {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  delete process.env.ALCHEMY_API_KEY;
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url);
+    if (!u.startsWith(ROUTESCAN_AVALANCHE_ETHERSCAN_API)) throw new Error(`unexpected fetch ${u}`);
+    return make();
+  }) as typeof fetch;
+  try {
+    return await avaxPayerReaderStub()({
+      network: AVALANCHE_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-25T00:00:00.000Z"),
+      to: new Date("2026-11-26T00:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey !== undefined) process.env.ALCHEMY_API_KEY = prevKey;
+  }
+}
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+test("Avalanche payer Routescan: measured empty shape (status 1, result []) → empty ok", async () => {
+  const out = await avaxReadWithRoutescanResponse(() => jsonResponse({ status: "1", message: "OK", result: [] }));
+  assert.equal(out.ok, true);
+  if (out.ok) assert.equal(out.transfers.length, 0);
+});
+
+for (const [name, make] of [
+  ["status 0 other than No transactions found", () => jsonResponse({ status: "0", message: "Result window is too large, PageNo x Offset size must be less than or equal to 10000", result: null })],
+  ["status 0 NOTOK rate limit", () => jsonResponse({ status: "0", message: "NOTOK", result: "Max rate limit reached" })],
+  ["status 0 not found wording that is not the empty message", () => jsonResponse({ status: "0", message: "Endpoint not found", result: [] })],
+  ["HTML with 200", () => new Response("<!DOCTYPE html><html><body>oops</body></html>", { status: 200, headers: { "content-type": "text/html" } })],
+  ["HTTP 429", () => jsonResponse({ status: "0", message: "rate limited" }, 429)],
+  ["row without hash in window", () => jsonResponse({ status: "1", message: "OK", result: [{ ...routescanTokentxRow("", Math.floor(Date.parse("2026-11-25T12:00:00Z") / 1000)) }] })],
+  ["row without value", () => jsonResponse({ status: "1", message: "OK", result: [{ ...routescanTokentxRow("0xA", Math.floor(Date.parse("2026-11-25T12:00:00Z") / 1000)), value: undefined }] })],
+] as Array<[string, () => Response]>) {
+  test(`Avalanche payer Routescan: ${name} → not read`, async () => {
+    const out = await avaxReadWithRoutescanResponse(make);
+    assert.equal(out.ok, false);
+  });
+}
+
+test("Avalanche payer Routescan: more pages than the cap → not read", async () => {
+  const toSec = Math.floor(Date.parse("2026-11-26T00:00:00Z") / 1000);
+  let calls = 0;
+  const reader = avaxPayerReaderStub(async (_payer, opts) => {
+    calls++;
+    const page = Number(opts.cursor?.page ?? "1");
+    const rows = Array.from({ length: 50 }, (_, i) => ({
+      hash: `0x${page}-${i}`,
+      blockNumber: "1",
+      timeStamp: String(toSec + 60),
+      from: EVM_PAYER,
+      to: "0xbeef",
+      value: "1",
+    }));
+    return { rows, rawItemCount: 50, pageOldestSec: toSec + 60, nextCursor: { page: String(page + 1) } };
+  });
+  const out = await reader({
+    network: AVALANCHE_CAIP2,
+    payer: EVM_PAYER,
+    from: new Date("2026-11-25T00:00:00.000Z"),
+    to: new Date("2026-11-26T00:00:00.000Z"),
+    timeoutMs: 10_000,
+  });
+  assert.equal(out.ok, false);
+  assert.equal(calls, 50);
+});
