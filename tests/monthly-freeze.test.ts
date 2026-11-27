@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import {
   MONTHLY_FREEZE_ANCHOR_FROM_DAY,
@@ -144,12 +144,21 @@ test("ensurePriorMonthFrozenIfDue reports already_frozen without calling insert"
   assert.equal(done.month, "2026-11");
 });
 
-test("metrics-rollup cron runs monthly freeze before ledger anchor", () => {
+test("metrics-rollup cron runs monthly freeze after ledger anchor", () => {
   const route = readFileSync("src/app/api/cron/metrics-rollup/route.ts", "utf8");
   const freezeIdx = route.indexOf("ensurePriorMonthFrozenIfDueFn(db");
   const anchorIdx = route.indexOf("anchorThroughFn(shiftDay");
-  assert.ok(freezeIdx >= 0 && anchorIdx > freezeIdx, "monthly freeze runs before anchorThrough");
+  assert.ok(freezeIdx >= 0 && anchorIdx >= 0 && freezeIdx > anchorIdx, "monthly freeze runs after anchorThrough");
   assert.match(route, /cron\.metrics-rollup\.monthly-freeze/);
+});
+
+test("reports monthly CSV public URL rewrites to csv/[month] route", () => {
+  const rewrites = readFileSync("next.config.ts", "utf8");
+  assert.match(
+    rewrites,
+    /source:\s*"\/api\/v1\/reports\/:month\.csv",\s*destination:\s*"\/api\/v1\/reports\/csv\/:month"/,
+  );
+  assert.ok(existsSync("src/app/api/v1/reports/csv/[month]/route.ts"));
 });
 
 test("past day roots without monthly lines match the old hash rule", () => {

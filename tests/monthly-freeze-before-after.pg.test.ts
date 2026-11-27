@@ -7,11 +7,19 @@
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_test \
 //   npx tsx --test --test-concurrency=1 --test-force-exit tests/monthly-freeze-before-after.pg.test.ts
 // ============================================================
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
 import { assertTestDatabaseIsNotProduction } from "./helpers/pg-test-guard";
+
+function pgErrorMatches(err: unknown, pattern: RegExp): boolean {
+  const e = err as Error & { cause?: { message?: string } };
+  const text = `${e.message}\n${e.cause?.message ?? ""}`;
+  return pattern.test(text);
+}
 
 const TEST_DB = process.env.TEST_DATABASE_URL;
 
@@ -31,23 +39,8 @@ if (!TEST_DB) {
     const { EXPORT_CSV_COLUMNS } = await import("@/lib/observatory/export-columns");
     const db = getDb()!;
 
-    await db.execute(sql`
-      ALTER TABLE ledger_monthly_frozen ADD COLUMN IF NOT EXISTS content_csv text;
-      UPDATE ledger_monthly_frozen SET content_csv = '' WHERE content_csv IS NULL;
-      ALTER TABLE ledger_monthly_frozen ALTER COLUMN frozen_at SET DEFAULT now();
-    `);
-    await db.execute(sql`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1 FROM pg_constraint WHERE conname = 'ledger_monthly_frozen_frozen_at_not_past'
-        ) THEN
-          ALTER TABLE ledger_monthly_frozen
-            ADD CONSTRAINT ledger_monthly_frozen_frozen_at_not_past
-            CHECK (frozen_at >= (CURRENT_TIMESTAMP - INTERVAL '5 minutes'));
-        END IF;
-      END $$;
-    `);
+    const migrationSql = readFileSync(join(process.cwd(), "scripts/sql/2026-11-27-ledger-monthly-frozen.sql"), "utf8");
+    await db.execute(sql.raw(migrationSql));
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, x402_daily_metrics, ledger_anchors, ledger_monthly_frozen`);
     const [ep] = await db
       .insert(schema.x402Endpoints)
@@ -91,15 +84,24 @@ if (!TEST_DB) {
       await assert.rejects(
         () =>
           db.execute(sql`
-            INSERT INTO ledger_monthly_frozen (
-              month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json, frozen_at
-            ) VALUES (
-              '2026-09', '2026-09-01'::date, '2026-10-01'::date, 0, ${"d".repeat(64)}, '', '{}'::jsonb,
-              '2020-01-01T00:00:00Z'::timestamptz
-            )
+            UPDATE ledger_monthly_frozen
+            SET frozen_at = '2020-01-01T00:00:00Z'::timestamptz
+            WHERE month = '2026-11'
           `),
-        /ledger_monthly_frozen_frozen_at_not_past|check constraint/i,
+        (err: unknown) => pgErrorMatches(err, /ledger_monthly_frozen immutable columns/i),
       );
+      await db.execute(sql`
+        INSERT INTO ledger_monthly_frozen (
+          month, period_start, period_end_exclusive, row_count, content_sha256, content_csv, summary_json, frozen_at
+        ) VALUES (
+          '2026-09', '2026-09-01'::date, '2026-10-01'::date, 0, ${"c".repeat(64)}, '', '{}'::jsonb,
+          '2020-01-01T00:00:00Z'::timestamptz
+        )
+      `);
+      const legacy = (await mf.listFrozenMonthlyLedger(db)).find((r) => r.month === "2026-09");
+      assert.ok(legacy);
+      assert.ok(Date.parse(legacy!.frozenAt) >= t0 - 60_000, "insert trigger ignores caller frozen_at");
+      await db.execute(sql`DELETE FROM ledger_monthly_frozen WHERE month = '2026-09'`);
 
       for (const [day, a] of [["2026-11-29", a29], ["2026-11-30", a30]] as const) {
         const { payload } = await anchors.canonicalDayPayload(db, day);
@@ -131,7 +133,7 @@ if (!TEST_DB) {
     });
 
     await t.test("凍結のハッシュは公開の reports CSV から再現できる", async () => {
-      const csvRoute = await import("@/app/api/v1/reports/[month].csv/route");
+      const csvRoute = await import("@/app/api/v1/reports/csv/[month]/route");
       const res = await csvRoute.GET(
         new NextRequest("https://vet402.com/api/v1/reports/2026-11.csv", { headers: { "x-real-ip": "203.0.113.99" } }),
         { params: Promise.resolve({ month: "2026-11" }) },
