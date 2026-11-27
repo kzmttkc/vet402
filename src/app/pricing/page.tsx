@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import { PricingPageDetails } from "@/components/site/PricingPageDetails";
 import { PricingSection } from "@/components/site/PricingSection";
 import { breadcrumbJsonLd, pageMetadata, webPageJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
@@ -43,6 +44,7 @@ export default async function PricingPage() {
         <h1 className="doc-title mt-8">vet402 pricing</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         <PricingSection className="mt-8" titleId="pricing-standalone-title" />
+        <PricingPageDetails />
       </article>
     </main>
   );
