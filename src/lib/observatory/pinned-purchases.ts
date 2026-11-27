@@ -60,22 +60,31 @@ const FACTGATE_PINNED_PURCHASES: readonly PinnedPurchase[] = [
 // 2026-11-27: Prezenti M3（試した Celo の売り手）の証拠。x402atlas.xyz は 11/27 に Bazaar で Celo の accept
 // （payTo 0x2632a66e…・USDC 0xcebA9300…）を 7 口に出した。$0.005 以下の 4 口を Celo で 1 件ずつ（上限の合計 0.009 USDC）。
 // POST の chat/completions は目録が本文の例を宣言している。erc20 / erc721 は必須の引数に例が無いので、決済まで届かない
-// ことがある（その場合も 1 口 1 件のまま）。:address の口はパスの値を知らないので買わない。$0.02 の 2 口（images・q-verdict）は外した。
+// ことがある（その場合も 1 口 1 件のまま）。:address の口はパスの値を知らないので買わない。
+// 11/27 の結果: chat・block-number は settled、erc20・erc721 は 422（必須の引数なし・資金は動かず）。3 件目のため、同日
+// q-verdict/resource（$0.02・POST）を足した（vet402 部門の判断で合計の上限 0.03 USDC）。送る本文は目録と 402 が宣言した例
+// {tokenAddress, chain} のまま（その schema の必須を満たす）。images/generations（$0.02）は外部の生成に頼るので外した。
+const PREZENTI_M3_CELO_POST_URLS = new Set([
+  "https://x402atlas.xyz/v1/chat/completions",
+  "https://x402atlas.xyz/api/dashboard/q-verdict/resource",
+]);
 const PREZENTI_M3_CELO_PINNED_PURCHASES: readonly PinnedPurchase[] = [
   "https://x402atlas.xyz/api/chain/block-number",
   "https://x402atlas.xyz/v1/chat/completions",
   "https://x402atlas.xyz/api/chain/erc20-balance",
   "https://x402atlas.xyz/api/chain/erc721-tokens",
+  "https://x402atlas.xyz/api/dashboard/q-verdict/resource",
 ].map((url) => ({
   url,
-  method: url.endsWith("/v1/chat/completions") ? ("POST" as const) : ("GET" as const),
+  method: PREZENTI_M3_CELO_POST_URLS.has(url) ? ("POST" as const) : ("GET" as const),
   network: "eip155:42220",
   from: "2026-11-27T00:00:00.000Z",
   to: "2026-11-29T23:59:59.999Z",
   reason: "prezenti-m3-celo-x402atlas",
   requestedBy: "grants session (Prezenti M3)",
-  // 2026-11-27 10:46 JST、グラントの会話の依頼（合計 0.02 USDC 以内・1 口 1 件）。
-  approvedAt: "2026-11-27T01:46:00.000Z",
+  // 2026-11-27 10:46 JST、グラントの会話の依頼（合計 0.02 USDC 以内・1 口 1 件）。q-verdict だけは 11:50 JST、
+  // vet402 部門の判断（合計の上限 0.03 USDC）。
+  approvedAt: url.endsWith("/q-verdict/resource") ? "2026-11-27T02:50:00.000Z" : "2026-11-27T01:46:00.000Z",
   maxPurchases: 1,
 }));
 

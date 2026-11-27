@@ -203,7 +203,7 @@ test("network pins: only PINNED_NETWORK_LANES networks validate, and they map to
   assert.throws(() => validatePinnedPurchase({ ...SAMPLE, network: "celo" }, 0), /network must be one of/);
 });
 
-test("prezenti-m3 x402atlas: four listings, 1 each on Celo, window 11-27..11-29 UTC", () => {
+test("prezenti-m3 x402atlas: five listings, 1 each on Celo, window 11-27..11-29 UTC", () => {
   const rows = PINNED_PURCHASES.filter((p) => p.reason === "prezenti-m3-celo-x402atlas");
   assert.deepEqual(
     rows.map((p) => `${p.method} ${p.url}`),
@@ -212,8 +212,13 @@ test("prezenti-m3 x402atlas: four listings, 1 each on Celo, window 11-27..11-29 
       "POST https://x402atlas.xyz/v1/chat/completions",
       "GET https://x402atlas.xyz/api/chain/erc20-balance",
       "GET https://x402atlas.xyz/api/chain/erc721-tokens",
+      "POST https://x402atlas.xyz/api/dashboard/q-verdict/resource",
     ],
   );
+  assert.equal(rows[4]!.approvedAt, "2026-11-27T02:50:00.000Z", "q-verdict was approved later, under the 0.03 USDC cap");
+  assert.ok(rows.slice(0, 4).every((p) => p.approvedAt === "2026-11-27T01:46:00.000Z"));
+  // images/generations は予約しない（2026-11-27）。
+  assert.equal(PINNED_PURCHASES.some((p) => p.url === "https://x402atlas.xyz/v1/images/generations"), false);
   for (const p of rows) {
     assert.equal(p.network, "eip155:42220");
     assert.equal(p.maxPurchases, 1);
@@ -224,7 +229,7 @@ test("prezenti-m3 x402atlas: four listings, 1 each on Celo, window 11-27..11-29 
   }
   // 頭に置く（pay.sh の 349 件より前）: 予約の並びは先頭から買われる。
   const firstPaysh = PINNED_PURCHASES.findIndex((p) => p.reason === "presign-gate-2611");
-  assert.ok(PINNED_PURCHASES.indexOf(rows[3]!) < firstPaysh);
+  assert.ok(PINNED_PURCHASES.indexOf(rows[4]!) < firstPaysh);
 });
 
 test("pinned fetch: network pins are looked up first whatever the daily start", async () => {
