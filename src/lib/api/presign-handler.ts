@@ -31,7 +31,8 @@ const WRAPPER_KEYS = ["challenge", "url", "method"] as const;
 export const PRESIGN_TERMS_NOTE =
   "terms_match compares each accept in the 402 with the terms vet402 paid and saw delivered (verified_terms, verified_pay_to_by_network, facts.payees). " +
   "It uses the same function the vet402 SDK payOrRefuse runs before it signs. It does not change recommendation. " +
-  "It does not apply your own limits such as a per-transaction ceiling.";
+  "It does not apply your own limits such as a per-transaction ceiling. terms_match true on a network does not mean the SDK pays on that network. " +
+  "An accept with no readable amount, payTo, scheme or asset is evidence_unavailable.";
 
 export type PresignAcceptResult = {
   index: number;
@@ -141,7 +142,10 @@ export function compareAccepts(rawAccepts: readonly unknown[], decision: TermsDe
   return rawAccepts.map((raw, index) => {
     const accept = normalizeAccept(raw);
     const row = acceptRow(index, accept);
-    if (accept === null) return { ...row, terms_match: false, reason_codes: ["evidence_unavailable"] };
+    // 額が 10 進の整数でない accept は読めない扱い（SDK は照合の前に evaluateMoneyGate で同じ確かめをする。BigInt を投げさせない）。
+    if (accept === null || !/^[0-9]+$/.test(accept.amount)) {
+      return { ...row, readable: false, terms_match: false, reason_codes: ["evidence_unavailable"] };
+    }
     if (decision === null) return { ...row, terms_match: null, reason_codes: ["resource_uncatalogued"] };
     const mismatch: TermsMismatchReason[] | null = matchDeclaredPayTerms(decision, accept, { network: accept.network }, true);
     return { ...row, terms_match: mismatch === null, reason_codes: mismatch ?? [] };
@@ -218,6 +222,7 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
       not_in_catalog: out.not_in_catalog,
       recommendation: out.recommendation,
       reason_codes: [...out.reason_codes],
+      truncated: out.truncated,
       next_action: out.next_action,
       spending_halted: out.spending_halted,
       verified_terms: out.verified_terms,

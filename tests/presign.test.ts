@@ -256,3 +256,12 @@ test("presign latency file: target_met is true only with 20+ samples and p99 wit
   assert.equal(nearestRank(Array.from({ length: 30 }, (_, i) => i + 1), 0.99), 30);
   assert.equal(nearestRank([], 0.99), null);
 });
+
+test("presign: an accept whose amount is not an integer string is evidence_unavailable, not a 503", async () => {
+  __setCheckSellerCacheForTests(passthrough);
+  const challenge = { ...CHALLENGE_V2, accepts: [{ ...CHALLENGE_V2.accepts[1], amount: "0.01" }, { ...CHALLENGE_V2.accepts[1], amount: "1e6" }] };
+  const res = await handlePresign(post(challenge), deps());
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { accepts: { readable: boolean; terms_match: boolean; reason_codes: string[] }[] };
+  assert.deepEqual(body.accepts.map((a) => [a.readable, a.terms_match, a.reason_codes]), [[false, false, ["evidence_unavailable"]], [false, false, ["evidence_unavailable"]]]);
+});
