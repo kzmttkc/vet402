@@ -1896,16 +1896,6 @@ export const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 80n;
 
 type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
-/**
- * Avalanche のネイティブ USDC（0xB97E…8a6E）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-26・linkFromChain の Avalanche のレーン）。
- * 規則は makeArbitrumTransferReader と同じ。トークンはネイティブ USDC だけ（USDC.e は読まない）。
- * Avalanche 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
- *   - Alchemy / Routescan / RPC のどれも読めなかった（AVALANCHE_RPC_URL 無しは RPC 段だけ null。索引は鍵なしでも使える）
- *   - RPC が chainId 43114 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
- *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
- *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
- * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
- */
 function indexedTransfersToChainTransfers(transfers: PayerTokenTransferInWindow[]): ChainTransfer[] {
   return transfers.map((t) => ({
     txHash: t.txHash,
@@ -1917,8 +1907,23 @@ function indexedTransfersToChainTransfers(transfers: PayerTokenTransferInWindow[
   }));
 }
 
+const ALCHEMY_ZERO_TO = "0x0000000000000000000000000000000000000000";
+
 /**
- * Avalanche recover-late: Alchemy → Routescan tokentx → RPC getLogs（照合と同順。Routescan / 共有ページ読みは payTo で絞る）。
+ * Avalanche のネイティブ USDC（0xB97E…8a6E）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-26・linkFromChain の Avalanche のレーン）。
+ * 2026-11-27: 照合（payer-outgoing-readers）と同じ順で読む。Alchemy（鍵があるとき）→ Routescan tokentx → RPC getLogs。
+ * 索引の読みは from = 払い手・to = payTo で絞る（共有の readPayerTokenTransfersInWindow）。トークンはネイティブ USDC だけ。
+ *
+ * 索引が答えるのは「窓の中に payTo 宛ての送金が1本以上あった」ときだけ。0 本の答えは次の読み先へ回す——索引には
+ * 先端の鮮度の確かめが無く、遅れた索引の 0 本を「決まった」と印すと、実在の着金を二度と読まない（このレーンは 0 本の読み 1 回で決まる）。
+ * 0 本で決めてよいのは、先端を確かめる RPC の読みだけ。
+ *
+ * Avalanche 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
+ *   - 索引が読めない・欠けた行がある・窓の始端まで読めない・0 本だった、かつ RPC 段が null（AVALANCHE_RPC_URL 無し）
+ *   - RPC が chainId 43114 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
+ *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
+ *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
+ * 空の配列（[]）を返すのは、RPC が窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
  */
 export function makeAvalancheTransferReader(
   client?: AvalancheTransferClient,
@@ -1931,6 +1936,7 @@ export function makeAvalancheTransferReader(
     if (network !== AVALANCHE_CAIP2) return null;
     const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
     const indexedOpts = { contractAddress: token, chainId: AVALANCHE_CHAIN_ID, payTo };
+    const payToLower = payTo.toLowerCase();
     if (isAlchemyEnabled(AVALANCHE_CHAIN_ID)) {
       try {
         const viaAlchemy = await readPayerTokenTransfersInWindow(
@@ -1941,10 +1947,12 @@ export function makeAvalancheTransferReader(
           undefined,
           async (p, opts) => {
             const page = await alchemyFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID });
-            // 欠けた行を黙って捨てない: hash の無い行・宛先 payTo への額 0（rawContract.value 欠け）は読めなかった扱いで次の読み先へ。
-            const payToLower = payTo.toLowerCase();
+            // 欠けた行を黙って捨てない（読めなかった扱いで次の読み先へ）: from の無い行（toTransfer が落とす）・hash の無い行・
+            // to の無い行（toTransfer が 0x0 に置き換える）・宛先 payTo への額 0（rawContract.value 欠け）。
+            if (page.rows.length !== page.rawItemCount) throw new AlchemyUnavailableError("alchemy_dropped_row");
             for (const r of page.rows) {
               if (!r.hash) throw new AlchemyUnavailableError("alchemy_missing_tx_hash");
+              if (r.to.toLowerCase() === ALCHEMY_ZERO_TO) throw new AlchemyUnavailableError("alchemy_missing_to");
               if (r.to.toLowerCase() === payToLower && !/^[1-9]\d*$/.test(r.value)) {
                 throw new AlchemyUnavailableError("alchemy_bad_value");
               }
@@ -1953,7 +1961,7 @@ export function makeAvalancheTransferReader(
           },
           { ...indexedOpts, alchemyPagination: true },
         );
-        if (viaAlchemy.ok) return indexedTransfersToChainTransfers(viaAlchemy.transfers);
+        if (viaAlchemy.ok && viaAlchemy.transfers.length > 0) return indexedTransfersToChainTransfers(viaAlchemy.transfers);
       } catch (e) {
         if (!(e instanceof AlchemyUnavailableError)) throw e;
       }
@@ -1968,7 +1976,7 @@ export function makeAvalancheTransferReader(
         (p, opts) => routescanFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID }),
         indexedOpts,
       );
-      if (viaRoutescan.ok) return indexedTransfersToChainTransfers(viaRoutescan.transfers);
+      if (viaRoutescan.ok && viaRoutescan.transfers.length > 0) return indexedTransfersToChainTransfers(viaRoutescan.transfers);
     } catch (e) {
       if (!(e instanceof RoutescanUnavailableError)) throw e;
     }
