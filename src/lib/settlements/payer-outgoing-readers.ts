@@ -432,16 +432,15 @@ function makeAlchemyFirstEvmPayerOutgoingReader(cfg: EvmOutgoingConfig): PayerOu
         );
         if (viaAlchemy.ok) return viaAlchemy;
       } catch (e) {
-        if (!(e instanceof AlchemyUnavailableError)) {
-          throwIfAborted(query.signal);
-          if (query.signal?.aborted || (e instanceof DOMException && e.name === "AbortError")) {
-            return payerOutgoingFail("AbortError: aborted");
-          }
-          return payerOutgoingFail(formatPayerOutgoingFailure(e));
-        }
+        // 読めなかった（AlchemyUnavailableError ほか）: Base と同じく止めずに従来の RPC へ。中断だけは投げる。
+        if (!(e instanceof AlchemyUnavailableError)) throwIfAborted(query.signal);
       }
     }
-    return rpcReader(query);
+    // RPC へ戻るときは残り時間だけを渡す（Alchemy で使った時間を足し直して照合の締切を越えない）。
+    if (deadline === Infinity) return rpcReader(query);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) return payerOutgoingFail("Error: transfer read ran past its time limit");
+    return rpcReader({ ...query, timeoutMs: remainingMs });
   };
 }
 

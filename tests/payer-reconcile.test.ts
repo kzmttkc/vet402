@@ -1538,3 +1538,75 @@ test("Robinhood payer getLogs retries HTTP 429 and completes when RPC cooperates
   assert.equal(out.ok, true);
   assert.ok(calls >= 3, `expected 429 retries, got ${calls} getLogs calls`);
 });
+
+test("Robinhood payer getLogs: 429 on every try ends as a failed read, never ok with what was read", async () => {
+  __resetLearnedRangeCapsForTests();
+  const nowSec = Math.floor(Date.now() / 1000);
+  const headNum = 20_000n;
+  let calls = 0;
+  const client = {
+    getChainId: async () => 4663,
+    getBlock: async (q: { blockNumber?: bigint; blockTag?: string }) => {
+      if (q.blockTag === "latest") return { number: headNum, timestamp: BigInt(nowSec) };
+      const n = q.blockNumber ?? 0n;
+      return { number: n, timestamp: BigInt(nowSec - Number(headNum - n) * 2) };
+    },
+    getLogs: async () => {
+      calls++;
+      throw Object.assign(new Error("Too Many Requests"), { name: "HttpRequestError", status: 429 });
+    },
+  };
+  const reader = makeEvmPayerOutgoingReader({
+    network: ROBINHOOD_CAIP2,
+    chainId: 4663,
+    token: "0x5fc5360d0400a0fd4f2af552add042d716f1d168",
+    chunkBlocks: 500n,
+    marginBlocks: 120n,
+    blockSeconds: 2,
+    toleranceSeconds: 30,
+    chainName: "Robinhood",
+    binarySearchOnLocateFailure: true,
+    client: () => client as never,
+    chunkedGetLogs: { concurrency: 1, rateLimitMaxRetries: 2, delayMs: 0 },
+  });
+  const out = await reader({
+    network: ROBINHOOD_CAIP2,
+    payer: EVM_PAYER,
+    from: new Date((nowSec - 7_200) * 1000),
+    to: new Date((nowSec - 3_600) * 1000),
+    timeoutMs: 30_000,
+  });
+  assert.equal(out.ok, false);
+  assert.ok(calls >= 1);
+});
+
+test("Arbitrum payer reader: a thrown Alchemy error falls back to the RPC with only the time left", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevArb = process.env.ARBITRUM_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  process.env.ARBITRUM_RPC_URL = "https://arb-rpc.test/rpc";
+  let rpcCalls = 0;
+  globalThis.fetch = (async (url: string | URL) => {
+    if (String(url).includes("arb-mainnet.g.alchemy.com")) throw new TypeError("fetch failed");
+    rpcCalls++;
+    return new Response("<!DOCTYPE html>", { status: 503, headers: { "content-type": "text/html" } });
+  }) as typeof fetch;
+  try {
+    const out = await makeChainPayerOutgoingReader()({
+      network: ARBITRUM_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-23T20:00:00.000Z"),
+      to: new Date("2026-11-25T20:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.ok(rpcCalls >= 1, "expected the RPC fallback to be tried");
+    assert.equal(out.ok, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevArb === undefined) delete process.env.ARBITRUM_RPC_URL;
+    else process.env.ARBITRUM_RPC_URL = prevArb;
+  }
+});
