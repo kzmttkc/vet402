@@ -1,5 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
+import { kpiAmountUnitsFromAlchemyRaw } from "@/lib/kpi/alchemy-inbound-amount";
 import {
   aggregateDaily,
   buildX402RevenueFromRaw,
@@ -12,6 +13,20 @@ import { VET402_BASE_USDC_PAY_TO } from "@/lib/kpi/payto";
 const PAY_TO = VET402_BASE_USDC_PAY_TO.toLowerCase();
 const OUTSIDER = "0x1111111111111111111111111111111111111111";
 const OWN = PAY_TO;
+
+describe("kpi alchemy inbound amount", () => {
+  test("missing rawContract.value is null, not zero", () => {
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({}), null);
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({ rawContract: { value: null } }), null);
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({ rawContract: { value: "" } }), null);
+  });
+
+  test("valid hex parses; zero hex is zero", () => {
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({ rawContract: { value: "0x0" } }), "0");
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({ rawContract: { value: "0x2710" } }), "10000");
+    assert.equal(kpiAmountUnitsFromAlchemyRaw({ rawContract: { value: "not-hex" } }), null);
+  });
+});
 
 describe("kpi x402 revenue", () => {
   test("exclusion: own payer and self-transfer", () => {

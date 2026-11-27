@@ -4,6 +4,7 @@
 // ============================================================
 import type { Address } from "viem";
 import { AlchemyUnavailableError, fetchAssetTransfersPage } from "@/lib/chain/alchemy";
+import { kpiAmountUnitsFromAlchemyRaw } from "@/lib/kpi/alchemy-inbound-amount";
 import { BASE_CHAIN_ID, USDC } from "@/lib/x402/base-usdc";
 import { createDeadline } from "@/lib/util/deadline";
 
@@ -60,7 +61,12 @@ async function readViaAlchemy(
       if (page.rawCount === 0 && !page.pageKey) break;
 
       let pageOldest = Infinity;
-      for (const t of page.transfers) {
+      for (let i = 0; i < page.transfers.length; i++) {
+        const t = page.transfers[i];
+        const units = kpiAmountUnitsFromAlchemyRaw(page.sourceRaw[i] ?? {});
+        if (units === null) {
+          return { ok: false, detail: "alchemy_missing_transfer_amount" };
+        }
         const sec = Number(t.timeStamp);
         if (!Number.isFinite(sec) || sec <= 0) {
           return { ok: false, detail: "alchemy_missing_block_timestamp" };
@@ -83,7 +89,7 @@ async function readViaAlchemy(
           timeStamp: t.timeStamp,
           from: t.from,
           to: t.to,
-          value: t.value,
+          value: units,
         });
       }
 
