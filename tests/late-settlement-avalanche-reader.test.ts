@@ -375,6 +375,8 @@ test("Avalanche reader: an Alchemy row without a tx hash is unreadable, so Route
   let routescanCalls = 0;
   globalThis.fetch = alchemyRecoverLateFetchMock([
     { hash: "", iso: "2026-11-24T12:01:34.000Z", value: "0x38a4", to: LATE_CASE_PAY_TO },
+    // A well-formed in-window row to payTo on the same page: without the throw, Alchemy would answer with it alone.
+    { hash: `0x${"a1".repeat(32)}`, iso: "2026-11-24T12:05:00.000Z", value: "0x1", to: LATE_CASE_PAY_TO },
   ]);
   const reader = makeAvalancheTransferReader(undefined, async () => {
     routescanCalls++;
@@ -505,7 +507,8 @@ for (const [name, row] of [
     const prevKey = process.env.ALCHEMY_API_KEY;
     process.env.ALCHEMY_API_KEY = "test-key";
     let routescanCalls = 0;
-    globalThis.fetch = alchemyRecoverLateFetchMock([{ ...row }]);
+    // A well-formed in-window row to payTo on the same page: without the throw, Alchemy would answer with it alone.
+    globalThis.fetch = alchemyRecoverLateFetchMock([{ ...row }, { hash: `0x${"a1".repeat(32)}`, iso: "2026-11-24T12:05:00.000Z", value: "0x1", to: LATE_CASE_PAY_TO }]);
     const reader = makeAvalancheTransferReader(undefined, async () => {
       routescanCalls++;
       return routescanPage([routescanLateRow(LATE_CASE_FRESH_HASH, LATE_CASE_FRESH_SEC, { value: "1" }), routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]);
@@ -513,7 +516,7 @@ for (const [name, row] of [
     try {
       const out = await reader({ network: ARB, payer: PAYER, payTo: LATE_CASE_PAY_TO, ...lateCaseWindow, timeoutMs: 10_000 });
       assert.equal(routescanCalls, 1);
-      assert.equal(out?.[0]?.value, LATE_CASE_AMOUNT);
+      assert.deepEqual(out?.map((t) => [t.txHash, t.value]), [[LATE_CASE_TX, LATE_CASE_AMOUNT]], "the answer is Routescan's, not the Alchemy page");
     } finally {
       globalThis.fetch = realFetch;
       if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
@@ -551,7 +554,7 @@ test("Avalanche reader: a recent window the index is not proven past is not trus
   });
 });
 
-test("Avalanche reader: a stale recent index answer falls through to the RPC, which decides", async () => {
+test("Avalanche reader: a stale recent index answer falls through to the RPC, which reads instead (null here: it reports another chain id)", async () => {
   await withoutAlchemy(async () => {
     const end = Date.now() - 5 * 60 * 1000;
     const inWindowSec = Math.floor((end - 10 * 60 * 1000) / 1000);
