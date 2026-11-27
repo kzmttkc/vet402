@@ -1610,3 +1610,74 @@ test("Arbitrum payer reader: a thrown Alchemy error falls back to the RPC with o
     else process.env.ARBITRUM_RPC_URL = prevArb;
   }
 });
+
+test("Robinhood payer reader (production config): a two-day window at ~0.11s blocks takes a handful of getLogs calls", async () => {
+  __resetLearnedRangeCapsForTests();
+  const realFetch = globalThis.fetch;
+  const prevRpc = process.env.RWA_RPC_URL;
+  process.env.RWA_RPC_URL = "https://robinhood-rpc.test/rpc";
+  const nowSec = Math.floor(Date.now() / 1000);
+  const head = 124_000_000;
+  const tsOf = (n: number) => Math.floor(nowSec - (head - n) * 0.11);
+  const hex = (n: number) => `0x${n.toString(16)}`;
+  let getLogsCalls = 0;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    if (!String(url).includes("robinhood-rpc.test")) throw new Error(`unexpected fetch ${String(url)}`);
+    const body = JSON.parse(String(init?.body));
+    const one = (req: { id: number; method: string; params: unknown[] }) => {
+      if (req.method === "eth_chainId") return { jsonrpc: "2.0", id: req.id, result: hex(4663) };
+      if (req.method === "eth_getBlockByNumber") {
+        const tag = req.params[0] as string;
+        const n = tag === "latest" ? head : Math.min(head, parseInt(tag, 16));
+        return {
+          jsonrpc: "2.0",
+          id: req.id,
+          result: {
+            number: hex(n),
+            timestamp: hex(tsOf(n)),
+            hash: `0x${"1".repeat(64)}`,
+            parentHash: `0x${"0".repeat(64)}`,
+            transactions: [],
+            uncles: [],
+            logsBloom: `0x${"0".repeat(512)}`,
+            gasLimit: "0x1",
+            gasUsed: "0x0",
+            difficulty: "0x0",
+            extraData: "0x",
+            miner: `0x${"0".repeat(40)}`,
+            nonce: "0x0000000000000000",
+            size: "0x1",
+            stateRoot: `0x${"0".repeat(64)}`,
+            transactionsRoot: `0x${"0".repeat(64)}`,
+            receiptsRoot: `0x${"0".repeat(64)}`,
+            sha3Uncles: `0x${"0".repeat(64)}`,
+            mixHash: `0x${"0".repeat(64)}`,
+            baseFeePerGas: "0x0",
+          },
+        };
+      }
+      if (req.method === "eth_getLogs") {
+        getLogsCalls++;
+        return { jsonrpc: "2.0", id: req.id, result: [] };
+      }
+      return { jsonrpc: "2.0", id: req.id, error: { code: -32601, message: `no ${req.method}` } };
+    };
+    const out = Array.isArray(body) ? body.map(one) : one(body);
+    return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const out = await makeChainPayerOutgoingReader()({
+      network: ROBINHOOD_CAIP2,
+      payer: EVM_PAYER.toLowerCase(),
+      from: new Date((nowSec - 2 * 86_400) * 1000),
+      to: new Date((nowSec - 60) * 1000),
+      timeoutMs: 60_000,
+    });
+    assert.equal(out.ok, true, out.ok ? "" : out.detail);
+    assert.ok(getLogsCalls >= 1 && getLogsCalls <= 5, `expected a handful of getLogs calls, got ${getLogsCalls}`);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevRpc === undefined) delete process.env.RWA_RPC_URL;
+    else process.env.RWA_RPC_URL = prevRpc;
+  }
+});
