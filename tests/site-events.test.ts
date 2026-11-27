@@ -100,6 +100,10 @@ test("sourceLabel", () => {
   assert.equal(sourceLabel("perplexity.ai"), "perplexity");
   assert.equal(sourceLabel("claude.ai"), "claude");
   assert.equal(sourceLabel("copilot.microsoft.com"), "copilot");
+  assert.equal(sourceLabel("grok.com"), "grok");
+  assert.equal(sourceLabel("chat.mistral.ai"), "mistral");
+  assert.equal(sourceLabel("you.com"), "you");
+  assert.equal(sourceLabel("kagi.com"), "kagi");
   assert.equal(sourceLabel("t.co"), "x");
   assert.equal(sourceLabel("x.com"), "x");
   assert.equal(sourceLabel("github.com"), "github");

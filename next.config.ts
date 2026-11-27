@@ -111,6 +111,9 @@ const nextConfig: NextConfig = {
       // 別ページに昇格する予定は無いので 308（permanent）。/agent も 404 だが、
       // 旧 URL として何を指していたかが不明なので行き先を推測して足さない。
       { source: "/docs", destination: "/docs/api", permanent: true },
+      // 2026-11-27 SEO: /erc8004 (no hyphen) is how the standard is often typed and it returned 404.
+      // The canonical page is /erc-8004 and will not move, so 308.
+      { source: "/erc8004", destination: "/erc-8004", permanent: true },
       // /x402 は検索語そのもの。ピラーページとして残す（2026-11-10）。リダイレクトは削除。
       // 2026-08-19: note.com's link auto-embed (and its explicit "埋め込み"
       // insert command) silently fails to build a card for any URL with a
