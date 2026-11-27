@@ -26,6 +26,7 @@ import { payerReconcilePurchaseNetwork } from "@/lib/settlements/payer-reconcile
 import {
   formatPayerOutgoingFailure,
   locateEvmBlockBinarySearch,
+  makeAvalanchePayerOutgoingReader,
   makeBasePayerOutgoingReader,
   makeChainPayerOutgoingReader,
   makeEvmPayerOutgoingReader,
@@ -35,6 +36,7 @@ import {
   PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS,
 } from "@/lib/settlements/payer-outgoing-readers";
 import { BlockscoutUnavailableError } from "@/lib/chain/blockscout";
+import { ROUTESCAN_AVALANCHE_ETHERSCAN_API, makeRoutescanAvalanchePayerFetch } from "@/lib/chain/routescan";
 import {
   ARC_TRANSFER_READ_CHUNK_BLOCKS,
   ARC_TRANSFER_READ_MARGIN_BLOCKS,
@@ -1495,6 +1497,227 @@ test("Avalanche payer reader: Alchemy row without block time is not dropped; rea
     else process.env.ALCHEMY_API_KEY = prevKey;
     if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
     else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+function avaxPayerReaderStub(routescanFetch?: Parameters<typeof makeAvalanchePayerOutgoingReader>[1]) {
+  return makeAvalanchePayerOutgoingReader(
+    {
+      network: AVALANCHE_CAIP2,
+      chainId: AVALANCHE_CHAIN_ID,
+      token: AVALANCHE_USDC_ADDRESS as `0x${string}`,
+      chunkBlocks: 100n,
+      marginBlocks: AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS,
+      blockSeconds: 0.97,
+      toleranceSeconds: 30,
+      chainName: "Avalanche",
+      client: () => null,
+    },
+    routescanFetch ?? makeRoutescanAvalanchePayerFetch(),
+  );
+}
+
+function routescanTokentxRow(
+  hash: string,
+  timeStampSec: number,
+  overrides: Partial<{ from: string; to: string; value: string }> = {},
+) {
+  return {
+    hash,
+    timeStamp: String(timeStampSec),
+    from: overrides.from ?? EVM_PAYER,
+    to: overrides.to ?? "0x000000000000000000000000000000000000beef",
+    value: overrides.value ?? "1000",
+    blockNumber: "123",
+    contractAddress: AVALANCHE_USDC_ADDRESS,
+  };
+}
+
+test("Avalanche payer Routescan: pages descend to window start (page 2 past window)", async () => {
+  const windowFrom = new Date("2026-11-25T00:00:00.000Z");
+  const windowTo = new Date("2026-11-26T00:00:00.000Z");
+  const fromSec = Math.floor(windowFrom.getTime() / 1000);
+  const toSec = Math.floor(windowTo.getTime() / 1000);
+  const midSec = Math.floor((fromSec + toSec) / 2);
+  const inWindowRow = routescanTokentxRow("0xIN", midSec);
+  const padRow = (i: number) => routescanTokentxRow(`0xPAD${i}`, toSec + 60, { value: "1" });
+  const page1 = Array.from({ length: 49 }, (_, i) => padRow(i)).concat([inWindowRow]);
+  const page2 = [routescanTokentxRow("0xOLD", fromSec - 60, { value: "3" })];
+  let pageCalls = 0;
+  const reader = avaxPayerReaderStub(async (_payer, opts) => {
+    pageCalls++;
+    const page = opts.cursor?.page === "2" ? 2 : 1;
+    const rows = page === 1 ? page1 : page2;
+    const mapped = rows.map((r) => ({
+      hash: r.hash,
+      blockNumber: r.blockNumber,
+      timeStamp: r.timeStamp,
+      from: r.from,
+      to: r.to,
+      value: r.value,
+    }));
+    const oldest = Math.min(...rows.map((r) => Number(r.timeStamp)));
+    return {
+      rows: mapped,
+      rawItemCount: rows.length,
+      pageOldestSec: oldest,
+      nextCursor: page === 1 && rows.length >= 50 ? { page: "2" } : null,
+    };
+  });
+  const out = await reader({
+    network: AVALANCHE_CAIP2,
+    payer: EVM_PAYER,
+    from: windowFrom,
+    to: windowTo,
+    timeoutMs: 10_000,
+  });
+  assert.equal(out.ok, true);
+  if (out.ok) {
+    assert.equal(out.transfers.length, 1);
+    assert.equal(out.transfers[0]?.txHash, "0xIN");
+  }
+  assert.equal(pageCalls, 2);
+});
+
+test("Avalanche payer Routescan: No transactions found → empty ok", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  delete process.env.ALCHEMY_API_KEY;
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url);
+    if (!u.startsWith(ROUTESCAN_AVALANCHE_ETHERSCAN_API)) throw new Error(`unexpected fetch ${u}`);
+    return new Response(
+      JSON.stringify({ status: "0", message: "No transactions found", result: [] }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+  try {
+    const out = await avaxPayerReaderStub()({
+      network: AVALANCHE_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-25T00:00:00.000Z"),
+      to: new Date("2026-11-26T00:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.equal(out.ok, true);
+    if (out.ok) assert.equal(out.transfers.length, 0);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey !== undefined) process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
+
+test("Avalanche payer Routescan: row without timeStamp is not treated as success", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  delete process.env.ALCHEMY_API_KEY;
+  globalThis.fetch = (async (url: string | URL) => {
+    const u = String(url);
+    if (!u.startsWith(ROUTESCAN_AVALANCHE_ETHERSCAN_API)) throw new Error(`unexpected fetch ${u}`);
+    return new Response(
+      JSON.stringify({
+        status: "1",
+        message: "OK",
+        result: [
+          {
+            hash: "0xbad",
+            from: EVM_PAYER,
+            to: "0xbeef",
+            value: "1",
+            timeStamp: "not-a-number",
+            contractAddress: AVALANCHE_USDC_ADDRESS,
+          },
+        ],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+  try {
+    const out = await avaxPayerReaderStub()({
+      network: AVALANCHE_CAIP2,
+      payer: EVM_PAYER,
+      from: new Date("2026-11-25T00:00:00.000Z"),
+      to: new Date("2026-11-26T00:00:00.000Z"),
+      timeoutMs: 5_000,
+    });
+    assert.equal(out.ok, false);
+    if (!out.ok) assert.match(out.detail, /missing_rpc/);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey !== undefined) process.env.ALCHEMY_API_KEY = prevKey;
+  }
+});
+
+test("Avalanche payer: Alchemy unavailable falls back to Routescan", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  const from = new Date("2026-11-23T20:00:00.000Z");
+  const to = new Date("2026-11-25T20:00:00.000Z");
+  const midSec = Math.floor((from.getTime() + to.getTime()) / 2 / 1000);
+  let alchemyCalls = 0;
+  let routescanCalls = 0;
+  globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes("avax-mainnet.g.alchemy.com")) {
+      alchemyCalls++;
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            transfers: [
+              {
+                uniqueId: "x",
+                hash: "0xdd",
+                blockNum: "0x1",
+                from: EVM_PAYER.toLowerCase(),
+                to: "0xbeef",
+                category: "erc20",
+                rawContract: { value: "0x01", address: AVALANCHE_USDC_ADDRESS.toLowerCase() },
+                metadata: {},
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    if (u.startsWith(ROUTESCAN_AVALANCHE_ETHERSCAN_API)) {
+      routescanCalls++;
+      const params = new URL(u).searchParams;
+      assert.equal(params.get("contractaddress")?.toLowerCase(), AVALANCHE_USDC_ADDRESS.toLowerCase());
+      return new Response(
+        JSON.stringify({
+          status: "1",
+          message: "OK",
+          result: [routescanTokentxRow("0xRS", midSec, { value: "2500000" })],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    throw new Error(`unexpected fetch ${u}`);
+  }) as typeof fetch;
+  try {
+    const out = await avaxPayerReaderStub()({
+      network: AVALANCHE_CAIP2,
+      payer: EVM_PAYER,
+      from,
+      to,
+      timeoutMs: 5_000,
+    });
+    assert.equal(alchemyCalls, 1);
+    assert.equal(routescanCalls, 1);
+    assert.equal(out.ok, true);
+    if (out.ok) {
+      assert.equal(out.transfers[0]?.txHash, "0xRS");
+      assert.equal(out.transfers[0]?.value, "2500000");
+    }
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
   }
 });
 
