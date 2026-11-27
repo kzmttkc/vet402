@@ -42,13 +42,14 @@ export const metadata: Metadata = pageMetadata({
   description:
     "The rules vet402 holds itself to, each with where it is implemented, how one purchase is sorted into delivered, pending, seller, vet402, unsorted or not_bought, and what vet402 does not do.",
   path: PATH,
+  markdown: true,
 });
 
 export const revalidate = 86400;
 
 type Term = { id: string; title: string; text: string; sources: readonly { label: string; href: string }[] };
 
-const TERMS: readonly Term[] = [
+export const INTEGRITY_TERMS: readonly Term[] = [
   {
     id: "no-paid-results",
     title: "A result is not for sale",
@@ -62,7 +63,7 @@ const TERMS: readonly Term[] = [
   {
     id: "published-rules",
     title: "Decisions follow the published rules",
-    text: `Every decision carries rules_version (now ${DECISION_RULES_VERSION}). The full text of those rules is published in llms.txt, and every reason code is listed with its effect. The rules text is built from the same constants the code applies, and scripts/gen-rules-text.ts writes it into llms.txt.`,
+    text: `Every decision carries rules_version (now ${DECISION_RULES_VERSION}). The full text of those rules is published in llms-full.txt and public/llms-full-prose.txt, and every reason code is listed with its effect. The rules text is built from the same constants the code applies, and scripts/gen-rules-text.ts writes it into llms-full-prose.txt.`,
     sources: [
       { label: "Reason codes", href: "/docs/api#reason-codes" },
       { label: "llms.txt", href: "/llms.txt" },
@@ -177,7 +178,7 @@ export default async function IntegrityPage() {
           <span>Integrity Terms</span>
         </h2>
         <ol className="space-y-6">
-          {TERMS.map((t, i) => (
+          {INTEGRITY_TERMS.map((t, i) => (
             <li key={t.id} id={t.id}>
               <h3 className="doc-p font-semibold">
                 1.{i + 1} {t.title}

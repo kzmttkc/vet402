@@ -4,7 +4,7 @@
 //   正典: src/lib/decision/rules-text.ts（規則の文）・src/lib/decision/reason-codes.ts（理由コードの表）・
 //         src/lib/decision/types.ts（L2_STATUSES）
 //   書き出す先:
-//     public/llms.txt                               <!-- rules-text:begin --> … <!-- rules-text:end --> の間
+//     public/llms-full-prose.txt                    <!-- rules-text:begin --> … <!-- rules-text:end --> の間
 //     docs/openapi.yaml                             DecisionReasonCode の説明の版・enum・x-vet402-patterns、L2Status の enum、
 //                                                   DecisionResult.reason_codes の説明
 //     packages/mcp-server/src/rules-text.generated.ts  MCP の check_resource_decision の説明に埋め込む文
@@ -21,7 +21,7 @@ import { FIXED_REASON_CODES, REASON_CODES } from "../src/lib/decision/reason-cod
 import { L2_STATUSES } from "../src/lib/decision/types";
 
 const ROOT = join(__dirname, "..");
-export const LLMS_TXT = "public/llms.txt";
+export const LLMS_FULL_PROSE = "public/llms-full-prose.txt";
 export const OPENAPI = "docs/openapi.yaml";
 export const MCP_GENERATED = "packages/mcp-server/src/rules-text.generated.ts";
 
@@ -36,7 +36,7 @@ function markdownCodes(text: string): string {
 export function renderLlms(src: string): string {
   const a = src.indexOf(BEGIN);
   const b = src.indexOf(END);
-  if (a < 0 || b < a) throw new Error(`${LLMS_TXT}: markers not found`);
+  if (a < 0 || b < a) throw new Error(`${LLMS_FULL_PROSE}: markers not found`);
   return `${src.slice(0, a + BEGIN.length)}${markdownCodes(DECISION_RULES_TEXT)}${src.slice(b)}`;
 }
 
@@ -102,10 +102,10 @@ export function renderAll(root = ROOT): { path: string; current: string; expecte
       return "";
     }
   };
-  const llms = read(LLMS_TXT);
+  const llmsFullProse = read(LLMS_FULL_PROSE);
   const openapi = read(OPENAPI);
   return [
-    { path: LLMS_TXT, current: llms, expected: renderLlms(llms) },
+    { path: LLMS_FULL_PROSE, current: llmsFullProse, expected: renderLlms(llmsFullProse) },
     { path: OPENAPI, current: openapi, expected: renderOpenapi(openapi) },
     { path: MCP_GENERATED, current: read(MCP_GENERATED), expected: renderMcp() },
   ];

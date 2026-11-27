@@ -84,12 +84,12 @@ async function post(body: unknown, ip: string, deps?: unknown) {
   return handlePaymentProof(req, deps as never);
 }
 
-test("llms.txt と /docs/api に payment-proof の節がある", () => {
-  const llms = readFileSync("public/llms.txt", "utf8");
+test("llms-full-prose と /docs/api に payment-proof の節がある", () => {
+  const llms = readFileSync("public/llms-full-prose.txt", "utf8");
   const docs = apiDocsPageText();
   const openapi = readFileSync("docs/openapi.yaml", "utf8");
   const line = llms.split("\n").find((l) => l.includes("/api/v1/payment-proof"));
-  assert.ok(line, "llms.txt に payment-proof が無い");
+  assert.ok(line, "llms-full-prose に payment-proof が無い");
   assert.ok(line.includes("POST /api/v1/payment-proof"));
   assert.equal(line.includes(";"), false);
   assert.equal(/[—–]/.test(line), false);

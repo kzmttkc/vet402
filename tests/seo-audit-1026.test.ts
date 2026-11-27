@@ -208,7 +208,7 @@ test("Which chains の先頭の文は SUPPORTED_CHAINS から作り、Tempo は 
   assert.match(lead, /BNB Chain \(USD1 over x402\)/);
   assert.match(lead, /Stellar \(USDC over x402\)/);
   assert.match(lead, /Avalanche C-Chain \(USDC over x402\)/);
-  assert.ok(read("public/llms.txt").includes(lead));
+  assert.ok(read("public/llms-full-prose.txt").includes(lead));
   assert.equal(CHAINS_HUB.h1, "x402 and MPP payments by chain");
 });
 
@@ -319,14 +319,14 @@ test("/x402 はピラーページで、/x402/chains へはリダイレクトし�
 
 test("CC BY 4.0 の範囲は l0 export と sellers export と /impact の数字を含む", () => {
   const needles = ["/api/v1/observatory/l0/export.csv", "/api/v1/sellers/export.csv", "/impact"];
-  for (const file of ["LICENSE-DATA", "src/app/observatory/methodology/page.tsx", "public/llms.txt"]) {
+  for (const file of ["LICENSE-DATA", "src/app/observatory/methodology/page.tsx", "public/llms-full-prose.txt"]) {
     const src = read(file);
     for (const needle of needles) assert.ok(src.includes(needle), `${file} ${needle}`);
   }
-  const licence = read("public/llms.txt").match(/That licence covers [^.]+/)?.[0] ?? "";
+  const licence = read("public/llms-full-prose.txt").match(/That licence covers [^.]+/)?.[0] ?? "";
   assert.equal(licence.includes("/api/v1/accuracy"), false);
   assert.equal(licence.includes("census"), false);
-  assert.equal(read("public/llms.txt").includes("Three endpoints"), false);
+  assert.equal(read("public/llms-full-prose.txt").includes("Three endpoints"), false);
 });
 
 test("observatory の説明は L0 の生存確認に agent payments の文を足さない", () => {

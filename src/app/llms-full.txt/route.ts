@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { DECISION_RULES_TEXT } from "@/lib/decision/rules-text";
 import { keylessDecisionPerMinute } from "@/lib/api/keyless-limits";
 import { FAQS } from "@/components/site/faq-data";
@@ -18,8 +20,17 @@ export const dynamic = "force-static";
  * llmstxt.org optional companion: the full citable text, generated from the
  * same modules the HTML pages render so a second copy cannot drift.
  */
+function llmsFullProse(): string {
+  try {
+    return readFileSync(join(process.cwd(), "public/llms-full-prose.txt"), "utf8").trimEnd();
+  } catch {
+    return "";
+  }
+}
+
 export function GET() {
   const posts = getAllPosts();
+  const prose = llmsFullProse();
   // 2026-09-05 LLMO: 語彙は /observatory/methodology §10 と DefinedTermSet
   // JSON-LD と同じ配列から出す。ここに転記すると片方だけ直る日が来る。
   const vocabulary = (Object.keys(VOCABULARY_GROUP_LABELS) as (keyof typeof VOCABULARY_GROUP_LABELS)[])
@@ -101,6 +112,8 @@ ${blog}
 ${CREDENTIALS.builder.builderName} builds vet402 alone. The site is published by ${CREDENTIALS.builder.publisher}, a sole proprietorship in Japan. Track record (the same record as ${SITE_URL}/about and the funding rows of ${SITE_URL}/legal/notice#relationships):
 
 ${credentialLines().join("\n")}
+
+${prose ? `\n${prose}\n` : ""}
 
 ## Freshness
 
