@@ -78,9 +78,11 @@ test("robots lets the answer-engine crawlers read the site and points at both si
   assert.ok(maps.includes(`${SITE_URL}/sitemap-observatory.xml`));
 });
 
-test("llms.txt links the hosted MCP server next to the API reference", () => {
-  const llms = read("public/llms.txt");
-  const primary = llms.slice(llms.indexOf("## Primary"), llms.indexOf("\n## ", llms.indexOf("## Primary") + 3));
+test("llms-full-prose links the hosted MCP server next to the API reference", () => {
+  const llms = read("public/llms-full-prose.txt");
+  const start = llms.indexOf("### Primary");
+  const end = llms.indexOf("\n### API:", start);
+  const primary = llms.slice(start, end > start ? end : undefined);
   assert.match(primary, /^- https:\/\/vet402\.com\/docs\/mcp: .+/m);
   assert.ok(primary.includes("https://vet402.com/docs/api"));
   assert.ok(primary.includes("https://vet402.com/observatory/state"));

@@ -122,7 +122,7 @@ function routePattern(route: string): RegExp {
   return new RegExp(esc + "(?![a-zA-Z_/])");
 }
 
-for (const doc of ["src/app/docs/api/page.tsx", "public/llms.txt", "src/app/llms-full.txt/route.ts", "README.md"]) {
+for (const doc of ["src/app/docs/api/page.tsx", "public/llms-full-prose.txt", "src/app/llms-full.txt/route.ts", "README.md"]) {
   test(`${doc} に §7.3 / §9.1 の新規 9 ルートが全部ある`, () => {
     const body = doc === "src/app/docs/api/page.tsx" ? apiDocsPageText() : read(doc);
     const missing = NEW_ROUTES.filter((r) => !routePattern(r).test(body));
@@ -209,7 +209,7 @@ test("openapi の /decision は policy のクエリ 4 つと CallerPolicy スキ
   }
 });
 
-for (const doc of ["src/app/docs/api/page.tsx", "public/llms.txt", "src/app/llms-full.txt/route.ts", "SKILL.md"]) {
+for (const doc of ["src/app/docs/api/page.tsx", "public/llms-full-prose.txt", "src/app/llms-full.txt/route.ts", "SKILL.md"]) {
   test(`${doc} が /decision の policy クエリと caller_policy と price_above_ceiling を説明している`, () => {
     const body = doc === "src/app/docs/api/page.tsx" ? apiDocsPageText() : read(doc);
     assert.ok(body.includes("caller_policy"), `${doc} に caller_policy が無い`);

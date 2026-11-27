@@ -19,12 +19,12 @@ import { PINNED_ASSETS_WITH_ISSUER_TEXT } from "@/lib/observatory/settlement-ass
 
 const PATH = "/x402/statistics";
 
-const PAGE_TITLE = "x402 statistics: paid purchases, settlement, and delivery";
-const PAGE_DESCRIPTION =
+export const STATISTICS_PAGE_TITLE = "x402 statistics: paid purchases, settlement, and delivery";
+export const STATISTICS_PAGE_DESCRIPTION =
   "Counts from vet402's real x402 purchases: attempts, on-chain settlement, delivery, and purchase results by chain, from the public observatory state.";
 
 /** Verbatim from GET /api/v1/observatory/state disclaimer and /observatory/state prose. */
-const DEFINITIONS = {
+export const STATISTICS_DEFINITIONS = {
   attempts: "an attempt is a paid request whose payment was signed and sent, whatever the seller answered.",
   settled: "l1.settled is the transfer vet402 re-read on-chain.",
   delivered:
@@ -38,9 +38,10 @@ const DEFINITIONS = {
 } as const;
 
 export const metadata: Metadata = pageMetadata({
-  title: PAGE_TITLE,
-  description: PAGE_DESCRIPTION,
+  title: STATISTICS_PAGE_TITLE,
+  description: STATISTICS_PAGE_DESCRIPTION,
   path: PATH,
+  markdown: true,
 });
 
 export const revalidate = 300;
@@ -69,7 +70,7 @@ export default async function X402StatisticsPage() {
     ? datasetJsonLd({
         name: "x402 purchase statistics",
         citeName: "observatory",
-        description: PAGE_DESCRIPTION,
+        description: STATISTICS_PAGE_DESCRIPTION,
         path: PATH,
         citeUrl: `${SITE_URL}/api/v1/observatory/state`,
         retrievedAt: readAt,
@@ -98,8 +99,8 @@ export default async function X402StatisticsPage() {
     : null;
 
   const webPage = webPageJsonLd({
-    name: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
+    name: STATISTICS_PAGE_TITLE,
+    description: STATISTICS_PAGE_DESCRIPTION,
     path: PATH,
     isBasedOn: `${SITE_URL}/api/v1/observatory/state`,
   });
@@ -112,26 +113,26 @@ export default async function X402StatisticsPage() {
 
   const measures = live && stats
     ? [
-        { key: "l1.attempts", label: "Paid purchase attempts", value: stats.l1.attempts, definition: DEFINITIONS.attempts },
-        { key: "l1.settled", label: "Settled", value: stats.l1.settled, definition: DEFINITIONS.settled },
-        { key: "l1.delivered", label: "Delivered", value: stats.l1.delivered, definition: DEFINITIONS.delivered },
+        { key: "l1.attempts", label: "Paid purchase attempts", value: stats.l1.attempts, definition: STATISTICS_DEFINITIONS.attempts },
+        { key: "l1.settled", label: "Settled", value: stats.l1.settled, definition: STATISTICS_DEFINITIONS.settled },
+        { key: "l1.delivered", label: "Delivered", value: stats.l1.delivered, definition: STATISTICS_DEFINITIONS.delivered },
         {
           key: "l1.settledNotDelivered",
           label: "Settled but not delivered",
           value: stats.l1.settledNotDelivered,
-          definition: DEFINITIONS.settledNotDelivered,
+          definition: STATISTICS_DEFINITIONS.settledNotDelivered,
         },
         {
           key: "l1.endpointsAttempted",
           label: "Endpoints purchased from",
           value: stats.l1.endpointsAttempted,
-          definition: DEFINITIONS.endpointsAttempted,
+          definition: STATISTICS_DEFINITIONS.endpointsAttempted,
         },
         {
           key: "l1.endpointsDelivered",
           label: "Endpoints with at least one delivery",
           value: stats.l1.endpointsDelivered,
-          definition: DEFINITIONS.endpointsDelivered,
+          definition: STATISTICS_DEFINITIONS.endpointsDelivered,
         },
       ]
     : [];
@@ -234,7 +235,7 @@ export default async function X402StatisticsPage() {
           <span className="sec-no">2.</span>
           <span>By chain</span>
         </h2>
-        <p className="doc-p">{DEFINITIONS.byChain}</p>
+        <p className="doc-p">{STATISTICS_DEFINITIONS.byChain}</p>
         {!live || rows.length === 0 ? (
           <p className="doc-p">No chain rows in this read.</p>
         ) : (

@@ -18,7 +18,7 @@ import { SELLER_EXPORT_COLUMN_NOTES } from "@/lib/sellers/export";
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), "utf8");
 
-test("静的な面（llms.txt・openapi.yaml・MCP の生成物）は正典から書き出したものと一致する", () => {
+test("静的な面（llms-full-prose.txt・openapi.yaml・MCP の生成物）は正典から書き出したものと一致する", () => {
   for (const f of renderAll(ROOT)) {
     assert.ok(f.current.length > 0, `${f.path} が無い`);
     assert.equal(f.current === f.expected, true, `${f.path} が正典と食い違う。npx tsx scripts/gen-rules-text.ts を打つ`);
@@ -42,6 +42,7 @@ test("手で書いた古い規則の文が面に残っていない（旧版の�
     "src/app/docs/api/page.tsx",
     "src/app/llms-full.txt/route.ts",
     "public/llms.txt",
+    "public/llms-full-prose.txt",
     "docs/openapi.yaml",
     "packages/mcp-server/src/index.ts",
     "src/components/site/sellers/DecisionAnswer.tsx",

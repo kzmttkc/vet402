@@ -49,8 +49,9 @@ test("OpenAPI は配信している URL を正典として指す", () => {
 
 test("L1 の対応チェーンは方法論と一致する（Base だけだと言わない）", () => {
   assert.ok(!/L1 purchases are Base-only/.test(LLMS), "L1 が Base のみだと書いてある");
-  const chainLine = LLMS.split("\n").find((l) => l.includes("L1 purchases run on"));
-  assert.ok(chainLine, "L1 の対応チェーンを述べる行が無い");
+  const prose = readFileSync(join(ROOT, "public/llms-full-prose.txt"), "utf8");
+  const chainLine = prose.split("\n").find((l) => l.includes("L1 purchases run on"));
+  assert.ok(chainLine, "L1 の対応チェーンを述べる行が無い（llms-full-prose.txt）");
   assert.ok(chainLine.includes("Base") && chainLine.includes("Solana"));
   const methodology = readFileSync(
     join(ROOT, "src/app/observatory/methodology/page.tsx"),

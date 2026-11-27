@@ -237,7 +237,7 @@ test("/connect is in the sitemap, the footer, and not in the five-item header, a
 });
 
 test("llms.txt points to /connect and to the vet402 package on npm", () => {
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   const line = llms.split("\n").find((l) => l.includes("/connect"));
   assert.ok(line, "llms.txt has a /connect line");
   assert.match(line!, /vet402/);

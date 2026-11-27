@@ -93,7 +93,9 @@ function walkPages(dir: string, out: string[]): void {
 }
 
 function llmsProseLines(): string[] {
-  const lines = readFileSync("public/llms.txt", "utf8").split("\n");
+  const lines = [readFileSync("public/llms.txt", "utf8"), readFileSync("public/llms-full-prose.txt", "utf8")].join(
+    "\n",
+  ).split("\n");
   const out: string[] = [];
   for (const line of lines) {
     const t = line.trim();
@@ -172,8 +174,8 @@ for (const rel of [...appPages.map((p) => p.replace(process.cwd() + "/", "")), .
   });
 }
 
-test("public/llms.txt prose lines follow public English rules", () => {
-  assertNoViolations(llmsProseLines(), "llms.txt");
+test("public/llms.txt and llms-full-prose prose lines follow public English rules", () => {
+  assertNoViolations(llmsProseLines(), "llms index and llms-full-prose");
 });
 
 test("C-9/C-11: impact copy gate fails if a checked sentence reintroduces an em dash", () => {

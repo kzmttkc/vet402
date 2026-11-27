@@ -29,7 +29,8 @@ test("docs and static copy use 60 for /decision key-less, not hard-coded 10", ()
       assert.doesNotMatch(chunk, /10 requests per minute per IP/i, `docs chunk ${i}`);
     }
   }
-  const llms = readFileSync("public/llms.txt", "utf8");
+  const llms =
+    readFileSync("public/llms.txt", "utf8") + readFileSync("public/llms-full-prose.txt", "utf8");
   assert.match(llms, /60\/min/);
   assert.doesNotMatch(llms, /Key-less at 10\/min per IP/);
   const openapi = readFileSync("docs/openapi.yaml", "utf8");
@@ -85,7 +86,8 @@ test("static docs: the key-less /decision number and its since date follow keyle
   const { DECISION_KEYLESS_LIMIT_SINCE } = await import("@/lib/api/keyless-limits");
   const n = keylessDecisionPerMinute();
   assert.equal(DECISION_KEYLESS_LIMIT_SINCE, "2026-11-15");
-  const llms = readFileSync("public/llms.txt", "utf8");
+  const llms =
+    readFileSync("public/llms.txt", "utf8") + readFileSync("public/llms-full-prose.txt", "utf8");
   assert.doesNotMatch(llms, /Key-less at \d+\/min per IP since 2026-09-07/, "the 9/7 date belongs to the 10/min window");
   assert.ok(llms.includes(`Key-less since 2026-09-07, at ${n}/min per IP since ${DECISION_KEYLESS_LIMIT_SINCE}`));
   assert.ok(llms.includes(`The decision route below also answers without a key (${n}/min per IP)`));

@@ -20,8 +20,8 @@ const squash = (src: string) => src.replace(/&apos;/g, "'").replace(/\s+/g, " ")
 const UNVERIFIED =
   "unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.";
 
-test("llms.txt の観測所の文は probed daily を含まず、メソッド・fail・pct・未プローブを実装どおりに書く", () => {
-  const llms = read("public/llms.txt");
+test("llms-full-prose の観測所の文は probed daily を含まず、メソッド・fail・pct・未プローブを実装どおりに書く", () => {
+  const llms = read("public/llms-full-prose.txt");
   const line = llms.split("\n").find((l) => l.includes("https://vet402.com/observatory: the L0 register"));
   assert.ok(line, "観測所の行が無い");
   assert.equal(/\bprobed daily\b/i.test(line), false);

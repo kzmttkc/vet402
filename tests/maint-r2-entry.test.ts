@@ -19,7 +19,13 @@ test("E-1: the first install line is npm install vet402 on home, docs Packages, 
     { label: "home", text: file("src/components/site/home/paths.ts") },
     { label: "docs/api packages", text: apiDocs().split('id="packages"')[1]?.slice(0, 4000) ?? "" },
     { label: "connect TS intro", text: file("src/lib/connect/snippets.ts").match(/stack: "TypeScript"[\s\S]*?packages:/)?.[0] ?? "" },
-    { label: "llms connect", text: file("public/llms.txt").split("\n").find((l) => l.includes("/connect")) ?? "" },
+    {
+      label: "llms connect",
+      text:
+        (file("public/llms.txt") + file("public/llms-full-prose.txt"))
+          .split("\n")
+          .find((l) => l.includes("/connect")) ?? "",
+    },
   ];
   for (const s of surfaces) {
     const installs = firstInstallPackageNames(s.text);
@@ -62,8 +68,8 @@ test("E-4: /connect states that check() JSON differs from GET /api/v1/check", ()
   assert.match(file("src/app/connect/page.tsx"), /\/api\/v1\/check/);
 });
 
-test("E-5: llms.txt check cache text matches private, no-store and 60s server cache", () => {
-  const llms = file("public/llms.txt");
+test("E-5: llms check cache text matches private, no-store and 60s server cache", () => {
+  const llms = file("public/llms.txt") + file("public/llms-full-prose.txt");
   const line = llms.split("\n").find((l) => l.includes("GET /api/v1/check?url="));
   assert.ok(line);
   assert.match(line!, /private, no-store/);

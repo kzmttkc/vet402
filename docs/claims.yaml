@@ -2238,21 +2238,21 @@ claims:
     verified_at: 2026-11-16
   # 2026-10-21: public/llms.txt を走査に加えた。抽出器は .txt を TSX として読み、バッククォートを文字列の境界にするため、断定は文ではなく断片になる。引用はその断片とファイルの両方にある短い範囲。
   - id: llms_pinned_purchase_reservation
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "vet402 may reserve one paid test of a listing in a UTC date window"
     means: "L1 で版管理された pinned-purchases.ts の日付窓に従い特定出品へ有料試行を予約できる。売り手はリストに載せられない。"
     check: null
     why_unverifiable: "運用ポリシーの説明。tests/pinned-purchases.test.ts がリストの検証と並びを固定する。"
     verified_at: 2026-11-23
   - id: llms_levels_l0_span
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "anywhere on the site. - **L0 Liveness**: does"
     means: "llms.txt の検証レベル。L3 は未実装。L0 は購入しないプローブで pass / fail / unverified。"
     check: null
     why_unverifiable: "抽出器がバッククォートで切った断片で、公開 GET の 1 式にはならない。同じ定義は /observatory/methodology にあり、そちらで登録済み。"
     verified_at: 2026-10-21
   - id: llms_cache_counter_span
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "that belongs to whoever populated the cache. A"
     means: "共有キャッシュの 200 は RateLimit-Remaining を付けない。付けたカウンタはキャッシュを埋めた呼び手のものだから。"
     check: null
@@ -2266,56 +2266,70 @@ claims:
     why_unverifiable: "製品の説明で、公開 GET が返す数値ではない。同じ導入はトップと /observatory/methodology にある。"
     verified_at: 2026-10-21
   - id: llms_history_daily_series
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "the daily series per chain. - `GET /api/v1/ob"
     means: "/api/v1/observatory/history はチェーン別の日次系列。"
     check: null
     why_unverifiable: "系列の粒の説明。件数は日々動く。route は src/app/api/v1/observatory/history/route.ts。"
     verified_at: 2026-10-21
   - id: llms_resolve_identifiers_only
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "reverse lookup: whatever you hold in, the ca"
     means: "/api/v1/resolve は識別子だけを返し、recommendation は返さない。"
     check: null
     why_unverifiable: "応答の形の説明。根拠は src/app/api/v1/resolve/route.ts。数値の式にはできない。"
     verified_at: 2026-10-21
   - id: llms_score_not_an_l0_result
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "is never reported as an L0 to L2 result. The front"
     means: "0–100 のスコアは L0–L2 の結果としては出さない。"
     check: null
     why_unverifiable: "API の区別の説明。同じ文は方法論と語彙にあり、そちらで登録済み。"
     verified_at: 2026-10-21
   - id: llms_badge_states_claim_only
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "carries no score, because a cached score on a t"
     means: "payee の SVG バッジは署名済みの請求があるかどうかだけを述べ、スコアは載らない。"
     check: null
     why_unverifiable: "バッジの描画方針。根拠は src/app/api/badge/[address]/route.ts。"
     verified_at: 2026-10-21
   - id: llms_payee_endpoints_every
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "/endpoints` — every endpoint that declares that"
     means: "GET /api/v1/payees/{address}/endpoints は、その payee を payTo として宣言している endpoint を返す。"
     check: null
     why_unverifiable: "ルートの定義。件数はカタログで動く。根拠は src/app/api/v1/payees/[address]/endpoints/route.ts。"
     verified_at: 2026-10-21
   - id: llms_spent_units_signed_amount
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "`spent_units` is the amount vet402 signed for o"
     means: "spent_units は署名した額で、動いた額ではない。tx の無い settle_failed にも価格が入る。"
     check: null
     why_unverifiable: "列の定義。根拠は src/lib/observatory/export-columns.ts と export.csv の route。confirmed_units が再読した額。"
     verified_at: 2026-10-21
   - id: llms_endpoint_payees_every
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "/payees` — every `payee_id` (chain:address) decl"
     means: "GET /api/v1/endpoints/{endpointId}/payees は、その endpoint が宣言している payee_id を返す。"
     check: null
     why_unverifiable: "ルートの定義。根拠は src/app/api/v1/endpoints/[endpointId]/payees/route.ts。"
     verified_at: 2026-10-21
+  - id: llms_full_prose_no_face_value_registries
+    surface: public/llms-full-prose.txt
+    quote: "so vet402 does not take either at face value"
+    means: "レジストリやディレクトリの自己申告数字を、そのまま真実として扱わない。"
+    check: null
+    why_unverifiable: "測定方針の説明。同じ思想は方法論とトップに書いてある。"
+    verified_at: 2026-11-27
+  - id: llms_full_prose_result_never_moves_up
+    surface: public/llms-full-prose.txt
+    quote: "never moves up a level"
+    means: "検証レベルは上げ合わせない。L0 の結果が L1 の失敗を打ち消さない。"
+    check: null
+    why_unverifiable: "方法論と同じ定義。tests/observatory-vocabulary.test.ts が語彙を固定する。"
+    verified_at: 2026-11-27
   - id: llms_judgments_daily_json
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "`: daily judgments JSON (`index.json`, `index-"
     means: "GET /api/v1/judgments/{file} は index.json・index-{00..ff}.json・{resource_id}.json の日次判定 JSON を鍵なしで公開する。IP 枠は無く、CDN は次の UTC 日までキャッシュされる（CC-BY-4.0）。"
     check: null
@@ -2465,7 +2479,7 @@ claims:
       assert: "l1.endpointsSettledIndexOnly >= 0"
     verified_at: 2026-11-21
   - id: nearai_observatory_no_run_yet_llms
-    surface: public/llms.txt
+    surface: public/llms-full-prose.txt
     quote: "Before the first daily run (09:00 UTC) HTTP 200 with"
     means: "NEAR AI 観測の初回プローブ前は、ストアが読める限り GET /api/v1/observatory/nearai は 503 ではなく 200 で status no_run_yet を返す。次回実行は vercel.json の nearai-probe cron 0 9 * * *（09:00 UTC）。"
     check: null

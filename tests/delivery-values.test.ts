@@ -244,7 +244,7 @@ test("英語の決まり: openapi・llms.txt・methodology・CHANGELOG の deliv
   assert.ok(oStart >= 0 && oEnd > oStart, "openapi の delivery.csv の節");
   assertAsciiNoBannedEnglish(openapi.slice(oStart, oEnd), "openapi delivery.csv");
 
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   const llmsLines = llms.split("\n").filter((l) => l.includes("/api/v1/observatory/delivery.csv"));
   assert.ok(llmsLines.length >= 2, "llms.txt の API 行と Freshness 行");
   for (const l of llmsLines.filter((x) => x.startsWith("- `GET /api/v1/observatory/delivery.csv") || x.includes("delivery.csv`:"))) {

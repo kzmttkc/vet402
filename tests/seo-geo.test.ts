@@ -29,7 +29,7 @@ test("回答頁とチェーン頁は静的 sitemap に入り、売り手頁は�
 });
 
 test("llms.txt は各回答の先導文と日付を持つ", () => {
-  const llms = readFileSync("public/llms.txt", "utf8");
+  const llms = (readFileSync("public/llms-full-prose.txt", "utf8") + "\n" + readFileSync("public/llms.txt", "utf8"));
   for (const q of LLM_QUESTIONS) {
     for (const sentence of q.lead) {
       assert.ok(llms.includes(sentence), sentence);

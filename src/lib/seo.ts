@@ -115,6 +115,8 @@ type PageMetaInput = {
    * 無限のソフト404がクロールバジェットを食うのを防ぐ。既定 false。
    */
   noindex?: boolean;
+  /** When true, adds `<link rel="alternate" type="text/markdown">` for `{path}.md`. */
+  markdown?: boolean;
 };
 
 // BreadcrumbList の JSON-LD を組む（2026-08-14 AEO）。回答エンジン・検索が
@@ -142,18 +144,23 @@ export function pageMetadata({
   modifiedTime,
   noindex = false,
   imageAlt,
+  markdown = false,
 }: PageMetaInput): Metadata {
   const url = path === "/" ? SITE_URL : `${SITE_URL}${path}`;
   const alt = imageAlt ?? OG_IMAGE_ALT;
+  const alternateTypes: Record<string, string> = {
+    "application/rss+xml": `${SITE_URL}/blog/rss.xml`,
+  };
+  if (markdown) {
+    alternateTypes["text/markdown"] = `${SITE_URL}${path}.md`;
+  }
   return {
     title: path === "/" ? { absolute: title } : title,
     description,
     ...(noindex ? { robots: { index: false, follow: true } } : {}),
     alternates: {
       canonical: url,
-      types: {
-        "application/rss+xml": `${SITE_URL}/blog/rss.xml`,
-      },
+      types: alternateTypes,
     },
     openGraph: {
       title,

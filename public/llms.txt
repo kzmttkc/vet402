@@ -16,7 +16,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 - [What is x402?](https://vet402.com/x402): x402 is an open payment standard built on HTTP 402. A server answers 402 with payment terms, the client pays, often in USDC, and repeats the request with proof of payment.
 - [What is ERC-8004?](https://vet402.com/erc-8004): ERC-8004 (Trustless Agents) is an Ethereum standard with three registries for AI agents: identity, reputation and validation. Payments are out of its scope.
 - [Glossary](https://vet402.com/x402/glossary): facilitator, payTo, PAYMENT-REQUIRED, exact, upto, batch settlement, Bazaar, CAIP-2, agentId, feedbackURI.
-- [Methodology](https://vet402.com/observatory/methodology): what L0 (unpaid probe), L1 (real purchase) and L2 (output check against the seller's declaration) mean, and when a failure counts against a seller.
+- [Methodology](https://vet402.com/observatory/methodology): what L0 (unpaid probe), L1 (real purchase) and L2 (output check against the seller's declaration) mean, and when a failure counts against a seller. One-line definitions: https://vet402.com/observatory/methodology#vocabulary
 - [Integrity Terms](https://vet402.com/integrity): the rules vet402 holds itself to, each with its source, the six outcomes one purchase is sorted into and which count against a seller, and what vet402 does not do.
 
 ## Check a seller before paying
@@ -35,7 +35,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 - [Bazaar delivery by resource URL](https://vet402.com/api/v1/delivery/by-resource): copy the matching row from the same snapshot as [seller delivery feed JSON](https://vet402.com/api/v1/delivery/sellers.json) onto a CDP Bazaar item `resource` (`GET ?url=` or `POST /api/v1/delivery/annotate` for up to 100 items). Spec: https://github.com/vet402/vet402/blob/main/docs/bazaar-delivery-field.md
 - [Fixed snapshots with DOI](https://doi.org/10.5281/zenodo.24195171) and [snapshot repository](https://github.com/vet402/vet402-observatory-data)
 - [Monthly report: State of x402](https://vet402.com/x402/report/2026-11)
-- [Corrections log](https://vet402.com/corrections)
+- [Corrections log](https://vet402.com/corrections) and JSON: https://vet402.com/api/v1/observatory/corrections
 
 ## Chains
 
@@ -47,212 +47,28 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 - [GitHub: vet402/vet402](https://github.com/vet402/vet402) (MIT code, CC BY 4.0 data)
 - npm: @vet402/sdk, @vet402/middleware, @vet402/mcp-server. PyPI: vet402-sdk.
 
+## Machine-readable pages
+
+Markdown versions of key pages. Lists, terms, definitions and live counts come from the same modules as the HTML. The remaining prose is copied from each page and tests compare it with the page source. methodology.md is a summary: the section headings, the 60-second summary and the one-line definitions. The full text of each section is on the HTML page.
+
+- https://vet402.com/x402/check-a-seller.md: how to check a seller before paying
+- https://vet402.com/observatory/methodology.md: L0, L1 and L2 definitions
+- https://vet402.com/x402/glossary.md: x402 and ERC-8004 terms
+- https://vet402.com/integrity.md: integrity terms and failure attribution
+- https://vet402.com/x402/statistics.md: paid purchase counts from the observatory state
+- https://vet402.com/erc-8004.md: ERC-8004 and payTo match counts
+
+## API discovery
+
+- https://vet402.com/.well-known/api-catalog: RFC 9727 linkset for public API endpoints and OpenAPI
+- OpenAPI 3.1: https://vet402.com/openapi.yaml and https://vet402.com/openapi.json
+
+
 ## Optional
 
-- [Full text for language models](https://vet402.com/llms-full.txt)
-- The API reference, rules and field glossary below is long. Skip it unless a question is about a specific endpoint, field or reason code.
+- [Full text for language models](https://vet402.com/llms-full.txt): API reference, rules text, FAQ and field glossary.
 
-### Questions
-
-### What is x402?
-
-x402 is an HTTP 402 payment protocol for AI agents. A server answers 402 with payment terms, the caller pays on chain, often in USDC, and retries the request with proof of payment.
-
-https://vet402.com/x402
-https://vet402.com/blog/what-is-x402
-
-### How do AI agents pay with stablecoins over x402?
-
-An AI agent pays an x402 API with a stablecoin by answering HTTP 402. The server returns payment terms that name an asset, often USDC, plus a network, an amount, and a recipient. The agent signs that transfer and retries the request with proof of payment.
-
-https://vet402.com/x402/stablecoin-payments
-
-### How do you check an x402 seller before paying?
-
-Check an x402 seller before paying by reading the purchases vet402 has made from that seller and the decision those purchases support. The decision names the terms of the last purchase whose delivery vet402 confirmed. If the 402 in hand names a different recipient, asset, network, or scheme, or a higher amount, that offer is different from the one that was delivered. The amount is in 6-decimal ledger units: multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing.
-
-https://vet402.com/x402/check-a-seller
-
-### Which chains does vet402 measure for x402 and MPP payments?
-
-vet402 measures Base (USDC over x402), Solana (USDC over x402), Tempo (USDC.e over MPP, the Machine Payments Protocol), XRPL (RLUSD over x402), Arc (USDC over x402), Celo (USDC over x402), Stellar (USDC over x402), Arbitrum One (USDC over x402), BNB Chain (USD1 over x402), and Avalanche C-Chain (USDC over x402). A count appears when that ledger read has a row for the chain. An empty read shows no counts.
-
-https://vet402.com/x402/chains
-https://vet402.com/x402/chains/base
-https://vet402.com/x402/chains/solana
-https://vet402.com/x402/chains/tempo
-https://vet402.com/x402/chains/xrpl
-https://vet402.com/x402/chains/arc
-https://vet402.com/x402/chains/celo
-https://vet402.com/x402/chains/stellar
-https://vet402.com/x402/chains/arbitrum-one
-https://vet402.com/x402/chains/bnb-chain
-https://vet402.com/x402/chains/avalanche-c-chain
-
-Under x402's exact scheme a settled payment is final, and proof of payment exists on-chain. A buyer still has no way to see, before paying, what a seller delivered. vet402 answers that with records of real purchases. Registries can be written for cents and directory metrics can be manufactured, so vet402 does not take either at face value. It measures, states which level of verification a result came from, and says "unverified" when it has not measured. Nothing on the site is presented as an estimate.
-
-Formerly named "Vouch". Renamed to vet402 in August 2026. The production URL is `vet402.com`. The GitHub repository is `vet402/vet402` (the older `kzmttkc/agent-trust` URL still redirects there. Cite the new one). Issued API keys and webhook headers keep the `vouch_` / `Vouch-` prefixes for backward compatibility. The old name appearing there is deliberate. It is not stale documentation.
-
-### Verification levels
-
-Every word used below is defined in one sentence each at https://vet402.com/observatory/methodology#vocabulary, and the same definitions are published as `DefinedTermSet` structured data on that page and in https://vet402.com/llms-full.txt.
-
-This is the published methodology. A result is labelled by the level that produced it and never moves up a level. An L0 probe cannot report settlement, and an L3 opinion is never folded into an L0 to L2 fact. L0, L1 and L2 verdicts ship live in the observatory (see "Implemented and live" below). L0 and L1 are full measurements. L2 is a deliberately minimal structural check. It parses the response as JSON and confirms the seller's own declared required keys are present, nothing deeper, as described on https://vet402.com/observatory/methodology. L3 is not built and no opinion is published anywhere on the site.
-
-- **L0 Liveness**: does the endpoint answer correctly? Probe, no purchase. Output: pass / fail / unverified.
-- **L1 Settle-through**: does the payment settle, and does a non-empty 2xx come back? Real purchase. Output: n of m settled, n delivered, latency. settled = the transfer re-read on-chain. delivered = settled AND the paid request answered 2xx other than 202 Accepted, with a non-empty body.
-- **L2 Conformance**: does the response match the seller's own declaration? Purchase plus machine diff. Output: match / mismatch / no_declaration / not_checked.
-  Decision and facts documents store conform, mismatch, undeclared, or not_checked: conform is written when the re-read L2 value (l2_reading) of the latest delivery is match, mismatch is written when that re-read value is mismatch (an older mismatch row with no recorded reason is re-read first, and a cut body reads not_checked), and in the other cases the decision word is not_checked when the current declaration names output (a required key or an example property) or when the purchase row of the latest delivery recorded a declaration and its re-read value is not_checked, and undeclared when neither holds; the latest delivery is read at any age, so a mismatch holds until a later delivery replaces it.
-- **L3 Quality**: is the content any good? Not built. No L3 opinion is published.
-
-What the API returns today is a different, older thing. It is a 0 to 100 trust or payee score banded ALLOW / WARN / BLOCK. It predates the levels and stays available to API and SDK callers during the transition. Observatory verdicts replace it as they ship, and a score is never reported as an L0 to L2 result. The front page states this relationship in §2.1. Scoring is fail-closed. An input that could not be read is never reported as an input that was checked and found fine. Such a verdict is marked `degraded`, is not cached, and returns BLOCK to callers, while the public profile pages say "Not verifiable right now" instead of publishing a number.
-
-### Primary
-
-- https://vet402.com/ — the memo: problem, verification levels, what is live, what is still being built
-- https://vet402.com/observatory: the L0 register. The catalog is re-fetched on the schedule in Freshness. Endpoints are probed on a rolling schedule, not as a sweep of the catalog on one day. A probe uses the HTTP method the listing declares when the listing declares GET, POST, HEAD, or DELETE, and GET when the listing declares no method or a method outside that set. Two failures in a row on that probe can be published as fail. The share of active endpoints with a probe from the last 7 days is coverage7d on https://vet402.com/api/v1/observatory/state (activeEndpoints, measuredLast7d, pct). pct is null when activeEndpoints is 0. A published verdict is pass, fail, withdrawn, or unverified. When a probe has run, the Last probed column shows that time. The L1 column sits between the verdict and Last probed. A row that has not been probed shows no probe time.
-- https://vet402.com/observatory/state — aggregate rates for the whole observed catalog, broken out by chain
-- https://vet402.com/observatory/methodology — full definitions for L0 Liveness, L1 Settle-through and L2 Conformance: what each level measures, what it cannot measure, and the publication gate that keeps one bad sample from branding an endpoint dead
-- https://vet402.com/docs/api — API reference, including copy-paste curl commands that need no key
-- https://vet402.com/connect: start as a buyer, a seller or both, in three steps, with curl, TypeScript, Python, MCP, no-code, Express, Hono or Next.js. The single `vet402` package has the buyer and seller sides in one install: `npm install vet402`.
-- https://vet402.com/docs/mcp: the hosted MCP server at https://vet402.com/mcp. Tools include check_x402_seller, check_my_x402_endpoint, find_x402_sellers (Wilson ranking aligned with GET /api/v1/find), check_payment_proof, and check_8004_agent (same JSON as GET /api/v1/erc8004/check). Read only, no key.
-- `GET /api/v1/check?url=` — the same answer as MCP `check_x402_seller`: what vet402 recorded when it paid an x402 URL (`recommendation`, `delivery`, the five latest purchases, `verified_terms`, `verified_pay_to_by_network`). Key-less; shares the per-IP rate limit with `/api/v1/resolve`. Responses set `Cache-Control: private, no-store`, so a shared cache does not replay them. Each server instance may reuse the same underlying read for up to 60 seconds. The header `x-vet402-retrieved-at` names when vet402 read the record for that answer. Optional `method=` narrows the HTTP method like `/api/v1/resolve`. `url` must be https (http is 400 `invalid_url`).
-- `GET /api/v1/diagnose?url=` reads one unpaid 402 before anyone pays. No key and no wallet. vet402 returns ALLOW, WARN, or BLOCK, the cheapest payable accept, and one fix line per check. 20 requests a minute per IP. The fetch stops at 10 seconds and 64 KB. Private addresses are refused. A completed read may be cached for 60 seconds, and a shared cache may keep serving it for five more minutes while it refreshes. A listed URL also points at `GET /api/v1/check`.
-- https://vet402.com/accuracy — public accuracy ledger: past verdicts, outcomes, and misfire rate
-- https://vet402.com/leaderboard — register of recently verified subjects, ranked
-- https://vet402.com/payee — verify a payee, or look one up
-- https://vet402.com/corrections — every correction issued to a published result, and what does not count as one
-- https://vet402.com/operator-log — public, append-only record of every global operator override (network-wide blacklist), with the address, stated reason, and date; customer-private lists never appear here
-- https://vet402.com/faq — x402, ERC-8004, and how scoring works
-- https://vet402.com/x402/stablecoin-payments: how an AI agent pays an x402 API with a stablecoin, often USDC.
-- https://vet402.com/x402/check-a-seller: how to check an x402 seller before paying.
-- https://vet402.com/x402/chains: purchase results by chain, from the same ledger as the observatory.
-- https://vet402.com/x402/statistics: paid purchase attempts, settled on-chain, delivered, and counts by chain from `/api/v1/observatory/state`.
-- [State of x402: November 2026](https://vet402.com/x402/report/2026-11): delivery after payment across vet402's purchases, by chain, as of 2026-11-09 (UTC).
-- https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
-- https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification
-- https://vet402.com/blog/rss.xml — the same posts as RSS
-- https://vet402.com/llms-full.txt — full FAQ and blog text, generated from the same modules the HTML uses
-- https://vet402.com/openapi.yaml — OpenAPI 3.1 of every public endpoint (same document at https://vet402.com/openapi.json)
-
-Public per-subject pages: `https://vet402.com/payee/{address}`, `https://vet402.com/agent/{agentId}`, and `https://vet402.com/observatory/e/{id}` (one endpoint's full L0/L1/L2 history).
-
-### API: no key required
-
-These are open paths, rate-limited per IP. Nothing below needs an account. Every response on the JSON read paths and the CSV exports carries `RateLimit-Limit`, the ceiling for that path. `RateLimit-Remaining` and `RateLimit-Reset` are per-caller, so they are sent only on responses a shared cache does not replay to someone else, chiefly the `429`, which also carries `Retry-After`. A cached `200` deliberately omits them rather than handing you a counter that belongs to whoever populated the cache. A path under `/api/` that matches no route answers `404` as JSON (`{"error":"not_found","path":...}`), never as an HTML page.
-
-- `POST /api/v1/payment-proof` reads one seller PAYMENT-RESPONSE header (base64 JSON with success, transaction, network and payer) or a network plus a transaction hash. vet402 reads that transaction again on Base, Celo, Arbitrum One, Avalanche C-Chain, BNB Chain, Solana, Arc, Tempo, XRPL and Stellar and returns found, network, tx, block, from, to, asset, amount in atomic units, status, explorer and as_of. A chain outside that set comes back as unsupported_network. Keyless. 20 requests a minute per IP. The chain read stops at 8 seconds. This route does not pay and does not sign.
-- `GET /api/v1/erc8004/check` reads one ERC-8004 Reputation Registry feedback on Base (`chain=eip155:8453`), fetches its feedbackURI JSON, re-reads payment evidence from proofOfPayment or vet402 weekly `transactions[]` (checks.proof_source), and returns verdict (verified, verified_payment_unlinked_client when payment evidence holds but the payer cannot be tied to the EVM writer e.g. cross-chain payers—not a demerit, payment_recipient_unverified when the recipient of the payment is neither confirmed nor contradicted, mismatch with reasons, no_proof, unreadable) with check fields. Pass agentId and client or feedbackIndex. Keyless. 30 requests a minute per IP. Results cache 30 minutes. No on-chain writes.
-- `GET /api/v1/accuracy` — the accuracy ledger as JSON. `slo.l1_probe_error_rate_pct` is the share of all L1 attempts in the last 7 days whose purchase run did not complete inside vet402 (`request_error` / `in_flight`, counts in `slo.l1_7d`); it is not the held share of the ledger export (`slo.l1_7d.held` of `slo.l1_7d.signed`) and not the "vet402's side" column of /sellers, which classifies each listed Base listing by its latest attempt of any date. Aggregate counts, and the same numbers /accuracy renders **with the same caveats attached**: the `interpretation` object carries the notes that qualify each rate — that a benchmark "detection" counts BLOCK *or* WARN and how many known-bad addresses stopped at WARN, that a 0% false-positive rate means "none were blocked" rather than "all were passed" and how many known-good addresses only reached WARN, and that a rate below the minimum sample is `null` rather than a number. Reading the JSON alone is enough; you are not being asked to parse the HTML to learn what a figure means
-- `GET /api/v1/payees/verify?wallet={address}&name={name}` — returns the exact message a payee must sign. Read-only, writes nothing. The message opens with `vet402.com — verified payee registration` and carries a `domain: vet402.com` line, so a signer can tell in the wallet's own signing view which site is asking; it also states the 10-minute validity and that the signature moves no funds. Fetch it rather than constructing it — signatures over the pre-2026-09-05 wording stopped verifying on 2026-09-21
-- `POST /api/v1/payees/verify` — publish a verified-payee page and badge by posting that signed message. Free, signature required
-- `GET /api/v1/agents/verify` / `POST /api/v1/agents/verify` — the same claim flow for an ERC-8004 agent identity
-- `GET /api/v1/agents/{agentId}/passport` — machine-readable agent passport
-- `GET /api/badge/{address}.svg` — SVG badge for a payee wallet (states only whether a signed claim exists; carries no score, because a cached score on a third-party page would outlive its freshness window)
-- `GET /api/badge/agent/{agentId}.svg` — the same badge for an agent
-- `GET /api/badge/endpoint/{id}.svg` — receipt badge for one x402 endpoint, stating its measured settlement (paid attempts settled / paid attempts, minus the attempts on vet402's side, which the badge names as `vet402 side N`), facts only
-- `GET /api/transparency/operator-overrides` — the machine-readable twin of /operator-log: every global operator blacklist act with address, action, reason, and date; customer-private lists never appear
-- `GET /api/demo/score` — one fixed, publicly registered agent, scored live. Returns `live: false` rather than a stale or invented number when it cannot compute one, and `degraded: true` when the verdict was computed with an input it could not read. Freshness is explicit as `scoredAt` + `cacheExpiresAt`, the same pair the passport publishes — a cached value is up to five minutes old and says so
-- `GET /api/health` — service status
-
-Product spec §7.3 / §9.1 (2026-09-02). Object ids and measurement records, no key, per-IP limits stated on each:
-
-- `GET /api/v1/resolve?q=<url|domain|address|tx|payee_id>` — reverse lookup: whatever you hold in, the canonical Resource / Endpoint / Payee / Settlement ids out. `resource_id` = sha256(method + " " + canonical_url). Returns identifiers only, never a recommendation. 60/min
-- `GET /api/v1/resources/{resourceId}` — one Resource (sha256 hex) with its payees and links to `/decision`, `/facts` and the observatory page. 120/min
-- `GET /api/v1/endpoints/{endpointId}` — one Endpoint by `endpoint_id` (sha256 of origin + path prefix) or its observatory uuid. 120/min
-- `GET /api/v1/endpoints/{endpointId}/payees` — every `payee_id` (chain:address) declared under that endpoint. 120/min
-- `GET /api/v1/payees/{address}/endpoints` — every endpoint that declares that payee as payTo; a bare 0x address is read as Base, a bare base58 address as Solana. 120/min
-- `GET /api/v1/observatory/endpoints/{id}/facts` — the L0–L2 seller facts for one endpoint (liveness, settle-through with `n_probe_error` disclosed separately, conformance, availability, offer stability, 30-day settlements raw / real / test / measurement). Contains no score and no recommendation by design. 120/min
-- `GET /api/v1/observatory/nearai` — latest NEAR AI Cloud TEE snapshot after vet402 re-runs NEAR AI Inference SDK verification steps (pinned commit 085a304, daily 09:00 UTC): Gateway keyless ECDSA + Intel PCS TDX + NRAS GPU JWKS for vllm models with `attestationSupported`. Two consecutive serious mismatches before fail; PCCS/NRAS outage = unverified; GPU missing = not provided (not a pass). Before the first daily run (09:00 UTC) HTTP 200 with status `no_run_yet`. `503 nearai_unavailable` only when the store cannot be read. No API key. 30/min. HTML: https://vet402.com/observatory/nearai
-- `GET /api/v1/census/summary?chain=&window=7d|30d` — settlement census: `settlements_raw` and `settlements_real` (self_deal, circular, test, and measurement excluded) always together, never merged, with attribution and source breakdowns and the definition text in the body. 60/min, cached up to 20 minutes (see Freshness)
-- `GET /api/v1/observatory/corrections?endpoint=&reason=&limit=&cursor=` — the correction log as JSON: every published verdict that later changed (`dispute_remeasure`, `settlement_backfill`, `reverify`, `path_template`) with `before` / `after`. No code path deletes or edits its rows, and since 2026-09-29 a ledger status change and its correction row are written in one database statement; the table is not write-protected against vet402 itself. Every row can be read (since 2026-09-29): at most 500 rows a page, `page.nextCursor` passed back as `cursor` returns the next older page (null on the last page), and `total` counts the rows matching `endpoint` and `reason` whatever the cursor — `?reason=settlement_backfill` gives the "Ledger status changes" count on /corrections. For a `purchase` row, `subject_id` is the `purchase_id` column of the ledger export. `settlement_path` names the path a `settlement_backfill` row took, worked out from `before` / `after` when the row is read: `verified_settled`, `claim_refuted`, `seller_named_tx_promoted` (the seller named the transaction in its payment response though its receipt did not say success — the export keeps `settlement_source=seller_claim` for it), `vet402_index_link`, `late_link_withdrawn`, `seller_named_tx_declined`, `other`. 60/min
-
-Verification proves control of a wallet or an agent identity by signature. It is not an endorsement, and the score is computed independently of it.
-
-### API: API key required
-
-Send `Authorization: Bearer <key>`. The decision route below also answers without a key (60/min per IP), and `/api/v1/resolve` needs none. Quotas and burst limits: https://vet402.com/docs/api#rate-limits
-
-- `GET /api/v1/resources/{resourceId}/decision?role=payer|payee&payer=&caller_dialect=v1|v2&allow_without_l1=` — product spec §8.3 / §9.1, the canonical integration since 2026-09-02: the pre-payment (`role=payer`) or pre-service (`role=payee`, requires `payer`) decision. `facts` (SellerFacts or BuyerFacts) and `recommendation` (ALLOW / WARN / BLOCK) travel in the same document with `reason_codes`, `freshness`, `evidence` and `rules_version`; the transitional `score` is left out unless you pass `include_score=1`, and then carries `superseded_by: "recommendation"`; it is not the basis of the recommendation. Every reason code, with its meaning, what it means for the payer and whether the seller can fix it: https://vet402.com/docs/api#reason-codes (the same list is `DecisionReasonCode` in the OpenAPI file). <!-- rules-text:begin -->Rules 2026-11-13.1 (`rules_version`). Each paid attempt (one L1 purchase row) is sorted by one function, the same one /sellers, /api/v1/sellers/export.csv and this decision read: whether money moved, whether it delivered, and whose side a failure is on. Money moved when the payment settled on-chain, or when a settle_failed row carries a transaction vet402 verified; it did not move when vet402 signed nothing or the transaction the seller named was not found; otherwise it is not yet known. The outcome is one of: delivered (settled on-chain, then a 2xx other than 202 Accepted, with a non-empty body); pending (not yet known whether money moved: a receipt awaiting on-chain verification, a 2xx naming a transaction, or a signed attempt that failed less than 90 minutes ago while vet402 links late settlements; the ledger status is left as recorded); seller (the seller's side: vet402 can show from the row that the failure was not its own, and such a failure, of any kind, was seen at the listing on 2 or more different UTC days); vet402 (vet402's side: its wallet was short, it did not send the declared input, or one of its own limits or errors); unsorted (not sorted: held for vet402's own request shape, no charge taken, a paid answer with no result in it, seen on one UTC day so far, or vet402 cannot show the failure was not its own); not_bought (vet402 did not sign a payment, so it is not a purchase result). An attempt counts for or against the seller only when it delivered or is on the seller's side; every other signed attempt is left out with an `l1_not_counted_`* code (`l1_not_counted_held` counts held rows except seller_fixable_input, plus a receipt awaiting on-chain verification whose held_reason is empty). A settled 400 or 422 whose paid request carried every declared input and whose bodyHead parses as JSON with a structured input validation error (FastAPI/pydantic detail[].loc, zod issues[].path, or errors[].field|path|param with in or location on body or query, not free text, with every cited location on the request input, not payment, headers, cookies or authentication) is counted on the seller's side once seen on 2 different UTC days. In the decision it counts as a seller-side attempt (`l1_latest_failed` or `l1_never_delivered`, WARN) but never as `l1_paid_not_delivered` and never toward a BLOCK. /api/v1/sellers/export.csv follows /sellers. The ledger export.csv does not change. L1: after the last delivery in the 30-day window, an attempt that moved money and did not deliver adds `l1_paid_not_delivered`; it is a BLOCK only when two or more of them are on the seller's side (seen on 2 different UTC days), and a WARN otherwise, including when /sellers leaves them not sorted. A failure where no money moved is at most a WARN (`l1_never_delivered` when nothing was ever delivered). When no result came back and it is not yet known whether money moved (an empty 2xx with no settlement linked, a receipt still awaiting on-chain verification, or a signed attempt that failed less than 90 minutes ago), `l1_empty_2xx_settlement_unknown` makes it a WARN, never an ALLOW, until it settles. `l1_latest_failed` (something delivered, but the latest counted attempt did not) is a WARN. ALLOW needs a delivery within 30 days (`l1_basis`.fresh_days); otherwise `l1_stale` and a WARN, also the word when the only delivery is older than the window or every signed attempt is (`l1_not_attempted` means none was ever signed). `l1_basis` carries the counts, the last attempt, signed attempt and delivery, and the days since each. L0: `l0_fail` (two measured failures in a row) is a BLOCK. `l0_unverified` (not probed yet, no probe in the last 30 days, a URL with a path parameter vet402 cannot fill, a probe that could not complete, or one failure so far) is a WARN with `degraded: true`, next to `l0_unverified_<cause`>; unverified is not a failure. L2: `l2_mismatch` is a BLOCK when the evidence names missing keys (`mismatch_kind missing_keys`), otherwise `l2_mismatch_unexplained` and a WARN. L2 reads the latest delivery at any age, so a mismatch holds until a later delivery replaces it. A listing that declares an output schema but whose latest delivery vet402 has not checked against it (no delivery, a body over 256 KiB or cut off) is `l2_not_checked`, a WARN; `l2_undeclared` means neither the catalog nor the purchase row of the latest delivery gives an output declaration to check against. `l2_conform_no_required_keys` next to `l2_conform` means the declaration marks no key as required, so vet402 checked that the body is a JSON object or array, not which keys it carries. verified_terms.amount is in 6-decimal ledger units: multiply it by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402. Every code, its effect and whether the seller can fix it: https://vet402.com/docs/api#reason-codes.<!-- rules-text:end --> With `role=payee`, `facts.short_interval_payment_rate` is the share of gaps of 60 s or shorter between a payer's settled payments to the same resource. It describes payment timing and does not change the recommendation, and settled payments do not show whether a payment was a retry. `retry_burst_rate` is its former name, with the same value. `verified_terms` (since 2026-09-29, role=payer) carries the terms vet402 actually paid on the last purchase whose delivery it confirmed — `pay_to`, `asset`, `amount` (vet402's 6-decimal ledger units, not always the asset's own base units: multiply by 10^12 on BNB Chain and by 10 on Stellar before comparing it with a 402), `decimals` (always 6), `network`, `scheme`, `protocol`, `verified_at` — or null when nothing was ever delivered, and null on XRPL until the issuer is recorded (a currency code alone cannot tell RLUSD from a look-alike). 0x addresses are lowercase. Before you pay, compare it with the 402 you received: if the 402's payTo, asset, network or scheme differ, or its amount is higher, do not pay. An ALLOW is the fact that these terms delivered, not a guarantee for a different recipient or a higher price. `verified_pay_to_by_network` (since 2026-11-22, role=payer) lists the recipients vet402 paid and confirmed delivery to, per chain (`network`, `pay_to`, `purchase_id`, `verified_at`; newest first, at most 10; `[]` for role=payee or when nothing was delivered; XRPL left out like `verified_terms`). If the `network` and `payTo` pair of the 402 you received is not in it, vet402 has not verified the recipient on that network. Limit of the method: vet402 buys with a fixed, published User-Agent, so a seller could answer vet402 differently from other buyers; other buyers' settlements show that they paid, not that they received, so the decision cannot detect this. Send `Idempotency-Key` to retry without spending a second rate-limit unit. Key-less since 2026-09-07, at 60/min per IP since 2026-11-15 (same body; 429 `rate_limited` when spent). Your own policy (role=payer, since 2026-09-07): add `amount_usd`, `max_per_tx_usd` (default 1), `min_l1_deliveries` and/or `require_vet402_allow` (default true — a WARN refuses with `payee_recommendation_not_allow`, as the SDK's default does; `false` waives the WARN and needs `min_l1_deliveries` ≥ 1, else 400 `invalid_policy`) and the same document gains `caller_policy` — your rule applied server-side in the SDK's own words (`verdict` ALLOW | REFUSE, `reason_codes` `price_above_ceiling` / `evidence_unavailable` / `payee_recommendation_block` / `payee_recommendation_not_allow` / `insufficient_delivery_evidence`, `not_evaluated` naming what the server did not check, always `min_subgraph_receipts`). It never rewrites `recommendation`; without those queries the body is unchanged
-
-The older score endpoints below need the same key. They return the transitional 0 to 100 score described at the top of this file (deprecated. The decision document above is the current integration) and the operational calls around it. Since 2026-09-29 each score response says so itself: `deprecated: true`, a `deprecation` object naming the decision endpoint to use instead, and the `Deprecation` / `Link` headers. The score's value is unchanged, and it rates a wallet or agent as a whole, so it can read ALLOW where the decision for one endpoint paid to that wallet reads WARN or BLOCK. Decide with the decision endpoint.
-
-- `GET /api/v1/payees/{address}/score` — the buyer-side question: should this payee be paid?
-- `GET /api/v1/wallets/{address}/score` — trust score by wallet address (the path x402 middleware uses)
-- `GET /api/v1/agents/{agentId}/score` — trust score by ERC-8004 agent ID (optional `?wallet=` verifies the registered wallet; optional `?chain=` selects an enabled chain, default Base)
-- `POST /api/v1/scores/batch` — score up to 25 agents in one request
-- `GET /api/v1/agents/{agentId}/history` — score history snapshots (paid plans)
-- `POST /api/v1/payments/x402` — attest an x402 payment settlement after verification (idempotent on txHash)
-- `POST /api/v1/events/{trustEventId}/outcome` — report what actually happened after a verdict; this is what the public accuracy ledger is computed from
-- `GET|POST /api/v1/watchlist`, `DELETE /api/v1/watchlist/{id}` — watch an agent or wallet; verdict changes arrive as a `watch.verdict_changed` webhook
-- `GET|POST /api/v1/webhooks`, `DELETE /api/v1/webhooks/{id}` — webhook subscriptions
-
-### Open data: no key, and quotable
-
-The reads below need no authentication and are published under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). That licence covers /api/v1/observatory/state, /api/v1/observatory/history, /api/v1/observatory/export.csv, /api/v1/observatory/delivery.csv, /api/v1/observatory/l0/export.csv, /api/v1/sellers/export.csv, and the figures rendered on /impact. Reuse, redistribute, chart or republish them, commercially or otherwise, provided the source is named. The code is MIT. The data licence is separate and is in LICENSE-DATA in the repository.
-
-- `GET /api/v1/observatory/state` — the aggregate snapshot. Carries `license`, `licenseUrl`, `retrievedAt` and `cite` in the body. Top-level totals include testnets; `byChain` is mainnet-only (`byChainScope`), so `sum(byChain)` can be below `totalEndpoints`. `publishedPass` counts endpoints on record whose latest L0 probe passed, including delisted endpoints, so it can exceed `activeEndpoints`; `publishedPassActive` is the part on active records, and `publishedPassActiveProbeOlderThan7d` the part of that last probed more than 7 days ago. `l1.endpointsSettled` (endpoints with a settled row, active or not) is `l1.endpointsSettledSellerReceipt` (at least one transaction the seller named in its receipt) plus `l1.endpointsSettledIndexOnly` (every settled transaction found by vet402's own settlements index, or named in a Circle Gateway batch (settlement_source=circle_gateway); no seller receipt). `adoption` (since 2026-11-08) is use by others, each figure with its period, read time and source: `sdkDownloads` (npm's last-month window for @vet402/sdk) and `keyedDecisionCalls` (the monthly values of /api/v1/usage/monthly for key owners outside vet402). A figure that cannot be published is left out.
-- `GET /api/v1/observatory/history` — the daily series per chain.
-- `GET /api/v1/observatory/delivery.csv?days=90`: one row per settled purchase with the three delivery values (`delivered`, `no_body_observed`, `not_established`), raw fields to re-count, and `observed_at`. Key-less, 6/min, cached up to 3 hours (see Freshness). Methodology: https://vet402.com/observatory/methodology#delivery-values
-  - `body_bytes` is empty on settled rows up to 2026-09-29 06:01 UTC, from before vet402 logged the response size. Read an empty value as not recorded. It does not mean zero bytes.
-  - `payer` is the wallet that signed. On Solana that is the wallet owner, and the SPL transfer leaves from its associated token account, so compare the payer with the owner of the transfer's source account.
-- `GET /api/v1/observatory/export.csv?days=90` — the L1 purchase ledger, one row per attempt that reached a decision. Without `days` the window is the last 90 days (`days` takes 1 to 366). The ledger starts at 2026-08-14T09:54:31Z, so from 2026-11-12T09:54:31Z the default window no longer reaches its first rows: use `?days=366` for the whole ledger. Paid attempts are the rows with status settled, settle_failed, delivered_no_receipt, settle_claimed, settle_claimed_unverifiable or settle_claim_refuted (their count is `l1.attempts`); the other rows stopped before signing, with `spent_units` 0 and a blank `network`. A settled Circle Gateway row has a blank `tx_hash`, and its batch transaction is kept beside the row. Columns are only ever appended. `held_reason` says why a row is held (vet402's hold) rather than counted against the seller; it is empty on a row awaiting on-chain verification (`settle_claimed`), which is a different state (counted as `l1.awaitingReread` on `/api/v1/observatory/state`, not in `l1.inconclusive`). `request_body` says what the paid request carried: `declared` (the body the seller's own 402 declares, since 2026-09-17), `empty` (`{}`) or `none` (no body, recorded since 2026-09-20); blank means no record, not `empty`. `request_body_sha256` is the SHA-256 of the bytes sent on `declared` rows since 2026-09-20; the body itself is not republished. `settlement_source` says who named the transaction: `seller_claim` (the seller's settlement receipt), `vet402_index` (no receipt came back and vet402's own settlements index found the transfer), or `circle_gateway` (a Circle Gateway batch transaction kept beside the row). This value is absent while the Arc Gateway lane flag is off. `request_query` says which URL the paid request went to: `declared` (the query arguments the seller's own 402 declares, appended to the listed URL as declared; recorded on the row since 2026-09-20 and published as a column since 2026-09-21, on the networks in vet402's per-network allow-list), `empty` (the seller declared none) or `refused` (a declaration was there and vet402's rules did not use it). A declared name the listed URL already carries is dropped on its own and the other pairs are still appended, so a collision yields `refused` only when nothing is left to append. Blank means no record — a network the allow-list does not name, a Tempo row, a row that ended before a paid request, or a row before 2026-09-20 — and the column alone does not separate those. `request_query_sha256` is the SHA-256 of the appended pairs as one form-urlencoded string on `declared` rows; the query string itself is not republished, and the hash is for matching rather than a way of hiding it — the names and values are the seller's own and the 402 that answered the unpaid request is where they were read from. `spent_units` is the amount vet402 signed for on the attempt (what it put at stake), not an amount shown to have moved: a `settle_failed` row with no transaction still carries the price there. `confirmed_units` (since 2026-09-29) is the amount vet402 re-read on-chain as transferred: `spent_units` on `settled` rows and `0` on every other row, including `settle_claimed` rows still awaiting the re-read; `0` means no confirmed transfer, not a transfer shown not to have happened. `purchase_id` (since 2026-09-29) is the purchase's id, the `subject_id` of its rows in `/api/v1/observatory/corrections`. `l2_reading` (since 2026-09-29) is `l2_schema` read again with today's rules, the value the record page and the decision use; `l2_schema` keeps the value recorded at the time.`response_sha256` and `response_bytes` (since 2026-11-24) are the SHA-256 and byte length of the paid response body vet402 read; the body itself is not republished; blank means no record and `0` on `response_bytes` means an empty body was read. Filled only when vet402 read the paid response body through to the end (not when the read hit the cap or stopped partway). Optional `?include=erc8004_agent` (since 2026-11-17) appends `erc8004_agent`: the CAIP agent id `eip155:8453:{agentId}` when the row's pay_to exactly matches an owner or agentWallet in vet402's Base ERC-8004 index, blank otherwise; the default export without that query keeps the frozen 21 columns. `scripts/declared-body-before-after.mjs` in the repository recomputes the before/after 2xx rate of the declared body from this CSV alone. Licence, retrieval time, row count and window are in the `x-vet402-*` and `Link` response headers, because a CSV has nowhere to put a comment.
-- `GET /api/v1/observatory/l0/export.csv` — the latest public L0 verdict per endpoint (since 2026-09-29): one row per endpoint on record, active or not, excluding endpoints paying vet402's own addresses — the data behind the L0 counts of `/api/v1/observatory/state`. Columns: `endpoint_id`, `resource_key`, `network`, `chain`, `network_class` (`mainnet` | `testnet` | `unclassified`), `listed`, `published_verdict` (`pass` | `fail` | `withdrawn` | `unverified`; `withdrawn` means the newest 2 probes failed on a route absent from a complete catalog fetch, left out of the public L0 fail count), `latest_probe_verdict`, `last_probed_at`, `latest_probe_older_than_7d`. Counting `published_verdict=pass` gives `publishedPass`; `network_class=mainnet` rows grouped by `chain` give `byChain`. 6/min, cached up to 45 minutes (see Freshness); definitions in `x-vet402-column-notes`, retrieval time in `x-vet402-retrieved-at`
-- `GET /api/v1/sellers/export.csv` — the /sellers classification (since 2026-09-29): one row per active Base listing (records opened for a seller's re-test request included), classified by its latest purchase row with the same function /sellers uses, so counting rows by `outcome` (`delivered` | `pending` | `seller` | `vet402` | `unsorted` | `not_bought` | `not_tried`) gives the page's totals. Also `fix_mode`, `side_label`, `confirmed_seller`, `held_reason`, the latest row's time, status, network, HTTP status and `purchase_id`, `in_ledger_export`, and `attribution_review` (`under_review` on seller rows). Served noindex, like the page, while its attribution is under review. 6/min, cached up to 45 minutes (see Freshness)
-- `GET /api/v1/judgments/{file}`: daily judgments JSON (`index.json`, `index-{00..ff}.json`, `{resource_id}.json`), key-less, no IP cap, cached at the CDN until the next UTC day, CC-BY-4.0
-
-Cite as: KIZUNA Creation. vet402 observatory. Dataset, retrieved YYYY-MM-DD. https://vet402.com/api/v1/observatory/state. The retrieval date is not optional. Every one of these numbers moves. Method, denominators and what each status means: https://vet402.com/observatory/methodology
-
-Every response that carries a score or a published rate carries a `disclaimer` string in the payload, so the caveat travels with the number rather than living only on the web page.
-
-Full machine-readable schema (OpenAPI 3.1, covering every public endpoint listed above, key-less and keyed, with `https://vet402.com` as the only production server): https://vet402.com/openapi.yaml or https://vet402.com/openapi.json (same document). The YAML is also in the repository at https://github.com/vet402/vet402/blob/main/docs/openapi.yaml, but cite a served URL.
-
-### Packages
-
-The unscoped `vet402` package on npm bundles `@vet402/sdk` and `@vet402/middleware` for one install (`npm install vet402`, with buyer exports under `vet402/buyer` and seller under `vet402/seller`). To install pieces separately, use `@vet402/sdk` (spend guard), `@vet402/middleware` (x402 request gate), or `@vet402/mcp-server` (local MCP tool). All come from the same repository. The SDK and the middleware both default to fail-closed: only an ALLOW passes, and a WARN, a BLOCK, a degraded verdict, or a partially measured one is denied unless the caller explicitly opts out.
-
-### Implemented and live
-
-- Address control verified: prove control of a wallet by signature, get a public page and an SVG badge
-- Drop-in x402 middleware, REST API, and MCP tool
-- Public accuracy ledger, published with no pressure to flatter vet402
-- The x402 Observatory: L0 liveness probes on a rolling schedule over the public discovery catalog, which have not reached each listing (coverage7d and the L0 export say which), multi-chain (see /observatory/state for the breakdown), with delisting alerts for claimed sellers. L1 settle-through: real purchases of that chain's pinned asset (USDC on Base, Arc, Celo, Solana, Stellar, Arbitrum One and Avalanche C-Chain, USDC.e on Tempo, RLUSD on XRPL, USD1 on BNB Chain) on the chains whose payer lane is switched on (the chains reached so far, with their counts, are the `l1.byChain` rows of https://vet402.com/api/v1/observatory/state), budget-capped, one purchase per endpoint per sweep window, recording each settlement and each refusal. vet402 may reserve one paid test of a listing in a UTC date window; the list lives in src/lib/observatory/pinned-purchases.ts and sellers cannot pay or ask for entries on it. L2 is a minimal structural check of the response against the seller's own declared schema
-
-### Being built (not measurements yet)
-
-- Writing verification records to the ERC-8004 Validation Registry. Not done yet because the registry is written in one direction. An agent's owner or operator names a validator and opens the request, and the validator answers it. A validator cannot open a request about someone else's agent (`validationRequest` reverts with `Not authorized`, which is what vet402's fourteen attempts between 2026-08-21 and 2026-09-03 did). vet402 can answer the first request the day an agent owner or operator sends one. None has named vet402 so far. The same account is §5 of https://vet402.com/#status
-
-### Use cases
-
-- x402 API providers deciding whether to accept a payment from an unfamiliar agent wallet
-- Spending agents checking a counterparty before initiating a machine-to-machine payment
-- Payees and agents publishing a signature-proven claim plus a badge, so counterparties can check them
-- Marketplaces wanting a reputation signal without building their own scoring pipeline
-
-### Chain
-
-Base (ERC-8004 agent identity / reputation) is the default and the chain the scoring API measures on. The agent-score endpoint accepts `?chain=` to select another enabled chain. An unknown or disabled chain is a 400 with the live list, never a silent fallback to a different chain.
-
-The observatory is a separate system and is not Base-only: L0 probing runs on a rolling schedule over the public x402 discovery catalog and has not reached each listing or chain yet, and https://vet402.com/observatory/state reports the current per-chain breakdown. L1 purchases run on the chains whose payer lane is switched on. The chains they have actually reached, with their counts, are the `l1.byChain` rows of https://vet402.com/api/v1/observatory/state, and that list is the one to read rather than any list written out here. Settlement is re-read on-chain with a chain-specific binding back to the signature vet402 holds: on Base, Arc, Celo, BNB Chain, Arbitrum One and Avalanche C-Chain the EIP-3009 authorization nonce, on Solana a memo vet402 wrote itself, on Tempo the indexed memo of a TIP-20 `TransferWithMemo`, on XRPL the hash of the signed blob. The settlement asset is USDC on Base, Arc, Celo, Solana, Stellar, Arbitrum One and Avalanche C-Chain, USDC.e on Tempo, RLUSD on XRPL, and USD1 on BNB Chain. Stellar is re-read for payer, payee, amount and asset, and is published as amount and payee. A purchase on a chain with no re-reader stays at `settle_claimed`. It is never silently paid on a substitute chain.
-
-### Note on domain
-
-The production URL is `vet402.com`, and it is the only canonical one. `agent-trust-tawny.vercel.app` is vet402's former deployment URL. It now issues a permanent (308) redirect to `vet402.com` and should not be cited, indexed, or linked as a source. `agent-trust.vercel.app` is a different thing again. It is an unrelated third-party service. It is not affiliated with vet402.
-
-### Corrections
-
-If a published score or verification result about a wallet you control is wrong, there is a free, key-less correction route open to anyone, customer or not. See section 8 of https://vet402.com/legal/terms#corrections
-
-Corrections that are issued are published at https://vet402.com/corrections, and as JSON at https://vet402.com/api/v1/observatory/corrections. Read the count from there rather than from this file: it is not zero (the first corrections were published on 2026-09-04), and a number written here goes stale the next time vet402 corrects something.
-
-### Citation
-
-- You may cite the content on this site (front page, API docs, FAQ, accuracy ledger, blog) as long as you credit the source with the corresponding vet402.com URL.
-- The same statement is published for human readers in section 4 of https://vet402.com/accuracy. This file is not the only place it exists.
-- Figures on the accuracy ledger are rolling 90-day aggregates. Cite them with the retrieval date, or quote the `generatedAt` timestamp from `GET /api/v1/accuracy`.
-- Content current as of 2026-10-26. The measurements it points at are not: read them from the endpoints above, with the schedule in Freshness.
-
-### Freshness
+## Freshness
 
 Every number on this site moves, so it is published with the schedule that moves it rather than as a timeless fact.
 
@@ -277,13 +93,13 @@ Every number on this site moves, so it is published with the schedule that moves
 
 A measurement quoted without its retrieval date is not a measurement. Take the date from `retrievedAt` in the JSON, from the `x-vet402-retrieved-at` header on the CSV, or from the day you fetched the page.
 
-### Legal
+## Legal
 
 - https://vet402.com/legal/terms
 - https://vet402.com/legal/privacy
 - https://vet402.com/legal/notice
 
-### Contact
+## Contact
 
 - Site: https://vet402.com
 - X: https://x.com/vet402_com

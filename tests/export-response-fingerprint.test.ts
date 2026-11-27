@@ -124,7 +124,7 @@ test("ランナーは paidResponseFingerprintRecord を行に書く", () => {
 test("docs: response_sha256 / response_bytes は読み切れた行だけ（英語 1 文）", () => {
   const need = "Filled only when vet402 read the paid response body through to the end (not when the read hit the cap or stopped partway).";
   const oneLine = (s: string) => s.replace(/\s+/g, " ");
-  for (const f of ["docs/openapi.yaml", "public/llms.txt", "src/app/observatory/methodology/page.tsx"]) {
+  for (const f of ["docs/openapi.yaml", "public/llms-full-prose.txt", "src/app/observatory/methodology/page.tsx"]) {
     assert.ok(oneLine(read(f)).includes(need), f);
   }
 });

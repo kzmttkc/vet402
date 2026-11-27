@@ -89,7 +89,7 @@ test("公開の説明: /docs/api と llms.txt は新しい名前を説明し、/
   const docs = apiDocsPageText();
   assert.match(docs, /facts\.short_interval_payment_rate/);
   assert.match(docs, /does not\s+change the verdict/);
-  const llms = read("public/llms.txt");
+  const llms = (read("public/llms-full-prose.txt") + "\n" + read("public/llms.txt"));
   assert.match(llms, /`facts\.short_interval_payment_rate`/);
   assert.match(llms, /`retry_burst_rate` is its former name/);
   const fixed = read("src/app/corrections/page.tsx");
