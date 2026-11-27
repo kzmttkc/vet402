@@ -74,7 +74,7 @@ async function routescanGetTokentxOnce(
       next: { revalidate: 0 },
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) {
       throw new RoutescanUnavailableError("routescan_timeout", error);
     }
     throw new RoutescanUnavailableError("routescan_network_error", error);

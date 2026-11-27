@@ -457,7 +457,7 @@ function makeAlchemyFirstEvmPayerOutgoingReader(cfg: EvmOutgoingConfig): PayerOu
 }
 
 /**
- * Avalanche 払い手: Alchemy → Routescan tokentx → RPC getLogs（2026-11-27 本番で Alchemy/RPC が読めず Routescan は鍵なしで読める）。
+ * Avalanche 払い手: Alchemy → Routescan tokentx → RPC getLogs（前が読めなかったときだけ次へ。Routescan は鍵なしで払い手の USDC 送金を新しい順に返す）。
  */
 export function makeAvalanchePayerOutgoingReader(
   cfg: EvmOutgoingConfig,
