@@ -11,7 +11,7 @@
 // 保存するのは client_usage_daily の件数だけ（route = rest:presign）。402 の本文・URL は保存しない（IP は GET /api/v1/check と同じく回数制限の桶のキーにだけ使う）。
 // ============================================================
 import { matchDeclaredPayTerms, normalizeAccept, type TermsAccept, type TermsDecision, type TermsMismatchReason } from "../../../packages/sdk/src/terms-match";
-import { getCheckSellerCached } from "@/lib/api/check-seller-cache";
+import { getCheckSellerCached, type CheckSellerCacheTiming } from "@/lib/api/check-seller-cache";
 import { rejectUnknownQuery } from "@/lib/api/export-guard";
 import { withNoindex } from "@/lib/api/public-read-robots";
 import { isHttpsAbsoluteUrl } from "@/lib/mcp/schemas";
@@ -169,41 +169,66 @@ async function payeesFor(deps: CheckSellerDeps, url: string, method: string | nu
   return Array.isArray(facts?.payees) ? facts.payees.filter((p): p is string => typeof p === "string") : [];
 }
 
-function respond(request: Request, status: number, body: Record<string, unknown>, t0: number): Response {
+function serverTimingInner(cacheMs: number, cachePath: string, termsMs: number): string {
+  const desc = cachePath ? `;desc="${cachePath}"` : "";
+  return `cache;dur=${cacheMs.toFixed(1)}${desc}, terms;dur=${termsMs.toFixed(1)}`;
+}
+
+function respond(
+  request: Request,
+  status: number,
+  body: Record<string, unknown>,
+  signStart: number,
+  innerTiming: string,
+): Response {
   const res = signedJson(request, body, { status, headers: withNoindex({ "Cache-Control": "private, no-store" }) });
-  res.headers.set("Server-Timing", `presign;dur=${(performance.now() - t0).toFixed(1)}`);
+  const sign = `sign;dur=${(performance.now() - signStart).toFixed(1)}`;
+  res.headers.set("Server-Timing", innerTiming ? `${innerTiming}, ${sign}` : sign);
   return res;
 }
 
 export async function handlePresign(request: Request, deps: CheckSellerDeps): Promise<Response> {
-  const t0 = performance.now();
   const badQuery = rejectUnknownQuery(new URL(request.url).searchParams, [], {});
-  if (badQuery) return respond(request, 400, { ...(await badQuery.json()), documentation: PRESIGN_DOCS }, t0);
+  if (badQuery) {
+    const signStart = performance.now();
+    return respond(request, 400, { ...(await badQuery.json()), documentation: PRESIGN_DOCS }, signStart, "");
+  }
 
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declared) && declared > PRESIGN_MAX_BODY_BYTES) {
-    return respond(request, 413, { error: "body_too_large", message: "The body is larger than 64 KB.", documentation: PRESIGN_DOCS }, t0);
+    const signStart = performance.now();
+    return respond(request, 413, { error: "body_too_large", message: "The body is larger than 64 KB.", documentation: PRESIGN_DOCS }, signStart, "");
   }
   let text: string;
   try {
     text = await request.text();
   } catch {
-    return respond(request, 400, { error: "invalid_body", message: "The body could not be read.", documentation: PRESIGN_DOCS }, t0);
+    const signStart = performance.now();
+    return respond(request, 400, { error: "invalid_body", message: "The body could not be read.", documentation: PRESIGN_DOCS }, signStart, "");
   }
   const parsed = parsePresignBody(text);
-  if (!parsed.ok) return respond(request, parsed.status, parsed.body, t0);
+  if (!parsed.ok) {
+    const signStart = performance.now();
+    return respond(request, parsed.status, parsed.body, signStart, "");
+  }
 
   const { url, source } = resourceUrlOf(parsed.challenge, parsed.url);
   if (!url) {
+    const signStart = performance.now();
     return respond(request, 400, {
       error: "invalid_url",
       message: "The 402 has no https resource URL. Pass the URL you called as url.",
       documentation: PRESIGN_DOCS,
-    }, t0);
+    }, signStart, "");
   }
 
   try {
-    const out: CheckSellerOutput = await getCheckSellerCached(deps, { url, method: parsed.method ?? undefined });
+    const cacheTiming: CheckSellerCacheTiming = {};
+    const tCache = performance.now();
+    const out: CheckSellerOutput = await getCheckSellerCached(deps, { url, method: parsed.method ?? undefined }, cacheTiming);
+    const cacheMs = performance.now() - tCache;
+    const cachePath = cacheTiming.path ?? "";
+    const tTerms = performance.now();
     let decision: TermsDecision | null = null;
     if (!out.not_in_catalog) {
       decision = {
@@ -213,6 +238,8 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
       };
     }
     const accepts = compareAccepts(parsed.challenge.accepts as unknown[], decision);
+    const termsMs = performance.now() - tTerms;
+    const innerTiming = serverTimingInner(cacheMs, cachePath, termsMs);
     const version = parsed.challenge.x402Version;
     const body: Record<string, unknown> = {
       resource_url: url,
@@ -237,9 +264,11 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
       rules_version: out.rules_version,
       as_of: out.as_of,
     };
-    return respond(request, 200, body, t0);
+    const signStart = performance.now();
+    return respond(request, 200, body, signStart, innerTiming);
   } catch (error) {
     logServerErrorSafe("presign", error);
-    return respond(request, 503, { error: "temporarily_unavailable" }, t0);
+    const signStart = performance.now();
+    return respond(request, 503, { error: "temporarily_unavailable" }, signStart, "");
   }
 }

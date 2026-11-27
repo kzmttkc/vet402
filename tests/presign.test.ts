@@ -104,7 +104,7 @@ test("presign: the 402 body returns check's verdict and per-accept terms with th
   __setCheckSellerCacheForTests(passthrough);
   const res = await handlePresign(post(CHALLENGE_V2), deps());
   assert.equal(res.status, 200);
-  assert.match(res.headers.get("server-timing") ?? "", /^presign;dur=\d+(\.\d)?$/);
+  assert.match(res.headers.get("server-timing") ?? "", /cache;dur=[0-9.]+.*terms;dur=[0-9.]+.*sign;dur=[0-9.]+/);
   assert.equal(res.headers.get("cache-control"), "private, no-store");
   const body = (await res.json()) as Record<string, unknown>;
   assert.equal(body.recommendation, "ALLOW");

@@ -18,7 +18,9 @@ import {
   isCheckSellerCachedReadFresh,
   makeGetCheckSellerCached,
   prefetchedByStoreKeyForTests,
+  prefetchInflightForTests,
   type CheckSellerCachedPayload,
+  type CheckSellerCacheTiming,
 } from "@/lib/api/check-seller-cache";
 import { setAfterResponseSchedulerForTest } from "@/lib/util/after-response";
 import { RESOLVE_KEYLESS_LIMIT } from "@/lib/api/keyless-limits";
@@ -657,11 +659,11 @@ test("stale cacheReadAt uses a prefetched read when it is still fresh", async (t
   const deps = depsWithDecision(false, asOfFirst);
   const read = makeGetCheckSellerCached(storing);
 
-  const at48s = Date.parse(asOfFirst) + (CHECK_SELLER_CACHE_SECONDS - CHECK_SELLER_PREFETCH_LEAD_SECONDS) * 1000;
+  const atPrefetchLead = Date.parse(asOfFirst) + (CHECK_SELLER_CACHE_SECONDS - CHECK_SELLER_PREFETCH_LEAD_SECONDS) * 1000;
   t.mock.timers.enable({ apis: ["Date"], now: Date.parse(asOfFirst) });
   await read(deps, { url: URL_A });
   assert.equal(deps.counts.resolve, 1);
-  t.mock.timers.setTime(at48s);
+  t.mock.timers.setTime(atPrefetchLead);
   await read(deps, { url: URL_A });
   for (const task of tasks) await task();
   assert.equal(deps.counts.resolve, 2, "prefetch started a background read while the cached verdict stayed fresh");
@@ -793,6 +795,107 @@ test("a failed prefetch leaves nothing behind for the next caller", async (t) =>
   const before = deps.counts.resolve;
   await read(deps, { url: URL_A });
   assert.ok(deps.counts.resolve > before, "after expiry the caller reads again instead of a stored value");
+});
+
+test("stale cache waits for an in-flight prefetch before reading again", async (t) => {
+  const asOf = "2026-11-18T10:01:00.000Z";
+  const storeK = checkSellerCacheKey(URL_A)!;
+  __resetCheckSellerLatencyHelpersForTests();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  prefetchInflightForTests(storeK, gate);
+  const staleOnly = (() => async () => ({
+    out: checkSellerFreezeForCache({
+      evidence_age: null,
+      canonical_url: URL_A,
+      method: "GET",
+      not_in_catalog: false,
+      recommendation: "ALLOW",
+      reason_codes: [],
+      reasons: [],
+      delivery: null,
+      l0_status: null,
+      verified_terms: null,
+      verified_pay_to_by_network: [],
+      spending_halted: false,
+      refunds: null,
+      freshness: null,
+      l1_purchases: [],
+      same_host_listings: [],
+      listing_sources: [],
+      note: null,
+      record_url: null,
+      diagnose_url: null,
+      method_url: "https://vet402.com/docs/methodology",
+      as_of: "2026-11-18T09:00:00.000Z",
+      truncated: false,
+      next_action: verdictNextStep("ALLOW"),
+      rules_version: DECISION_RULES_VERSION,
+    }),
+    cacheReadAt: "2026-11-18T09:58:00.000Z",
+  })) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  __setCheckSellerCacheForTests(staleOnly);
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-18T10:01:00.000Z") });
+  const deps = countingDeps(asOf);
+  const read = makeGetCheckSellerCached(staleOnly);
+  const pending = read(deps, { url: URL_A });
+  await new Promise((r) => setTimeout(r, 5));
+  assert.equal(deps.counts.resolve, 0, "waits for prefetch instead of an immediate fresh read");
+  prefetchedByStoreKeyForTests(storeK, {
+    out: checkSellerFreezeForCache({
+      evidence_age: null,
+      canonical_url: URL_A,
+      method: "GET",
+      not_in_catalog: false,
+      recommendation: "ALLOW",
+      reason_codes: [],
+      reasons: [],
+      delivery: null,
+      l0_status: null,
+      verified_terms: null,
+      verified_pay_to_by_network: [],
+      spending_halted: false,
+      refunds: null,
+      freshness: null,
+      l1_purchases: [],
+      same_host_listings: [],
+      listing_sources: [],
+      note: null,
+      record_url: null,
+      diagnose_url: null,
+      method_url: "https://vet402.com/docs/methodology",
+      as_of: asOf,
+      truncated: false,
+      next_action: verdictNextStep("ALLOW"),
+      rules_version: DECISION_RULES_VERSION,
+    }),
+    cacheReadAt: asOf,
+  });
+  release();
+  const body = await pending;
+  assert.equal(body.as_of, asOf);
+  assert.equal(deps.counts.resolve, 0, "prefetch slot served the stale-cache miss");
+});
+
+test("a rejected in-flight prefetch does not fail the caller; it reads again", async (t) => {
+  const asOf = "2026-11-18T10:01:00.000Z";
+  const storeK = checkSellerCacheKey(URL_A)!;
+  __resetCheckSellerLatencyHelpersForTests();
+  prefetchInflightForTests(storeK, Promise.reject(new Error("prefetch failed")));
+  const staleOnly = (() => async () => ({
+    out: {} as never,
+    cacheReadAt: "2026-11-18T09:58:00.000Z",
+  })) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse(asOf) });
+  const deps = countingDeps(asOf);
+  const read = makeGetCheckSellerCached(staleOnly);
+  const timing: CheckSellerCacheTiming = {};
+  const body = await read(deps, { url: URL_A }, timing);
+  assert.equal(deps.counts.resolve, 1, "after the failed prefetch the caller reads once itself");
+  assert.equal(timing.path, "coalesced");
+  assert.equal(body.rules_version, DECISION_RULES_VERSION, "the caller still gets an answer, not an error");
 });
 
 test("concurrent stale reads of one key share one checkSeller call", async () => {

@@ -26,12 +26,19 @@ function withPolicy(headers: Record<string, string>): Record<string, string> {
  * Shared keyless handler for GET /api/v1/check, GET /api/v1/decision and POST /api/v1/check/presign
  * （同じ IP の枠・同じ数え方。presign は handler だけ差し替える）。
  */
+function appendServerTiming(headers: Headers, extra: string): void {
+  const prev = headers.get("Server-Timing");
+  headers.set("Server-Timing", prev ? `${prev}, ${extra}` : extra);
+}
+
 export async function handleKeylessCheckRoute(
   request: NextRequest,
   usageRoute: ClientUsageRoute,
   handler: (request: NextRequest, deps: CheckSellerDeps) => Promise<Response> = handleCheck,
 ): Promise<Response> {
+  const tRl = performance.now();
   const gate = await publicRateLimit(request, "resolve", RESOLVE_KEYLESS_LIMIT, RESOLVE_KEYLESS_WINDOW_MS);
+  const rlMs = performance.now() - tRl;
   if (!gate.ok) {
     if (gate.response.status === 429) recordRateLimitedClientUsage(usageRoute);
     const h = new Headers(gate.response.headers);
@@ -60,5 +67,8 @@ export async function handleKeylessCheckRoute(
   const rateHeaders = withPolicy(gate.headers);
   for (const [k, v] of Object.entries(rateHeaders)) headers.set(k, v);
   headers.set("Cache-Control", "private, no-store");
+  if (usageRoute === "rest:presign") {
+    appendServerTiming(headers, `rl;dur=${rlMs.toFixed(1)}`);
+  }
   return new Response(res.body, { status: res.status, headers });
 }
