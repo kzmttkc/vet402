@@ -127,6 +127,17 @@ import { arbitrum, arc, avalanche, base, bsc, celo, tempo as tempoChain } from "
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { AlchemyUnavailableError, isAlchemyEnabled } from "@/lib/chain/alchemy";
+import {
+  makeAlchemyPayerFetch,
+  readPayerTokenTransfersInWindow,
+  type PayerTokenTransferInWindow,
+} from "@/lib/chain/payer-token-transfer-pages";
+import {
+  makeRoutescanAvalanchePayerFetch,
+  RoutescanUnavailableError,
+  type RoutescanPayerTokenTxFetch,
+} from "@/lib/chain/routescan";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
@@ -1889,13 +1900,77 @@ type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlo
  * Avalanche のネイティブ USDC（0xB97E…8a6E）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-26・linkFromChain の Avalanche のレーン）。
  * 規則は makeArbitrumTransferReader と同じ。トークンはネイティブ USDC だけ（USDC.e は読まない）。
  * Avalanche 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
- *   - AVALANCHE_RPC_URL が無い（公開 RPC へ黙って倒れない。決済の再読・索引と同じ規律）
+ *   - Alchemy / Routescan / RPC のどれも読めなかった（AVALANCHE_RPC_URL 無しは RPC 段だけ null。索引は鍵なしでも使える）
  *   - RPC が chainId 43114 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
  *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
  *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
  * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
  */
-export function makeAvalancheTransferReader(client?: AvalancheTransferClient): TransferReader {
+function indexedTransfersToChainTransfers(transfers: PayerTokenTransferInWindow[]): ChainTransfer[] {
+  return transfers.map((t) => ({
+    txHash: t.txHash,
+    from: t.from,
+    to: t.to,
+    value: t.value,
+    blockTime: t.blockTime,
+    blockNumber: t.blockNumber,
+  }));
+}
+
+/**
+ * Avalanche recover-late: Alchemy → Routescan tokentx → RPC getLogs（照合と同順。Routescan / 共有ページ読みは payTo で絞る）。
+ */
+export function makeAvalancheTransferReader(
+  client?: AvalancheTransferClient,
+  routescanFetch: RoutescanPayerTokenTxFetch = makeRoutescanAvalanchePayerFetch(),
+): TransferReader {
+  const rpcReader = makeAvalancheTransferReaderViaRpc(client);
+  const alchemyFetch = makeAlchemyPayerFetch(AVALANCHE_CHAIN_ID);
+  const token = AVALANCHE_USDC_ADDRESS as Address;
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== AVALANCHE_CAIP2) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const indexedOpts = { contractAddress: token, chainId: AVALANCHE_CHAIN_ID, payTo };
+    if (isAlchemyEnabled(AVALANCHE_CHAIN_ID)) {
+      try {
+        const viaAlchemy = await readPayerTokenTransfersInWindow(
+          payer,
+          from,
+          to,
+          deadline,
+          undefined,
+          (p, opts) => alchemyFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID }),
+          { ...indexedOpts, alchemyPagination: true },
+        );
+        if (viaAlchemy.ok) return indexedTransfersToChainTransfers(viaAlchemy.transfers);
+      } catch (e) {
+        if (!(e instanceof AlchemyUnavailableError)) throw e;
+      }
+    }
+    try {
+      const viaRoutescan = await readPayerTokenTransfersInWindow(
+        payer,
+        from,
+        to,
+        deadline,
+        undefined,
+        (p, opts) => routescanFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID }),
+        indexedOpts,
+      );
+      if (viaRoutescan.ok) return indexedTransfersToChainTransfers(viaRoutescan.transfers);
+    } catch (e) {
+      if (!(e instanceof RoutescanUnavailableError)) throw e;
+    }
+    if (deadline !== Infinity) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new Error("transfer read ran past its time limit");
+      return rpcReader({ network, payer, payTo, from, to, timeoutMs: remainingMs });
+    }
+    return rpcReader({ network, payer, payTo, from, to, timeoutMs });
+  };
+}
+
+function makeAvalancheTransferReaderViaRpc(client?: AvalancheTransferClient): TransferReader {
   return async ({ network, payer, payTo, from, to, timeoutMs }) => {
     if (network !== AVALANCHE_CAIP2) return null;
     const c = client ?? boundedAvalancheClient(timeoutMs);
