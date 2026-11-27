@@ -15,10 +15,11 @@ import { exportDisallowedMethodHandlers, headFromGet } from "@/lib/api/method-no
 
 export const dynamic = "force-dynamic";
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ month: string }> }) {
+export async function GET(_request: NextRequest, context: { params: Promise<Record<string, string>> }) {
   const gate = await publicRateLimit(_request, "reports-monthly-freeze-csv", 120);
   if (!gate.ok) return stampNoindex(gate.response);
-  const monthParam = (await context.params).month;
+  const params = await context.params;
+  const monthParam = params.month ?? params["month.csv"] ?? "";
   const parsed = parseMonthlyFreezeMonth(monthParam);
   if (!parsed.ok) {
     return NextResponse.json(
