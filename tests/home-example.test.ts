@@ -20,7 +20,7 @@ import {
   type HomeReceipt,
 } from "@/lib/observatory/home-example";
 
-const route = readFileSync("src/app/api/v1/observatory/export.csv/route.ts", "utf8");
+const route = readFileSync("src/lib/observatory/ledger-export.ts", "utf8");
 
 test("the home receipt excludes the same statuses as export.csv", () => {
   const listed = route.match(/pu\.status NOT IN \(([^)]+)\)/);

@@ -90,17 +90,30 @@ test("November 2026 stays not_frozen_yet until 2026-12-01 UTC", () => {
   assert.equal(monthlyFreezePublicationError("2026-12", new Date("2026-11-27T00:00:00.000Z")), "month_not_closed");
 });
 
-test("anchor payload leaves pre-cutoff days unchanged", () => {
+const FROZEN_AT = "2026-12-01T00:05:00.000Z";
+
+test("anchor payload leaves days before frozenAt utc day unchanged", () => {
   const ledger = JSON.stringify({ v: 1, day: "2026-11-30", rows: [] });
-  const frozen = [{ month: "2026-11", contentSha256: "a".repeat(64) }];
+  const frozen = [{ month: "2026-11", contentSha256: "a".repeat(64), frozenAt: FROZEN_AT }];
   assert.equal(buildAnchorPayloadWithMonthlyLines(ledger, "2026-11-30", frozen), ledger);
   assert.equal(MONTHLY_FREEZE_ANCHOR_FROM_DAY, "2026-12-01");
 });
 
-test("anchor payload appends one monthly line from 2026-12-01 when frozen", () => {
+test("anchor payload appends one monthly line from frozenAt utc day when published", () => {
   const ledger = JSON.stringify({ v: 1, day: "2026-12-01", rows: [] });
   const hash = "b".repeat(64);
-  const out = buildAnchorPayloadWithMonthlyLines(ledger, "2026-12-01", [{ month: "2026-11", contentSha256: hash }]);
+  const out = buildAnchorPayloadWithMonthlyLines(ledger, "2026-12-01", [
+    { month: "2026-11", contentSha256: hash, frozenAt: FROZEN_AT },
+  ]);
+  assert.equal(out, `${ledger}\nmonthly-freeze:v1:2026-11:${hash}`);
+});
+
+test("late freeze: days before frozenAt utc day omit the monthly line", () => {
+  const ledger = JSON.stringify({ v: 1, day: "2026-12-04", rows: [] });
+  const hash = "c".repeat(64);
+  const frozen = [{ month: "2026-11", contentSha256: hash, frozenAt: "2026-12-05T00:00:00.000Z" }];
+  assert.equal(buildAnchorPayloadWithMonthlyLines(ledger, "2026-12-04", frozen), ledger);
+  const out = buildAnchorPayloadWithMonthlyLines(ledger, "2026-12-05", frozen);
   assert.equal(out, `${ledger}\nmonthly-freeze:v1:2026-11:${hash}`);
 });
 
@@ -116,7 +129,12 @@ test("past day roots without monthly lines match the old hash rule", () => {
   const ledgerPayload = JSON.stringify({ v: 1, day: "2026-08-15", rows: [{ id: "1" }] });
   const prev = "a".repeat(64);
   const without = dayRootHash(prev, ledgerPayload);
-  const withMonthly = dayRootHash(prev, buildAnchorPayloadWithMonthlyLines(ledgerPayload, "2026-08-15", [{ month: "2026-11", contentSha256: "c".repeat(64) }]));
+  const withMonthly = dayRootHash(
+    prev,
+    buildAnchorPayloadWithMonthlyLines(ledgerPayload, "2026-08-15", [
+      { month: "2026-11", contentSha256: "c".repeat(64), frozenAt: FROZEN_AT },
+    ]),
+  );
   assert.equal(without, withMonthly);
   const direct = createHash("sha256").update(prev).update("\n").update(ledgerPayload).digest("hex");
   assert.equal(without, direct);

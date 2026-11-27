@@ -3,7 +3,7 @@
 //  - 2026-12-01 より前の日の root は、凍結の行が DB にあっても変わらない（canonicalDayPayload と同じ式のまま）
 //  - 2026-12-01 の日は、凍結月の行を 1 行だけ足した payload で root を作る
 //  （旧コードとの 1 バイト比較は 2026-11-27 のレビューで一度だけ実走した。ここでは式で固定する）
-//  - 凍結のハッシュは、公開の export.csv から 11 月の行を取り出して計算し直した値と一致する
+//  - 凍結のハッシュは、公開の /api/v1/reports/YYYY-MM.csv の本文と一致する
 // Run: TEST_DATABASE_URL=postgres://localhost/vet402_test \
 //   npx tsx --test --test-concurrency=1 --test-force-exit tests/monthly-freeze-before-after.pg.test.ts
 // ============================================================
@@ -31,6 +31,10 @@ if (!TEST_DB) {
     const { EXPORT_CSV_COLUMNS } = await import("@/lib/observatory/export-columns");
     const db = getDb()!;
 
+    await db.execute(sql`
+      ALTER TABLE ledger_monthly_frozen ADD COLUMN IF NOT EXISTS content_csv text;
+      UPDATE ledger_monthly_frozen SET content_csv = '' WHERE content_csv IS NULL;
+    `);
     await db.execute(sql`TRUNCATE x402_endpoints, x402_l1_purchases, x402_daily_metrics, ledger_anchors, ledger_monthly_frozen`);
     const [ep] = await db
       .insert(schema.x402Endpoints)
@@ -96,29 +100,26 @@ if (!TEST_DB) {
       assert.equal(v.payload, expected);
     });
 
-    await t.test("凍結のハッシュは公開の export.csv から再現できる", async () => {
-      const newRoute = await import("@/app/api/v1/observatory/export.csv/route");
-      const res = await newRoute.GET(new NextRequest("https://vet402.com/api/v1/observatory/export.csv?days=366", { headers: { "x-real-ip": "203.0.113.99" } }));
-      const text = await res.text();
-      const [header, ...lines] = text.trimEnd().split("\n");
-      assert.equal(header, EXPORT_CSV_COLUMNS.join(","));
-      const nov = lines.filter((l) => l.startsWith("2026-11-"));
-      // 第三者の手順: 11 月の行を attempted_at → purchase_id の順に並べ、見出しなしで sha256
-      const pidIdx = EXPORT_CSV_COLUMNS.indexOf("purchase_id");
-      const sorted = [...nov].sort((x, y) => {
-        const ax = x.slice(0, 20), ay = y.slice(0, 20);
-        if (ax !== ay) return ax < ay ? -1 : 1;
-        const px = x.split(",")[pidIdx]!, py = y.split(",")[pidIdx]!;
-        return px < py ? -1 : px > py ? 1 : 0;
-      });
-      const body = sorted.length ? `${sorted.join("\n")}\n` : "";
+    await t.test("凍結のハッシュは公開の reports CSV から再現できる", async () => {
+      const csvRoute = await import("@/app/api/v1/reports/[month].csv/route");
+      const res = await csvRoute.GET(
+        new NextRequest("https://vet402.com/api/v1/reports/2026-11.csv", { headers: { "x-real-ip": "203.0.113.99" } }),
+        { params: Promise.resolve({ month: "2026-11" }) },
+      );
+      assert.equal(res.status, 200);
+      const body = await res.text();
       const reproduced = createHash("sha256").update(body, "utf8").digest("hex");
       const frozen = await mf.loadMonthlyFreezeSummary(db, "2026-11");
-      assert.equal(frozen!.rowCount, nov.length);
+      const lineCount = body === "" ? 0 : body.split("\n").length - (body.endsWith("\n") ? 1 : 0);
+      assert.equal(frozen!.rowCount, lineCount);
       assert.equal(reproduced, frozen!.contentSha256);
-      // export.csv の並び（DB の attempted_at 全精度）と凍結の並び（秒の文字列→purchase_id）が同じかを記録
-      const sameOrder = nov.join("\n") === sorted.join("\n");
-      t.diagnostic(`export order equals freeze order: ${sameOrder}`);
+      assert.equal(res.headers.get("x-vet402-content-sha256"), frozen!.contentSha256);
+      const { hashMonthlyLedgerExportBody } = await import("@/lib/observatory/monthly-freeze");
+      const { rows, columns } = await (
+        await import("@/lib/observatory/ledger-export")
+      ).readLedgerExportRows(db, { kind: "utc_month", month: "2026-11" });
+      assert.equal(hashMonthlyLedgerExportBody(rows, columns), frozen!.contentSha256);
+      void EXPORT_CSV_COLUMNS;
     });
 
     await t.test("凍結テーブルが無い DB では 12/1 以降の anchorDay が落ちる（移行を先に流す必要）", async () => {

@@ -130,9 +130,10 @@ test("docs: response_sha256 / response_bytes は読み切れた行だけ（英�
 });
 
 test("export route: responseSha256Sql / responseBytesSql を使う", () => {
+  const lib = read("src/lib/observatory/ledger-export.ts");
+  assert.match(lib, /responseSha256Sql\("pu"\)/);
+  assert.match(lib, /responseBytesSql\("pu"\)/);
   const route = read("src/app/api/v1/observatory/export.csv/route.ts");
-  assert.match(route, /responseSha256Sql\("pu"\)/);
-  assert.match(route, /responseBytesSql\("pu"\)/);
   assert.match(route, /const CSV_COLUMNS = EXPORT_CSV_COLUMNS;/);
 });
 
