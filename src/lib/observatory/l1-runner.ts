@@ -2668,6 +2668,12 @@ export async function runL1Batch(
   //     書くと、その売り手はスイープ窓のあいだ再選択されない）。読めなければ外す側へ倒す。
   //     Arc（2026-09-17）は Base と同じ鍵で署名するので、有効条件はフラグだけ。
   const lanes: { chain: CappedChain; ready: boolean }[] = [
+    // Hedera（2026-11-27）: 旗 + 口座 + 鍵 + 合計の上限の内側。どれか欠ければ主ネットワークが hedera:mainnet の行を外す
+    // （旗 OFF でも外す: Hedera が先頭の出品を EVM の selectAccept へ落とさない）。
+    // レーン枠の並び（interleaveLanes）の先頭に置く: 末尾だと、準備と前のレーンで持ち時間の上限（laneTimeShare）を
+    // 越えて毎回飛ばされる（2026-11-27 01:5x UTC の本番の 1 回: laneFloor.hedera 1・laneSkippedForTime 34・Hedera の試行 0）。
+    // 目録の出品は 1 件・1 回 0.1 HBAR までなので、他のレーンが譲るのは 1 回の要求ぶんだけ。
+    { chain: "hedera", ready: hederaReady },
     { chain: "solana", ready: solanaReady },
     { chain: "arc", ready: isArcL1Enabled() },
     // Circle Gateway（2026-10-25）: 旗が正確に "true" かつ ARC_RPC_URL。ネイティブ Arc のフラグとは独立。
@@ -2690,9 +2696,6 @@ export async function runL1Batch(
     { chain: "avalanche", ready: isAvalancheL1Enabled() && !!process.env.AVALANCHE_RPC_URL?.trim() },
     // Stellar（2026-10-18）: 旗 + 秘密 + Horizon + RPC。どれか欠ければ主ネットワークが pubnet の行を外す。
     { chain: "stellar", ready: stellarReady },
-    // Hedera（2026-11-27）: 旗 + 口座 + 鍵 + 合計の上限の内側。どれか欠ければ主ネットワークが hedera:mainnet の行を外す
-    // （旗 OFF でも外す: Hedera が先頭の出品を EVM の selectAccept へ落とさない）。
-    { chain: "hedera", ready: hederaReady },
   ];
   const laneExclusionChains: { chain: CappedChain; clause: SQL }[] = [];
   const laneSelectable = new Map<CappedChain, boolean>();
