@@ -134,11 +134,11 @@ test("sitemap.ts に /pricing と比較ページ・評判 50 件用の読み", a
   assert.ok(urls.includes(`${SITE_URL}/x402/ways-to-check-a-seller`));
 });
 
-test("sitemap-sellers.xml は /x402/sellers/ だけ", () => {
+test("sitemap-sellers.xml は I4 の /sellers/ だけ（2026-11-27）", () => {
   const route = read("src/app/sitemap-sellers.xml/route.ts");
-  assert.match(route, /\/x402\/sellers\//);
-  assert.doesNotMatch(route, /sellerPath\(/);
-  assert.match(route, /getReputationHostsCached/);
+  assert.match(route, /\/sellers\//);
+  assert.doesNotMatch(route, /reputationLoc|getReputationHostsCached/);
+  assert.match(route, /getIndexableSellerHostsCached/);
   assert.match(route, /getSellerBoardCached/);
 });
 

@@ -19,6 +19,7 @@ import {
   reputationPageEligible,
   reputationSellerPath,
 } from "@/lib/sellers/reputation";
+import { getIndexableSellerHostsCached } from "@/lib/sellers/seller-index";
 import {
   SellerDetailView,
   SellerOtherChainsView,
@@ -61,6 +62,11 @@ export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ host: string }>; searchParams: Promise<{ page?: string }> };
 
+async function sellerIndexGateForHost(host: string): Promise<boolean> {
+  const allowed = await getIndexableSellerHostsCached().catch(() => [] as string[]);
+  return allowed.includes(host);
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { host: raw } = await params;
   const host = parseSellerHostParam(raw);
@@ -79,8 +85,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       noindex: true,
     });
   }
-  // 2026-09-29 敵対的監査: 売り手側とした失敗の一部が実は vet402 側・判定保留・宣言どおりの無料応答
-  // だった。帰属の規則を直して再確認するまで、他社名の頁を検索に出さない（頁は売り手が見られるよう残す）。
+  // 2026-11-27 I4: index only when delivered in the last 30 days or the payee wallet claimed.
+  const indexable = await sellerIndexGateForHost(host);
   // 表題の日付は Base 行と otherChain の新しい方（sellerHeadline）。詳細の読み取りに失敗したときは一覧の lastAttemptAt に戻す。
   const detailForTitle = await getSellerDetailCached(host).catch(() => null);
   const head = detailForTitle
@@ -95,7 +101,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: sellerHeading(host, head.at, head.chain),
     description: sellerDescription(host, head.chain),
     path: `/sellers/${host}`,
-    noindex: true,
+    noindex: !indexable,
   });
   // 2026-09-28 SEO 監査: layout の template（"%s | vet402"）を通さず、長さを見て接尾辞を
   // 付けるかどうかを sellerPageTitle が決める。OG/Twitter の表題は素のまま（site_name が担う）。
@@ -128,6 +134,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
     );
   }
   const detail = data.detail;
+  const indexable = await sellerIndexGateForHost(detail.host);
   const reputationSummaryHref = await getReputationHostsCached()
     .then((allowed) =>
       allowed?.includes(detail.host) && reputationPageEligible(detail)
@@ -142,18 +149,6 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const path = sellerPath(detail.host);
   const head = sellerHeadline(detail);
-  const webPage = {
-    "@context": "https://schema.org",
-    "@type": "WebPage",
-    name: sellerHeading(detail.host, head.at, head.chain),
-    description: sellerDescription(detail.host, head.chain),
-    url: `${SITE_URL}${path}`,
-    inLanguage: "en",
-    isPartOf: { "@type": "WebSite", name: "vet402", url: SITE_URL },
-    publisher: publisherOrg(),
-    about: { "@type": "Thing", name: detail.host },
-    ...(head.at ? { dateModified: head.at } : {}),
-  };
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
     { name: "Sellers", path: "/sellers" },
@@ -161,18 +156,35 @@ export default async function SellerPage({ params, searchParams }: Props) {
   ]);
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      <script
-        type="application/ld+json"
-        nonce={nonce}
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(webPage) }}
-      />
-      <script
-        type="application/ld+json"
-        nonce={nonce}
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
-      />
+      {indexable ? (
+        <>
+          <script
+            type="application/ld+json"
+            nonce={nonce}
+            suppressHydrationWarning
+            dangerouslySetInnerHTML={{
+              __html: safeJsonLd({
+                "@context": "https://schema.org",
+                "@type": "WebPage",
+                name: sellerHeading(detail.host, head.at, head.chain),
+                description: sellerDescription(detail.host, head.chain),
+                url: `${SITE_URL}${path}`,
+                inLanguage: "en",
+                isPartOf: { "@type": "WebSite", name: "vet402", url: SITE_URL },
+                publisher: publisherOrg(),
+                about: { "@type": "Thing", name: detail.host },
+                ...(head.at ? { dateModified: head.at } : {}),
+              }),
+            }}
+          />
+          <script
+            type="application/ld+json"
+            nonce={nonce}
+            suppressHydrationWarning
+            dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
+          />
+        </>
+      ) : null}
       {/* 2026-09-29 第4巡: 帯は seller の側（確定）の行がある頁だけ。該当の行には同じ語（UNDER_RECHECK）の印が付く。
           2026-10-21 A-16: 見直しに期限は無い（コードに日付が無い）。期限を作らず、無いと書く。時期はカードごとの次の購入の目安だけ。 */}
       {detail.hasConfirmedSeller && (

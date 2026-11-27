@@ -620,3 +620,24 @@ export async function readHostBadgeStats(db: Db, host: string): Promise<HostBadg
     answered: Number(row?.answered ?? 0),
   };
 }
+
+/** Hosts with at least one delivered purchase in the rolling window (I4 · host badge window). */
+export async function readHostsWithDeliveredInWindow(db: Db, days: number): Promise<Set<string>> {
+  const raw = await db.execute(sql`
+    SELECT DISTINCT ${HOST_SQL} AS host
+    FROM x402_l1_purchases pu
+    JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${sql.raw(deliveredPredicate("pu"))}
+      AND pu.attempted_at >= now() - make_interval(days => ${days}::int)`);
+  return new Set(rowsOf(raw).map((r) => String(r.host)));
+}
+
+/** Hosts whose catalog pay_to matches a signed payee claim (verified_payees). */
+export async function readHostsWithPayeeClaim(db: Db): Promise<Set<string>> {
+  const raw = await db.execute(sql`
+    SELECT DISTINCT ${HOST_SQL} AS host
+    FROM x402_endpoints e
+    INNER JOIN verified_payees vp ON vp.wallet = e.pay_to
+    WHERE e.pay_to IS NOT NULL`);
+  return new Set(rowsOf(raw).map((r) => String(r.host)));
+}

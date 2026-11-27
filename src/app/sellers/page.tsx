@@ -5,6 +5,7 @@ import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { boardAsOfDay, parseSellerSideFilter, searchSellers, sellerSearchRedirect, type SellerBoard } from "@/lib/sellers/board";
 import { getPurchasedHostsCached, getSellerBoardCached } from "@/lib/sellers/cached";
+import { getIndexableSellerHostsCached } from "@/lib/sellers/seller-index";
 import { SellersIndexView, SellersNotice, sellerPath } from "@/components/site/sellers/SellersViews";
 
 /**
@@ -63,6 +64,7 @@ export default async function SellersPage({ searchParams }: { searchParams: Prom
   const page = Math.max(1, Math.trunc(Number(params.page ?? "1")) || 1);
   // 2026-09-29 第6巡: 区分の絞り込み（?side=seller|vet402|unsorted|delivered・知らない値は全部）。
   const side = parseSellerSideFilter(params.side);
+  const indexableHosts = await getIndexableSellerHostsCached().catch(() => [] as string[]);
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -83,6 +85,7 @@ export default async function SellersPage({ searchParams }: { searchParams: Prom
         search={search}
         side={side}
         purchasedLookupFailed={purchasedLookupFailed}
+        indexableHosts={indexableHosts}
       />
     </main>
   );

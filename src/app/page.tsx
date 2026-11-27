@@ -17,6 +17,7 @@ import { homeLedgerOf } from "@/components/site/HomeLedger";
 import { getHomeExampleCached, cardDeliveredLabel, fmt, sellerRecordParts, utc } from "@/lib/observatory/home-example";
 import { PasteCheck } from "@/components/site/home/PasteCheck";
 import HomePurchaseSparkline from "@/components/site/home/HomePurchaseSparkline";
+import { HomeIndexedSellers } from "@/components/site/home/HomeIndexedSellers";
 import s from "./home.module.css";
 
 export const metadata = pageMetadata({
@@ -413,6 +414,7 @@ export default async function Home() {
             .
           </p>
           <p className={s.pricingLead}>Seller checks need no key.</p>
+          <HomeIndexedSellers linkClassName={s.pricingLead} />
         </section>
       </main>
 
