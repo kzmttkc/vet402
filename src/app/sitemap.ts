@@ -2,7 +2,11 @@ import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
 import { GUIDE_CHAINS } from "@/components/site/x402-guides";
 import { CREDENTIALS } from "@/lib/about/credentials";
-import { LEGAL_PRIVACY_LAST_MODIFIED, LEGAL_TERMS_PRIVACY_LAST_MODIFIED } from "@/lib/legal/document-dates";
+import {
+  LEGAL_NOTICE_LAST_MODIFIED,
+  LEGAL_PRIVACY_LAST_MODIFIED,
+  LEGAL_TERMS_PRIVACY_LAST_MODIFIED,
+} from "@/lib/legal/document-dates";
 import { fetchLeaderboard } from "@/lib/db/leaderboard";
 import { SITE_URL } from "@/lib/site-url";
 
@@ -180,7 +184,12 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly",
       priority: 0.3,
     },
-    { url: `${SITE_URL}/legal/notice`, lastModified: SITE_REVISION, changeFrequency: "yearly", priority: 0.3 },
+    {
+      url: `${SITE_URL}/legal/notice`,
+      lastModified: LEGAL_NOTICE_LAST_MODIFIED,
+      changeFrequency: "yearly",
+      priority: 0.3,
+    },
     { url: `${SITE_URL}/about`, lastModified: CREDENTIALS.revision, changeFrequency: "monthly", priority: 0.5 },
   ];
 

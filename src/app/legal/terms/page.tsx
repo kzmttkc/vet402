@@ -5,6 +5,7 @@ import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { formDisputeQueueSentence } from "@/lib/observatory/dispute-ack";
 import { l0ProbeScheduleLabel } from "@/lib/observatory/l0-schedule";
+import { LEGAL_TERMS_PRIVACY_DISPLAY } from "@/lib/legal/document-dates";
 
 /**
  * Terms of Service.
@@ -69,18 +70,18 @@ export default async function TermsPage() {
             <span>Instrument: terms of service</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">November 16, 2026</span>
+              Revision: <span className="text-signal">{LEGAL_TERMS_PRIVACY_DISPLAY}</span>
             </span>
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>November 16, 2026</span>
+            <span>{LEGAL_TERMS_PRIVACY_DISPLAY}</span>
           </div>
         </div>
         <h1 className="doc-title mt-8">Terms of Service</h1>
         <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-        <p className="doc-note text-center">Last updated: November 16, 2026</p>
+        <p className="doc-note text-center">Last updated: {LEGAL_TERMS_PRIVACY_DISPLAY}</p>
 
         <section className="space-y-2">
           <h2 className="sec-head">
@@ -662,6 +663,20 @@ export default async function TermsPage() {
             middle of a period is handled by Stripe; the next invoice may include a prorated
             difference. The current plan names and prices are the ones shown on Billing at the
             moment you pay, not a price quoted elsewhere.
+          </p>
+          <p>
+            <strong>Tax.</strong> Prices on Billing are quoted in US dollars. The amount charged at
+            checkout is the full price; Japan consumption tax is not added on top. vet402 is operated
+            as a consumption-tax-exempt sole proprietorship in Japan and is not registered as a
+            qualified invoice issuer under Japan&apos;s invoice system, so qualified invoices cannot be
+            issued.
+          </p>
+          <p>
+            <strong>Existing subscribers.</strong> If vet402 later changes the public price or monthly
+            quota for a plan, new subscriptions at the new Stripe price use the new terms unless you
+            agree otherwise. An existing paid subscription keeps the Stripe price and quota from the
+            last renewal until vet402 sends email notice at least thirty days before a price or quota
+            change on renewal, and at least twelve months have passed on that Stripe price.
           </p>
           <p>
             <strong>Cancel.</strong> Cancel from the Stripe customer portal linked on Billing
