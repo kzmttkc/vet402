@@ -57,6 +57,8 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
       { label: "Decisions", href: "/decisions" },
       // 2026-08-13 UX監査R1 [C8]: 「Corrections are logged publicly」の約束の帳簿。
       { label: "Corrections", href: "/corrections" },
+      // 2026-11-27 F9: vet402 が自分に課す決まりと失敗の帰属。
+      { label: "Integrity Terms", href: "/integrity" },
     ],
   },
   {

@@ -2521,3 +2521,26 @@ claims:
     check: null
     why_unverifiable: "src/lib/observatory/reader.ts の集計の SQL が数え方を固定する。独立の点検で照合済み（2026-11-26）"
     verified_at: 2026-11-26
+  # 2026-11-27 F9: /integrity（Integrity Terms と失敗の帰属の一覧）。新しい約束は作らず、既存の実装と公開頁の要約。
+  - id: integrity_decision_carries_rules_version
+    surface: src/app/integrity/page.tsx
+    quote: "Every decision carries rules_version"
+    means: "判定の応答（/api/v1/check と /api/v1/resources/{id}/decision）は rules_version を返す。版は src/lib/decision/rules.ts の DECISION_RULES_VERSION。"
+    check:
+      url: https://vet402.com/api/v1/check?url=https://api.exa.ai/search
+      assert: "rules_version != null"
+    verified_at: 2026-11-27
+  - id: integrity_every_reason_code_listed
+    surface: src/app/integrity/page.tsx
+    quote: "every reason code is listed with its effect"
+    means: "理由コードは src/lib/decision/reason-codes.ts の表から /docs/api#reason-codes と openapi の DecisionReasonCode に出る。"
+    check: null
+    why_unverifiable: "表の網羅は reason-codes.ts と tests の既存の照合が固定する。公開 GET が数値で返す主張ではない"
+    verified_at: 2026-11-27
+  - id: integrity_every_paid_purchase_user_agent
+    surface: src/app/integrity/page.tsx
+    quote: "Every paid purchase carries the User-Agent"
+    means: "L1 の支払い付き要求は l1-runner.ts の user-agent ヘッダ vet402-observatory-l1/1.0 (+https://vet402.com/observatory/methodology) を付ける。tests/integrity-page.test.ts が頁の文字列と l1-runner.ts の一致を固定する。"
+    check: null
+    why_unverifiable: "要求ヘッダは売り手側にしか見えない。コードの一致を tests/integrity-page.test.ts が固定する"
+    verified_at: 2026-11-27

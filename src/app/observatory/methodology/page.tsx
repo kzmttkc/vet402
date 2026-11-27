@@ -1356,6 +1356,10 @@ export default async function ObservatoryMethodologyPage() {
           <Link href="/corrections" className="underline">
             corrections policy
           </Link>
+          . These commitments and the others vet402 holds itself to are listed, each with its source, in the{" "}
+          <Link href="/integrity" className="underline">
+            Integrity Terms
+          </Link>
           .
         </p>
 
