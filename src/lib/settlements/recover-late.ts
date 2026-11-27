@@ -1939,7 +1939,18 @@ export function makeAvalancheTransferReader(
           to,
           deadline,
           undefined,
-          (p, opts) => alchemyFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID }),
+          async (p, opts) => {
+            const page = await alchemyFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID });
+            // 欠けた行を黙って捨てない: hash の無い行・宛先 payTo への額 0（rawContract.value 欠け）は読めなかった扱いで次の読み先へ。
+            const payToLower = payTo.toLowerCase();
+            for (const r of page.rows) {
+              if (!r.hash) throw new AlchemyUnavailableError("alchemy_missing_tx_hash");
+              if (r.to.toLowerCase() === payToLower && !/^[1-9]\d*$/.test(r.value)) {
+                throw new AlchemyUnavailableError("alchemy_bad_value");
+              }
+            }
+            return page;
+          },
           { ...indexedOpts, alchemyPagination: true },
         );
         if (viaAlchemy.ok) return indexedTransfersToChainTransfers(viaAlchemy.transfers);

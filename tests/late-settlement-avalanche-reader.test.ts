@@ -192,7 +192,8 @@ test("Avalanche reader: it stops when its time limit has passed", async () => {
 });
 
 /** 2026-11-24 top-mentions settle_failed: 購入 12:01:02Z、32 秒後に同額同宛先の Avalanche 送金。 */
-const LATE_CASE_PAY_TO = "0x7371cce3e8f91a2b3c4d5e6f7a8b9c0d1e2f3a4b5";
+/** 台帳 x402_l1_purchases 4bc71849-… の pay_to（2026-11-27 本番 DB を読んで確認）。 */
+const LATE_CASE_PAY_TO = "0x7371cce396ad04a6c78c4875d7837ade837a6a38";
 const LATE_CASE_TX = "0xfa9c70c99dcb2d9ea84721140e2d0c6a655c69b74feba7332be79e34929b1df2";
 const LATE_CASE_AMOUNT = "14500";
 const LATE_CASE_ATTEMPT = new Date("2026-11-24T12:01:02.000Z");
@@ -319,8 +320,14 @@ test("Avalanche reader: Alchemy success does not call Routescan", async () => {
     {
       hash: LATE_CASE_TX,
       iso: "2026-11-24T12:01:34.000Z",
-      value: "0x38bc",
+      value: "0x38a4",
       to: LATE_CASE_PAY_TO,
+    },
+    {
+      hash: "0x" + "ab".repeat(32),
+      iso: "2026-11-24T12:01:40.000Z",
+      value: "0x38a4",
+      to: "0x00000000000000000000000000000000000000aa",
     },
   ]);
   const reader = makeAvalancheTransferReader(undefined, async () => {
@@ -338,7 +345,41 @@ test("Avalanche reader: Alchemy success does not call Routescan", async () => {
     assert.equal(routescanCalls, 0);
     assert.equal(out?.length, 1);
     assert.equal(out?.[0]?.txHash, LATE_CASE_TX);
-    assert.equal(out?.[0]?.value, String(0x38bc));
+    assert.equal(out?.[0]?.value, LATE_CASE_AMOUNT, "0x38a4 = 14500; the same-amount row to another address is dropped");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
+    else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+test("Avalanche reader: an Alchemy row without a tx hash is unreadable, so Routescan answers instead", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevAvax = process.env.AVALANCHE_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  delete process.env.AVALANCHE_RPC_URL;
+  let routescanCalls = 0;
+  globalThis.fetch = alchemyRecoverLateFetchMock([
+    { hash: "", iso: "2026-11-24T12:01:34.000Z", value: "0x38a4", to: LATE_CASE_PAY_TO },
+  ]);
+  const row = routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC);
+  const reader = makeAvalancheTransferReader(undefined, async () => {
+    routescanCalls++;
+    return {
+      rows: [{ hash: row.hash, blockNumber: row.blockNumber, timeStamp: row.timeStamp, from: row.from, to: row.to, value: row.value }],
+      rawItemCount: 1,
+      pageOldestSec: Number(row.timeStamp),
+      nextCursor: null,
+    };
+  });
+  try {
+    const out = await reader({ network: ARB, payer: PAYER, payTo: LATE_CASE_PAY_TO, ...lateCaseWindow, timeoutMs: 10_000 });
+    assert.equal(routescanCalls, 1, "a hashless Alchemy row must not be read as no transfer");
+    assert.equal(out?.length, 1);
+    assert.equal(out?.[0]?.txHash, LATE_CASE_TX);
   } finally {
     globalThis.fetch = realFetch;
     if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
