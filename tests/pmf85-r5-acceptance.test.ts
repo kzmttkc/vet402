@@ -109,9 +109,11 @@ test("F: seven-day roll-up matches the daily table sums for the same UTC window"
   assert.match(status, />Cause</);
 });
 
-test("G: /legal/notice revision and last updated are November 16, 2026", () => {
+test("G: /legal/notice revision and last updated use LEGAL_NOTICE_DISPLAY", async () => {
+  const { LEGAL_NOTICE_DISPLAY } = await import("@/lib/legal/document-dates");
   const notice = read("src/app/legal/notice/page.tsx");
-  assert.match(notice, /Revision: <span className="text-signal">November 16, 2026<\/span>/);
-  assert.match(notice, /Last updated: November 16, 2026/);
+  assert.match(notice, /LEGAL_NOTICE_DISPLAY/);
+  assert.match(notice, new RegExp(`Last updated: \\{LEGAL_NOTICE_DISPLAY\\}`));
   assert.doesNotMatch(notice, /Last updated: November 8, 2026/);
+  assert.equal(LEGAL_NOTICE_DISPLAY, "November 28, 2026");
 });

@@ -104,7 +104,7 @@ test("sitemap legal lastmod reads from the same constant as the legal pages", as
   assert.ok(privacy);
   assert.equal(String(terms!.lastModified), LEGAL_TERMS_PRIVACY_LAST_MODIFIED);
   assert.equal(String(privacy!.lastModified), LEGAL_PRIVACY_LAST_MODIFIED);
-  assert.match(read("src/app/legal/terms/page.tsx"), new RegExp(`Last updated: ${LEGAL_TERMS_PRIVACY_DISPLAY}`));
+  assert.match(read("src/app/legal/terms/page.tsx"), /Last updated: \{LEGAL_TERMS_PRIVACY_DISPLAY\}/);
   assert.match(read("src/app/legal/privacy/page.tsx"), new RegExp(`Last updated: ${LEGAL_PRIVACY_DISPLAY}`));
 });
 

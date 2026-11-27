@@ -14,7 +14,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 const FORBIDDEN_PUBLIC_ENGLISH = /\b(we|our|us)\b|—|–|;/;
 
 const EXPECTED_PLANS = [
-  { key: "free" as const, name: "Free", priceLabel: "$0", monthlyUsd: 0, monthlyLimit: 1_000 },
+  { key: "free" as const, name: "Free", priceLabel: "$0", monthlyUsd: 0, monthlyLimit: 3_000 },
   { key: "pro" as const, name: "Pro", priceLabel: "$49/mo", monthlyUsd: 49, monthlyLimit: 50_000 },
   { key: "scale" as const, name: "Scale", priceLabel: "$199/mo", monthlyUsd: 199, monthlyLimit: 500_000 },
 ];
@@ -91,7 +91,7 @@ function assertHomeHeroPricingCopy(pageSource: string): void {
   assert.doesNotMatch(pageSource, /Pro is \$\{BILLING_PLANS\.pro\.monthlyUsd\} a month/);
   assert.doesNotMatch(pageSource, /Scale is \$\{BILLING_PLANS\.scale\.monthlyUsd\} a month/);
   const freeLine = `Start free with ${BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} score lookups a month.`;
-  if (freeLine !== "Start free with 1,000 score lookups a month.") {
+  if (freeLine !== "Start free with 3,000 score lookups a month.") {
     throw new Error(`unexpected hero free line: ${freeLine}`);
   }
   const heroStart = pageSource.indexOf('className={s.heroText}');
@@ -160,7 +160,7 @@ test("[guard] home PricingSection render shows prices and quotas with Stripe off
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { PricingSection } = await import("@/components/site/PricingSection");
     const html = renderToStaticMarkup(PricingSection({ titleId: "home-pricing" }));
-    for (const token of ["$49/mo", "$199/mo", "1,000"]) {
+    for (const token of ["$49/mo", "$199/mo", "3,000"]) {
       assert.ok(html.includes(token), `expected ${token} in pricing render`);
     }
     assertHomePricingTable(html);
