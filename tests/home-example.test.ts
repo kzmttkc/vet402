@@ -32,6 +32,7 @@ test("the home receipt excludes the same statuses as export.csv", () => {
   const src = readFileSync("src/lib/observatory/home-example.ts", "utf8");
   assert.ok(src.includes("make_interval(days => 1)"), "the window is one day, the same as export.csv?days=1");
   assert.ok(src.includes("ORDER BY pu.attempted_at DESC, pu.id ASC"), "ties keep the smaller purchase id");
+  assert.match(src, /HOME_DELIVERED_SQL/, "the home surface only names delivered purchases (C1)");
 });
 
 test("a settled export row becomes one receipt, and a bad amount becomes none", () => {
