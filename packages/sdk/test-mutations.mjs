@@ -29,6 +29,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PAY = "src/pay-or-refuse.ts";
+// 2026-11-27 F7: 402 と判定の照合（matchDeclaredPayTerms）は pay-or-refuse.ts から terms-match.ts へ中身を変えずに移した。M51〜M59 の錨はこちらにある。
+const TERMS = "src/terms-match.ts";
 const SUB = "src/subgraph-evidence.ts";
 const X402 = "src/x402-pay.ts";
 const SVM = "src/svm-pay.ts";
@@ -480,7 +482,7 @@ const MUTATIONS = [
     id: "M51",
     what: "verified_terms の照合を ALLOW のときだけに戻す（WARN 免除で額超過を通す）",
     rule: "N7 verified_terms は免除の有無に関わらず照合",
-    file: PAY,
+    file: TERMS,
     find: "  if (hasKey && vtRaw !== null && vtRaw !== undefined && isPlainObject(vtRaw)) {",
     replace:
       "  if (/* MUTANT */ decision.recommendation === \"ALLOW\" && hasKey && vtRaw !== null && vtRaw !== undefined && isPlainObject(vtRaw)) {",
@@ -489,7 +491,7 @@ const MUTATIONS = [
     id: "M52",
     what: "verified_terms が null のとき facts.payees を照合しない",
     rule: "whitehat S7/S9 payees 照合",
-    file: PAY,
+    file: TERMS,
     find: "  const payeeErr = payeesCheck();\n  if (payeeErr) return payeeErr;\n  return [\"price_unverified\"];",
     replace: "  /* MUTANT */ return [\"price_unverified\"];",
   },
@@ -497,7 +499,7 @@ const MUTATIONS = [
     id: "M53",
     what: "別レールの verified を payee_unverified ではなく payee_mismatch にする",
     rule: "adversary T3 payee_unverified_on_rail",
-    file: PAY,
+    file: TERMS,
     find: '      if (!inFacts) return ["payee_unverified_on_rail"];',
     replace: '      if (!inFacts) return /* MUTANT */ ["payee_mismatch"];',
   },
@@ -505,7 +507,7 @@ const MUTATIONS = [
     id: "M54",
     what: "decimals 不明でも raw 単位で額を比べる",
     rule: "whitehat S10 price_unverified",
-    file: PAY,
+    file: TERMS,
     find: '    const decimalsKnown = vtDecimals === null || vtDecimals === USDC_DECIMALS;',
     replace: "    const decimalsKnown = /* MUTANT */ true;",
   },
@@ -521,7 +523,7 @@ const MUTATIONS = [
     id: "M56",
     what: "sameRail でなくても price_above_declared だけ見る",
     rule: "price_unverified on cross-asset",
-    file: PAY,
+    file: TERMS,
     find: '    if (sameRail) {\n      if (BigInt(accept.amount) > BigInt(amount)) return ["price_above_declared"];\n    } else {\n      return ["price_unverified"];\n    }',
     replace: '    if (sameRail) {\n      if (BigInt(accept.amount) > BigInt(amount)) return ["price_above_declared"];\n    } else {\n      /* MUTANT */ if (BigInt(accept.amount) > BigInt(amount)) return ["price_above_declared"];\n    }',
   },
@@ -529,7 +531,7 @@ const MUTATIONS = [
     id: "M58",
     what: "別の網の USDC 同士でも額を比べず必ず止める（0.10.3 の止めすぎ）",
     rule: "proof-payaudit-1 cross-chain USDC",
-    file: PAY,
+    file: TERMS,
     find: "      if (!bothUsdc || amount === null || !isDecimalUnits(amount)) return [\"price_unverified\"];",
     replace: "      if (!bothUsdc || amount === null || !isDecimalUnits(amount) || accept.amount !== \"__never__\") return /* MUTANT */ [\"price_unverified\"];",
   },
@@ -537,7 +539,7 @@ const MUTATIONS = [
     id: "M59",
     what: "別の網の USDC 同士で、高い額を通す",
     rule: "proof-payaudit-1 price_above_declared",
-    file: PAY,
+    file: TERMS,
     find: "      if (BigInt(accept.amount) > BigInt(amount)) return [\"price_above_declared\"];\n      return null;\n    }",
     replace: "      /* MUTANT */ return null;\n    }",
   },

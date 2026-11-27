@@ -51,7 +51,7 @@ import { OWN_ORIGINS } from "@/lib/decision/lookup-caller";
  */
 export const MCP_USAGE_ROUTES = ["mcp:initialize", "mcp:check_x402_seller", "mcp:check_my_x402_endpoint", "mcp:find_x402_sellers"] as const;
 export type McpUsageRoute = (typeof MCP_USAGE_ROUTES)[number];
-export type ClientUsageRoute = "resolve" | "decision" | "rest:check" | "rest:decision" | McpUsageRoute;
+export type ClientUsageRoute = "resolve" | "decision" | "rest:check" | "rest:decision" | "rest:presign" | McpUsageRoute;
 
 /**
  * 配布物（利用者の手元で動き、vet402 の API を呼ぶときにこの名前を UA に名乗るもの）。
@@ -84,6 +84,7 @@ export const SELF_MONITOR_NAMES: readonly string[] = [
   "vet402-gtm-weekly",
   "vet402-payer-balance",
   "vet402-diagnose",
+  "vet402-presign-latency-probe",
 ];
 /** Takeshi_Automation の監視が名乗る先頭（`kizuna-grant-figures/1` など）。社内の接頭辞で、配布物には使わない。 */
 const SELF_MONITOR_PREFIX = "kizuna-";

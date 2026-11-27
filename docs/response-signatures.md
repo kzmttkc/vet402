@@ -7,6 +7,7 @@ vet402 signs selected JSON API responses with Ed25519 so a third party can confi
 These paths attach a `Vet402-Signature` response header when `VET402_RESPONSE_SIGNING_KEY` is configured:
 
 - `GET /api/v1/check` and `GET /api/v1/decision` (same body)
+- `POST /api/v1/check/presign` (the path is signed; the request body is not part of the signed bytes, the response body is)
 - `GET /api/v1/find`
 - `GET /api/v1/observatory/state`
 - `GET /api/v1/observatory/anchors`
