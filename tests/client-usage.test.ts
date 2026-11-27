@@ -579,3 +579,35 @@ test("MCP check_x402_seller: network が分かるとき client_usage_daily_netwo
   await tasks[0]();
   assert.ok(seen.some((s) => s.includes("client_usage_daily_network") && s.includes("eip155:42220")));
 });
+
+test("weekly external calls leave out own monitors, the site, crawlers and MCP handshakes; weeks start on UTC Monday (2026-11-27)", async () => {
+  const { isExternalUsageRow, utcWeekStart } = await import("@/lib/api/client-usage-public-aggregate");
+  assert.equal(utcWeekStart("2026-11-16"), "2026-11-16");
+  assert.equal(utcWeekStart("2026-11-22"), "2026-11-16");
+  assert.equal(utcWeekStart("2026-11-23"), "2026-11-23");
+  assert.equal(isExternalUsageRow("other", "rest:check"), true);
+  assert.equal(isExternalUsageRow("cursor", "mcp:check_x402_seller"), true);
+  assert.equal(isExternalUsageRow("vet402-sdk/0.7.2", "decision"), true);
+  assert.equal(isExternalUsageRow("other", "mcp:initialize"), false);
+  assert.equal(isExternalUsageRow("site", "decision"), false);
+  assert.equal(isExternalUsageRow("crawler", "decision"), false);
+  assert.equal(isExternalUsageRow("Googlebot/2.1", "decision"), false);
+  assert.equal(isExternalUsageRow("self-monitor", "rest:check"), false);
+});
+
+test("weeklyExternalFromRows sums whole weeks only: a week that starts before the window is left out (2026-11-27)", async () => {
+  const { weeklyExternalFromRows, utcWeekStart } = await import("@/lib/api/client-usage-public-aggregate");
+  assert.equal(utcWeekStart("2026-01-01"), "2025-12-29");
+  const rows = [
+    { day: "2026-11-15", client: "other", route: "rest:check", count: 9 },
+    { day: "2026-11-16", client: "other", route: "rest:check", count: 5 },
+    { day: "2026-11-22", client: "cursor", route: "mcp:check_x402_seller", count: 2 },
+    { day: "2026-11-22", client: "other", route: "mcp:initialize", count: 100 },
+    { day: "2026-11-23", client: "site", route: "decision", count: 50 },
+    { day: "2026-11-23", client: "vet402-sdk/0.7.2", route: "decision", count: 1 },
+  ];
+  assert.deepEqual(weeklyExternalFromRows(rows, "2026-11-12"), [
+    { weekStart: "2026-11-16", externalCalls: 7 },
+    { weekStart: "2026-11-23", externalCalls: 1 },
+  ]);
+});
