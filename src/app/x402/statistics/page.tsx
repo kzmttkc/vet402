@@ -15,6 +15,7 @@ import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { publicChainLabel } from "@/lib/observatory/chains";
 import { TableScroll } from "@/components/site/TableScroll";
 import { GUIDE_UPDATED } from "@/components/site/x402-answers";
+import { PINNED_ASSETS_WITH_ISSUER_TEXT } from "@/lib/observatory/settlement-assets";
 
 const PATH = "/x402/statistics";
 
@@ -72,8 +73,11 @@ export default async function X402StatisticsPage() {
         path: PATH,
         citeUrl: `${SITE_URL}/api/v1/observatory/state`,
         retrievedAt: readAt,
+        // Verbatim L1 clause of the /observatory/state Dataset measurementTechnique.
         measurementTechnique:
-          "L1: a real-money purchase of that chain's pinned settlement asset made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled.",
+          "L1: a real-money purchase of that chain's pinned asset (" +
+          PINNED_ASSETS_WITH_ISSUER_TEXT +
+          ") made under vet402's own User-Agent, with the settlement transaction re-read on-chain before it is called settled.",
         variableMeasured: [
           "L1 paid purchase attempts",
           "L1 settled with on-chain receipt",
@@ -171,9 +175,8 @@ export default async function X402StatisticsPage() {
           <p className="doc-p">The ledger could not be read for this rendering, so no counts are shown.</p>
         )}
         <p className="doc-p">
-          These figures answer searches for x402 purchase volume, settlement counts, and delivery after payment. vet402
-          buys from public x402 sellers and records whether each paid request settled on-chain and returned a deliverable
-          response. The same numbers appear on{" "}
+          vet402 buys from public x402 sellers with real money. For each paid request it records whether the transfer
+          settled on-chain and whether the response counted as delivered. The same figures appear on{" "}
           <Link href="/observatory/state" className="doc-link">
             State of x402
           </Link>
