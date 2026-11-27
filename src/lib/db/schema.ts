@@ -1226,6 +1226,21 @@ export const probeContributions = pgTable(
  * anchored_tx はオンチェーンへ刻んだ時のtx（ANCHOR_WRITES_ENABLED・既定OFF・
  * 資金承認後）。rootの再計算手順は /observatory/methodology に公開する。
  */
+/**
+ * ledger_monthly_frozen — 締まった月の購入台帳凍結（F5・2026-11-27）。
+ * scripts/monthly-freeze.ts が一度だけ INSERT する。日次 root は 2026-12-01 以降だけ
+ * content_sha256 を 1 行足す。SQL: scripts/sql/2026-11-27-ledger-monthly-frozen.sql
+ */
+export const ledgerMonthlyFrozen = pgTable("ledger_monthly_frozen", {
+  month: text("month").primaryKey(),
+  periodStart: date("period_start", { mode: "string" }).notNull(),
+  periodEndExclusive: date("period_end_exclusive", { mode: "string" }).notNull(),
+  rowCount: integer("row_count").notNull(),
+  contentSha256: text("content_sha256").notNull(),
+  summaryJson: jsonb("summary_json").notNull(),
+  frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+});
+
 export const ledgerAnchors = pgTable(
   "ledger_anchors",
   {
