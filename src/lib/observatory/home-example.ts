@@ -1,8 +1,9 @@
 // The front page's one purchase and the decision facts beside it.
 //
-// The purchase is the settled row with the latest attempted_at in the same window as
-// GET /api/v1/observatory/export.csv?days=1 (src/app/api/v1/observatory/export.csv/route.ts):
-// the last day, the same excluded statuses, then status settled with a tx and a resource key.
+// The purchase is the delivered settled row with the latest attempted_at in the same window as
+// GET /api/v1/observatory/export.csv?days=1 (src/app/api/v1/observatory/export.csv/route.ts),
+// except only delivered L1 rows may appear on the home surface (C1).
+// Window: the last day, the same excluded statuses, then status settled with a tx and a resource key.
 // Ties keep the smaller purchase id, which is what the export's ascending (attempted_at, id)
 // order yields when the reader keeps the first row of the latest time.
 //
@@ -19,7 +20,7 @@ import { getDb } from "@/lib/db/client";
 import { l1BasisOf } from "@/lib/decision/rules";
 import { loadSellerFacts } from "@/lib/decision/seller-facts";
 import { explorerTxUrl, paymentChainLabel } from "@/lib/observatory/chains";
-import { heldReasonSql, isDelivered, judgedSettledCount } from "@/lib/observatory/delivery";
+import { deliveredPredicate, heldReasonSql, isDelivered, judgedSettledCount } from "@/lib/observatory/delivery";
 import { confirmedUnitsSql } from "@/lib/observatory/export-columns";
 import { l2ReadingColumnsSql, l2ReadingOf } from "@/lib/observatory/l2-check";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
@@ -256,6 +257,9 @@ export function formatSettledReceipt(
 
 const EXCLUDED_SQL = PUBLIC_EXPORT_EXCLUDED_STATUSES.map((s) => `'${s}'`).join(", ");
 
+/** Same delivered judgement as the receipt card; held settled rows stay out of the home surface. */
+const HOME_DELIVERED_SQL = `${deliveredPredicate("pu")} AND coalesce(trim((${heldReasonSql("pu")})), '') = ''`;
+
 function str(v: unknown): string {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -274,6 +278,7 @@ async function loadLatestReceipt(): Promise<{ receipt: HomeReceipt; latest: Home
                WHERE pu.status = 'settled'
                  AND pu.tx_hash IS NOT NULL AND pu.tx_hash <> ''
                  AND e.resource_key IS NOT NULL AND e.resource_key <> ''
+                 AND (${sql.raw(HOME_DELIVERED_SQL)})
              )::int AS window_settled,
              to_char(min(pu.attempted_at) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS window_from,
              to_char(max(pu.attempted_at) AT TIME ZONE 'utc', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS window_to
@@ -308,6 +313,7 @@ async function loadLatestReceipt(): Promise<{ receipt: HomeReceipt; latest: Home
         AND pu.tx_hash IS NOT NULL AND pu.tx_hash <> ''
         AND e.resource_key IS NOT NULL AND e.resource_key <> ''
         AND (${sql.raw(settlementSourceSql("pu"))}) IS DISTINCT FROM 'circle_gateway'
+        AND (${sql.raw(HOME_DELIVERED_SQL)})
       ORDER BY pu.attempted_at DESC, pu.id ASC
       LIMIT 8
     `),
