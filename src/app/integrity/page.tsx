@@ -95,6 +95,7 @@ const TERMS: readonly Term[] = [
     sources: [
       { label: "Methodology: anchors", href: "/observatory/methodology#anchors" },
       { label: "Anchors JSON", href: "/api/v1/observatory/anchors" },
+      { label: "Recompute a day", href: "/api/v1/observatory/anchors/day?day=2026-11-25&view=current" },
     ],
   },
   {
@@ -251,7 +252,7 @@ export default async function IntegrityPage() {
             src/lib/observatory/delivery.ts
           </a>{" "}
           ·{" "}
-          <Link href="/observatory/methodology" className="doc-link">
+          <Link href="/observatory/methodology#whose-side" className="doc-link">
             Methodology: whose side
           </Link>
         </p>
