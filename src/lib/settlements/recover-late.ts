@@ -127,6 +127,17 @@ import { arbitrum, arc, avalanche, base, bsc, celo, tempo as tempoChain } from "
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { getLogScanClient } from "@/lib/chain/client";
+import { AlchemyUnavailableError, isAlchemyEnabled } from "@/lib/chain/alchemy";
+import {
+  makeAlchemyPayerFetch,
+  readPayerTokenTransfersInWindow,
+  type PayerTokenTransferInWindow,
+} from "@/lib/chain/payer-token-transfer-pages";
+import {
+  makeRoutescanAvalanchePayerFetch,
+  RoutescanUnavailableError,
+  type RoutescanPayerTokenTxFetch,
+} from "@/lib/chain/routescan";
 import { getLogsChunked } from "@/lib/chain/chunked-logs";
 import { BASE_BLOCK_TIME_SCHEDULE, firstBlockAtOrAfter } from "@/lib/chain/block-clock";
 import { ARBITRUM_CAIP2, ARBITRUM_CHAIN_ID, ARBITRUM_USDC_ADDRESS } from "@/lib/chain/arbitrum";
@@ -1885,17 +1896,124 @@ export const AVALANCHE_TRANSFER_READ_MARGIN_BLOCKS = 80n;
 
 type AvalancheTransferClient = Pick<ReturnType<typeof getLogScanClient>, "getBlock" | "getLogs" | "getChainId">;
 
+function indexedTransfersToChainTransfers(transfers: PayerTokenTransferInWindow[]): ChainTransfer[] {
+  return transfers.map((t) => ({
+    txHash: t.txHash,
+    from: t.from,
+    to: t.to,
+    value: t.value,
+    blockTime: t.blockTime,
+    blockNumber: t.blockNumber,
+  }));
+}
+
+const ALCHEMY_ZERO_TO = "0x0000000000000000000000000000000000000000";
+/**
+ * 窓の終わりからこれだけ経っていれば、索引は窓の終わりまで取り込んだとみなす（2026-11-27）。cron が行を読むのは試行から
+ * 35 分以上後で、窓の終わりは試行 + 30 分なので、初回の読みは索引の遅れに 5 分ほどしか余裕が無い——その間は RPC が決める。
+ */
+export const AVALANCHE_INDEX_TRUST_AFTER_MS = 60 * 60 * 1000;
+
 /**
  * Avalanche のネイティブ USDC（0xB97E…8a6E）の Transfer（from → to）を時刻の窓で読む読み手（2026-10-26・linkFromChain の Avalanche のレーン）。
- * 規則は makeArbitrumTransferReader と同じ。トークンはネイティブ USDC だけ（USDC.e は読まない）。
+ * 2026-11-27: 照合（payer-outgoing-readers）と同じ順で読む。Alchemy（鍵があるとき）→ Routescan tokentx → RPC getLogs。
+ * 索引の読みは from = 払い手・to = payTo で絞る（共有の readPayerTokenTransfersInWindow）。トークンはネイティブ USDC だけ。
+ *
+ * 索引が答えるのは「窓の中に payTo 宛ての送金が1本以上あり、かつ索引が窓の終わりまで取り込んだと言える」ときだけ。
+ * 取り込んだと言えるのは、払い手の行で窓の終わりより新しい物を見たか、窓の終わりから AVALANCHE_INDEX_TRUST_AFTER_MS 経ったとき。
+ * それ以外は次の読み先へ回す——呼び手は行ごとに「窓に額ちょうどの送金が 0 本」なら「決まった」と印し二度と読まない（0 本の読み
+ * 1 回で決まるレーン）。遅れた索引が額の違う送金だけを返しても、本物の送金がある行を決めてしまう。取り込んだと言えなければ、
+ * 先端を確かめる RPC が読む。
+ *
  * Avalanche 以外の network は null。**読めたと言えないときは必ず null か例外**（呼び手は貼らず、印も付けない）:
- *   - AVALANCHE_RPC_URL が無い（公開 RPC へ黙って倒れない。決済の再読・索引と同じ規律）
+ *   - 索引が読めない・欠けた行がある・窓の始端まで読めない・0 本だった、かつ RPC 段が null（AVALANCHE_RPC_URL 無し）
  *   - RPC が chainId 43114 を名乗らない（別のチェーンの空の結果を「着金なし」と読まない）
  *   - RPC の先端が窓の終わりに届いていない（遅れているノードの空の結果を「着金なし」と読まない）
  *   - 時刻 → ブロック番号の見積もりが、ブロックの実際の時刻と合わない（読む範囲が窓を外している）
- * 空の配列（[]）を返すのは、窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
+ * 空の配列（[]）を返すのは、RPC が窓を読み切って Transfer が無かったときだけ——呼び手はそれを「決まった」と印す。
  */
-export function makeAvalancheTransferReader(client?: AvalancheTransferClient): TransferReader {
+export function makeAvalancheTransferReader(
+  client?: AvalancheTransferClient,
+  routescanFetch: RoutescanPayerTokenTxFetch = makeRoutescanAvalanchePayerFetch(),
+): TransferReader {
+  const rpcReader = makeAvalancheTransferReaderViaRpc(client);
+  const alchemyFetch = makeAlchemyPayerFetch(AVALANCHE_CHAIN_ID);
+  const token = AVALANCHE_USDC_ADDRESS as Address;
+  return async ({ network, payer, payTo, from, to, timeoutMs }) => {
+    if (network !== AVALANCHE_CAIP2) return null;
+    const deadline = typeof timeoutMs === "number" ? Date.now() + timeoutMs : Infinity;
+    const indexedOpts = { contractAddress: token, chainId: AVALANCHE_CHAIN_ID, payTo };
+    const payToLower = payTo.toLowerCase();
+    const toSec = Math.floor(to.getTime() / 1000);
+    // 索引の鮮度: 払い手の行で窓の終わりより新しい物を見たときだけ、索引は窓の終わりまで取り込んだと言える。
+    let newestSec = -Infinity;
+    const noteNewest = <P extends { rows: { timeStamp: string }[] }>(page: P): P => {
+      for (const r of page.rows) {
+        const sec = Number(r.timeStamp);
+        if (Number.isFinite(sec) && sec > newestSec) newestSec = sec;
+      }
+      return page;
+    };
+    const indexAnswer = (read: { ok: true; transfers: PayerTokenTransferInWindow[] } | { ok: false; detail: string }) =>
+      read.ok && read.transfers.length > 0 && (newestSec > toSec || Date.now() - to.getTime() >= AVALANCHE_INDEX_TRUST_AFTER_MS)
+        ? indexedTransfersToChainTransfers(read.transfers)
+        : null;
+    if (isAlchemyEnabled(AVALANCHE_CHAIN_ID)) {
+      try {
+        const viaAlchemy = await readPayerTokenTransfersInWindow(
+          payer,
+          from,
+          to,
+          deadline,
+          undefined,
+          async (p, opts) => {
+            const page = await alchemyFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID });
+            // 欠けた行を黙って捨てない（読めなかった扱いで次の読み先へ）: from の無い行（toTransfer が落とす）・hash の無い行・
+            // to の無い行（toTransfer が 0x0 に置き換える）・宛先 payTo への額 0（rawContract.value 欠け）。
+            if (page.rows.length !== page.rawItemCount) throw new AlchemyUnavailableError("alchemy_dropped_row");
+            for (const r of page.rows) {
+              if (!r.hash) throw new AlchemyUnavailableError("alchemy_missing_tx_hash");
+              if (r.to.toLowerCase() === ALCHEMY_ZERO_TO) throw new AlchemyUnavailableError("alchemy_missing_to");
+              if (r.to.toLowerCase() === payToLower && !/^[1-9]\d*$/.test(r.value)) {
+                throw new AlchemyUnavailableError("alchemy_bad_value");
+              }
+            }
+            return noteNewest(page);
+          },
+          { ...indexedOpts, alchemyPagination: true },
+        );
+        const answer = indexAnswer(viaAlchemy);
+        if (answer) return answer;
+      } catch (e) {
+        if (!(e instanceof AlchemyUnavailableError)) throw e;
+      }
+    }
+    newestSec = -Infinity;
+    try {
+      const viaRoutescan = await readPayerTokenTransfersInWindow(
+        payer,
+        from,
+        to,
+        deadline,
+        undefined,
+        async (p, opts) => noteNewest(await routescanFetch(p, { ...opts, contractAddress: token, chainId: AVALANCHE_CHAIN_ID })),
+        indexedOpts,
+      );
+      const answer = indexAnswer(viaRoutescan);
+      if (answer) return answer;
+    } catch (e) {
+      if (!(e instanceof RoutescanUnavailableError)) throw e;
+    }
+    if (deadline !== Infinity) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) throw new Error("transfer read ran past its time limit");
+      return rpcReader({ network, payer, payTo, from, to, timeoutMs: remainingMs });
+    }
+    return rpcReader({ network, payer, payTo, from, to, timeoutMs });
+  };
+}
+
+function makeAvalancheTransferReaderViaRpc(client?: AvalancheTransferClient): TransferReader {
   return async ({ network, payer, payTo, from, to, timeoutMs }) => {
     if (network !== AVALANCHE_CAIP2) return null;
     const c = client ?? boundedAvalancheClient(timeoutMs);

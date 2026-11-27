@@ -11,7 +11,12 @@ import {
   type PayerTokenTransfersV2Page,
 } from "@/lib/chain/blockscout";
 import { getLogScanClient } from "@/lib/chain/client";
-import { AlchemyUnavailableError, fetchAssetTransfersPage, isAlchemyEnabled } from "@/lib/chain/alchemy";
+import { AlchemyUnavailableError, isAlchemyEnabled } from "@/lib/chain/alchemy";
+import {
+  makeAlchemyPayerFetch,
+  readPayerTokenTransfersInWindow,
+  type PayerTokenTransferPageFetch,
+} from "@/lib/chain/payer-token-transfer-pages";
 import {
   makeRoutescanAvalanchePayerFetch,
   RoutescanUnavailableError,
@@ -72,10 +77,6 @@ const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const BASE_INDEX_CHAIN = EVM_INDEX_CHAINS.find((c) => c.caip2 === "eip155:8453");
 /** index-settlements の Base subWindow と同じ幅で区切る。 */
 const BASE_PAYER_LOG_CHUNK_BLOCKS = BASE_INDEX_CHAIN?.subWindowBlocks ?? 20_000n;
-/** v2 token-transfers の 1 ページあたり件数（Blockscout 既定 50）。 */
-const BASE_BLOCKSCOUT_V2_PAGE_SIZE = 50;
-/** 窓の始端まで遡れなければ unavailable（stellar の horizon_scan_incomplete と同型）。 */
-const BASE_BLOCKSCOUT_MAX_PAGES = 50;
 const PAYER_BASE_LOG_CONCURRENCY = 1;
 const PAYER_BASE_RATE_LIMIT_RETRIES = 3;
 export const PAYER_RECONCILE_LOCATE_BINARY_SEARCH_MAX_ITERS = 40;
@@ -201,15 +202,7 @@ function robinhoodClient(timeoutMs: number | undefined): EvmLogClient {
 
 export type BlockscoutIndexedHeadMs = (chainId: number, budgetMs?: number) => Promise<number>;
 
-export type BasePayerBlockscoutFetch = (
-  payer: Address,
-  opts: {
-    contractAddress: Address;
-    chainId: number;
-    budgetMs?: number;
-    cursor?: Record<string, string> | null;
-  },
-) => Promise<PayerTokenTransfersV2Page>;
+export type BasePayerBlockscoutFetch = PayerTokenTransferPageFetch;
 
 /**
  * 時刻 t 以下でいちばん新しいブロック（照合専用・recover-late の locateEvmBlock は触らない）。
@@ -261,68 +254,25 @@ async function readPayerOutgoingViaTransferPages(
   deadline: number,
   signal: AbortSignal | undefined,
   fetchPage: BasePayerBlockscoutFetch,
+  token: { contractAddress: Address; chainId: number },
   pageOpts: TransferPageReadOpts = {},
 ): Promise<PayerOutgoingReadResult> {
-  const fromSec = Math.floor(from.getTime() / 1000);
-  const toSec = Math.floor(to.getTime() / 1000);
-  const payerLower = payer.toLowerCase();
-  const out: ChainTransfer[] = [];
-  const seen = new Set<string>();
-  let pages = 0;
-  let reachedPastWindow = false;
-  let cursor: Record<string, string> | null = null;
-
-  while (pages < BASE_BLOCKSCOUT_MAX_PAGES) {
-    throwIfAborted(signal);
-    if (Date.now() > deadline) return payerOutgoingFail("Error: transfer read ran past its time limit");
-    const budgetMs = deadline === Infinity ? undefined : Math.max(1, deadline - Date.now());
-    const page = await fetchPage(payer as Address, {
-      contractAddress: BASE_USDC,
-      chainId: BASE_CHAIN_ID,
-      budgetMs,
-      cursor,
-    });
-    pages++;
-    if (page.rawItemCount === 0) {
-      reachedPastWindow = true;
-      break;
-    }
-    for (const tx of page.rows) {
-      const ts = Number(tx.timeStamp);
-      if (!Number.isFinite(ts)) continue;
-      if (ts < fromSec || ts > toSec) continue;
-      if (tx.from.toLowerCase() !== payerLower) continue;
-      const hash = tx.hash;
-      if (!hash) continue;
-      const key = hash.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        txHash: hash,
-        from: tx.from,
-        to: tx.to,
-        value: tx.value,
-        blockTime: new Date(ts * 1000).toISOString(),
-        blockNumber: BigInt(tx.blockNumber),
-      });
-    }
-    if (page.pageOldestSec !== null && page.pageOldestSec < fromSec) {
-      reachedPastWindow = true;
-      break;
-    }
-    // 次のページの鍵が無ければ終わり。Blockscout は満たないページで終わる（Alchemy は満たないページでも pageKey を返しうる）。
-    const alchemyPagination = pageOpts.alchemyPagination === true;
-    if (
-      !page.nextCursor ||
-      (!alchemyPagination && page.rawItemCount < BASE_BLOCKSCOUT_V2_PAGE_SIZE)
-    ) {
-      reachedPastWindow = true;
-      break;
-    }
-    cursor = page.nextCursor;
-  }
-  if (!reachedPastWindow) return payerOutgoingFail("blockscout_scan_incomplete");
-  return payerOutgoingOk(out);
+  const read = await readPayerTokenTransfersInWindow(payer, from, to, deadline, signal, fetchPage, {
+    contractAddress: token.contractAddress,
+    chainId: token.chainId,
+    alchemyPagination: pageOpts.alchemyPagination,
+  });
+  if (!read.ok) return payerOutgoingFail(read.detail);
+  return payerOutgoingOk(
+    read.transfers.map((t) => ({
+      txHash: t.txHash,
+      from: t.from,
+      to: t.to,
+      value: t.value,
+      blockTime: t.blockTime,
+      blockNumber: t.blockNumber,
+    })),
+  );
 }
 
 async function readBasePayerOutgoingViaBlockscout(
@@ -334,7 +284,16 @@ async function readBasePayerOutgoingViaBlockscout(
   fetchPage: BasePayerBlockscoutFetch,
   pageOpts?: TransferPageReadOpts,
 ): Promise<PayerOutgoingReadResult> {
-  return readPayerOutgoingViaTransferPages(payer, from, to, deadline, signal, fetchPage, pageOpts);
+  return readPayerOutgoingViaTransferPages(
+    payer,
+    from,
+    to,
+    deadline,
+    signal,
+    fetchPage,
+    { contractAddress: BASE_USDC, chainId: BASE_CHAIN_ID },
+    pageOpts,
+  );
 }
 
 async function readBasePayerOutgoingViaRpc(
@@ -391,31 +350,7 @@ async function readBasePayerOutgoingViaRpc(
   return payerOutgoingOk(out, readThroughMs < to.getTime() ? readThroughMs : undefined);
 }
 
-/** 払い手 reconciliation 用の Alchemy 1 ページ取得（chainId 固定）。 */
-export function makeAlchemyPayerFetch(chainId: number): BasePayerBlockscoutFetch {
-  return async (payer, opts) => {
-    const page = await fetchAssetTransfersPage({
-      address: payer,
-      direction: "from",
-      categories: ["erc20"],
-      contractAddress: opts.contractAddress,
-      limit: 1000,
-      order: "desc",
-      chainId,
-      budgetMs: opts.budgetMs,
-      pageKey: opts.cursor?.pageKey ?? null,
-    });
-    let pageOldestSec: number | null = null;
-    const rows = page.transfers.map((t) => {
-      const sec = Number(t.timeStamp);
-      // 時刻の無い行は窓の外として捨てると、記録に無い送金を黙って見逃す。読めなかったことにして従来の読み先へ戻す。
-      if (!Number.isFinite(sec) || sec <= 0) throw new AlchemyUnavailableError("alchemy_missing_block_timestamp");
-      if (Number.isFinite(sec) && sec > 0 && (pageOldestSec === null || sec < pageOldestSec)) pageOldestSec = sec;
-      return { hash: t.hash, blockNumber: t.blockNumber, timeStamp: t.timeStamp, from: t.from, to: t.to, value: t.value };
-    });
-    return { rows, rawItemCount: page.rawCount, pageOldestSec, nextCursor: page.pageKey ? { pageKey: page.pageKey } : null };
-  };
-}
+export { makeAlchemyPayerFetch };
 
 /**
  * Base の払い手の USDC 送金を Alchemy の alchemy_getAssetTransfers（fromAddress・新しい順・pageKey）で読む。
@@ -440,6 +375,7 @@ function makeAlchemyFirstEvmPayerOutgoingReader(cfg: EvmOutgoingConfig): PayerOu
           deadline,
           query.signal,
           (payer, opts) => alchemyFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+          { contractAddress: cfg.token, chainId: cfg.chainId },
           { alchemyPagination: true },
         );
         if (viaAlchemy.ok) return viaAlchemy;
@@ -478,6 +414,7 @@ export function makeAvalanchePayerOutgoingReader(
           deadline,
           query.signal,
           (payer, opts) => alchemyFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+          { contractAddress: cfg.token, chainId: cfg.chainId },
           { alchemyPagination: true },
         );
         if (viaAlchemy.ok) return viaAlchemy;
@@ -493,6 +430,7 @@ export function makeAvalanchePayerOutgoingReader(
         deadline,
         query.signal,
         (payer, opts) => routescanFetch(payer, { ...opts, contractAddress: cfg.token, chainId: cfg.chainId }),
+        { contractAddress: cfg.token, chainId: cfg.chainId },
       );
       if (viaRoutescan.ok) return viaRoutescan;
     } catch (e) {

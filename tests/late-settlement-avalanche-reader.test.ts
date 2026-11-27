@@ -12,9 +12,10 @@
 //  3. 時刻からのブロック番号の見積もりは、そのブロックの実際の時刻で確かめる。合わなければ直し、直せなければ例外。
 //  4. 形の欠けた log は黙って捨てず、例外にする。
 // ============================================================
-import { test } from "node:test";
+import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AVALANCHE_INDEX_TRUST_AFTER_MS,
   AVALANCHE_TRANSFER_READ_CHUNK_BLOCKS,
   makeAvalancheTransferReader,
   makeChainTransferReader,
@@ -22,6 +23,7 @@ import {
   type TransferReader,
 } from "@/lib/settlements/recover-late";
 import { AVALANCHE_PUBLIC_RPC_URL, AVALANCHE_USDC_ADDRESS } from "@/lib/chain/avalanche";
+import { RoutescanUnavailableError } from "@/lib/chain/routescan";
 
 const PAYER = "0xc9c7b38c0942914fc8ea12063bc92dcd3b581670";
 const PAY_TO = "0xabf4fabd7c416fb67202e5f9002389fc75e2a9d0";
@@ -64,9 +66,27 @@ const settled: Log = { blockNumber: ANCHOR_BLOCK, transactionHash: TX, args: { f
 const query = { network: ARB, payer: PAYER, payTo: PAY_TO, from: FROM, to: TO, timeoutMs: 10_000 };
 const blockAt = (t: Date) => ANCHOR_BLOCK + BigInt(Math.round((t.getTime() - ANCHOR_MS) / BLOCK_MS));
 
+/** 索引を使わず RPC だけを試す（既存の getLogs 系テスト用）。 */
+const routescanUnavailable = async () => {
+  throw new RoutescanUnavailableError();
+};
+function avaxRpcReader(client: Parameters<typeof makeAvalancheTransferReader>[0]) {
+  return makeAvalancheTransferReader(client, routescanUnavailable);
+}
+
+let savedAlchemyForRpcTests: string | undefined;
+before(() => {
+  savedAlchemyForRpcTests = process.env.ALCHEMY_API_KEY;
+  delete process.env.ALCHEMY_API_KEY;
+});
+after(() => {
+  if (savedAlchemyForRpcTests === undefined) delete process.env.ALCHEMY_API_KEY;
+  else process.env.ALCHEMY_API_KEY = savedAlchemyForRpcTests;
+});
+
 test("Avalanche reader: reads the native USDC Transfer from the payer to the payee inside the window, in chunks of at most 100 blocks", async () => {
   const rpc = fakeAvax({ logs: [settled] });
-  const out = await makeAvalancheTransferReader(rpc.client)(query);
+  const out = await avaxRpcReader(rpc.client)(query);
   assert.deepEqual(out, [{ txHash: TX, from: PAYER, to: PAY_TO, value: "6000", blockTime: "2026-10-26T10:42:25.000Z" }] satisfies ChainTransfer[]);
   // 32 min window at 970 ms/block is about 1,980 blocks, so more than one 100-block call.
   assert.ok(rpc.getLogsCalls.length >= 15, `expected several chunks, got ${rpc.getLogsCalls.length}`);
@@ -84,16 +104,16 @@ test("Avalanche reader: reads the native USDC Transfer from the payer to the pay
 
 test("Avalanche reader: an empty window is [] (read and found nothing) — and only then", async () => {
   const rpc = fakeAvax({ logs: [] });
-  assert.deepEqual(await makeAvalancheTransferReader(rpc.client)(query), []);
+  assert.deepEqual(await avaxRpcReader(rpc.client)(query), []);
   assert.ok(rpc.getLogsCalls.length >= 1, "it did read the window");
   const far = fakeAvax({ logs: [{ ...settled, blockNumber: ANCHOR_BLOCK + 100_000n }] });
-  assert.deepEqual(await makeAvalancheTransferReader(far.client)(query), []);
+  assert.deepEqual(await avaxRpcReader(far.client)(query), []);
 });
 
 test("Avalanche reader: another network is null and the RPC is not touched", async () => {
   for (const network of ["eip155:8453", "base", "eip155:5042", "eip155:42220", "eip155:56", "eip155:431144"]) {
     const rpc = fakeAvax({ logs: [settled] });
-    assert.equal(await makeAvalancheTransferReader(rpc.client)({ ...query, network }), null, network);
+    assert.equal(await avaxRpcReader(rpc.client)({ ...query, network }), null, network);
     assert.equal(rpc.getLogsCalls.length, 0, network);
   }
 });
@@ -110,11 +130,11 @@ test("Avalanche reader: without AVALANCHE_RPC_URL it reads nothing — no silent
     for (const value of [undefined, "", "   "]) {
       if (value === undefined) delete process.env.AVALANCHE_RPC_URL;
       else process.env.AVALANCHE_RPC_URL = value;
-      assert.equal(await makeAvalancheTransferReader()(query), null, JSON.stringify(value));
+      assert.equal(await avaxRpcReader(undefined)(query), null, JSON.stringify(value));
     }
     assert.equal(requested.length, 0, `nothing may be requested (the public RPC is ${AVALANCHE_PUBLIC_RPC_URL}): ${requested.join(",")}`);
     process.env.AVALANCHE_RPC_URL = "https://arb-rpc.invalid/v2/key";
-    await assert.rejects(makeAvalancheTransferReader()(query));
+    await assert.rejects(avaxRpcReader(undefined)(query));
     assert.ok(requested.length >= 1 && requested.every((u) => u.startsWith("https://arb-rpc.invalid/")), requested.join(","));
   } finally {
     globalThis.fetch = realFetch;
@@ -126,17 +146,17 @@ test("Avalanche reader: without AVALANCHE_RPC_URL it reads nothing — no silent
 test("Avalanche reader: an RPC that reports another chain id is null — another chain's empty result is not 'no transfer'", async () => {
   for (const chainId of [8453, 5042, 42220, 431144, 1]) {
     const rpc = fakeAvax({ chainId, logs: [] });
-    assert.equal(await makeAvalancheTransferReader(rpc.client)(query), null, `chainId ${chainId}`);
+    assert.equal(await avaxRpcReader(rpc.client)(query), null, `chainId ${chainId}`);
     assert.equal(rpc.getLogsCalls.length, 0, `chainId ${chainId}`);
   }
 });
 
 test("Avalanche reader: a node whose tip has not reached the end of the window is null — a lagging node's empty result is not 'no transfer'", async () => {
   const lagging = fakeAvax({ head: ANCHOR_BLOCK + 1_000n, logs: [] });
-  assert.equal(await makeAvalancheTransferReader(lagging.client)(query), null);
+  assert.equal(await avaxRpcReader(lagging.client)(query), null);
   assert.equal(lagging.getLogsCalls.length, 0);
   const justThere = fakeAvax({ head: blockAt(TO), logs: [settled] });
-  assert.equal((await makeAvalancheTransferReader(justThere.client)(query))?.length, 1);
+  assert.equal((await avaxRpcReader(justThere.client)(query))?.length, 1);
 });
 
 test("Avalanche reader: the block estimate is checked against the block's real time and corrected", async () => {
@@ -144,14 +164,14 @@ test("Avalanche reader: the block estimate is checked against the block's real t
   const timeOf = (n: bigint) => ANCHOR_MS + Number(n - ANCHOR_BLOCK) * BLOCK_MS + (n >= stallAt ? 600_000 : 0);
   const lateInWindow: Log = { blockNumber: blockAt(new Date("2026-10-26T11:44:31Z")), transactionHash: `0x${"5e".repeat(32)}`, args: { from: PAYER, to: PAY_TO, value: 6000n } };
   const rpc = fakeAvax({ timeOf, logs: [settled, lateInWindow] });
-  const out = await makeAvalancheTransferReader(rpc.client)(query);
+  const out = await avaxRpcReader(rpc.client)(query);
   assert.ok((out?.length ?? 0) >= 1, "the transfer at the anchor is inside the window and must be found");
   assert.ok(out?.some((t) => t.txHash === TX));
 });
 
 test("Avalanche reader: when the block for the window cannot be located it throws — it never answers [] for a range it did not read", async () => {
   const rpc = fakeAvax({ timeOf: (n) => ANCHOR_MS + Number(n % 7n) * 5_000_000, logs: [] });
-  await assert.rejects(makeAvalancheTransferReader(rpc.client)(query), /could not locate/);
+  await assert.rejects(avaxRpcReader(rpc.client)(query), /could not locate/);
   assert.equal(rpc.getLogsCalls.length, 0);
 });
 
@@ -162,14 +182,403 @@ test("Avalanche reader: a malformed log is an error, not a silently dropped tran
     { ...settled, args: { from: PAYER, to: PAY_TO } },
   ] as Log[]) {
     const rpc = fakeAvax({ logs: [bad] });
-    await assert.rejects(makeAvalancheTransferReader(rpc.client)(query), /without a block, a hash or a value/);
+    await assert.rejects(avaxRpcReader(rpc.client)(query), /without a block, a hash or a value/);
   }
 });
 
 test("Avalanche reader: it stops when its time limit has passed", async () => {
   const rpc = fakeAvax({ logs: [settled] });
-  await assert.rejects(makeAvalancheTransferReader(rpc.client)({ ...query, timeoutMs: -1 }), /time limit/);
+  await assert.rejects(avaxRpcReader(rpc.client)({ ...query, timeoutMs: -1 }), /time limit/);
   assert.equal(rpc.getLogsCalls.length, 0);
+});
+
+/** 窓の終わり（試行 + 30 分）より新しい払い手の行。索引が窓の終わりまで取り込んだ証拠（無ければ RPC が読む）。 */
+const LATE_CASE_FRESH_SEC = Math.floor(Date.parse("2026-11-24T14:00:00.000Z") / 1000);
+const LATE_CASE_FRESH_HASH = `0x${"fe".repeat(32)}`;
+
+/** 2026-11-24 top-mentions settle_failed: 購入 12:01:02Z、32 秒後に同額同宛先の Avalanche 送金。 */
+/** 台帳 x402_l1_purchases 4bc71849-… の pay_to（2026-11-27 本番 DB を読んで確認）。 */
+const LATE_CASE_PAY_TO = "0x7371cce396ad04a6c78c4875d7837ade837a6a38";
+const LATE_CASE_TX = "0xfa9c70c99dcb2d9ea84721140e2d0c6a655c69b74feba7332be79e34929b1df2";
+const LATE_CASE_AMOUNT = "14500";
+const LATE_CASE_ATTEMPT = new Date("2026-11-24T12:01:02.000Z");
+const LATE_CASE_TRANSFER_SEC = Math.floor(Date.parse("2026-11-24T12:01:34.000Z") / 1000);
+const lateCaseWindow = {
+  from: new Date(LATE_CASE_ATTEMPT.getTime() - 2 * 60 * 1000),
+  to: new Date(LATE_CASE_ATTEMPT.getTime() + 30 * 60 * 1000),
+};
+
+function routescanLateRow(
+  hash: string,
+  timeStampSec: number,
+  overrides: Partial<{ from: string; to: string; value: string }> = {},
+) {
+  return {
+    hash,
+    timeStamp: String(timeStampSec),
+    from: overrides.from ?? PAYER,
+    to: overrides.to ?? LATE_CASE_PAY_TO,
+    value: overrides.value ?? LATE_CASE_AMOUNT,
+    blockNumber: "73500123",
+    contractAddress: AVALANCHE_USDC_ADDRESS,
+  };
+}
+
+function alchemyRecoverLateFetchMock(
+  transfers: {
+    hash: string;
+    iso: string;
+    value: string;
+    to: string | null;
+    noFrom?: boolean;
+  }[],
+) {
+  return (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (!u.includes("avax-mainnet.g.alchemy.com")) throw new Error(`unexpected fetch ${u}`);
+    const body = JSON.parse(String(init?.body));
+    const usdc = AVALANCHE_USDC_ADDRESS.toLowerCase();
+    return new Response(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: body.id,
+        result: {
+          transfers: transfers.map((t) => ({
+            uniqueId: `${t.hash}:log:0`,
+            hash: t.hash,
+            blockNum: "0x10",
+            ...(t.noFrom ? {} : { from: PAYER.toLowerCase() }),
+            ...(t.to === null ? {} : { to: t.to.toLowerCase() }),
+            category: "erc20",
+            rawContract: { value: t.value, address: usdc, decimal: "0x6" },
+            metadata: { blockTimestamp: t.iso },
+          })),
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+}
+
+test("Avalanche reader Routescan: late-case shape returns one in-window transfer (wrong payTo dropped)", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevAvax = process.env.AVALANCHE_RPC_URL;
+  delete process.env.ALCHEMY_API_KEY;
+  delete process.env.AVALANCHE_RPC_URL;
+  let routescanCalls = 0;
+  const rows = [
+    routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC),
+    routescanLateRow("0xwrongto", LATE_CASE_TRANSFER_SEC, { to: "0x00000000000000000000000000000000000000aa" }),
+    routescanLateRow("0xold", LATE_CASE_TRANSFER_SEC - 3600),
+    routescanLateRow(LATE_CASE_FRESH_HASH, LATE_CASE_FRESH_SEC, { value: "1" }),
+  ];
+  const reader = makeAvalancheTransferReader(
+    undefined,
+    async (_payer, opts) => {
+      routescanCalls++;
+      return {
+        rows: rows.map((r) => ({
+          hash: r.hash,
+          blockNumber: r.blockNumber,
+          timeStamp: r.timeStamp,
+          from: r.from,
+          to: r.to,
+          value: r.value,
+        })),
+        rawItemCount: rows.length,
+        pageOldestSec: Math.min(...rows.map((r) => Number(r.timeStamp))),
+        nextCursor: null,
+      };
+    },
+  );
+  try {
+    const out = await reader({
+      network: ARB,
+      payer: PAYER,
+      payTo: LATE_CASE_PAY_TO,
+      ...lateCaseWindow,
+      timeoutMs: 10_000,
+    });
+    assert.equal(routescanCalls, 1);
+    assert.deepEqual(out, [
+      {
+        txHash: LATE_CASE_TX,
+        from: PAYER,
+        to: LATE_CASE_PAY_TO,
+        value: LATE_CASE_AMOUNT,
+        blockTime: new Date(LATE_CASE_TRANSFER_SEC * 1000).toISOString(),
+        blockNumber: 73500123n,
+      },
+    ]);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey !== undefined) process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
+    else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+test("Avalanche reader: Alchemy success does not call Routescan", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevAvax = process.env.AVALANCHE_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  delete process.env.AVALANCHE_RPC_URL;
+  let routescanCalls = 0;
+  globalThis.fetch = alchemyRecoverLateFetchMock([
+    {
+      hash: LATE_CASE_TX,
+      iso: "2026-11-24T12:01:34.000Z",
+      value: "0x38a4",
+      to: LATE_CASE_PAY_TO,
+    },
+    {
+      hash: "0x" + "ab".repeat(32),
+      iso: "2026-11-24T12:01:40.000Z",
+      value: "0x38a4",
+      to: "0x00000000000000000000000000000000000000aa",
+    },
+    { hash: LATE_CASE_FRESH_HASH, iso: "2026-11-24T14:00:00.000Z", value: "0x1", to: "0x00000000000000000000000000000000000000aa" },
+  ]);
+  const reader = makeAvalancheTransferReader(undefined, async () => {
+    routescanCalls++;
+    throw new Error("Routescan must not run when Alchemy succeeds");
+  });
+  try {
+    const out = await reader({
+      network: ARB,
+      payer: PAYER,
+      payTo: LATE_CASE_PAY_TO,
+      ...lateCaseWindow,
+      timeoutMs: 10_000,
+    });
+    assert.equal(routescanCalls, 0);
+    assert.equal(out?.length, 1);
+    assert.equal(out?.[0]?.txHash, LATE_CASE_TX);
+    assert.equal(out?.[0]?.value, LATE_CASE_AMOUNT, "0x38a4 = 14500; the same-amount row to another address is dropped");
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
+    else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+test("Avalanche reader: an Alchemy row without a tx hash is unreadable, so Routescan answers instead", async () => {
+  const realFetch = globalThis.fetch;
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  const prevAvax = process.env.AVALANCHE_RPC_URL;
+  process.env.ALCHEMY_API_KEY = "test-key";
+  delete process.env.AVALANCHE_RPC_URL;
+  let routescanCalls = 0;
+  globalThis.fetch = alchemyRecoverLateFetchMock([
+    { hash: "", iso: "2026-11-24T12:01:34.000Z", value: "0x38a4", to: LATE_CASE_PAY_TO },
+    // A well-formed in-window row to payTo on the same page: without the throw, Alchemy would answer with it alone.
+    { hash: `0x${"a1".repeat(32)}`, iso: "2026-11-24T12:05:00.000Z", value: "0x1", to: LATE_CASE_PAY_TO },
+  ]);
+  const reader = makeAvalancheTransferReader(undefined, async () => {
+    routescanCalls++;
+    return routescanPage([routescanLateRow(LATE_CASE_FRESH_HASH, LATE_CASE_FRESH_SEC, { value: "1" }), routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]);
+  });
+  try {
+    const out = await reader({ network: ARB, payer: PAYER, payTo: LATE_CASE_PAY_TO, ...lateCaseWindow, timeoutMs: 10_000 });
+    assert.equal(routescanCalls, 1, "a hashless Alchemy row must not be read as no transfer");
+    assert.equal(out?.length, 1);
+    assert.equal(out?.[0]?.txHash, LATE_CASE_TX);
+  } finally {
+    globalThis.fetch = realFetch;
+    if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+    else process.env.ALCHEMY_API_KEY = prevKey;
+    if (prevAvax === undefined) delete process.env.AVALANCHE_RPC_URL;
+    else process.env.AVALANCHE_RPC_URL = prevAvax;
+  }
+});
+
+function routescanPage(rows: ReturnType<typeof routescanLateRow>[], o: { full?: boolean } = {}) {
+  return {
+    rows: rows.map((r) => ({ hash: r.hash, blockNumber: r.blockNumber, timeStamp: r.timeStamp, from: r.from, to: r.to, value: r.value })),
+    rawItemCount: o.full ? 50 : rows.length,
+    pageOldestSec: rows.length ? Math.min(...rows.map((r) => Number(r.timeStamp))) : null,
+    nextCursor: o.full ? { page: "2" } : null,
+  };
+}
+
+/** 索引の段を Alchemy なしで試す（RPC は fakeAvax で数える）。 */
+async function withoutAlchemy<T>(fn: () => Promise<T>): Promise<T> {
+  const prevKey = process.env.ALCHEMY_API_KEY;
+  delete process.env.ALCHEMY_API_KEY;
+  try {
+    return await fn();
+  } finally {
+    if (prevKey !== undefined) process.env.ALCHEMY_API_KEY = prevKey;
+  }
+}
+
+test("Avalanche reader Routescan: checksummed payer and payTo still match the lower-case index rows", async () => {
+  await withoutAlchemy(async () => {
+    const rpc = fakeAvax({ logs: [] });
+    const reader = makeAvalancheTransferReader(rpc.client, async () =>
+      routescanPage([routescanLateRow(LATE_CASE_FRESH_HASH, LATE_CASE_FRESH_SEC, { value: "1" }), routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]),
+    );
+    const out = await reader({
+      network: ARB,
+      payer: "0xC9C7B38C0942914FC8EA12063BC92DCD3B581670",
+      payTo: "0x7371CCE396AD04A6C78C4875D7837ADE837A6A38",
+      ...lateCaseWindow,
+      timeoutMs: 10_000,
+    });
+    assert.equal(out?.length, 1);
+    assert.equal(out?.[0]?.txHash, LATE_CASE_TX);
+    assert.equal(rpc.getLogsCalls.length, 0, "the index answered, so the RPC is not read");
+  });
+});
+
+test("Avalanche reader: an index that finds no transfer to payTo is not 'no transfer' — the RPC decides", async () => {
+  await withoutAlchemy(async () => {
+    // Only a same-amount row to another address: after the payTo filter the index has nothing.
+    const rpc = fakeAvax({ logs: [settled] });
+    const reader = makeAvalancheTransferReader(rpc.client, async () =>
+      routescanPage([routescanLateRow("0xwrongto", Math.floor(ANCHOR_MS / 1000), { to: "0x00000000000000000000000000000000000000aa" })]),
+    );
+    const out = await reader(query);
+    assert.ok(rpc.getLogsCalls.length >= 1, "an empty index answer must fall through to the RPC");
+    assert.equal(out?.[0]?.txHash, TX);
+    // Without AVALANCHE_RPC_URL the same empty index answer is null (unread), never [].
+    const saved = process.env.AVALANCHE_RPC_URL;
+    delete process.env.AVALANCHE_RPC_URL;
+    try {
+      const noRpc = makeAvalancheTransferReader(undefined, async () => routescanPage([]));
+      assert.equal(await noRpc(query), null);
+    } finally {
+      if (saved !== undefined) process.env.AVALANCHE_RPC_URL = saved;
+    }
+  });
+});
+
+test("Avalanche reader: an index that cannot reach the window start falls through to the RPC", async () => {
+  await withoutAlchemy(async () => {
+    const rpc = fakeAvax({ logs: [settled] });
+    let calls = 0;
+    // Every page is full and newer than the window, so the scan hits its page cap without reaching the start.
+    const reader = makeAvalancheTransferReader(rpc.client, async () => {
+      calls++;
+      return routescanPage([routescanLateRow(`0x${"cd".repeat(32)}`, Math.floor(TO.getTime() / 1000) + 3600)], { full: true });
+    });
+    const out = await reader(query);
+    assert.ok(calls > 1, "it paged");
+    assert.ok(rpc.getLogsCalls.length >= 1, "an incomplete index scan must fall through to the RPC");
+    assert.equal(out?.[0]?.txHash, TX);
+  });
+});
+
+test("Avalanche reader: when Routescan is unavailable the RPC answers", async () => {
+  await withoutAlchemy(async () => {
+    const rpc = fakeAvax({ logs: [settled] });
+    const out = await avaxRpcReader(rpc.client)(query);
+    assert.ok(rpc.getLogsCalls.length >= 1);
+    assert.equal(out?.[0]?.txHash, TX);
+  });
+});
+
+test("Avalanche reader: past its time limit the index is not read and the reader throws", async () => {
+  await withoutAlchemy(async () => {
+    let calls = 0;
+    const rpc = fakeAvax({ logs: [settled] });
+    const reader = makeAvalancheTransferReader(rpc.client, async () => {
+      calls++;
+      return routescanPage([routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]);
+    });
+    await assert.rejects(reader({ ...query, timeoutMs: -1 }), /time limit/);
+    assert.equal(calls, 0);
+    assert.equal(rpc.getLogsCalls.length, 0);
+  });
+});
+
+for (const [name, row] of [
+  ["a zero value to payTo", { hash: LATE_CASE_TX, iso: "2026-11-24T12:01:34.000Z", value: "0x0", to: LATE_CASE_PAY_TO }],
+  ["a missing value to payTo", { hash: LATE_CASE_TX, iso: "2026-11-24T12:01:34.000Z", value: "", to: LATE_CASE_PAY_TO }],
+  ["no from (dropped by the parser)", { hash: LATE_CASE_TX, iso: "2026-11-24T12:01:34.000Z", value: "0x38a4", to: LATE_CASE_PAY_TO, noFrom: true }],
+  ["no to", { hash: LATE_CASE_TX, iso: "2026-11-24T12:01:34.000Z", value: "0x38a4", to: null }],
+] as const) {
+  test(`Avalanche reader: an Alchemy row with ${name} is unreadable, so Routescan answers instead`, async () => {
+    const realFetch = globalThis.fetch;
+    const prevKey = process.env.ALCHEMY_API_KEY;
+    process.env.ALCHEMY_API_KEY = "test-key";
+    let routescanCalls = 0;
+    // A well-formed in-window row to payTo on the same page: without the throw, Alchemy would answer with it alone.
+    globalThis.fetch = alchemyRecoverLateFetchMock([{ ...row }, { hash: `0x${"a1".repeat(32)}`, iso: "2026-11-24T12:05:00.000Z", value: "0x1", to: LATE_CASE_PAY_TO }]);
+    const reader = makeAvalancheTransferReader(undefined, async () => {
+      routescanCalls++;
+      return routescanPage([routescanLateRow(LATE_CASE_FRESH_HASH, LATE_CASE_FRESH_SEC, { value: "1" }), routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]);
+    });
+    try {
+      const out = await reader({ network: ARB, payer: PAYER, payTo: LATE_CASE_PAY_TO, ...lateCaseWindow, timeoutMs: 10_000 });
+      assert.equal(routescanCalls, 1);
+      assert.deepEqual(out?.map((t) => [t.txHash, t.value]), [[LATE_CASE_TX, LATE_CASE_AMOUNT]], "the answer is Routescan's, not the Alchemy page");
+    } finally {
+      globalThis.fetch = realFetch;
+      if (prevKey === undefined) delete process.env.ALCHEMY_API_KEY;
+      else process.env.ALCHEMY_API_KEY = prevKey;
+    }
+  });
+}
+
+test("Avalanche reader: a recent window the index is not proven past is not trusted, even with a transfer to payTo", async () => {
+  await withoutAlchemy(async () => {
+    // A lagging index: the window ended 5 minutes ago, and the index shows only a different-amount transfer to payTo and
+    // nothing newer than the window end. Accepting it would let the caller mark the row decided although the real transfer exists.
+    const end = Date.now() - 5 * 60 * 1000;
+    const recent = { network: ARB, payer: PAYER, payTo: PAY_TO, from: new Date(end - 32 * 60 * 1000), to: new Date(end), timeoutMs: 10_000 };
+    const inWindowSec = Math.floor((end - 10 * 60 * 1000) / 1000);
+    const stalePage = () => routescanPage([routescanLateRow(`0x${"dd".repeat(32)}`, inWindowSec, { to: PAY_TO, value: "29000" })]);
+    const saved = process.env.AVALANCHE_RPC_URL;
+    delete process.env.AVALANCHE_RPC_URL;
+    try {
+      let calls = 0;
+      const reader = makeAvalancheTransferReader(undefined, async () => (calls++, stalePage()));
+      assert.equal(await reader(recent), null, "not trusted, and without an RPC the answer is unread");
+      assert.equal(calls, 1);
+      // The same index with a payer row newer than the window end is trusted.
+      const fresh = makeAvalancheTransferReader(undefined, async () =>
+        routescanPage([
+          routescanLateRow(`0x${"ee".repeat(32)}`, Math.floor(end / 1000) + 60, { to: "0x00000000000000000000000000000000000000aa", value: "1" }),
+          routescanLateRow(`0x${"dd".repeat(32)}`, inWindowSec, { to: PAY_TO, value: "29000" }),
+        ]),
+      );
+      assert.deepEqual((await fresh(recent))?.map((t) => t.value), ["29000"]);
+    } finally {
+      if (saved !== undefined) process.env.AVALANCHE_RPC_URL = saved;
+    }
+  });
+});
+
+test("Avalanche reader: a stale recent index answer falls through to the RPC, which reads instead (null here: it reports another chain id)", async () => {
+  await withoutAlchemy(async () => {
+    const end = Date.now() - 5 * 60 * 1000;
+    const inWindowSec = Math.floor((end - 10 * 60 * 1000) / 1000);
+    let rpcAsked = 0;
+    const rpcStub = { getChainId: async () => (rpcAsked++, 1), getBlock: async () => (rpcAsked++, { number: 1n, timestamp: 0n }), getLogs: async () => [] };
+    const reader = makeAvalancheTransferReader(rpcStub as never, async () =>
+      routescanPage([routescanLateRow(`0x${"dd".repeat(32)}`, inWindowSec, { to: PAY_TO, value: "29000" })]),
+    );
+    const out = await reader({ network: ARB, payer: PAYER, payTo: PAY_TO, from: new Date(end - 32 * 60 * 1000), to: new Date(end), timeoutMs: 10_000 });
+    assert.ok(rpcAsked >= 1, "the RPC was asked");
+    assert.equal(out, null, "the RPC (on another chain id here) cannot read, so the row stays unread instead of decided");
+  });
+});
+
+test("Avalanche reader: a window that ended more than an hour ago trusts the index without a newer payer row (the 2026-11-24 case)", async () => {
+  await withoutAlchemy(async () => {
+    assert.equal(AVALANCHE_INDEX_TRUST_AFTER_MS, 60 * 60 * 1000);
+    const rpc = fakeAvax({ logs: [] });
+    // The payer's newest Avalanche USDC row is 12:01:35Z (2026-11-27 Routescan), before the window end.
+    const reader = makeAvalancheTransferReader(rpc.client, async () => routescanPage([routescanLateRow(LATE_CASE_TX, LATE_CASE_TRANSFER_SEC)]));
+    const out = await reader({ network: ARB, payer: PAYER, payTo: LATE_CASE_PAY_TO, ...lateCaseWindow, timeoutMs: 10_000 });
+    assert.deepEqual(out?.map((t) => t.txHash), [LATE_CASE_TX]);
+    assert.equal(rpc.getLogsCalls.length, 0);
+  });
 });
 
 test("chain transfer reader: Avalanche rows go to the Avalanche reader, Celo to Celo, everything else to the Base reader", async () => {
