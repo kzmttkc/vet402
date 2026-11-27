@@ -1,0 +1,81 @@
+{
+  "info": {
+    "title": "vet402 API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/rwa/paid/base/facts/{address}": {
+      "get": {
+        "description": "Same body as getRwaFacts. Robinhood Chain facts (`chain=4663` query) settle in\nUSDC on Base (`eip155:8453`, asset `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`,\namount `10000`, EIP-3009 `TransferWithAuthorization`). Facilitator is the\nCoinbase CDP x402 API. The 402 carries `extensions.bazaar` for discovery.\nWithout a `PAYMENT-SIGNATURE` header the answer is 402 with\n`PAYMENT-REQUIRED` (base64 JSON, also the body). 404, 422 and 503 carry\n`charged: false`. `X-Payment-Status: settled` comes with `PAYMENT-RESPONSE`.\n`X-Bazaar-Status` reflects CDP Bazaar indexing when present.\n",
+        "operationId": "getRwaFactsPaidBase",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "address",
+            "required": true,
+            "schema": {
+              "pattern": "^0x[a-fA-F0-9]{40}$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "chain",
+            "required": false,
+            "schema": {
+              "example": "4663",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "PAYMENT-SIGNATURE",
+            "required": false,
+            "schema": {
+              "EIP-3009)": null,
+              "description": "base64 JSON PaymentPayload (x402 v2",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reconstruction (same body as getRwaFacts). X-Payment-Status is `settled` (with PAYMENT-RESPONSE and optional X-Bazaar-Status) or `unknown`."
+          },
+          "400": {
+            "description": "invalid_address"
+          },
+          "402": {
+            "description": "Payment required, refused, or settle answered success:false (PAYMENT-RESPONSE attached)."
+          },
+          "404": {
+            "description": "no_stock_token_activity (not charged)"
+          },
+          "422": {
+            "description": "wallet_too_large (not charged)"
+          },
+          "429": {
+            "description": "rate_limited"
+          },
+          "502": {
+            "description": "facilitator_unavailable at verify (not charged)"
+          },
+          "503": {
+            "description": "facilitator_unconfigured, too_busy, feed_unavailable or too_slow_retry (not charged)"
+          }
+        },
+        "security": [],
+        "summary": "The same facts JSON, paid per call over x402 v2 in USDC on Base via CDP",
+        "tags": [
+          "RWA"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "https://vet402.com"
+    }
+  ]
+}

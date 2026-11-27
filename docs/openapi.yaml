@@ -42,6 +42,54 @@ info:
     url: https://vet402.com/docs/api
   license:
     name: Proprietary
+  # Draft listings for pay.sh, MCP registry, CDP Bazaar, and x402.org ecosystem.
+  # Edited here; `npm run listings:generate` writes data/listings/* from the JSON twin.
+  x-vet402-listings:
+    version: 1
+    paySh:
+      operator: vet402
+      name: rwa-facts
+      title: vet402 RWA facts on Robinhood Chain
+      description: >-
+        Paid x402 route that returns the same Robinhood Chain RWA facts JSON as the free
+        facts route, settled in USDC on Base through the Coinbase CDP facilitator, with
+        CDP Bazaar discovery metadata on the 402.
+      use_case: >-
+        Use when an agent needs signed Robinhood Chain (chain 4663) RWA reconstruction
+        facts for one wallet and can pay per call in USDC on Base through x402.
+      category: data
+      service_url: https://vet402.com
+      operationId: getRwaFactsPaidBase
+    mcp:
+      registryName: com.vet402/vet402
+      title: vet402
+      description: >-
+        Before your agent pays an x402 URL, see what vet402 recorded when it paid that
+        seller and whether the response came back.
+      repository:
+        url: https://github.com/vet402/vet402
+        directory: packages/mcp-server
+      websiteUrl: https://vet402.com/docs/mcp
+      remote:
+        type: streamable-http
+        url: https://vet402.com/mcp
+      icon:
+        src: https://vet402.com/brand/icon-512.png
+        mimeType: image/png
+        sizes:
+          - 512x512
+    bazaar:
+      - operationId: getRwaFactsPaidBase
+        pathTemplate: /api/v1/rwa/paid/base/facts/{address}
+    x402Ecosystem:
+      slug: vet402
+      name: vet402
+      category: services-endpoints
+      description: >-
+        Independent x402 verification API on Base: seller delivery checks, trust scores,
+        and a paid RWA facts lane with CDP Bazaar discovery.
+      logoUrl: /logos/vet402.png
+      websiteUrl: https://vet402.com/docs/api
 
 servers:
   - url: https://vet402.com
