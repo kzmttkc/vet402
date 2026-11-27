@@ -121,6 +121,8 @@ test("blockscout celo request is on the seller retest list and Base requests sta
     "landingen24h-2026-11-13-celo-ar-dolar",
     "open-rails-2026-11-12-celo-block",
     "paycrawl-2026-11-12-celo-article",
+    "x402atlas-2026-11-27-celo-erc20-balance",
+    "x402atlas-2026-11-27-celo-erc721-tokens",
   ]);
   for (const row of SELLER_RETEST_REQUESTS.filter((r) => r.network === CELO_CAIP2)) {
     // Celo の M3 の1回は 1 セント（10000）まで。全体の上限 MAX_PER_PURCHASE_UNITS（$1）とは別の、この表だけの線。
@@ -331,5 +333,41 @@ test("seller request on a network other than Base or Celo is refused", async () 
     assert.equal(verdict.ok, false, network);
     if (!verdict.ok) assert.equal(verdict.reason, "seller_request_network_unsupported", network);
     assert.equal(sellerRequestAccepts([accept], gate).length, 0, network);
+  }
+});
+
+test("x402atlas Celo requests carry the required query and match the 402 read on 2026-11-27", async () => {
+  const { SELLER_RETEST_REQUESTS } = await import("@/lib/observatory/seller-retest-requests");
+  const { sellerRequestGateOf, sellerRequestUnpaidOf, validateSellerRequest402 } = await import("@/lib/observatory/seller-retest");
+  const { BASE_CAIP2, BASE_USDC, CELO_CAIP2, CELO_USDC } = await import("@/lib/observatory/x402-payer");
+  const payTo = "0x2632a66e376090565F84794705970B96E75C5C2A";
+  const cases = [
+    { id: "x402atlas-2026-11-27-celo-erc20-balance", path: "/api/chain/erc20-balance", amount: "2000", required: ["address", "contract"] },
+    { id: "x402atlas-2026-11-27-celo-erc721-tokens", path: "/api/chain/erc721-tokens", amount: "5000", required: ["contract", "owner"] },
+  ];
+  for (const c of cases) {
+    const req = SELLER_RETEST_REQUESTS.find((r) => r.id === c.id);
+    assert.ok(req, c.id);
+    const url = new URL(sellerRequestUnpaidOf(req!, "0x0000000000000000000000000000000000000001").url);
+    assert.equal(url.origin + url.pathname, `https://x402atlas.xyz${c.path}`, c.id);
+    // 02:44 UTC の 422 は必須のクエリが空だった。値は 0x の 20 バイト（プレースホルダや型の名前ではない）。
+    for (const name of c.required) assert.match(url.searchParams.get(name) ?? "", /^0x[0-9a-fA-F]{40}$/, `${c.id} ${name}`);
+    // Celo の USDC（Ethereum にコードが無い）は送らない。売り手は Ethereum を読む。
+    assert.ok(!url.search.toLowerCase().includes(CELO_USDC.toLowerCase()), c.id);
+    const gate = sellerRequestGateOf(req!);
+    // 402（2026-11-27 04:25 UTC）の accepts から Base と Celo の 3 つ（USDC・USDT・USDT-America）だけ。
+    const accepts = [
+      { scheme: "exact", network: BASE_CAIP2, amount: c.amount, asset: BASE_USDC, payTo: "0x299cb831e8580f559e58064d4F145389dB418eCE", extra: { name: "USD Coin", version: "2" } },
+      { scheme: "exact", network: CELO_CAIP2, amount: c.amount, asset: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C", payTo, maxTimeoutSeconds: 3600, extra: { name: "USDC", version: "2" } },
+      { scheme: "exact", network: CELO_CAIP2, amount: c.amount, asset: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e", payTo, maxTimeoutSeconds: 3600, extra: { name: "Tether USD", version: "1" } },
+      { scheme: "exact", network: CELO_CAIP2, amount: c.amount, asset: "0xD2ab3C9A02DBBAB236BfEC45D1d755DF4267F771", payTo, maxTimeoutSeconds: 3600, extra: { name: "Tether America USD", version: "1" } },
+    ];
+    const verdict = validateSellerRequest402({ x402Version: 2, accepts }, gate);
+    assert.equal(verdict.ok, true, c.id);
+    if (!verdict.ok) continue;
+    assert.equal(verdict.amountUnits, BigInt(c.amount), c.id);
+    assert.equal(verdict.asset?.toLowerCase(), CELO_USDC.toLowerCase(), c.id);
+    const over = validateSellerRequest402({ x402Version: 2, accepts: accepts.map((a) => ({ ...a, amount: String(BigInt(c.amount) + 1n) })) }, gate);
+    assert.equal(over.ok, false, c.id);
   }
 });

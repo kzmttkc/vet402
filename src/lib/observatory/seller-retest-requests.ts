@@ -297,6 +297,38 @@ export const SELLER_RETEST_REQUESTS: readonly SellerRetestRequest[] = [
     expiresOn: "2026-12-12",
     amountUnits: "10000",
   },
+  // Prezenti M3 の Celo の1回ずつ（2026-11-27・売り手の依頼ではない）。x402atlas.xyz の2口は必須のクエリに例が無く、
+  // 予約購入（pinned-purchases.ts・prezenti-m3-celo-x402atlas）では値を送れず 02:44 UTC に 422 だった（お金は動いていない）。
+  // 予約の行はスイープ窓（6日）で窓の終わり（11-29）まで選ばれないので、値つきの URL をこの表で 1 回だけ買う。
+  // 値の出どころ: 402 と目録は必須の名前と型だけで例が無い。説明文は「network=ethereum」、同じ売り手の block-number は
+  // 「upstream: public-ethereum-rpc」と Ethereum の高さを返した（Celo の高さではない）ので、値は Ethereum に実在する物にした。
+  //   erc20-balance: address＝vet402 の Celo の支払い元（公開）、contract＝Ethereum の USDC（eth_call symbol() が USDC）。
+  //     Celo の USDC（0xcebA9300…）は Ethereum にコードが無い（eth_getCode が 0x）ので送らない。
+  //   erc721-tokens: contract＝BAYC（supportsInterface(0x780e9d63)＝ERC721Enumerable が true）、owner＝その #1 の保有者
+  //     （ownerOf(1)・balanceOf＝1・tokenOfOwnerByIndex(owner,0)＝1、2026-11-27 04:3x UTC に Ethereum の RPC で確認）、limit＝1。
+  // 402 は 2026-11-27 04:25 UTC に読んで Celo の USDC の accept（payTo 0x2632a66e…・2000 と 5000）を照合。
+  {
+    id: "x402atlas-2026-11-27-celo-erc20-balance",
+    requestedOn: "2026-11-27",
+    sellerDomain: "x402atlas.xyz",
+    url: "https://x402atlas.xyz/api/chain/erc20-balance?address=0xc9c7b38c0942914fc8ea12063bc92dcd3b581670&contract=0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x2632a66e376090565F84794705970B96E75C5C2A",
+    expiresOn: "2026-12-12",
+    amountUnits: "2000",
+  },
+  {
+    id: "x402atlas-2026-11-27-celo-erc721-tokens",
+    requestedOn: "2026-11-27",
+    sellerDomain: "x402atlas.xyz",
+    url: "https://x402atlas.xyz/api/chain/erc721-tokens?contract=0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D&owner=0x46efbaedc92067e6d60e84ed6395099723252496&limit=1",
+    method: "GET",
+    network: CELO_CAIP2,
+    payTo: "0x2632a66e376090565F84794705970B96E75C5C2A",
+    expiresOn: "2026-12-12",
+    amountUnits: "5000",
+  },
 ];
 
 /** テスト専用の短いリスト（本番依頼と同じ規則・模擬ホスト・9 件）。 */
