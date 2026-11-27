@@ -242,17 +242,20 @@ test("presign is listed in openapi, /docs/api data, llms.txt, llms-full and the 
   assert.ok(readFileSync("docs/response-signatures.md", "utf8").includes("POST /api/v1/check/presign"));
 });
 
-test("presign latency file: target_met is true only with 20+ samples and p99 within the target", async () => {
+test("presign latency file: target_met is true only with 20+ warmup samples and p99 within the target", async () => {
   const doc = JSON.parse(readFileSync("public/data/presign-latency.json", "utf8")) as {
     samples: number;
+    warmup_samples?: number;
+    cold_start_server_ms?: number | null;
     server_ms: { p50: number | null; p99: number | null };
     target_p99_server_ms: number;
     target_met: boolean;
   };
   assert.equal(doc.target_p99_server_ms, 300);
-  const met = doc.samples >= 20 && doc.server_ms.p99 !== null && doc.server_ms.p99 <= doc.target_p99_server_ms;
+  const warmup = doc.warmup_samples ?? Math.max(0, doc.samples - 1);
+  const met = warmup >= 20 && doc.server_ms.p99 !== null && doc.server_ms.p99 <= doc.target_p99_server_ms;
   assert.equal(doc.target_met, met);
-  if (doc.samples === 0) assert.equal(doc.server_ms.p99, null);
+  if (warmup === 0) assert.equal(doc.server_ms.p99, null);
   const { nearestRank } = await import("../scripts/presign-latency-probe");
   assert.equal(nearestRank([1, 2, 3, 4], 0.5), 2);
   assert.equal(nearestRank(Array.from({ length: 30 }, (_, i) => i + 1), 0.99), 30);

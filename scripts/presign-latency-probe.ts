@@ -1,17 +1,17 @@
 // ============================================================
 // POST /api/v1/check/presign の速さを測り、public/data/presign-latency.json に書く（2026-11-27 F7）。
 //
-// 使い方: npx tsx scripts/presign-latency-probe.ts [--n 30] [--seller <402 を返す URL>] [--api https://vet402.com]
+// 使い方: npx tsx scripts/presign-latency-probe.ts [--n 200] [--seller <402 を返す URL>] [--api https://vet402.com]
 //   1. 売り手の URL を払わずに 1 回 GET し、返った 402（PAYMENT-REQUIRED ヘッダ、無ければ本文）を取る
 //   2. その本文を { challenge, url } にして vet402 へ n 回、順に POST する（並べない。同じ IP の枠に収める）
 //   3. 応答の Server-Timing presign;dur（回数制限から応答までのサーバ内の時間）と、手元の往復の時間を記録する
-//   4. 200 で返った回だけを数え、p50・p99（nearest-rank）と件数を JSON に書く
+//   4. 200 で返った回だけを数える。1 回目は cold_start として別に記録し、p50・p99（nearest-rank）は残りで出す
 // 書いた JSON を commit して出すと、https://vet402.com/data/presign-latency.json に載る。
 // 数えるのはこのスクリプトが呼んだ回だけ（ほかの呼び手の回は数えない）。DB には何も書かない。
 // ============================================================
 import { writeFileSync } from "node:fs";
 
-const UA = "vet402-presign-latency-probe/1";
+const UA = "vet402-presign-latency-probe/2";
 const TARGET_P99_MS = 300;
 
 function arg(name: string, fallback: string): string {
@@ -31,7 +31,7 @@ function round1(n: number | null): number | null {
 }
 
 async function main(): Promise<void> {
-  const n = Number(arg("n", "30"));
+  const n = Number(arg("n", "200"));
   const seller = arg("seller", "https://1gateway.dev/v1/news/brief");
   const api = arg("api", "https://vet402.com");
   const out = arg("out", "public/data/presign-latency.json");
@@ -41,8 +41,8 @@ async function main(): Promise<void> {
   const header = unpaid.headers.get("payment-required");
   const challenge: unknown = header ?? (await unpaid.json());
 
-  const server: number[] = [];
-  const wall: number[] = [];
+  const serverAll: number[] = [];
+  const wallAll: number[] = [];
   let non200 = 0;
   let firstBody: Record<string, unknown> | null = null;
   for (let i = 0; i < n; i++) {
@@ -60,9 +60,14 @@ async function main(): Promise<void> {
     }
     firstBody ??= body;
     const m = /presign;dur=([0-9.]+)/.exec(res.headers.get("server-timing") ?? "");
-    if (m) server.push(Number(m[1]));
-    wall.push(elapsed);
+    if (m) serverAll.push(Number(m[1]));
+    wallAll.push(elapsed);
   }
+
+  const coldStartServer = serverAll.length > 0 ? serverAll[0]! : null;
+  const coldStartWall = wallAll.length > 0 ? wallAll[0]! : null;
+  const server = serverAll.slice(1);
+  const wall = wallAll.slice(1);
   server.sort((a, b) => a - b);
   wall.sort((a, b) => a - b);
   const p99 = round1(nearestRank(server, 0.99));
@@ -72,14 +77,23 @@ async function main(): Promise<void> {
     measured_by: UA,
     definition:
       "server_ms is the Server-Timing presign;dur value of each 200 response: the time from the start of the route handler to the response, rate limit and lookup included, network and platform routing not included. " +
-      "wall_ms is the round trip measured by the probe, network included. p50 and p99 are nearest-rank over the 200 responses of this run. " +
+      "wall_ms is the round trip measured by the probe, network included. " +
+      "cold_start_server_ms and cold_start_wall_ms are from the first 200 of the run (cold check cache and instance warmup on the probe's seller URL). " +
+      "p50 and p99 are nearest-rank over the remaining 200 responses (after the first). " +
       "The probe sends the calls one after another with the same 402, so later calls can hit the 60-second check cache. " +
       "This file counts the calls of this probe run only, not other callers.",
     seller_url: seller,
     requests: n,
-    samples: server.length,
+    samples: serverAll.length,
+    warmup_samples: server.length,
     non_200: non200,
-    server_ms: { p50: round1(nearestRank(server, 0.5)), p99, max: round1(server.length ? server[server.length - 1]! : null) },
+    cold_start_server_ms: round1(coldStartServer),
+    cold_start_wall_ms: round1(coldStartWall),
+    server_ms: {
+      p50: round1(nearestRank(server, 0.5)),
+      p99,
+      max: round1(server.length ? server[server.length - 1]! : null),
+    },
     wall_ms: { p50: round1(nearestRank(wall, 0.5)), p99: round1(nearestRank(wall, 0.99)) },
     target_p99_server_ms: TARGET_P99_MS,
     target_met: server.length >= 20 && p99 !== null && p99 <= TARGET_P99_MS,
@@ -92,7 +106,17 @@ async function main(): Promise<void> {
       : null,
   };
   writeFileSync(out, `${JSON.stringify(doc, null, 2)}\n`);
-  console.log(JSON.stringify({ samples: doc.samples, server_ms: doc.server_ms, wall_ms: doc.wall_ms, target_met: doc.target_met, non_200: non200 }));
+  console.log(
+    JSON.stringify({
+      samples: doc.samples,
+      warmup_samples: doc.warmup_samples,
+      cold_start_server_ms: doc.cold_start_server_ms,
+      server_ms: doc.server_ms,
+      wall_ms: doc.wall_ms,
+      target_met: doc.target_met,
+      non_200: non200,
+    }),
+  );
 }
 
 if (process.argv[1]?.endsWith("presign-latency-probe.ts")) {
