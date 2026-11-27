@@ -55,6 +55,7 @@ export type HomeReceipt = {
   txUrl: string | null;
   purchaseId: string;
   windowRows: number;
+  /** Delivered settled rows in the window: the home names only delivered sellers (C1). */
   windowSettled: number;
   windowFrom: string;
   windowTo: string;

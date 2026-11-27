@@ -104,8 +104,8 @@ export function ReceiptSlip({ receipt }: { receipt: HomeReceipt }) {
         <code>{reproduce}</code>
       </pre>
       <figcaption className="doc-note mt-6 border-t border-dashed border-brand-mist pt-4">
-        Rule: the settled purchase with the latest time in the public export of the last day. It is 1 of{" "}
-        {fmt(r.windowSettled)} settled in {fmt(r.windowRows)} rows from {utc(r.windowFrom, false)} to {utc(r.windowTo, false)} UTC.
+        Rule: the delivered purchase with the latest time in the public export of the last day. It is 1 of{" "}
+        {fmt(r.windowSettled)} delivered in {fmt(r.windowRows)} rows from {utc(r.windowFrom, false)} to {utc(r.windowTo, false)} UTC.
         {r.chain === "Base" ? (
           <>
             {" "}

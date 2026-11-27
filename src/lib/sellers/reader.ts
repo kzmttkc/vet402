@@ -641,8 +641,9 @@ const PAYEE_CLAIM_URL_HOST = `lower(regexp_replace(
 /**
  * Hosts indexable via payee claim (verified_payees). Wallet-only claims do not
  * pull in every host that shares the pay_to (C1): the claim must bind this host
- * (url hostname matches), or the host has no purchases yet, or its latest Base
- * row is not a settled undelivered failure.
+ * (url hostname matches), or the host has no signed outcome yet, or its latest
+ * signed outcome (COOLDOWN_STATUSES) on Base was delivered or is held as
+ * inconclusive. A latest outcome that did not deliver keeps the host out.
  */
 export async function readHostsWithPayeeClaim(db: Db): Promise<Set<string>> {
   const delivered = deliveredPredicate("pu");
@@ -667,7 +668,7 @@ export async function readHostsWithPayeeClaim(db: Db): Promise<Set<string>> {
         coalesce(trim((${sql.raw(held)})), '') <> '' AS held
       FROM x402_l1_purchases pu
       JOIN x402_endpoints e ON e.id = pu.endpoint_id
-      WHERE ${BASE_LISTING} AND ${BASE_ROW}
+      WHERE ${BASE_LISTING} AND ${BASE_ROW} AND pu.status IN (${COOLDOWN_LIST})
       ORDER BY ${HOST_SQL}, pu.attempted_at DESC, pu.id DESC
     )
     SELECT w.host
@@ -675,6 +676,7 @@ export async function readHostsWithPayeeClaim(db: Db): Promise<Set<string>> {
     LEFT JOIN latest l ON l.host = w.host
     WHERE w.host_bound
        OR l.host IS NULL
-       OR NOT (l.status = 'settled' AND NOT l.delivered AND NOT l.held)`);
+       OR l.delivered
+       OR l.held`);
   return new Set(rowsOf(raw).map((r) => String(r.host)));
 }

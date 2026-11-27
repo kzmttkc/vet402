@@ -111,7 +111,12 @@ if (!TEST_DB) {
     const db = getDb();
     assert.ok(db);
     const SHARED = "0xcccccccccccccccccccccccccccccccccccccccc";
-    const HOSTS = { delivered: "i4-shared-delivered.example", shadow: "i4-shared-shadow.example" };
+    const HOSTS = {
+      delivered: "i4-shared-delivered.example",
+      shadow: "i4-shared-shadow.example",
+      unsettled: "i4-shared-unsettled.example",
+      halted: "i4-shared-halted.example",
+    };
     const PAYER = "0x1111111111111111111111111111111111111111";
     const rowsOf = (raw: unknown) => (Array.isArray(raw) ? raw : ((raw as { rows?: unknown[] }).rows ?? [])) as { id: string }[];
     const created: string[] = [];
@@ -129,27 +134,35 @@ if (!TEST_DB) {
       created.push(out[0].id);
       return out[0].id;
     }
-    async function purchase(endpointId: string, http: number, minutesAgo: number) {
+    async function purchase(endpointId: string, http: number, minutesAgo: number, status = "settled") {
       k += 1;
-      const tx = `0x${k.toString(16).padStart(64, "c")}`;
+      const tx = status === "settled" ? `0x${k.toString(16).padStart(64, "c")}` : null;
       await db!.execute(sql`
         INSERT INTO x402_l1_purchases
           (endpoint_id, status, network, asset, pay_to, amount_units, spent_units, payer, tx_hash,
            attempted_at, settlement_verified_at, http_status_paid, payload_non_empty, raw_response_meta)
-        VALUES (${endpointId}::uuid, 'settled', 'eip155:8453', '0xusdc', ${SHARED}, '1000', '1000', ${PAYER}, ${tx},
+        VALUES (${endpointId}::uuid, ${status}, 'eip155:8453', '0xusdc', ${SHARED}, '1000', '1000', ${PAYER}, ${tx},
                 now() - make_interval(mins => ${minutesAgo}::int), now() - make_interval(mins => ${minutesAgo}::int),
                 ${http}, true, ${JSON.stringify({})}::jsonb)`);
     }
     await purchase(await endpoint(HOSTS.delivered), 200, 60);
     await purchase(await endpoint(HOSTS.shadow), 500, 30);
+    // the seller failed to settle (no tx, 5xx outside any payer-unfunded window): not delivered
+    await purchase(await endpoint(HOSTS.unsettled), 503, 20, "settle_failed");
+    // our own kill switch after an undelivered outcome does not hide that outcome
+    const haltedEp = await endpoint(HOSTS.halted);
+    await purchase(haltedEp, 500, 40);
+    await purchase(haltedEp, 0, 10, "halted");
     await db.execute(sql`
       INSERT INTO verified_payees (wallet, name, url, signature)
       VALUES (${SHARED}, 'shared wallet', ${`https://${HOSTS.delivered}`}, '0xshared-sig')`);
-    const board = [HOSTS.delivered, HOSTS.shadow];
+    const board = [HOSTS.delivered, HOSTS.shadow, HOSTS.unsettled, HOSTS.halted];
     try {
       const indexable = await readIndexableSellerHosts(db, board);
       assert.ok(indexable.includes(HOSTS.delivered), "delivered host indexes via delivery window");
       assert.equal(indexable.includes(HOSTS.shadow), false, "undelivered-only host must not inherit a sibling's wallet claim");
+      assert.equal(indexable.includes(HOSTS.unsettled), false, "a settle_failed latest outcome is not delivered either");
+      assert.equal(indexable.includes(HOSTS.halted), false, "a later halted row does not mask the undelivered outcome");
     } finally {
       await db.execute(sql`DELETE FROM verified_payees WHERE wallet = ${SHARED}`);
       for (const id of created) {
