@@ -181,9 +181,9 @@ function respond(
   signStart: number,
   innerTiming: string,
 ): Response {
-  const signMs = performance.now() - signStart;
   const res = signedJson(request, body, { status, headers: withNoindex({ "Cache-Control": "private, no-store" }) });
-  res.headers.set("Server-Timing", `${innerTiming}, sign;dur=${signMs.toFixed(1)}`);
+  const sign = `sign;dur=${(performance.now() - signStart).toFixed(1)}`;
+  res.headers.set("Server-Timing", innerTiming ? `${innerTiming}, ${sign}` : sign);
   return res;
 }
 
@@ -191,25 +191,25 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
   const badQuery = rejectUnknownQuery(new URL(request.url).searchParams, [], {});
   if (badQuery) {
     const signStart = performance.now();
-    return respond(request, 400, { ...(await badQuery.json()), documentation: PRESIGN_DOCS }, signStart, "cache;dur=0;desc=\"fresh\", terms;dur=0");
+    return respond(request, 400, { ...(await badQuery.json()), documentation: PRESIGN_DOCS }, signStart, "");
   }
 
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (Number.isFinite(declared) && declared > PRESIGN_MAX_BODY_BYTES) {
     const signStart = performance.now();
-    return respond(request, 413, { error: "body_too_large", message: "The body is larger than 64 KB.", documentation: PRESIGN_DOCS }, signStart, "cache;dur=0;desc=\"fresh\", terms;dur=0");
+    return respond(request, 413, { error: "body_too_large", message: "The body is larger than 64 KB.", documentation: PRESIGN_DOCS }, signStart, "");
   }
   let text: string;
   try {
     text = await request.text();
   } catch {
     const signStart = performance.now();
-    return respond(request, 400, { error: "invalid_body", message: "The body could not be read.", documentation: PRESIGN_DOCS }, signStart, "cache;dur=0;desc=\"fresh\", terms;dur=0");
+    return respond(request, 400, { error: "invalid_body", message: "The body could not be read.", documentation: PRESIGN_DOCS }, signStart, "");
   }
   const parsed = parsePresignBody(text);
   if (!parsed.ok) {
     const signStart = performance.now();
-    return respond(request, parsed.status, parsed.body, signStart, "cache;dur=0;desc=\"fresh\", terms;dur=0");
+    return respond(request, parsed.status, parsed.body, signStart, "");
   }
 
   const { url, source } = resourceUrlOf(parsed.challenge, parsed.url);
@@ -219,7 +219,7 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
       error: "invalid_url",
       message: "The 402 has no https resource URL. Pass the URL you called as url.",
       documentation: PRESIGN_DOCS,
-    }, signStart, "cache;dur=0;desc=\"fresh\", terms;dur=0");
+    }, signStart, "");
   }
 
   try {
@@ -228,7 +228,7 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
     const out: CheckSellerOutput = await getCheckSellerCached(deps, { url, method: parsed.method ?? undefined }, cacheTiming);
     const cacheMs = performance.now() - tCache;
     const cachePath = cacheTiming.path ?? "unknown";
-  const tTerms = performance.now();
+    const tTerms = performance.now();
     let decision: TermsDecision | null = null;
     if (!out.not_in_catalog) {
       decision = {
@@ -269,6 +269,6 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
   } catch (error) {
     logServerErrorSafe("presign", error);
     const signStart = performance.now();
-    return respond(request, 503, { error: "temporarily_unavailable" }, signStart, "cache;dur=0;desc=\"coalesced\", terms;dur=0");
+    return respond(request, 503, { error: "temporarily_unavailable" }, signStart, "");
   }
 }
