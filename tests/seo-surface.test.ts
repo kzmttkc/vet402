@@ -107,6 +107,25 @@ test("Organization sameAs includes the other public identities", () => {
   assert.ok(blob.includes("https://x.com/vet402_com"));
 });
 
+// 2026-11-27: "vet402" in search returned only veterinary course codes. The Organization says which vet402 it is.
+test("Organization disambiguates vet402 and links the dataset DOI and plugin", () => {
+  const seo = read("src/lib/seo.ts");
+  assert.match(seo, /disambiguatingDescription: ORG_DISAMBIGUATING_DESCRIPTION/);
+  assert.match(seo, /knowsAbout: \[\.\.\.ORG_KNOWS_ABOUT\]/);
+  assert.ok(seo.includes('"https://doi.org/10.5281/zenodo.24195171",'));
+  assert.ok(seo.includes('"https://github.com/vet402/vet402-plugin",'));
+  assert.ok(seo.includes('"https://hermes-agent.nousresearch.com/marketplace/vet402",'));
+});
+
+test("seller record pages carry ItemPage JSON-LD and /erc8004 redirects to /erc-8004", () => {
+  const seller = read("src/app/x402/sellers/[host]/page.tsx");
+  assert.match(seller, /"@type": "ItemPage"/);
+  assert.match(seller, /dateModified: detail\.fetchedAt/);
+  assert.match(seller, /\[itemPage, breadcrumb\]/);
+  const cfg = read("next.config.ts");
+  assert.match(cfg, /source: "\/erc8004", destination: "\/erc-8004", permanent: true/);
+});
+
 test("Organization carries @id and nested JSON-LD references it", () => {
   const seo = read("src/lib/seo.ts");
   assert.match(seo, /ORGANIZATION_ID = `\$\{SITE_URL\}\/#org`/);

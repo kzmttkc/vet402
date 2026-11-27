@@ -39,13 +39,26 @@ export const OG_IMAGE_PATH = "/opengraph-image.png";
 export const OG_IMAGE_ALT =
   "vet402: Know if an x402 seller delivers before your agent pays. Check a seller before paying. Check delivery after.";
 
+// 2026-11-27 SEO entity: a search for "vet402" returned only veterinary course codes (VET 402).
+// Each URL below returned 200 on 2026-11-27 and names vet402 or links vet402.com.
 export const ORG_SAME_AS = [
   "https://x.com/vet402_com",
   "https://github.com/vet402/vet402",
+  "https://github.com/vet402/vet402-plugin",
+  "https://github.com/kzmttkc/vet402-observatory-data",
+  "https://doi.org/10.5281/zenodo.24195171",
+  "https://hermes-agent.nousresearch.com/marketplace/vet402",
+  "https://www.npmjs.com/package/vet402",
   "https://www.npmjs.com/package/@vet402/sdk",
   "https://www.npmjs.com/package/@vet402/middleware",
   "https://www.npmjs.com/package/@vet402/mcp-server",
 ] as const;
+
+/** Tells search engines which "vet402" this is. Facts only: what the service does, and what it is not. */
+export const ORG_DISAMBIGUATING_DESCRIPTION =
+  "vet402 (vet402.com) is a service that buys from x402 sellers with real payments and records whether each paid request delivered a response. It is not the veterinary course code VET 402.";
+
+export const ORG_KNOWS_ABOUT = ["x402", "HTTP 402 Payment Required", "ERC-8004", "AI agent payments"] as const;
 
 /** Canonical Organization node for every page graph (2026-11-26 SEO entity). */
 export const ORGANIZATION_ID = `${SITE_URL}/#org` as const;
@@ -75,6 +88,8 @@ export function organizationJsonLd(description: string) {
     description,
     email: SUPPORT_EMAIL,
     logo: `${SITE_URL}/brand/icon-512.png`,
+    disambiguatingDescription: ORG_DISAMBIGUATING_DESCRIPTION,
+    knowsAbout: [...ORG_KNOWS_ABOUT],
     sameAs: [...ORG_SAME_AS],
   };
 }

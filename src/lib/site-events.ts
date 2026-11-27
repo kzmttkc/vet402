@@ -200,6 +200,11 @@ export function sourceLabel(referrerHost: string | null | undefined): string {
   if (hostSuffix(h, "perplexity.ai")) return "perplexity";
   if (hostSuffix(h, "claude.ai")) return "claude";
   if (hostSuffix(h, "copilot.microsoft.com")) return "copilot";
+  // 2026-11-27 SEO: answer engines that link out. Without these they were counted as "other".
+  if (hostSuffix(h, "grok.com")) return "grok";
+  if (hostSuffix(h, "chat.mistral.ai")) return "mistral";
+  if (hostSuffix(h, "you.com")) return "you";
+  if (hostSuffix(h, "kagi.com")) return "kagi";
   if (h === "t.co" || h === "x.com" || h === "twitter.com" || hostSuffix(h, "twitter.com")) return "x";
   if (hostSuffix(h, "github.com")) return "github";
   if (hostSuffix(h, "linkedin.com") || h === "lnkd.in") return "linkedin";

@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { breadcrumbJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
+import { SITE_URL } from "@/lib/site-url";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { paymentChainLabel } from "@/lib/observatory/chains";
 import { formatDaysForText } from "@/lib/decision/reason-explain";
@@ -66,11 +67,25 @@ export function ReputationSellerArticle({ detail, nonce }: { detail: SellerDetai
     { name: "x402", path: "/x402" },
     { name: host, path },
   ]);
+  // 2026-11-27 SEO: the page had only a BreadcrumbList. ItemPage names the seller host the record is
+  // about and dates it with the read time, like the ERC-8004 agent pages.
+  const itemPage = {
+    "@context": "https://schema.org",
+    "@type": "ItemPage",
+    name: headline,
+    url: `${SITE_URL}${path}`,
+    dateModified: detail.fetchedAt,
+    isBasedOn: `${SITE_URL}/observatory/methodology`,
+    publisher: publisherOrg(),
+    about: { "@type": "Thing", name: host, identifier: host },
+  };
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet">
-        <script type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }} />
+        {[itemPage, breadcrumb].map((doc, i) => (
+          <script key={i} type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(doc) }} />
+        ))}
 
         <h1 className="doc-title mt-8">{headline}</h1>
         <p className="doc-p">
