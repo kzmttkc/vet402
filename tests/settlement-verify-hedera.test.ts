@@ -75,7 +75,10 @@ test("verifyHederaSettlement: 我々の署名していない取引 ID・失敗�
   const payee = await verifyHederaSettlement({ ...input, expectedPayTo: "0.0.42" }, { fetchImpl: mirror() });
   assert.equal(!payee.ok && payee.reason, "payee_mismatch");
   const noNative = await verifyHederaSettlement({ ...input, expectedNativeAmount: null }, { fetchImpl: mirror() });
-  assert.equal(!noNative.ok && noNative.reason, "amount_mismatch");
+  // 期待値の欠けは我々の記録の欠け。売り手の所見（refute）にしない。
+  assert.equal(!noNative.ok && noNative.reason, "chain_not_yet_verifiable");
+  const noNonce = await verifyHederaSettlement({ ...input, expectedAuthNonce: null }, { fetchImpl: mirror() });
+  assert.equal(!noNonce.ok && noNonce.reason, "chain_not_yet_verifiable");
   const wrong = await verifyHederaSettlement({ ...input, network: "hedera:previewnet" }, { fetchImpl: mirror() });
   assert.equal(!wrong.ok && wrong.reason, "wrong_chain");
 });
@@ -93,3 +96,18 @@ test("verifyHederaSettlement: mirror node の 404 は tx_not_found、5xx と未�
   assert.equal(!outside.ok && outside.reason, "rpc_unavailable");
 });
 
+
+test("verifyHederaSettlement: 同じ取引に載ったステーキング報酬（0.0.800 から）は額に数えない", async () => {
+  const withReward = mirror({
+    transfers: [
+      { account: "0.0.10968738", amount: -5473255, is_approval: false },
+      { account: "0.0.10963430", amount: 5473255 + 1234, is_approval: false },
+      { account: "0.0.800", amount: -1234, is_approval: false },
+      { account: "0.0.10571514", amount: -90000, is_approval: false },
+      { account: "0.0.3", amount: 90000, is_approval: false },
+    ],
+    staking_reward_transfers: [{ account: "0.0.10963430", amount: 1234 }],
+  });
+  const r = await verifyHederaSettlement(input, { fetchImpl: withReward });
+  assert.equal(r.ok, true);
+});

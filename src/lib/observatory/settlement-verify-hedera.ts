@@ -45,6 +45,18 @@ export function hederaConsensusToDate(ts: unknown): Date | null {
   return new Date(Number(sec) * 1000 + Math.floor(Number(nanos.padEnd(9, "0")) / 1_000_000));
 }
 
+/**
+ * 口座の HBAR の動き。mirror node の transfers にはステーキング報酬の払い出し（0.0.800 から）も混ざるので、
+ * staking_reward_transfers の同じ口座の額を引いて、この取引の送金だけにする。
+ */
+function netFor(record: Rec, account: string): bigint | null {
+  const all = sumFor(record.transfers, account);
+  if (all === null) return null;
+  const rewards = record.staking_reward_transfers === undefined || record.staking_reward_transfers === null ? 0n : sumFor(record.staking_reward_transfers, account);
+  if (rewards === null) return null;
+  return all - rewards;
+}
+
 function sumFor(transfers: unknown, account: string): bigint | null {
   if (!Array.isArray(transfers)) return null;
   let total = 0n;
@@ -84,18 +96,19 @@ export async function verifyHederaSettlement(
   const claimed = normalizeHederaTxId(txHash)!;
   const expectedId = normalizeHederaTxId(input.expectedAuthNonce ?? null);
   if (!expectedId) {
-    // 取引 ID を持たない行は、その取引が我々のものだと言えない。推測で期待値を作らない。
-    return { ok: false, reason: "nonce_not_used", detail: "no signed transaction id on the purchase row" };
+    // 取引 ID を持たない行は我々の側の記録の欠け。売り手の所見にしない（一時的な理由で未確認のまま置く）。
+    return { ok: false, reason: "chain_not_yet_verifiable", detail: "no signed transaction id on the purchase row" };
   }
   if (expectedId !== claimed) {
     return { ok: false, reason: "nonce_not_used", detail: `claimed ${claimed} is not the transaction we signed (${expectedId})`.slice(0, 200) };
   }
+  // 期待値（資産・tinybar）の欠けも我々の側の記録の欠け。売り手の所見にしない。
   if ((input.expectedNativeAsset ?? HBAR_ASSET) !== HBAR_ASSET) {
-    return { ok: false, reason: "amount_mismatch", detail: `unsupported asset ${String(input.expectedNativeAsset)}`.slice(0, 200) };
+    return { ok: false, reason: "chain_not_yet_verifiable", detail: `unsupported asset ${String(input.expectedNativeAsset)}`.slice(0, 200) };
   }
   const nativeText = input.expectedNativeAmount ?? null;
   if (nativeText === null || !/^[0-9]{1,19}$/.test(nativeText) || BigInt(nativeText) <= 0n) {
-    return { ok: false, reason: "amount_mismatch", detail: "expected tinybar amount missing on the purchase row" };
+    return { ok: false, reason: "chain_not_yet_verifiable", detail: "expected tinybar amount missing on the purchase row" };
   }
   const expectedTinybars = BigInt(nativeText);
 
@@ -124,8 +137,8 @@ export async function verifyHederaSettlement(
   if (parent.name !== "CRYPTOTRANSFER") {
     return { ok: false, reason: "no_matching_transfer", detail: `transaction type ${String(parent.name)}`.slice(0, 200) };
   }
-  const credited = sumFor(parent.transfers, expectedPayTo);
-  const debited = sumFor(parent.transfers, expectedPayer);
+  const credited = netFor(parent, expectedPayTo);
+  const debited = netFor(parent, expectedPayer);
   if (credited === null || debited === null) return unavailable("transfers unreadable");
   if (credited !== expectedTinybars) {
     return {

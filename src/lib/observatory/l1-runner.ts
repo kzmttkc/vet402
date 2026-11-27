@@ -114,6 +114,7 @@ import { createPayerFunds, defaultPayerUsdcBalance, type PayerChain, type PayerF
 import {
   HBAR_ASSET,
   HEDERA_MAINNET_CAIP2,
+  HEDERA_MAX_PURCHASE_TINYBARS_DEFAULT,
   hederaL1Network,
   hederaTotalCapTinybars,
   isHederaL1Enabled,
@@ -1004,11 +1005,13 @@ async function defaultCreateHederaPayment(input: HederaPaymentInput): Promise<{ 
  * 読めなければ throw（呼び手はレーンを開けない）。
  */
 async function readHederaSpentTinybars(db: NonNullable<ReturnType<typeof getDb>>): Promise<bigint> {
+  // nativeAmount が読めない Hedera の行（あってはならないが）は、1 回の上限ぶん払ったとみなす（少なく数えない）。
   const raw = await db.execute(sql`
-    SELECT coalesce(sum((raw_response_meta->'hedera'->>'nativeAmount')::numeric), 0)::text AS spent
+    SELECT coalesce(sum(CASE WHEN raw_response_meta->'hedera'->>'nativeAmount' ~ '^[0-9]{1,19}$'
+                             THEN (raw_response_meta->'hedera'->>'nativeAmount')::numeric
+                             ELSE ${String(HEDERA_MAX_PURCHASE_TINYBARS_DEFAULT)}::numeric END), 0)::text AS spent
     FROM x402_l1_purchases
-    WHERE network LIKE 'hedera:%' AND spent_units::numeric > 0
-      AND raw_response_meta->'hedera'->>'nativeAmount' ~ '^[0-9]{1,19}$'`);
+    WHERE network LIKE 'hedera:%' AND spent_units::numeric > 0`);
   const text = rowsOf(raw)[0]?.spent;
   if (typeof text !== "string") throw new Error("hedera spent query returned no total");
   return BigInt(text.split(".")[0]);
@@ -5593,6 +5596,8 @@ async function purchaseOne(input: {
               ...requestBodyRecord(paidRequestBody),
               ...(selectionMeta ?? {}),
               ...(gatewayMeta ?? {}),
+              // Hedera: 合計の上限と照合が読む tinybar。縮めた記録でも落とさない。
+              ...(hederaMeta ? { hedera: hederaMeta } : {}),
               outcomeWriteFailed: { cause: dbErrorCause(error), error: redactForLog(error).slice(0, 200) },
             }),
             ...pgSanitizedMark(sanitizedFields),

@@ -246,5 +246,8 @@ test("別枠: hedera:mainnet だけが hedera の別枠（既定 $0.05）", () =
   assert.equal(cappedChainFor("hedera:testnet"), null);
   assert.equal(CHAIN_DAILY_CAPS.hedera.networkLike, "hedera:mainnet");
   withEnv({ L1_HEDERA_DAILY_CAP_USD: undefined }, () => assert.equal(chainDailyCapUnits("hedera"), 50_000n));
+  // 環境変数は下げるだけ（上げても $0.05 で頭打ち）。
+  withEnv({ L1_HEDERA_DAILY_CAP_USD: "25" }, () => assert.equal(chainDailyCapUnits("hedera"), 50_000n));
+  withEnv({ L1_HEDERA_DAILY_CAP_USD: "0.01" }, () => assert.equal(chainDailyCapUnits("hedera"), 10_000n));
   assert.deepEqual(BLOCKY402_FEE_PAYERS[HEDERA_MAINNET_CAIP2], ["0.0.10571514"]);
 });

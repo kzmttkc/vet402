@@ -101,10 +101,10 @@ export const ARC_GATEWAY_DAILY_CAP_USD_DEFAULT = 2;
 export const AVALANCHE_DAILY_CAP_USD_DEFAULT = 2;
 
 /**
- * Hedera の別枠（2026-11-27・Hedera レーン）。共有 $25 の内側。既定は $0.05（hedera402-payer.ts の
- * HEDERA_DAILY_CAP_USD_DEFAULT と同じ既定・同じ環境変数。片方だけ変えない）。HBAR はネットワークの為替で 6 桁へ
+ * Hedera の別枠（2026-11-27・Hedera レーン）。共有 $25 の内側。既定は $0.05 で、環境変数で上げられない
+ * （chainDailyCapUnits が既定で頭打ちにする）。HBAR はネットワークの為替で 6 桁へ
  * 切り上げて数える。HBAR の上限（1 回 0.1 HBAR・合計 5 HBAR・2026-11-27 オーナー承認）は hedera402-payer.ts が別に縛る。
- * 環境変数 L1_HEDERA_DAILY_CAP_USD で変えられる（0 で Hedera を止める）。レーンそのものは
+ * 環境変数 L1_HEDERA_DAILY_CAP_USD で下げられる（0 で Hedera を止める）。レーンそのものは
  * OBSERVATORY_HEDERA_L1_ENABLED が正確に "true" のときだけ動く。別枠はスイッチではない。
  */
 export const HEDERA_DAILY_CAP_USD_DEFAULT = 0.05;
@@ -299,6 +299,8 @@ export function chainDailyCapUnits(chain: CappedChain): bigint {
     if (Number.isFinite(n) && n >= 0) usd = n;
   }
   usd = Math.min(usd, DAILY_BUDGET_USD);
+  // Hedera は既定（2026-11-27 オーナー承認の範囲）より上げない。環境変数は下げるだけ。
+  if (chain === "hedera") usd = Math.min(usd, HEDERA_DAILY_CAP_USD_DEFAULT);
   return BigInt(Math.round(usd * 1_000_000));
 }
 
