@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getDb } from "@/lib/db/client";
 import {
   MONTHLY_FREEZE_STATUS_NOT_CLOSED,
@@ -111,7 +112,7 @@ export default async function MonthlyLedgerFreezePage({ params }: Props) {
             </>
           ) : null}
           {" "}
-          · <a href="/reports">Month index</a>
+          · <Link href="/reports">Month index</Link>
         </p>
       </article>
     </main>
