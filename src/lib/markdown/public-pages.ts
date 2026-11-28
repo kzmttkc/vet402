@@ -3,8 +3,8 @@ import { GLOSSARY } from "@/app/x402/glossary/page";
 import { ERC8004_FAQ, ERC8004_PAGE_DESCRIPTION, ERC8004_TERMS } from "@/app/erc-8004/page";
 import { INTEGRITY_TERMS, DOES_NOT_TEXT, L1_USER_AGENT } from "@/app/integrity/page";
 import { CHECK_SELLER_SECTIONS } from "@/lib/x402/check-a-seller-sections";
-import { SELLER_REPUTATION_API, SELLER_REPUTATION_CHECK_FIELDS } from "@/lib/x402/seller-reputation-sections";
-import { TRUST_SCORE_PAGE } from "@/lib/x402/trust-score-sections";
+import { SELLER_REPUTATION_API, SELLER_REPUTATION_CHECK_FIELDS, SELLER_REPUTATION_API_PUBLISHED } from "@/lib/x402/seller-reputation-sections";
+import { TRUST_SCORE_PAGE, TRUST_SCORE_PUBLISHED } from "@/lib/x402/trust-score-sections";
 import {
   METHODOLOGY_BLURB,
   METHODOLOGY_H2,
@@ -126,7 +126,7 @@ export function renderSellerReputationApiMarkdown(): string {
     `- BLOCK: ${p.sections.verdicts.block}`,
     "",
     `Canonical HTML: ${SITE_URL}${p.path}`,
-    `Updated: ${GUIDE_UPDATED}`,
+    `Updated: ${SELLER_REPUTATION_API_PUBLISHED}`,
   ];
   return lines.join("\n");
 }
@@ -160,7 +160,7 @@ export async function renderTrustScoreMarkdown(): Promise<string> {
     p.sections.window.body,
     "",
     `Canonical HTML: ${SITE_URL}${p.path}`,
-    `Updated: ${GUIDE_UPDATED}`,
+    `Updated: ${TRUST_SCORE_PUBLISHED}`,
   ];
   return lines.join("\n");
 }

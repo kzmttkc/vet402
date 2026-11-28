@@ -3,8 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
-import { GUIDE_UPDATED } from "@/components/site/x402-answers";
-import { TRUST_SCORE_PAGE } from "@/lib/x402/trust-score-sections";
+import { TRUST_SCORE_PAGE, TRUST_SCORE_PUBLISHED } from "@/lib/x402/trust-score-sections";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 
 const PAGE = TRUST_SCORE_PAGE;
@@ -31,8 +30,8 @@ export default async function TrustScorePage() {
     headline: "x402 trust score",
     description: PAGE.description,
     path: PAGE.path,
-    datePublished: GUIDE_UPDATED,
-    dateModified: readAt?.slice(0, 10) ?? GUIDE_UPDATED,
+    datePublished: TRUST_SCORE_PUBLISHED,
+    dateModified: readAt?.slice(0, 10) ?? TRUST_SCORE_PUBLISHED,
   });
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -61,7 +60,7 @@ export default async function TrustScorePage() {
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>{GUIDE_UPDATED}</span>
+            <span>{TRUST_SCORE_PUBLISHED}</span>
           </div>
         </div>
 

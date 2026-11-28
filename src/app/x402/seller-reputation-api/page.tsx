@@ -6,10 +6,10 @@ import { TableScroll } from "@/components/site/TableScroll";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { SITE_URL } from "@/lib/site-url";
-import { GUIDE_UPDATED } from "@/components/site/x402-answers";
 import {
   SELLER_REPUTATION_API,
   SELLER_REPUTATION_CHECK_FIELDS,
+  SELLER_REPUTATION_API_PUBLISHED,
 } from "@/lib/x402/seller-reputation-sections";
 
 const PAGE = SELLER_REPUTATION_API;
@@ -29,7 +29,7 @@ export default async function SellerReputationApiPage() {
     headline: PAGE.h1,
     description: PAGE.description,
     path: PAGE.path,
-    datePublished: GUIDE_UPDATED,
+    datePublished: SELLER_REPUTATION_API_PUBLISHED,
   });
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -51,7 +51,7 @@ export default async function SellerReputationApiPage() {
           <div className="doc-head-col">
             <span>vet402</span>
             <span>x402 Economy</span>
-            <span>{GUIDE_UPDATED}</span>
+            <span>{SELLER_REPUTATION_API_PUBLISHED}</span>
           </div>
         </div>
 

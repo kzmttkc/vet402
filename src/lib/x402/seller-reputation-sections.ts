@@ -2,6 +2,9 @@ import { KEYLESS_READ_STOP, keylessResolvePerMinute } from "@/lib/api/keyless-li
 import { SITE_URL } from "@/lib/site-url";
 import { VERDICT_DOCS } from "@/lib/decision/rules-text";
 
+/** First published 2026-11-28 (AA). */
+export const SELLER_REPUTATION_API_PUBLISHED = "2026-11-28";
+
 /** Body copy for /x402/seller-reputation-api (HTML and .md share these strings). */
 export const SELLER_REPUTATION_API = {
   path: "/x402/seller-reputation-api",

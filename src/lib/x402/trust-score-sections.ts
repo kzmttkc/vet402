@@ -1,6 +1,9 @@
 import { SITE_URL } from "@/lib/site-url";
 import { L1_WINDOW_DAYS } from "@/lib/decision/rules";
 
+/** First published 2026-11-28 (AA). */
+export const TRUST_SCORE_PUBLISHED = "2026-11-28";
+
 /** Body copy for /x402/trust-score (HTML and .md share these strings). */
 export const TRUST_SCORE_PAGE = {
   path: "/x402/trust-score",
