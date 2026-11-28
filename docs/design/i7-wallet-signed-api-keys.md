@@ -12,7 +12,7 @@
 | 用途 | メッセージ | ルート | 鍵 |
 | --- | --- | --- | --- |
 | Payee claim | `payeeMessage(wallet, name, url?, issued)` | `GET/POST /api/v1/payees/verify` | 不要 |
-| Agent passport | `agentMessage(...)` | `GET/POST /api/v1/agents/verify` | 不要 |
+| Agent passport | `agentPassportMessage(...)` | `GET/POST /api/v1/agents/verify` | 不要 |
 | Observatory watch | `observatoryWatchMessage(wallet, apiKeyId)` | `GET/POST /api/v1/observatory/watch` | **Bearer 必須** |
 | Delist alert | payee 系 | 同上 watch | Bearer |
 
