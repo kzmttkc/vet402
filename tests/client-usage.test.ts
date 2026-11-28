@@ -397,8 +397,8 @@ test("プライバシーポリシーがこの表と保存しない値を書い�
   // 頁が挙げる名前は、実装が返す名前の全部（配布物の先頭と FIXED_CLIENTS）
   for (const name of DISTRIBUTED_CLIENTS) assert.ok(page.includes(`<code>${name}/</code>`), name);
   for (const name of FIXED_CLIENTS) assert.ok(page.includes(`<code>${name}</code>`), name);
-  assert.match(page, /<code>self-monitor<\/code> for the monitoring tools we run ourselves/);
-  assert.match(page, /We do not store the User-Agent text, the IP address, the URL or query being looked up, or any API key/);
+  assert.match(page, /<code>self-monitor<\/code> for the monitoring tools vet402 runs itself/);
+  assert.match(page, /vet402 does not store the User-Agent text, the IP address, the URL or query being looked up, or any API key/);
   assert.match(page, /Key-less API call counts are kept without an expiry date/);
   assert.doesNotMatch(page, /Hermes plugin call counts/);
   // 2026-10-28: MCP の入口の route と client の名前も、実装が返すものを全部書く

@@ -207,6 +207,19 @@ async function resourceHit(method: string, url: string): Promise<{ ref: Endpoint
   return row ? { ref: toRef(row), network: row.network } : null;
 }
 
+/** URL 逆引きの method 既定: GET を POST より優先（§6.1）。 */
+export function preferGetResourceHit(
+  getHit: { ref: EndpointRef; network: string | null } | null,
+  postHit: { ref: EndpointRef; network: string | null } | null,
+): { ref: EndpointRef; network: string | null } | null {
+  return getHit ?? postHit;
+}
+
+async function resourceHitDefaultMethods(url: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
+  const [getHit, postHit] = await Promise.all([resourceHit("GET", url), resourceHit("POST", url)]);
+  return preferGetResourceHit(getHit, postHit);
+}
+
 /**
  * resource_id で 1 件引く。完全一致が無ければ別名の表（x402_resource_aliases）で正規の id に直して引き直す
  * （2026-09-29 監査 7 周目・高: 生の URL から id を作る SDK の表記の揺れを、正しい出品へ届ける）。
@@ -356,9 +369,7 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
       // 同じホストの掲載（endpoints）は当たっても外れても返す。互いに依存しないので並列に読む（2026-11-28 依頼 V）。
       const host = new URL(c.url).hostname;
       const [hit, endpoints] = await Promise.all([
-        opts.method
-          ? resourceHit(opts.method, c.url)
-          : (async () => (await resourceHit("GET", c.url)) ?? (await resourceHit("POST", c.url)))(),
+        opts.method ? resourceHit(opts.method, c.url) : resourceHitDefaultMethods(c.url),
         endpointsByDomain(host, 50),
       ]);
       if (hit) {

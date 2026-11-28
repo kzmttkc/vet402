@@ -561,7 +561,7 @@ claims:
     verified_at: 2026-09-04
   - id: privacy_card_data_directly_which_we
     surface: src/app/legal/privacy/page.tsx
-    quote: "card data directly, which we never see or store."
+    quote: "card data directly, which vet402 never sees or stores."
     means: "プライバシー方針が述べるデータの扱い"
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
@@ -610,14 +610,14 @@ claims:
     verified_at: 2026-10-26
   - id: privacy_people_and_businesses_who_never
     surface: src/app/legal/privacy/page.tsx
-    quote: "people and businesses who never opened an account with us. If one of those addresses can"
+    quote: "people and businesses who never opened an account with vet402. If one of those addresses can"
     means: "プライバシー方針が述べるデータの扱い"
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
     verified_at: 2026-09-04
   - id: privacy_and_every_factual_correction_we
     surface: src/app/legal/privacy/page.tsx
-    quote: ", and every factual correction we make is published on our"
+    quote: ", and every factual correction vet402 makes is published on the"
     means: "プライバシー方針が述べるデータの扱い"
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
@@ -631,7 +631,7 @@ claims:
     verified_at: 2026-09-28
   - id: privacy_request_within_30_days_there
     surface: src/app/legal/privacy/page.tsx
-    quote: "request within 30 days. There is no charge. We will say no only where the law lets us —"
+    quote: "request within 30 days. There is no charge. vet402 will say no only where the law allows it —"
     means: "プライバシー方針が述べるデータの扱い"
     check: null
     why_unverifiable: "測定値ではなく方針の約束で、外部から機械的に反証できない。委託先の扱いは各社の DPA が根拠"
@@ -1251,7 +1251,7 @@ claims:
     verified_at: 2026-09-04
   - id: privacy_tenderly_log_fallback_is_a_subprocessor
     surface: src/app/legal/privacy/page.tsx
-    quote: "receives the read requests our servers send to the chain, which can include the ID of the agent being looked up and the payout addresses of sellers"
+    quote: "receives the read requests vet402&apos;s servers send to the chain, which can include the ID of the agent being looked up and the payout addresses of sellers"
     means: "eth_getLogs の予備の読み先（Tenderly の公開 Base gateway）を委託先として開示する。渡るのはサーバーからの公開チェーンの読み取りで、filter に入るのは照会された agent の ID と売り手の受取アドレス"
     check: null
     why_unverifiable: "委託先の開示であって、公開 GET が数値で返す種類の主張ではない。根拠は src/lib/chain/client.ts の getIndexerPublicClient（getLogs だけを予備へ回す）と、filter を組む src/lib/chain/erc8004.ts の scanFeedbackLogs（args.agentId）・src/lib/settlements/index-evm.ts（args.to に受取先）"
@@ -2203,7 +2203,7 @@ claims:
     verified_at: 2026-09-29
   - id: privacy_keyless_call_counts_header_use
     surface: src/app/legal/privacy/page.tsx
-    quote: "We read the User-Agent header, the client name an MCP client sends when it connects, and for browsers whether the request came from a vet402.com page, only to pick that name"
+    quote: "vet402 reads the User-Agent header, the client name an MCP client sends when it connects, and for browsers whether the request came from a vet402.com page, only to pick that name"
     means: "鍵なしの呼び出しの件数（client_usage_daily）で、User-Agent・MCP の initialize が名乗る clientInfo・自サイトの頁からの要求かどうかは client の名前を選ぶためだけに読み、文字列は保存しない（2026-10-28 に MCP の入口を足した）"
     check: null
     why_unverifiable: "サーバの中の処理の記述で、公開 GET が返す値ではない。根拠は src/lib/api/client-usage.ts の clientUsageLabel・mcpClientUsageLabel・isOwnPageRequest（返すのは決まった名前だけ）で、tests/client-usage.test.ts と tests/client-usage.pg.test.ts と tests/mcp.pg.test.ts が表に UA の文字列・Referer・IP・clientInfo の生の値が入らないことを固定する"

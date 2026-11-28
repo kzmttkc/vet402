@@ -437,7 +437,7 @@ test("privacy: Clarity の節（取るもの・Microsoft・EEA/UK/CH の同意�
   assert.doesNotMatch(src, /We use one cookie, and only after you log in/);
 });
 
-test("privacy: 独立点検の英語の直し（逐語）と、Data we collect のセッション解析", () => {
+test("privacy: 独立点検の英語の直し（逐語）と、Data vet402 collects のセッション解析", () => {
   // JSX の改行・{" "}・&apos;・<code> を畳んで、読まれる文として比べる。
   const text = read("src/app/legal/privacy/page.tsx")
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
@@ -468,7 +468,7 @@ test("privacy: 独立点検の英語の直し（逐語）と、Data we collect �
   ]) {
     assert.ok(text.includes(sentence), `verbatim: ${sentence}`);
   }
-  const collect = text.match(/Data we collect(.*?)<\/ul>/)?.[1] ?? "";
+  const collect = text.match(/Data vet402 collects(.*?)<\/ul>/)?.[1] ?? "";
   assert.match(collect, /Session analytics/);
   assert.match(collect, /\(the page address and title are not masked\) <\/li>/);
 });

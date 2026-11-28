@@ -907,15 +907,21 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     logServerErrorSafe("decision.seller_view", error);
     return null;
   });
-  const lastAttemptP = db.execute(sql`
-    SELECT attempted_at::text AS attempted_at, status
-    FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
-    ORDER BY attempted_at DESC LIMIT 1
-  `);
-  const lastSignedP = db.execute(sql`
-    SELECT max(attempted_at) FILTER (WHERE status IN (${sql.raw(SIGNED_STATUS_SQL_LIST)}))::text AS last_signed,
-           max(attempted_at) FILTER (WHERE ${sql.raw(DELIVERED_ROW_SQL)})::text AS last_delivered
-    FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+  // 最新の試行（1 行）と signed / delivered の最終時刻を 1 往復で読む（2026-11-28 依頼 W）。
+  // 最新の試行は LATERAL の 1 行から attempted_at と status を一緒に取る（同時刻の行が並んでも別々の行から取らない）。
+  // 集約は行が無くても 1 行を返すので、試行が無い売り手でも結果は 1 行で、各列が null になる（旧 2 本と同じ値）。
+  const lastAttemptSignedP = db.execute(sql`
+    SELECT la.attempted_at, la.status, agg.last_signed, agg.last_delivered
+    FROM (
+      SELECT max(attempted_at) FILTER (WHERE status IN (${sql.raw(SIGNED_STATUS_SQL_LIST)}))::text AS last_signed,
+             max(attempted_at) FILTER (WHERE ${sql.raw(DELIVERED_ROW_SQL)})::text AS last_delivered
+      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+    ) agg
+    LEFT JOIN LATERAL (
+      SELECT attempted_at::text AS attempted_at, status
+      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+      ORDER BY attempted_at DESC LIMIT 1
+    ) la ON true
   `);
   const verifiedTermsP = db.execute(sql`
     SELECT tx_hash, pay_to, asset, amount_units, network, attempted_at::text AS attempted_at,
@@ -944,8 +950,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     probeRowsRaw,
     purchaseRows,
     sides,
-    lastAttemptRows,
-    lastSignedRows,
+    lastAttemptSignedRows,
     verifiedTermsRows,
     verifiedPayToRows,
     settlements30d,
@@ -953,8 +958,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     probeRowsP,
     purchaseRowsP,
     sidesP,
-    lastAttemptP,
-    lastSignedP,
+    lastAttemptSignedP,
     verifiedTermsP,
     verifiedPayToP,
     settlements30dP,
@@ -1001,13 +1005,18 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
 
   const purchases = purchaseRows.map<PurchaseInput>((r) => purchaseInputFromL1WindowRow(r, sides));
 
-  const lastAttemptList = rowsOf<{ attempted_at: string | null; status: string | null }>(lastAttemptRows);
+  const lastAttemptSigned = rowsOf<{
+    attempted_at: string | null;
+    status: string | null;
+    last_signed: string | null;
+    last_delivered: string | null;
+  }>(lastAttemptSignedRows)[0];
   const lastAttempt = {
-    at: toIsoUtc(lastAttemptList[0]?.attempted_at ?? null),
-    status: lastAttemptList[0]?.status ?? null,
+    at: toIsoUtc(lastAttemptSigned?.attempted_at ?? null),
+    status: lastAttemptSigned?.status ?? null,
   };
 
-  const lastSigned = rowsOf<{ last_signed: string | null; last_delivered: string | null }>(lastSignedRows)[0];
+  const lastSigned = lastAttemptSigned;
   const verifiedTerms = verifiedTermsOf(rowsOf<Record<string, unknown>>(verifiedTermsRows)[0] ?? null);
   const verifiedPayToByNetwork = verifiedPayToByNetworkOf(rowsOf<Record<string, unknown>>(verifiedPayToRows));
 
