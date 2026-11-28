@@ -303,7 +303,13 @@ export async function fetchAssetTransfers(query: TransferQuery): Promise<Categor
  */
 export async function fetchAssetTransfersPage(
   query: TransferQuery & { pageKey?: string | null },
-): Promise<{ transfers: CategorizedTransfer[]; rawCount: number; pageKey: string | null }> {
+): Promise<{
+  transfers: CategorizedTransfer[];
+  /** Same length as `transfers`: the Alchemy row each transfer was parsed from. */
+  sourceRaw: RawTransfer[];
+  rawCount: number;
+  pageKey: string | null;
+}> {
   const url = alchemyUrl(query.chainId);
   if (!url) throw new AlchemyUnavailableError("alchemy_not_configured");
 
@@ -323,11 +329,20 @@ export async function fetchAssetTransfersPage(
 
   const page = await rpc(url, params, query.budgetMs);
   const out: CategorizedTransfer[] = [];
+  const sourceRaw: RawTransfer[] = [];
   for (const raw of page.transfers) {
     const transfer = toTransfer(raw);
-    if (transfer) out.push(transfer);
+    if (transfer) {
+      out.push(transfer);
+      sourceRaw.push(raw);
+    }
   }
-  return { transfers: out, rawCount: page.transfers.length, pageKey: typeof page.pageKey === "string" && page.pageKey !== "" ? page.pageKey : null };
+  return {
+    transfers: out,
+    sourceRaw,
+    rawCount: page.transfers.length,
+    pageKey: typeof page.pageKey === "string" && page.pageKey !== "" ? page.pageKey : null,
+  };
 }
 
 /**
