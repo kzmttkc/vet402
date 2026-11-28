@@ -35,7 +35,8 @@ function durLine(name: string, ms: number | undefined): string | null {
 /**
  * この要求の中で売り手を読んだ時だけ細分段を足す。direct・coalesced に加えて、fresh でも 60 秒の check cache に
  * 値が無く、この要求の中で読んだ時（初めての売り手の多く）は段が入る。他の呼び手が残した値を返した fresh と
- * prefetch は miss が空なので、親の cache;dur だけになる（2026-11-28: 初回の売り手の 96/99 が fresh で段が出なかった）。
+ * prefetch では売り手の読みの段は入らない。verified_terms が無い時は、この要求で読んだ terms_payees だけが入る
+ * （2026-11-28: 初回の売り手の 96/99 が fresh で段が出なかった）。
  */
 export function formatPresignCheckTiming(
   cacheMs: number,

@@ -243,3 +243,17 @@ test("checkSeller: decide が落ちたら投げる（l1 の並列読みが失敗
   } as CheckSellerDeps;
   await assert.rejects(checkSeller(deps, { url: URL }), /decide read failed/);
 });
+
+test("presign: 他の呼び手が残した fresh では、verified_terms が無い時の terms_payees だけが段に出る", async () => {
+  const cached = ((_fn: () => Promise<unknown>) => async () => ({
+    out: baseOutput(false),
+    cacheReadAt: new Date().toISOString(),
+  })) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  __setCheckSellerCacheForTests(cached);
+  const d = depsFromOutput(baseOutput(false));
+  const res = await handlePresign(post(CHALLENGE), d);
+  assert.equal(res.status, 200);
+  const timing = res.headers.get("server-timing") ?? "";
+  assert.match(timing, /cache;dur=[0-9.]+;desc="fresh", terms_payees;dur=[0-9.]+, terms;dur=/);
+  assert.doesNotMatch(timing, /db_resolve|db_outcomes|db_decide|db_l1_recent/);
+});
