@@ -120,9 +120,9 @@ test("Organization disambiguates vet402 and links the dataset DOI and plugin", (
 
 test("seller record pages carry ItemPage JSON-LD and /erc8004 redirects to /erc-8004", () => {
   const seller = read("src/app/x402/sellers/[host]/page.tsx");
-  assert.match(seller, /"@type": "ItemPage"/);
-  assert.match(seller, /dateModified: detail\.fetchedAt/);
-  assert.match(seller, /\[itemPage, breadcrumb\]/);
+  assert.match(seller, /sellerItemPageJsonLd/);
+  assert.match(seller, /sellerReputationDatasetJsonLd/);
+  assert.match(seller, /indexable/);
   const cfg = read("next.config.ts");
   assert.match(cfg, /source: "\/erc8004", destination: "\/erc-8004", permanent: true/);
 });

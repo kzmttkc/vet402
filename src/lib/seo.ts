@@ -232,6 +232,11 @@ export type DatasetDistribution = {
   name: string;
 };
 
+/** Plain name or a counted value that must match what the page shows. */
+export type VariableMeasuredEntry =
+  | string
+  | { name: string; value: string | number; unitText?: string };
+
 type DatasetInput = {
   name: string;
   description: string;
@@ -249,7 +254,7 @@ type DatasetInput = {
   distribution: DatasetDistribution[];
   /** どう測ったか。散文の方法論と矛盾しない 1〜2 文。 */
   measurementTechnique: string;
-  variableMeasured: string[];
+  variableMeasured: VariableMeasuredEntry[];
   keywords: string[];
   /** ISO 8601 の期間または日付。不明なら渡さない（推測で埋めない）。 */
   temporalCoverage?: string;
@@ -326,6 +331,19 @@ export function articleJsonLd(input: {
   };
 }
 
+function variableMeasuredJsonLd(entries: VariableMeasuredEntry[]) {
+  return entries.map((entry) =>
+    typeof entry === "string"
+      ? entry
+      : {
+          "@type": "PropertyValue" as const,
+          name: entry.name,
+          value: entry.value,
+          ...(entry.unitText ? { unitText: entry.unitText } : {}),
+        },
+  );
+}
+
 export function datasetJsonLd(input: DatasetInput) {
   const url = `${SITE_URL}${input.path}`;
   return {
@@ -341,7 +359,7 @@ export function datasetJsonLd(input: DatasetInput) {
     isAccessibleForFree: true,
     creditText: citeAs(input.citeName ?? input.name, input.citeUrl, input.retrievedAt),
     measurementTechnique: input.measurementTechnique,
-    variableMeasured: input.variableMeasured,
+    variableMeasured: variableMeasuredJsonLd(input.variableMeasured),
     keywords: input.keywords,
     ...(input.temporalCoverage ? { temporalCoverage: input.temporalCoverage } : {}),
     ...(input.dateModified ? { dateModified: input.dateModified } : {}),
