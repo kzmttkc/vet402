@@ -30,7 +30,7 @@
   },
   "distinct_sellers_definition": "distinct_sellers is a separate run for the first check of a seller: the probe picks sellers that delivered in the last 30 days from GET /api/v1/delivery/sellers.json?min_delivered=1 (one GET URL per host, most deliveries first, the same-seller probe's host left out), fetches each seller's real 402 without paying, and sends it to presign once. No URL is sent twice. URLs that did not answer 402 are skipped and counted, not sent. server_ms and wall_ms are defined as above; p50 and p99 are nearest-rank over the responses with status 200 of that run, and max is the slowest. cache_path counts the Server-Timing cache desc of those responses (none when the desc was missing): direct and coalesced read the seller in the request; fresh is a value the 60-second check cache returned, which on a first check is either the read made in this request (nothing was cached) or a value another caller left in the last 60 seconds; prefetch is a value read ahead in the background.",
   "distinct_sellers": {
-    "measured_at": "2026-11-28T15:26:41.317Z",
+    "measured_at": "2026-11-28T15:22:05.013Z",
     "requested_sellers": 100,
     "requests": 100,
     "samples": 99,
@@ -41,14 +41,14 @@
       "coalesced": 99
     },
     "server_ms": {
-      "p50": 75.5,
-      "p99": 680.2,
-      "max": 680.2
+      "p50": 263.1,
+      "p99": 819,
+      "max": 819
     },
     "wall_ms": {
-      "p50": 430.1,
-      "p99": 988.1,
-      "max": 988.1
+      "p50": 541,
+      "p99": 2284.6,
+      "max": 2284.6
     }
   }
 }
