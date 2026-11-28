@@ -393,14 +393,23 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.result;
 
-  const registryP = registryStatusFor(req.observatoryId);
+  // registry は売り手の読みと重ねて読み始める（2026-11-28 依頼 W）。失敗は「読んだ所で投げる」ため、
+  // 結果を包んで保持する（読む前に他が投げても未処理の reject にしない。出品が無ければ待たずに null）。
+  const registryP: Promise<{ ok: true; value: RegistryStatus } | { ok: false; error: unknown }> = registryStatusFor(
+    req.observatoryId,
+  ).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const registryOf = async (): Promise<RegistryStatus> => {
+    const r = await registryP;
+    if (!r.ok) throw r.error;
+    return r.value;
+  };
   const tOutcomes = req.missTiming ? performance.now() : 0;
   const loaded = await loadSellerFacts(req.observatoryId);
   if (req.missTiming) req.missTiming.db_outcomes = performance.now() - tOutcomes;
-  if (!loaded) {
-    await registryP;
-    return null;
-  }
+  if (!loaded) return null;
   const subject = subjectOf(loaded);
   const tDecideRest = req.missTiming ? performance.now() : 0;
   const refundsP = req.role === "payer" ? prefetchSellerRefundStats(loaded.endpoint.canonicalUrl) : null;
@@ -418,7 +427,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         score = null; // 移行用の併記が取れなくても判定は落とさない
       }
     }
-    const registry = await registryP;
+    const registry = await registryOf();
     result = await attachSellerRefundsToDecision(
       buildDecision({
         role: "payer",
@@ -451,7 +460,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
     );
   } else {
     const facts = await loadBuyerFacts(req.payerId);
-    const registry = await registryP;
+    const registry = await registryOf();
     result = await attachSellerRefundsToDecision(
       buildDecision({ role: "payee", subject, payer: req.payerId, facts, operatorBlacklist: req.operatorBlacklist, registry, spendingHalted: halt.halted }),
       loaded.endpoint.canonicalUrl,
