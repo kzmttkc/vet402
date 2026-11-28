@@ -3,7 +3,7 @@
  *
  * 先頭の文は /faq の導入、新しい説明頁、public/llms.txt、/llms-full.txt が同じ配列を出す。
  * ここに無い数字は書かない。件数は台帳の読み（chain pages）だけが出す。
- * 公開文: we/our/us・セミコロン・ダッシュを使わない。断定語（every / only / never …）も使わない。
+ * 公開文: 主語は vet402 か I（二人称複数不可）・セミコロン・ダッシュを使わない。断定語（every / only / never …）も使わない。
  */
 import { SUPPORTED_CHAINS, type LaneChain } from "@/components/site/supported-chains-data";
 import { publicChainLabel } from "@/lib/observatory/chains";
@@ -90,13 +90,13 @@ export const CHECK_SELLER: AnswerPage = {
 export const CHAINS_HUB: AnswerPage = {
   question: "Which chains does vet402 measure for x402 and MPP payments?",
   path: "/x402/chains",
-  h1: "x402 and MPP payments by chain",
-  title: "x402 and MPP payments by chain",
+  h1: "x402 settlements by chain",
+  title: "x402 settlements by chain: vet402 purchase counts",
   description:
-    "Chains and assets vet402 measures, with Tempo on MPP (Machine Payments Protocol). Counts come from the public ledger read.",
+    "Chains and assets vet402 measures, with Tempo on MPP (Machine Payments Protocol). Counts are vet402's own L1 purchases from the public ledger read.",
   lead: [
     measuredChainsSentence(),
-    "A count appears when that ledger read has a row for the chain. An empty read shows no counts.",
+    "Each count is vet402's own paid purchase on that chain. It is not ecosystem-wide settlement volume. A count appears when that ledger read has a row for the chain.",
   ],
 };
 

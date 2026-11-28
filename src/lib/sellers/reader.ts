@@ -37,6 +37,7 @@ import { PATH_TEMPLATE_PG_REGEX } from "@/lib/observatory/path-template";
 import { COOLDOWN_STATUSES, NON_SETTLING_COOLDOWN_STREAK, type NextBuyFacts } from "./next-buy";
 import { buildSellerExportRows, type SellerExportRow, type SellerListingRef } from "./export";
 import { BASE_NETWORKS, sellerHostSql } from "./host";
+import { networkFilterIds } from "@/lib/observatory/chains";
 import { answeredHttpPredicate, deliveredPredicate, heldReasonSql } from "@/lib/observatory/delivery";
 import {
   MIN_CONSECUTIVE_FAILS_TO_PUBLISH,
@@ -629,6 +630,20 @@ export async function readHostsWithDeliveredInWindow(db: Db, days: number): Prom
     JOIN x402_endpoints e ON e.id = pu.endpoint_id
     WHERE ${sql.raw(deliveredPredicate("pu"))}
       AND pu.attempted_at >= now() - make_interval(days => ${days}::int)`);
+  return new Set(rowsOf(raw).map((r) => String(r.host)));
+}
+
+/** Hosts with at least one delivered purchase on a chain (networkFilterIds spellings). Used with the I4 gate on chain guide pages. */
+export async function readHostsWithDeliveredOnNetwork(db: Db, networkFilter: string): Promise<Set<string>> {
+  const ids = networkFilterIds(networkFilter);
+  if (ids.length === 0) return new Set();
+  const networkList = sql.join(ids.map((id) => sql`${id}`), sql`, `);
+  const raw = await db.execute(sql`
+    SELECT DISTINCT ${HOST_SQL} AS host
+    FROM x402_l1_purchases pu
+    JOIN x402_endpoints e ON e.id = pu.endpoint_id
+    WHERE ${sql.raw(deliveredPredicate("pu"))}
+      AND pu.network IN (${networkList})`);
   return new Set(rowsOf(raw).map((r) => String(r.host)));
 }
 
