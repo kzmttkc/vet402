@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import {
   PAY_TO,
   PRICE_ATOMIC,
@@ -90,18 +88,42 @@ function yamlScalar(value: unknown): string {
   return String(value);
 }
 
-function mcpServerJson(spec: OpenApiRoot, root: string): Record<string, unknown> {
+/**
+ * MCP レジストリ（com.vet402/vet402）に公開済みの最新版（2026-11-28 に registry.modelcontextprotocol.io で確認）。
+ * 下書きの版がこれより小さいと、再公開で版が下がるので生成を止める。公開したらこの値も上げる。
+ */
+export const MCP_REGISTRY_PUBLISHED_LATEST = "1.0.2";
+
+function semverParts(v: string): [number, number, number] {
+  const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(v);
+  if (!m) throw new Error(`mcp serverVersion is not MAJOR.MINOR.PATCH: ${JSON.stringify(v)}`);
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+export function compareSemver(a: string, b: string): number {
+  const x = semverParts(a);
+  const y = semverParts(b);
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i]! - y[i]!;
+  return 0;
+}
+
+export function mcpServerVersion(spec: OpenApiRoot): string {
+  const v = String(listingsConfig(spec).mcp.serverVersion ?? "");
+  if (compareSemver(v, MCP_REGISTRY_PUBLISHED_LATEST) < 0) {
+    throw new Error(`mcp serverVersion ${v} is below the published ${MCP_REGISTRY_PUBLISHED_LATEST}`);
+  }
+  return v;
+}
+
+function mcpServerJson(spec: OpenApiRoot): Record<string, unknown> {
   const cfg = listingsConfig(spec).mcp;
-  const pkg = JSON.parse(readFileSync(join(root, "packages", "mcp-server", "package.json"), "utf8")) as {
-    version: string;
-  };
   return {
     $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
     name: cfg.registryName,
     title: cfg.title,
     description: cfg.description,
     repository: { url: cfg.repository.url, source: "github", directory: cfg.repository.directory },
-    version: pkg.version,
+    version: mcpServerVersion(spec),
     websiteUrl: cfg.websiteUrl,
     icons: [cfg.icon],
     remotes: [cfg.remote],
@@ -149,14 +171,15 @@ function x402EcosystemMetadata(spec: OpenApiRoot): Record<string, unknown> {
   };
 }
 
-export function generateListingFiles(spec: OpenApiRoot, root: string = process.cwd()): GeneratedListingFiles {
+/** root は呼び手との互換のために受ける（今は読まない。MCP の版は openapi の serverVersion から取る）。 */
+export function generateListingFiles(spec: OpenApiRoot, _root: string = process.cwd()): GeneratedListingFiles {
   const payCfg = listingsConfig(spec).paySh;
   const payOpenApi = paySkillsOpenApiSubset(spec, payCfg.operationId);
   return {
     openapi: stableStringify(spec, 2) + "\n",
     "pay-sh-paymd": payShPayMd(spec),
     "pay-sh-openapi": stableStringify(payOpenApi, 2) + "\n",
-    "mcp-server": stableStringify(mcpServerJson(spec, root), 2) + "\n",
+    "mcp-server": stableStringify(mcpServerJson(spec), 2) + "\n",
     bazaar: stableStringify(bazaarDeclaration(spec), 2) + "\n",
     "x402-ecosystem": stableStringify(x402EcosystemMetadata(spec), 2) + "\n",
   };

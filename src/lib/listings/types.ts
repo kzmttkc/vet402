@@ -12,6 +12,8 @@ export type Vet402ListingsConfig = {
   };
   mcp: {
     registryName: string;
+    /** MCP レジストリに出す版（ホストした remote の版で、npm の @vet402/mcp-server の版ではない）。 */
+    serverVersion: string;
     title: string;
     description: string;
     repository: { url: string; directory: string };
