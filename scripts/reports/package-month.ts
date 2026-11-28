@@ -46,12 +46,13 @@ function loadFixture(path: string): MonthlyPackageInput {
     deliveredPurchaseIds?: unknown;
   };
   if (!raw.summary || typeof raw.csvBody !== "string") {
-    throw new Error("fixture must be { summary, csvBody, deliveredPurchaseIds? }");
+    throw new Error("fixture must be { summary, csvBody, deliveredPurchaseIds }");
   }
-  const ids = Array.isArray(raw.deliveredPurchaseIds)
-    ? new Set(raw.deliveredPurchaseIds.filter((v): v is string => typeof v === "string"))
-    : undefined;
-  return { summary: raw.summary, csvBody: raw.csvBody, ...(ids ? { deliveredPurchaseIds: ids } : {}) };
+  if (!Array.isArray(raw.deliveredPurchaseIds)) {
+    throw new Error("fixture must carry deliveredPurchaseIds (delivered purchase_id values from delivery.csv)");
+  }
+  const ids = new Set(raw.deliveredPurchaseIds.filter((v): v is string => typeof v === "string"));
+  return { summary: raw.summary, csvBody: raw.csvBody, deliveredPurchaseIds: ids };
 }
 
 async function main() {

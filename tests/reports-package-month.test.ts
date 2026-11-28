@@ -50,10 +50,14 @@ const sampleRows = [
 
 const FROZEN_AT = "2026-11-01T00:10:00.000Z";
 
-function fixtureInput(month = "2026-10"): { summary: ReturnType<typeof buildMonthlyFreezeSummary> & { frozenAt: string }; csvBody: string } {
+function fixtureInput(month = "2026-10"): {
+  summary: ReturnType<typeof buildMonthlyFreezeSummary> & { frozenAt: string };
+  csvBody: string;
+  deliveredPurchaseIds: Set<string>;
+} {
   const summary = { ...buildMonthlyFreezeSummary(month, sampleRows, EXPORT_CSV_COLUMNS), frozenAt: FROZEN_AT };
   const csvBody = serializeMonthlyLedgerExportBody(sampleRows, EXPORT_CSV_COLUMNS);
-  return { summary, csvBody };
+  return { summary, csvBody, deliveredPurchaseIds: new Set(sampleRows.map((r) => r.purchase_id)) };
 }
 
 test("C2: 許可リスト列だけが CSV 見出しに出る", () => {
@@ -195,10 +199,11 @@ const c1Rows = [
   row({ resource_key: "old.example/api", response_bytes: "", purchase_id: "00000000-0000-4000-8000-0000000000f1", attempted_at: "2026-10-08T00:00:00Z" }),
 ];
 
-function c1Input(deliveredPurchaseIds?: Set<string>) {
+/** 既定は delivery.csv が全部の行を delivered と言う場合（台帳の述語だけが効く）。 */
+function c1Input(deliveredPurchaseIds: Set<string> = new Set(c1Rows.map((r) => String(r.purchase_id)))) {
   const summary = { ...buildMonthlyFreezeSummary("2026-10", c1Rows, EXPORT_CSV_COLUMNS), frozenAt: FROZEN_AT };
   const csvBody = serializeMonthlyLedgerExportBody(c1Rows, EXPORT_CSV_COLUMNS);
-  return { summary, csvBody, ...(deliveredPurchaseIds ? { deliveredPurchaseIds } : {}) };
+  return { summary, csvBody, deliveredPurchaseIds };
 }
 
 function bodyRows(csvWithHeader: string): string[][] {
@@ -293,4 +298,22 @@ test("C1: --fetch は delivery.csv が読めなければ束を作らない", asy
     return new Response("busy", { status: 503 });
   }) as typeof fetch;
   await assert.rejects(fetchPublicMonthlyFreeze("2026-10", "https://vet402.test", fetchFn), /delivery csv fetch failed/);
+});
+
+test("C1: delivery.csv の集合が無ければ束を作らない（台帳の列だけでは空の本文を見分けられない）", () => {
+  const { deliveredPurchaseIds: _drop, ...rest } = c1Input();
+  assert.throws(() => buildMonthlyReportBundleFiles(rest as ReturnType<typeof c1Input>), /deliveredPurchaseIds is required/);
+});
+
+test("C1: response_bytes が空の古い行は、delivery.csv で delivered でなければ名指ししない", () => {
+  const ids = new Set(c1Rows.map((r) => String(r.purchase_id)).filter((id) => id !== "00000000-0000-4000-8000-0000000000f1"));
+  const text = buildMonthlyReportBundleFiles(c1Input(ids))["zenodo/vet402-ledger-2026-10.csv"]!;
+  assert.ok(!text.includes("old.example"));
+  assert.ok(text.includes("good.example/api"));
+});
+
+test("C1: Hugging Face と Dune の説明も contentSha256 が伏せる前の本文の値だと書く", () => {
+  const files = buildMonthlyReportBundleFiles(c1Input());
+  assert.match(files["huggingface/README.md"]!, /before `resource_key` was left empty/);
+  assert.match(files["dune/DESCRIPTION.md"]!, /before `resource_key` was left empty/);
 });

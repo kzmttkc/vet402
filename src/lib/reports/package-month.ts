@@ -58,10 +58,11 @@ export type MonthlyPackageInput = {
   /** 見出しなしの凍結 CSV 本文（サーバーが返す content_csv と同じ形）。 */
   csvBody: string;
   /**
-   * 公開の /api/v1/observatory/delivery.csv で delivery = delivered の purchase_id。あれば、行の述語に加えて
+   * 公開の /api/v1/observatory/delivery.csv で delivery = delivered の purchase_id。行の述語に加えて
    * この集合にも入っている行だけを配達に数える（台帳の CSV だけでは 2026-11-24 より前の空の本文を見分けられない）。
+   * 必須: 無ければ束を作らない（C1 を台帳の列だけで判定しない）。
    */
-  deliveredPurchaseIds?: ReadonlySet<string>;
+  deliveredPurchaseIds: ReadonlySet<string>;
 };
 
 /**
@@ -109,12 +110,12 @@ function unquoteCell(raw: string): string {
   return raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1).replace(/""/g, '"') : raw;
 }
 
-function ledgerRowDelivered(cells: readonly string[], col: (name: string) => number, delivered?: ReadonlySet<string>): boolean {
+function ledgerRowDelivered(cells: readonly string[], col: (name: string) => number, delivered: ReadonlySet<string>): boolean {
   if (unquoteCell(cells[col("status")]!) !== "settled") return false;
   const http = unquoteCell(cells[col("http_status_paid")]!);
   if (!/^[0-9]+$/.test(http) || !isDeliveryHttp(Number(http))) return false;
   if (unquoteCell(cells[col("response_bytes")]!) === "0") return false;
-  if (delivered && !delivered.has(unquoteCell(cells[col("purchase_id")]!))) return false;
+  if (!delivered.has(unquoteCell(cells[col("purchase_id")]!))) return false;
   return true;
 }
 
@@ -124,8 +125,11 @@ export type WithheldCsv = { csvBody: string; rows: number; withheldRows: number;
 export function withholdUndeliveredSellers(
   csvBody: string,
   columns: readonly string[],
-  deliveredPurchaseIds?: ReadonlySet<string>,
+  deliveredPurchaseIds: ReadonlySet<string>,
 ): WithheldCsv {
+  if (!(deliveredPurchaseIds instanceof Set)) {
+    throw new Error("deliveredPurchaseIds is required (read delivery.csv before building a bundle)");
+  }
   const index = new Map(columns.map((c, i) => [c, i]));
   const col = (name: string): number => {
     const i = index.get(name);
@@ -330,6 +334,8 @@ Frozen purchase ledger for UTC month \`${month}\`, published by vet402. Rows are
 | periodStart | ${summary.periodStart} |
 | periodEndExclusive | ${summary.periodEndExclusive} |
 
+\`contentSha256\` is the digest of the freeze body before \`resource_key\` was left empty.
+
 ## Files
 
 - \`${csvFilename(month)}\` is a CSV with the same columns as \`/api/v1/observatory/export.csv\`. ${WITHHELD_NOTE}
@@ -358,7 +364,7 @@ Import \`${csvFilename(month)}\` as a comma-separated table.
 
 ${withheldLines(w)}
 
-Freeze \`contentSha256\`: ${summary.contentSha256}
+Freeze \`contentSha256\` (the freeze body before \`resource_key\` was left empty): ${summary.contentSha256}
 Frozen at (UTC): ${summary.frozenAt}
 `;
 }
