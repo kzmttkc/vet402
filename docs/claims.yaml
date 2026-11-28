@@ -666,7 +666,7 @@ claims:
     verified_at: 2026-09-04
   - id: terms_between_measurements_the_world_can
     surface: src/app/legal/terms/page.tsx
-    quote: "between measurements the world can change faster than we do. Always read a result"
+    quote: "between measurements the world can change faster than vet402 does. Always read a result"
     means: "利用規約が述べる運用方針の約束"
     check: null
     why_unverifiable: "測定値ではなく方針の約束なので、真偽を返す公開エンドポイントが存在しない。破られたときは訂正ログ（/corrections）に現れる"
@@ -1272,7 +1272,7 @@ claims:
     verified_at: 2026-09-04
   - id: audit_e_no_retest_deadline_is_promised
     surface: src/app/legal/terms/page.tsx
-    quote: "We do not promise a"
+    quote: "vet402 does not promise a"
     means: "フォームの異議を測る分単位の時刻は約束しない。フォームの異議は active かつパステンプレート以外の出品だけ優先の列に入り、その実行の普通の列より前に測る。1 回 50 件まで・1 登録ドメイン 5 件まで・公開 fail が先で異議は残りの枠・直近 60 分に測った出品は次の回・7 日で列から落ちる。Vercel の L0 は vercel.json の時刻で、それ以外の時刻の実行（c2）が先に測ることもある。署名付き異議は受理時に L0 を 1 回測る"
     check: null
     why_unverifiable: "約束しないという宣言であって、公開 GET が数値で返す種類の主張ではない"

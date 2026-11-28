@@ -116,7 +116,7 @@ test("terms: methodology link, no 'verified payee' registration, L1 disputes, se
   const terms = squash(read("src/app/legal/terms/page.tsx"));
   const sec6 = terms.slice(terms.indexOf('sec-no">6.'), terms.indexOf('sec-no">7.'));
   assert.match(sec6, /href="\/observatory\/methodology"/);
-  assert.doesNotMatch(sec6, /methodology we publish at\{" "\} <a className="doc-link" href="\/accuracy">/);
+  assert.doesNotMatch(sec6, /methodology vet402 publishes at\{" "\} <a className="doc-link" href="\/accuracy">/);
   assert.doesNotMatch(terms, /registers you as a verified payee/);
   assert.match(terms, /address control verified/);
   const sec13 = terms.slice(terms.indexOf('sec-no">13.'), terms.indexOf('sec-no">14.'));
@@ -124,7 +124,7 @@ test("terms: methodology link, no 'verified payee' registration, L1 disputes, se
   assert.match(sec13, /does not currently carry a &quot;disputed&quot; marker/);
   assert.match(sec13, /a dispute does not start a new purchase/);
   const sec16 = terms.slice(terms.indexOf('sec-no">16.'));
-  assert.match(sec16, /notices to a seller before we publish/);
+  assert.match(sec16, /notices to a seller before vet402 publishes/);
   assert.match(sec16, /renews automatically each month/);
 });
 
