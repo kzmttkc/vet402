@@ -202,9 +202,27 @@ function usageNetworkOfEndpoint(network: string | null | undefined): string | un
   return chain === "" ? undefined : chain;
 }
 
+function rowToResourceHit(row: EndpointRow): { ref: EndpointRef; network: string | null } {
+  return { ref: toRef(row), network: row.network };
+}
+
+function bestRowForResourceId(rows: readonly EndpointRow[], resourceIdHex: string): EndpointRow | null {
+  const matching = rows.filter((r) => r.resource_id === resourceIdHex);
+  if (matching.length === 0) return null;
+  matching.sort((a, b) => {
+    const aActive = a.status === "active" ? 1 : 0;
+    const bActive = b.status === "active" ? 1 : 0;
+    if (bActive !== aActive) return bActive - aActive;
+    const aSeen = a.last_seen ?? "";
+    const bSeen = b.last_seen ?? "";
+    return bSeen.localeCompare(aSeen);
+  });
+  return matching[0] ?? null;
+}
+
 async function resourceHit(method: string, url: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
   const row = await resourceRow(toResourceId(method, url));
-  return row ? { ref: toRef(row), network: row.network } : null;
+  return row ? rowToResourceHit(row) : null;
 }
 
 /** URL 逆引きの method 既定: GET を POST より優先（§6.1）。 */
@@ -215,9 +233,31 @@ export function preferGetResourceHit(
   return getHit ?? postHit;
 }
 
-async function resourceHitDefaultMethods(url: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
-  const [getHit, postHit] = await Promise.all([resourceHit("GET", url), resourceHit("POST", url)]);
-  return preferGetResourceHit(getHit, postHit);
+/** method 無しの URL 逆引き。GET と POST を 1 本で読み、見つかった行だけ分ける（2026-11-28 依頼 Z）。 */
+export async function resourceHitDefaultMethods(url: string): Promise<{ ref: EndpointRef; network: string | null } | null> {
+  const getId = toResourceId("GET", url);
+  const postId = toResourceId("POST", url);
+  const db = getDb();
+  if (!db) return null;
+  let getRow: EndpointRow | null = null;
+  let postRow: EndpointRow | null = null;
+  if (SHA256_HEX_RE.test(getId) && SHA256_HEX_RE.test(postId)) {
+    const rows = rowsOf<EndpointRow>(
+      await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id IN (${getId}, ${postId})`),
+    );
+    getRow = bestRowForResourceId(rows, getId);
+    postRow = bestRowForResourceId(rows, postId);
+  }
+  if (!getRow) {
+    const row = await resourceRow(getId);
+    if (row) getRow = row;
+  }
+  // 直列の GET → POST と同じ: GET が当たれば POST は読まない（POST だけ失敗して全体が落ちない）。
+  if (!postRow && !getRow) {
+    const row = await resourceRow(postId);
+    if (row) postRow = row;
+  }
+  return preferGetResourceHit(getRow ? rowToResourceHit(getRow) : null, postRow ? rowToResourceHit(postRow) : null);
 }
 
 /**
