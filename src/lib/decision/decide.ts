@@ -374,6 +374,8 @@ export type DecideRequest = (
 ) & {
   /** 問い合わせを数える単位（lookup-caller.ts lookupCallerMaterial）。無ければ数えない。判定とキャッシュには使わない。 */
   callerMaterial?: string | null;
+  /** presign/check の cache miss 計測用。判定・キャッシュには使わない。 */
+  missTiming?: import("@/lib/api/check-seller-miss-timing").CheckSellerMissTimingMs;
 };
 
 export async function decide(req: DecideRequest): Promise<DecisionResult | null> {
@@ -391,9 +393,12 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.result;
 
+  const tOutcomes = req.missTiming ? performance.now() : 0;
   const loaded = await loadSellerFacts(req.observatoryId);
+  if (req.missTiming) req.missTiming.db_outcomes = performance.now() - tOutcomes;
   if (!loaded) return null;
   const subject = subjectOf(loaded);
+  const tDecideRest = req.missTiming ? performance.now() : 0;
   const registry = await registryStatusFor(loaded.endpoint.id);
 
   let result: DecisionResult;
@@ -444,6 +449,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
       loaded.endpoint.canonicalUrl,
     );
   }
+  if (req.missTiming) req.missTiming.db_decide = performance.now() - tDecideRest;
   cache.set(key, { result, expiresAt: Date.now() + DECISION_CACHE_TTL_MS });
   return result;
 }

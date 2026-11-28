@@ -18,6 +18,7 @@ import { checkSeller, type CheckSellerDeps } from "@/lib/mcp/tools";
 import { isNoDataCacheError } from "@/lib/observatory/state-reads";
 import { keepAliveUntilSettled } from "@/lib/util/after-response";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
+import type { CheckSellerCachePath, CheckSellerCacheTiming as CheckSellerCacheTimingFull } from "@/lib/api/check-seller-miss-timing";
 
 export const CHECK_SELLER_CACHE_SECONDS = 60;
 /** fresh な間、期限の何秒前から裏読みを始めるか（60 秒 TTL のうち後半で裏読みし、期限直前の表読みを避ける）。 */
@@ -137,11 +138,8 @@ export function prefetchInflightForTests(storeK: string, work: Promise<void>): v
 
 type CacheFn = typeof unstable_cache;
 
-export type CheckSellerCachePath = "direct" | "fresh" | "prefetch" | "coalesced";
-
-export type CheckSellerCacheTiming = {
-  path?: CheckSellerCachePath;
-};
+export type { CheckSellerCachePath, CheckSellerMissTimingMs } from "@/lib/api/check-seller-miss-timing";
+export type CheckSellerCacheTiming = CheckSellerCacheTimingFull;
 
 export type GetCheckSellerCached = (
   deps: CheckSellerDeps,
@@ -152,6 +150,7 @@ export type GetCheckSellerCached = (
 async function readCheckSellerFresh(
   deps: CheckSellerDeps,
   input: { url: string; method?: string },
+  timing?: CheckSellerCacheTiming,
 ): Promise<{ out: CheckSellerOutput; usageNetwork?: string }> {
   let usageNetwork: string | undefined;
   const wrapped: CheckSellerDeps = {
@@ -160,7 +159,7 @@ async function readCheckSellerFresh(
       usageNetwork = network;
     },
   };
-  const out = checkSellerFreezeForCache(await checkSeller(wrapped, input));
+  const out = checkSellerFreezeForCache(await checkSeller(wrapped, input, timing));
   return { out, usageNetwork };
 }
 
@@ -173,6 +172,7 @@ async function coalescedFreshRead(
   deps: CheckSellerDeps,
   input: { url: string; method?: string },
   inflightKey: string,
+  timing?: CheckSellerCacheTiming,
 ): Promise<Awaited<ReturnType<typeof readCheckSellerFresh>>> {
   const pending = freshInflight.get(inflightKey);
   if (pending) return pending;
@@ -184,7 +184,7 @@ async function coalescedFreshRead(
     fail = reject;
   });
   freshInflight.set(inflightKey, slot);
-  void readCheckSellerFresh(deps, input).then(
+  void readCheckSellerFresh(deps, input, timing).then(
     (value) => {
       freshInflight.delete(inflightKey);
       release(value);
@@ -204,8 +204,9 @@ async function coalescedForCaller(
   urlKey: string,
   methodKey: string,
   storeK: string,
+  timing?: CheckSellerCacheTiming,
 ): Promise<CheckSellerOutput> {
-  const fresh = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK);
+  const fresh = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK, timing);
   return checkSellerForCaller(checkSellerForStore(finishFreshRead(deps, fresh)), callerUrl);
 }
 
@@ -225,7 +226,7 @@ function scheduleCheckSellerPrefetch(
   const ready = (async () => {
     try {
       const cacheReadStarted = new Date().toISOString();
-      const fresh = await readCheckSellerFresh(deps, { url: urlKey, method: methodKey || undefined });
+      const fresh = await readCheckSellerFresh(deps, { url: urlKey, method: methodKey || undefined }, undefined);
       const payload = payloadFromFresh(fresh, cacheReadStarted);
       if (isCheckSellerCachedReadFresh(payload.cacheReadAt)) {
         rememberPrefetched(storeK, payload);
@@ -293,7 +294,7 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     // 正規化で伸びて照会の上限を超える URL は、正規化した形では引けないのでキャッシュを通さない。
     if (parts === null || classifyQuery(parts[0]).kind !== "url") {
       markPath(timing, "direct");
-      return finishFreshRead(deps, await readCheckSellerFresh(deps, input));
+      return finishFreshRead(deps, await readCheckSellerFresh(deps, input, timing));
     }
 
     const [urlKey, methodKey] = parts;
@@ -302,7 +303,7 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
       async (): Promise<CheckSellerCachedPayload> => {
         // 読み始めの時刻で数える。読み終わりで数えると、読み取りにかかった分だけ 60 秒を超える。
         const cacheReadAt = new Date().toISOString();
-        const fresh = await readCheckSellerFresh(deps, { ...input, url: urlKey });
+        const fresh = await readCheckSellerFresh(deps, { ...input, url: urlKey }, timing);
         return payloadFromFresh(fresh, cacheReadAt);
       },
       ["check-seller:v2", urlKey, methodKey],
@@ -322,11 +323,11 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
       if (prefetched) return prefetched;
 
       markPath(timing, "coalesced");
-      return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
+      return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing);
     } catch (error) {
       if (isNoDataCacheError(error)) {
         markPath(timing, "coalesced");
-        return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK);
+        return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing);
       }
       logServerErrorSafe("check_seller_cache", error);
       throw error;

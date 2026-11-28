@@ -359,6 +359,7 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
       if (hit) {
         out.resource = hit.ref;
         usageNetwork = usageNetworkOfEndpoint(hit.network);
+        return { out, usageNetwork };
       }
       const host = new URL(c.url).hostname;
       out.endpoints = await endpointsByDomain(host, 50);

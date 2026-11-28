@@ -897,132 +897,127 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
   const ep = eps[0];
   if (!ep) return null;
 
-  const probes = rowsOf<Record<string, unknown>>(
-    await db.execute(sql`
-      SELECT probed_at::text AS probed_at, verdict, dialect, fail_reason, price_consistent, metadata_consistent
-      FROM x402_l0_probes WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at > now() - interval '30 days'
-      ORDER BY probed_at DESC LIMIT 200
-    `),
-  ).map<ProbeInput>((r) => ({
+  const probeRowsP = db.execute(sql`
+    SELECT probed_at::text AS probed_at, verdict, dialect, fail_reason, price_consistent, metadata_consistent
+    FROM x402_l0_probes WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at > now() - interval '30 days'
+    ORDER BY probed_at DESC LIMIT 200
+  `);
+  const purchaseRowsP = fetchL1WindowPurchaseRows(db, endpointUuid);
+  const sidesP = readRecordSides(db, endpointUuid).catch((error) => {
+    logServerErrorSafe("decision.seller_view", error);
+    return null;
+  });
+  const lastAttemptP = db.execute(sql`
+    SELECT attempted_at::text AS attempted_at, status
+    FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+    ORDER BY attempted_at DESC LIMIT 1
+  `);
+  const lastSignedP = db.execute(sql`
+    SELECT max(attempted_at) FILTER (WHERE status IN (${sql.raw(SIGNED_STATUS_SQL_LIST)}))::text AS last_signed,
+           max(attempted_at) FILTER (WHERE ${sql.raw(DELIVERED_ROW_SQL)})::text AS last_delivered
+    FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
+  `);
+  const verifiedTermsP = db.execute(sql`
+    SELECT tx_hash, pay_to, asset, amount_units, network, attempted_at::text AS attempted_at,
+           (raw_response_meta->>'protocol' = 'mpp' OR network = ${TEMPO_MAINNET_NETWORK}) AS is_mpp
+    FROM x402_l1_purchases
+    WHERE endpoint_id = ${endpointUuid}::uuid
+      AND ${sql.raw(DELIVERED_ROW_SQL)}
+      AND pay_to IS NOT NULL AND asset IS NOT NULL AND amount_units IS NOT NULL AND network IS NOT NULL
+    ORDER BY attempted_at DESC LIMIT 1
+  `);
+  const verifiedPayToP = db.execute(sql`
+    SELECT tx_hash, pay_to, network, attempted_at FROM (
+      SELECT DISTINCT ON (network, CASE WHEN pay_to ~* '^0x' THEN lower(pay_to) ELSE pay_to END)
+             tx_hash, pay_to, network, attempted_at::text AS attempted_at, attempted_at AS attempted_ts
+      FROM x402_l1_purchases
+      WHERE endpoint_id = ${endpointUuid}::uuid
+        AND ${sql.raw(DELIVERED_ROW_SQL)}
+        AND pay_to IS NOT NULL AND network IS NOT NULL
+      ORDER BY network, CASE WHEN pay_to ~* '^0x' THEN lower(pay_to) ELSE pay_to END, attempted_at DESC
+    ) latest
+    ORDER BY attempted_ts DESC LIMIT ${VERIFIED_PAY_TO_SQL_LIMIT}
+  `);
+  const settlements30dP = getSettlementCounts({ endpointId: endpointUuid });
+
+  const [
+    probeRowsRaw,
+    purchaseRows,
+    sides,
+    lastAttemptRows,
+    lastSignedRows,
+    verifiedTermsRows,
+    verifiedPayToRows,
+    settlements30d,
+  ] = await Promise.all([
+    probeRowsP,
+    purchaseRowsP,
+    sidesP,
+    lastAttemptP,
+    lastSignedP,
+    verifiedTermsP,
+    verifiedPayToP,
+    settlements30dP,
+  ]);
+
+  const probes = rowsOf<Record<string, unknown>>(probeRowsRaw).map<ProbeInput>((r) => ({
     probedAt: String(r.probed_at),
     verdict: String(r.verdict),
     dialect: r.dialect === null ? null : String(r.dialect),
     failReason: r.fail_reason === null ? null : String(r.fail_reason),
-    // 封筒の価格・受取先はプローブ行に個別保存していないので、カタログ宣言との
-    // 一致（price_consistent / metadata_consistent）を offer_stability の材料にする。
-    // 一致していれば宣言と同じ、一致していなければ「変わった」とみなす。
     priceAmount: r.price_consistent === false ? "changed" : "declared",
     priceAsset: null,
     payTo: r.metadata_consistent === false ? "changed" : "declared",
   }));
 
-  // 2026-11-02: 公開判定の連続 fail が窓の境で切れるときだけ、窓より前の直近の verdict を読む。多くの出品は
-  // この往復をしない。境は窓の中の最古の行（上の SQL と now() がずれても行を落とさず二重にも数えない）。
   const l0VerdictsNeeded = l0VerdictsNeededBeforeWindow(probes);
-  const l0VerdictsBeforeWindow =
-    l0VerdictsNeeded === 0
-      ? []
-      : rowsOf<{ verdict: string }>(
-          await db.execute(sql`
-            SELECT verdict
-            FROM x402_l0_probes
-            WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at < ${probes[probes.length - 1].probedAt}::timestamptz
-            ORDER BY probed_at DESC LIMIT ${l0VerdictsNeeded}
-          `),
-        ).map((r) => String(r.verdict));
-  // 2026-11-02: 窓の中に 0 本のときだけ 1 回、窓の外に行があるかを読む。原因の語だけに使い、l0.status には効かせない
-  // （窓の外の pass を status に渡すと、窓の中に 0 本の出品の答えが変わる）。
-  const l0HasProbeBeforeWindow =
-    probes.length === 0 &&
-    rowsOf(
-      await db.execute(sql`
-        SELECT 1 AS hit FROM x402_l0_probes
-        WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at <= now() - interval '30 days'
-        LIMIT 1
-      `),
-    ).length > 0;
-
-  const purchaseRows = await fetchL1WindowPurchaseRows(db, endpointUuid);
-  // 2026-09-29.3: 同じ行を /sellers と記録頁がどちらの側に置いたか（readRecordSides・記録頁と同じ 1 本）。
-  // 読めなければ分類なし（お金が動いていない失敗を数える側＝WARN まで）で続ける。理由はログに残す。
-  let sides: Awaited<ReturnType<typeof readRecordSides>> | null = null;
-  try {
-    sides = await readRecordSides(db, endpointUuid);
-  } catch (error) {
-    logServerErrorSafe("decision.seller_view", error);
+  let l0VerdictsBeforeWindow: string[] = [];
+  let l0HasProbeBeforeWindow = false;
+  if (l0VerdictsNeeded > 0 || probes.length === 0) {
+    const [beforeWindow, hasBefore] = await Promise.all([
+      l0VerdictsNeeded === 0
+        ? Promise.resolve([] as string[])
+        : db
+            .execute(sql`
+              SELECT verdict
+              FROM x402_l0_probes
+              WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at < ${probes[probes.length - 1]!.probedAt}::timestamptz
+              ORDER BY probed_at DESC LIMIT ${l0VerdictsNeeded}
+            `)
+            .then((raw) => rowsOf<{ verdict: string }>(raw).map((r) => String(r.verdict))),
+      probes.length === 0
+        ? db
+            .execute(sql`
+              SELECT 1 AS hit FROM x402_l0_probes
+              WHERE endpoint_id = ${endpointUuid}::uuid AND probed_at <= now() - interval '30 days'
+              LIMIT 1
+            `)
+            .then((raw) => rowsOf(raw).length > 0)
+        : Promise.resolve(false),
+    ]);
+    l0VerdictsBeforeWindow = beforeWindow;
+    l0HasProbeBeforeWindow = hasBefore;
   }
+
   const purchases = purchaseRows.map<PurchaseInput>((r) => purchaseInputFromL1WindowRow(r, sides));
 
-  // 最終試行は 30 日窓の外も見る（窓で切ると 31 日前の試行が「一度も無い」に化ける）。
-  // status を問わないので、署名前に終わった行（no_eligible_accept / over_cap /
-  // halted …）でも時刻が立つ。endpoint_id の索引で 1 行取るだけ。
-  const lastAttemptRows = rowsOf<{ attempted_at: string | null; status: string | null }>(
-    await db.execute(sql`
-      SELECT attempted_at::text AS attempted_at, status
-      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
-      ORDER BY attempted_at DESC LIMIT 1
-    `),
-  );
+  const lastAttemptList = rowsOf<{ attempted_at: string | null; status: string | null }>(lastAttemptRows);
   const lastAttempt = {
-    // ::text は "2026-09-04 19:02:29.789686+00" を返す。公開面は ISO8601 UTC で出す
-    // （payOrRefuse がこの時刻を拒否理由の文面へそのまま載せる）。
-    at: toIsoUtc(lastAttemptRows[0]?.attempted_at ?? null),
-    status: lastAttemptRows[0]?.status ?? null,
+    at: toIsoUtc(lastAttemptList[0]?.attempted_at ?? null),
+    status: lastAttemptList[0]?.status ?? null,
   };
 
-  // 2026-09-29.2: 全履歴の最後の署名した試行と最後の配達（窓の外の試行を「一度も無い」と読まない・l1_stale）。
-  // 配達の述語は facts.l1.n_delivered と同じ（settled・2xx・非空）。
-  const lastSignedRows = rowsOf<{ last_signed: string | null; last_delivered: string | null }>(
-    await db.execute(sql`
-      SELECT max(attempted_at) FILTER (WHERE status IN (${sql.raw(SIGNED_STATUS_SQL_LIST)}))::text AS last_signed,
-             max(attempted_at) FILTER (WHERE ${sql.raw(DELIVERED_ROW_SQL)})::text AS last_delivered
-      FROM x402_l1_purchases WHERE endpoint_id = ${endpointUuid}::uuid
-    `),
-  );
+  const lastSigned = rowsOf<{ last_signed: string | null; last_delivered: string | null }>(lastSignedRows)[0];
+  const verifiedTerms = verifiedTermsOf(rowsOf<Record<string, unknown>>(verifiedTermsRows)[0] ?? null);
+  const verifiedPayToByNetwork = verifiedPayToByNetworkOf(rowsOf<Record<string, unknown>>(verifiedPayToRows));
 
-  // 2026-09-29 監査 5 周目: 最後に配達を確かめた購入で払った条件（全履歴・配達の述語は上と同じ）。
-  const verifiedTermsRows = rowsOf<Record<string, unknown>>(
-    await db.execute(sql`
-      SELECT tx_hash, pay_to, asset, amount_units, network, attempted_at::text AS attempted_at,
-             (raw_response_meta->>'protocol' = 'mpp' OR network = ${TEMPO_MAINNET_NETWORK}) AS is_mpp
-      FROM x402_l1_purchases
-      WHERE endpoint_id = ${endpointUuid}::uuid
-        AND ${sql.raw(DELIVERED_ROW_SQL)}
-        AND pay_to IS NOT NULL AND asset IS NOT NULL AND amount_units IS NOT NULL AND network IS NOT NULL
-      ORDER BY attempted_at DESC LIMIT 1
-    `),
-  );
-  const verifiedTerms = verifiedTermsOf(verifiedTermsRows[0] ?? null);
-
-  // 2026-11-22: 同じ配達の述語で、(network, pay_to) の組ごとに最後に配達を確かめた購入（全履歴）。
-  // 402 の network と payTo の組がここに無ければ、その網の受取先は vet402 が確かめていない。
-  // EVM の受取先は大文字小文字の違いを同じ組に数える（Solana などは原文のまま）。
-  const verifiedPayToRows = rowsOf<Record<string, unknown>>(
-    await db.execute(sql`
-      SELECT tx_hash, pay_to, network, attempted_at FROM (
-        SELECT DISTINCT ON (network, CASE WHEN pay_to ~* '^0x' THEN lower(pay_to) ELSE pay_to END)
-               tx_hash, pay_to, network, attempted_at::text AS attempted_at, attempted_at AS attempted_ts
-        FROM x402_l1_purchases
-        WHERE endpoint_id = ${endpointUuid}::uuid
-          AND ${sql.raw(DELIVERED_ROW_SQL)}
-          AND pay_to IS NOT NULL AND network IS NOT NULL
-        ORDER BY network, CASE WHEN pay_to ~* '^0x' THEN lower(pay_to) ELSE pay_to END, attempted_at DESC
-      ) latest
-      ORDER BY attempted_ts DESC LIMIT ${VERIFIED_PAY_TO_SQL_LIMIT}
-    `),
-  );
-  const verifiedPayToByNetwork = verifiedPayToByNetworkOf(verifiedPayToRows);
-
-  const lastDeliveredAt = toIsoUtc(lastSignedRows[0]?.last_delivered ?? null);
+  const lastDeliveredAt = toIsoUtc(lastSigned?.last_delivered ?? null);
   const declaredSchema = ep.declared_schema ?? null;
-  // 2026-11-02.2: L2 は窓に関係なく最後の配達を読む。窓の中に配達が無いときだけ 1 往復足す。
   let lastDeliveryOutsideWindow: PurchaseInput | null = null;
   if (l2NeedsDeliveryOutsideWindow({ purchases, declaredSchema, lastDeliveredAt })) {
     const row = await fetchLastDeliveredPurchaseRow(db, endpointUuid);
     lastDeliveryOutsideWindow = row ? purchaseInputFromL1WindowRow(row, null) : null;
   }
-
-  const settlements30d = await getSettlementCounts({ endpointId: endpointUuid });
   const factsInput = {
     probes,
     l0VerdictsBeforeWindow,
@@ -1033,7 +1028,7 @@ export async function loadSellerFacts(endpointUuid: string): Promise<SellerFacts
     method: ep.raw_method,
     declaredInput: ep.declared_input ?? null,
     lastAttemptAt: lastAttempt.at,
-    lastSignedAttemptAt: toIsoUtc(lastSignedRows[0]?.last_signed ?? null),
+    lastSignedAttemptAt: toIsoUtc(lastSigned?.last_signed ?? null),
     lastDeliveredAt,
     lastDeliveryOutsideWindow,
   };
