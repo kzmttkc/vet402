@@ -23,6 +23,8 @@ import { isDelivered } from "@/lib/observatory/delivery";
 import { resolveSellerPage, type SellerPageData, type ShownRow } from "@/lib/sellers/board";
 import { parseSellerHostParam } from "@/lib/sellers/host";
 import { diagnoseUrlFor } from "@/lib/api/diagnose-url";
+import type { CheckSellerCacheTiming } from "@/lib/api/check-seller-miss-timing";
+import type { DecideRequest } from "@/lib/decision/decide";
 import { logServerErrorSafe } from "@/lib/util/log-safe";
 import type { FindListing } from "@/lib/find/reads";
 import { FIND_POOL_SIZE, FIND_WINDOW_DAYS, FIND_MIN_DELIVERED_RATE, rankFindAlternatives, wilsonLower } from "@/lib/find/rank";
@@ -232,10 +234,16 @@ export function usageNetworkFromMatchingListings(
   return null;
 }
 
-export async function checkSeller(deps: CheckSellerDeps, input: { url: string; method?: string }): Promise<CheckSellerOutput> {
+export async function checkSeller(
+  deps: CheckSellerDeps,
+  input: { url: string; method?: string },
+  timing?: CheckSellerCacheTiming,
+): Promise<CheckSellerOutput> {
   const now = (deps.now ?? (() => new Date()))();
   const method = input.method ? input.method.toUpperCase() : undefined;
+  const miss = timing?.miss ?? (timing ? (timing.miss = {}) : undefined);
   let resolved: Awaited<ReturnType<typeof resolveFn>>;
+  const tResolve = miss ? performance.now() : 0;
   if (deps.resolveForRoute) {
     const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
     resolved = bundle.result;
@@ -243,16 +251,41 @@ export async function checkSeller(deps: CheckSellerDeps, input: { url: string; m
   } else {
     resolved = await deps.resolve(input.url, method ? { method } : {});
   }
+  if (miss) miss.db_resolve = performance.now() - tResolve;
   const resource = resolved.resource;
-  const decision = resource
-    ? await deps.decide({
-        role: "payer",
-        observatoryId: resource.observatory_id,
-        operatorBlacklist: false,
-        callerMaterial: null,
-        skipScore: true,
-      })
-    : null;
+  const decideReq = {
+    role: "payer" as const,
+    observatoryId: "",
+    operatorBlacklist: false,
+    callerMaterial: null,
+    skipScore: true,
+    missTiming: miss,
+  } satisfies DecideRequest & { observatoryId: string };
+  let decision: Awaited<ReturnType<typeof decideFn>> = null;
+  let purchases: L1PurchaseOut[] = [];
+  if (resource) {
+    decideReq.observatoryId = resource.observatory_id;
+    // decide と l1Purchases は互いに依存しないので並列に読む。l1Purchases の失敗は、直列の時と同じく
+    // decision がある時だけ投げる（decision が無ければ以前は l1Purchases を読まずに not_in_catalog を返していた）。
+    const t0 = performance.now();
+    const l1Settled = deps.l1Purchases(resource.observatory_id).then(
+      (rows) => {
+        if (miss) miss.db_l1_recent = performance.now() - t0;
+        return { ok: true as const, rows };
+      },
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    decision = await deps.decide(decideReq);
+    const l1 = await l1Settled;
+    if (decision) {
+      if (!l1.ok) throw l1.error;
+      purchases = l1.rows;
+      if (timing) {
+        const payees = (decision.facts as { payees?: unknown }).payees;
+        if (Array.isArray(payees)) timing.catalogPayees = payees.filter((p): p is string => typeof p === "string");
+      }
+    }
+  }
   if (!resource || !decision) {
     const host = hostnameOf(input.url);
     const same = (resolved.endpoints ?? []).filter((e) => host !== null && hostnameOf(e.canonical_url) === host).slice(0, 5);
@@ -294,7 +327,6 @@ export async function checkSeller(deps: CheckSellerDeps, input: { url: string; m
   }
   const facts = decision.facts as SellerFacts;
   const vt = decision.verified_terms;
-  const purchases = await deps.l1Purchases(resource.observatory_id);
   const out: CheckSellerOutput = {
     evidence_age: decision.evidence_age ?? null,
     canonical_url: resource.canonical_url,

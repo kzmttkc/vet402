@@ -155,7 +155,7 @@ test("presign: without verified_terms the SDK falls back to facts.payees and ref
   assert.equal(body.resource_url_source, "body");
   assert.deepEqual(body.accepts.map((a) => a.reason_codes), [["payee_mismatch"], ["price_unverified"], ["price_unverified"], ["payee_mismatch"]]);
   assert.ok(body.accepts.every((a) => a.terms_match === false));
-  assert.equal(d.counts.decide, 2, "check's read and the payees read");
+  assert.equal(d.counts.decide, 1, "check 1 回の facts.payees を terms に使う");
 });
 
 test("presign: a seller not in the catalog gets terms_match null and resource_uncatalogued", async () => {

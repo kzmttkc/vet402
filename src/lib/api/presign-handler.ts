@@ -6,12 +6,13 @@
 //   - recommendation / reason_codes / rules_version は check の値をそのまま返す（書き換えない）
 //   - accept ごとの照合は SDK の payOrRefuse が署名の前に使う matchDeclaredPayTerms（packages/sdk/src/terms-match.ts）
 //     をそのまま import して当てる。語も SDK の語（payee_mismatch・price_above_declared など）
-// verified_terms が無い掲載だけ、SDK と同じく facts.payees で照合するため、resolve と decide（5 分の LRU）を 1 回読む。
+// verified_terms が無い掲載だけ、SDK と同じく facts.payees で照合する（check と同じ 1 回の読みから取る。取れなければ resolve と decide を読む）。
 // 鍵なし。回数制限は GET /api/v1/check と同じ IP の枠（"resolve" の桶）を分け合う。応答は signedJson で署名する。
 // 保存するのは client_usage_daily の件数だけ（route = rest:presign）。402 の本文・URL は保存しない（IP は GET /api/v1/check と同じく回数制限の桶のキーにだけ使う）。
 // ============================================================
 import { matchDeclaredPayTerms, normalizeAccept, type TermsAccept, type TermsDecision, type TermsMismatchReason } from "../../../packages/sdk/src/terms-match";
 import { getCheckSellerCached, type CheckSellerCacheTiming } from "@/lib/api/check-seller-cache";
+import { formatPresignCheckTiming } from "@/lib/api/check-seller-miss-timing";
 import { rejectUnknownQuery } from "@/lib/api/export-guard";
 import { withNoindex } from "@/lib/api/public-read-robots";
 import { isHttpsAbsoluteUrl } from "@/lib/mcp/schemas";
@@ -169,9 +170,18 @@ async function payeesFor(deps: CheckSellerDeps, url: string, method: string | nu
   return Array.isArray(facts?.payees) ? facts.payees.filter((p): p is string => typeof p === "string") : [];
 }
 
-function serverTimingInner(cacheMs: number, cachePath: string, termsMs: number): string {
-  const desc = cachePath ? `;desc="${cachePath}"` : "";
-  return `cache;dur=${cacheMs.toFixed(1)}${desc}, terms;dur=${termsMs.toFixed(1)}`;
+async function catalogPayeesForTerms(
+  deps: CheckSellerDeps,
+  url: string,
+  method: string | null,
+  cacheTiming: CheckSellerCacheTiming,
+): Promise<string[]> {
+  if (cacheTiming.catalogPayees) return cacheTiming.catalogPayees;
+  const t0 = performance.now();
+  const payees = await payeesFor(deps, url, method);
+  const miss = (cacheTiming.miss ??= {});
+  miss.terms_payees = performance.now() - t0;
+  return payees;
 }
 
 function respond(
@@ -231,15 +241,16 @@ export async function handlePresign(request: Request, deps: CheckSellerDeps): Pr
     const tTerms = performance.now();
     let decision: TermsDecision | null = null;
     if (!out.not_in_catalog) {
+      const payees = out.verified_terms ? [] : await catalogPayeesForTerms(deps, url, parsed.method, cacheTiming);
       decision = {
         verified_terms: out.verified_terms,
         verified_pay_to_by_network: out.verified_pay_to_by_network,
-        facts: { payees: out.verified_terms ? [] : await payeesFor(deps, url, parsed.method) },
+        facts: { payees },
       };
     }
     const accepts = compareAccepts(parsed.challenge.accepts as unknown[], decision);
     const termsMs = performance.now() - tTerms;
-    const innerTiming = serverTimingInner(cacheMs, cachePath, termsMs);
+    const innerTiming = formatPresignCheckTiming(cacheMs, cachePath, termsMs, cacheTiming.miss);
     const version = parsed.challenge.x402Version;
     const body: Record<string, unknown> = {
       resource_url: url,
