@@ -5,6 +5,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { timedDbExecute } from "@/lib/db/miss-timing";
 import { canonicalUrl, payeeId as toPartyId, resourceId as toResourceId, SHA256_HEX_RE } from "@/lib/ids/canonical";
 import { SOLANA_MAINNET_CAIP2 } from "@/lib/observatory/sol402-payer";
 import { RAW_RETENTION_DAYS } from "@/lib/settlements/rollup";
@@ -15,6 +16,20 @@ import { classifyQuery, type QueryKind } from "./classify";
 import { UUID_RE } from "@/lib/validation/uuid";
 import { canonicalIdForAlias } from "./aliases";
 import { LISTING_SOURCES, NOT_LISTED_DOC_URL, type ListingSource } from "@/lib/observatory/listing-sources";
+
+/** この Node プロセスで resolve の計測が初めて走った要求か（1 なら cold）。 */
+let resolveModuleCold = true;
+
+export function takeResolveModuleCold(): 0 | 1 {
+  if (!resolveModuleCold) return 0;
+  resolveModuleCold = false;
+  return 1;
+}
+
+/** node:test 用。 */
+export function __resetResolveModuleColdForTests(): void {
+  resolveModuleCold = true;
+}
 
 export type EndpointRef = {
   endpoint_id: string;
@@ -192,7 +207,7 @@ async function endpointRow(ref: string): Promise<EndpointRow | null> {
   const where = endpointWhere(ref);
   if (!where) return null;
   const rows = rowsOf<EndpointRow>(
-    await db.execute(sql`${ENDPOINT_SELECT} WHERE ${where} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT 1`),
+    await timedDbExecute(() => db.execute(sql`${ENDPOINT_SELECT} WHERE ${where} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT 1`)),
   );
   return rows[0] ?? null;
 }
@@ -243,7 +258,7 @@ export async function resourceHitDefaultMethods(url: string): Promise<{ ref: End
   let postRow: EndpointRow | null = null;
   if (SHA256_HEX_RE.test(getId) && SHA256_HEX_RE.test(postId)) {
     const rows = rowsOf<EndpointRow>(
-      await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id IN (${getId}, ${postId})`),
+      await timedDbExecute(() => db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id IN (${getId}, ${postId})`)),
     );
     getRow = bestRowForResourceId(rows, getId);
     postRow = bestRowForResourceId(rows, postId);
@@ -269,7 +284,9 @@ async function resourceRow(resourceIdHex: string): Promise<EndpointRow | null> {
   const db = getDb();
   if (!db || !SHA256_HEX_RE.test(resourceIdHex)) return null;
   const byId = async (id: string) =>
-    rowsOf<EndpointRow>(await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id = ${id} ORDER BY status = 'active' DESC LIMIT 1`))[0] ?? null;
+    rowsOf<EndpointRow>(
+      await timedDbExecute(() => db.execute(sql`${ENDPOINT_SELECT} WHERE resource_id = ${id} ORDER BY status = 'active' DESC LIMIT 1`)),
+    )[0] ?? null;
   const exact = await byId(resourceIdHex);
   if (exact) return exact;
   const canonicalId = await canonicalIdForAlias(db, resourceIdHex);
@@ -305,9 +322,11 @@ export async function hostListingSummary(rawUrl: string): Promise<{ known: boole
   if (!db) return null;
   const host = new URL(c.url).host;
   const rows = rowsOf<{ n: number; sellers: number }>(
-    await db.execute(sql`
+    await timedDbExecute(() =>
+      db.execute(sql`
       SELECT count(*)::int AS n, count(DISTINCT payee_id)::int AS sellers FROM x402_endpoints
       WHERE status = 'active' AND (resource_key = ${host} OR resource_key LIKE ${`${escapeLike(host)}/%`})`),
+    ),
   );
   const n = Number(rows[0]?.n ?? 0);
   return { known: n > 0, sellers: n > 0 ? Number(rows[0]?.sellers ?? 0) : 0 };
@@ -317,7 +336,9 @@ export async function endpointsByPayee(payeeIdStr: string, limit = 200): Promise
   const db = getDb();
   if (!db) return [];
   const rows = rowsOf<EndpointRow>(
-    await db.execute(sql`${ENDPOINT_SELECT} WHERE payee_id = ${payeeIdStr} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT ${Math.min(Math.max(limit, 1), 500)}`),
+    await timedDbExecute(() =>
+      db.execute(sql`${ENDPOINT_SELECT} WHERE payee_id = ${payeeIdStr} ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT ${Math.min(Math.max(limit, 1), 500)}`),
+    ),
   );
   return rows.map(toRef);
 }
@@ -338,8 +359,10 @@ export async function endpointsByDomain(domain: string, limit = 200): Promise<En
   const host = domain.toLowerCase();
   const [underHost, underSub, subOnly] = domainLikePatterns(domain);
   const rows = rowsOf<EndpointRow>(
-    await db.execute(sql`${ENDPOINT_SELECT} WHERE resource_key = ${host} OR resource_key LIKE ${underHost} OR resource_key LIKE ${underSub} OR resource_key LIKE ${subOnly}
+    await timedDbExecute(() =>
+      db.execute(sql`${ENDPOINT_SELECT} WHERE resource_key = ${host} OR resource_key LIKE ${underHost} OR resource_key LIKE ${underSub} OR resource_key LIKE ${subOnly}
       ORDER BY status = 'active' DESC, last_seen_at DESC NULLS LAST LIMIT ${Math.min(Math.max(limit, 1), 500)}`),
+    ),
   );
   return rows.map(toRef);
 }
@@ -351,13 +374,15 @@ export async function payeesByEndpoint(ref: string): Promise<{ payee_id: string;
   const where = endpointWhere(ref);
   if (!where) return [];
   const rows = rowsOf<{ payee_id: string; n: number }>(
-    await db.execute(sql`
+    await timedDbExecute(() =>
+      db.execute(sql`
       SELECT payee_id, count(*)::int AS n FROM x402_endpoints
       WHERE payee_id IS NOT NULL AND (
         ${where} OR endpoint_hash = (SELECT endpoint_hash FROM x402_endpoints WHERE ${where} LIMIT 1)
       )
       GROUP BY payee_id ORDER BY n DESC LIMIT 100
     `),
+    ),
   );
   return rows.map((r) => ({ payee_id: r.payee_id, endpoints: Number(r.n) }));
 }
@@ -366,11 +391,13 @@ export async function settlementByTx(txHash: string): Promise<SettlementRef | nu
   const db = getDb();
   if (!db) return null;
   const rows = rowsOf<SettlementRef & { endpoint_id: string | null; raw: unknown }>(
-    await db.execute(sql`
+    await timedDbExecute(() =>
+      db.execute(sql`
       SELECT purchase_id, chain, tx_hash, payer_id, payee_id, amount, asset, block_time::text AS block_time,
              attribution, wash_flag, resource_id, endpoint_id::text AS endpoint_id, raw
       FROM settlements WHERE tx_hash = ${txHash} OR lower(tx_hash) = ${txHash.toLowerCase()} LIMIT 1
     `),
+    ),
   );
   const row = rows[0];
   if (!row) return null;
