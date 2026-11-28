@@ -59,6 +59,16 @@ export function parseServerTiming(header: string | null): { presignMs: number | 
   return { presignMs: dur ? Number(dur[1]) : null, cachePath: desc ? desc[1]! : null };
 }
 
+/** Server-Timing の各段の dur を名前 → ms（または本数）にする。既知の presign / cache の意味は変えない。 */
+export function parseServerTimingDurs(header: string | null): Record<string, number> {
+  const h = header ?? "";
+  const out: Record<string, number> = {};
+  for (const m of h.matchAll(/(?:^|,)\s*([a-z0-9_]+);dur=([0-9.]+)/gi)) {
+    out[m[1]!] = Number(m[2]);
+  }
+  return out;
+}
+
 /**
  * sellers.json の行から、30 日に届けた（delivered_30d >= 1）https の GET の URL を、1 ホスト 1 本で選ぶ。
  * 届けた回数の多い順、同数は URL の順。exclude の URL とそのホストは選ばない。同じ URL は返さない。
@@ -109,6 +119,8 @@ export type DistinctSample = {
   server_ms: number | null;
   wall_ms: number;
   cache_path: string | null;
+  /** Server-Timing の各段（任意）。jsonl の st_ms。 */
+  st_ms?: Record<string, number>;
 };
 
 export type DistinctRun = {
@@ -132,6 +144,7 @@ export async function runDistinctSellers(opts: {
   fetchFn?: FetchFn;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  onServerTiming?: (row: { status: number; st: string | null; st_ms: Record<string, number> }) => void;
 }): Promise<DistinctRun> {
   const fetchFn = opts.fetchFn ?? ((input, init) => fetch(input, init));
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -167,10 +180,20 @@ export async function runDistinctSellers(opts: {
       headers: { "content-type": "application/json", "user-agent": UA },
       body: JSON.stringify({ challenge, url }),
     });
+    const stHeader = res.headers.get("server-timing");
     await res.text();
     const elapsed = now() - t0;
-    const timing = parseServerTiming(res.headers.get("server-timing"));
-    run.samples.push({ url, status: res.status, server_ms: timing.presignMs, wall_ms: elapsed, cache_path: timing.cachePath });
+    const timing = parseServerTiming(stHeader);
+    const st_ms = parseServerTimingDurs(stHeader);
+    opts.onServerTiming?.({ status: res.status, st: stHeader, st_ms });
+    run.samples.push({
+      url,
+      status: res.status,
+      server_ms: timing.presignMs,
+      wall_ms: elapsed,
+      cache_path: timing.cachePath,
+      st_ms,
+    });
   }
   return run;
 }
@@ -235,12 +258,24 @@ async function fetchSellerRows(api: string): Promise<unknown[]> {
   return body.rows;
 }
 
-async function mainDistinct(count: number, api: string, out: string, intervalMs: number): Promise<void> {
+function appendServerTimingLog(path: string, row: { status: number; st: string | null; st_ms: Record<string, number> }): void {
+  const line = `${JSON.stringify({ status: row.status, st: row.st ?? "", st_ms: row.st_ms })}\n`;
+  writeFileSync(path, line, { flag: "a" });
+}
+
+async function mainDistinct(count: number, api: string, out: string, intervalMs: number, serverTimingLog: string): Promise<void> {
   const existing = readExisting(out);
   if (!existing) throw new Error(`${out} is missing; run the same-seller probe first`);
   const sameSeller = typeof existing.seller_url === "string" ? existing.seller_url : SAME_SELLER_DEFAULT;
   const candidates = pickDistinctSellerUrls(await fetchSellerRows(api), [sameSeller]);
-  const run = await runDistinctSellers({ candidates, n: count, api, intervalMs });
+  if (serverTimingLog) writeFileSync(serverTimingLog, "");
+  const run = await runDistinctSellers({
+    candidates,
+    n: count,
+    api,
+    intervalMs,
+    onServerTiming: serverTimingLog ? (row) => appendServerTimingLog(serverTimingLog, row) : undefined,
+  });
   const series = distinctSellersSeries(run, count, new Date().toISOString());
   const remaining = typeof existing.warmup_samples === "number" ? existing.warmup_samples : Math.max(0, Number(existing.samples ?? 0) - 1);
   const doc = {
@@ -257,11 +292,12 @@ async function main(): Promise<void> {
   const api = arg("api", "https://vet402.com");
   const out = arg("out", "public/data/presign-latency.json");
   const intervalMs = Number(arg("interval-ms", "1100"));
+  const serverTimingLog = arg("server-timing-log", "");
   const distinct = arg("distinct-sellers", "");
   if (distinct) {
     const count = Number(distinct);
     if (!Number.isInteger(count) || count < 1) throw new Error("--distinct-sellers needs a positive integer");
-    await mainDistinct(count, api, out, intervalMs);
+    await mainDistinct(count, api, out, intervalMs, serverTimingLog);
     return;
   }
 
@@ -277,6 +313,7 @@ async function main(): Promise<void> {
   const wallAll: number[] = [];
   let non200 = 0;
   let firstBody: Record<string, unknown> | null = null;
+  if (serverTimingLog) writeFileSync(serverTimingLog, "");
   for (let i = 0; i < n; i++) {
     if (i > 0 && intervalMs > 0) await new Promise((r) => setTimeout(r, intervalMs));
     const t0 = performance.now();
@@ -285,8 +322,12 @@ async function main(): Promise<void> {
       headers: { "content-type": "application/json", "user-agent": UA },
       body: JSON.stringify({ challenge, url: seller }),
     });
+    const stHeader = res.headers.get("server-timing");
     const body = (await res.json()) as Record<string, unknown>;
     const elapsed = performance.now() - t0;
+    if (serverTimingLog) {
+      appendServerTimingLog(serverTimingLog, { status: res.status, st: stHeader, st_ms: parseServerTimingDurs(stHeader) });
+    }
     if (res.status !== 200) {
       non200++;
       continue;
