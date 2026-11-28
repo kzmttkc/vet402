@@ -894,7 +894,7 @@ test("a rejected in-flight prefetch does not fail the caller; it reads again", a
   const timing: CheckSellerCacheTiming = {};
   const body = await read(deps, { url: URL_A }, timing);
   assert.equal(deps.counts.resolve, 1, "after the failed prefetch the caller reads once itself");
-  assert.equal(timing.path, "coalesced");
+  assert.equal(timing.path, "fresh");
   assert.equal(body.rules_version, DECISION_RULES_VERSION, "the caller still gets an answer, not an error");
 });
 
