@@ -21,14 +21,12 @@ const SELLER_REPUTATION_TECHNIQUE =
   "Each Base listing vet402 bought where the latest purchase delivered a response. " +
   "Delivery age is measured from the purchase attempt time to the ledger read time on this page (same rules as GET /api/v1/check for this host).";
 
-function ledgerExportWindowDays(detail: SellerDetail): number {
-  const head = sellerHeadline(detail);
-  const now = Date.parse(detail.fetchedAt);
-  if (head.at && Number.isFinite(now)) {
-    const d = exportDaysFor(head.at, now);
-    if (d !== null) return Math.max(d, SELLER_INDEX_DELIVERY_WINDOW_DAYS);
-  }
-  return SELLER_INDEX_DELIVERY_WINDOW_DAYS;
+/** Ledger CSV window (days) that still holds the row at `at`. Older than the export cap: the cap (366). */
+function ledgerExportWindowDays(at: string | null, fetchedAt: string): number {
+  const now = Date.parse(fetchedAt);
+  if (!at || !Number.isFinite(now)) return SELLER_INDEX_DELIVERY_WINDOW_DAYS;
+  const d = exportDaysFor(at, now);
+  return d === null ? 366 : Math.max(d, SELLER_INDEX_DELIVERY_WINDOW_DAYS);
 }
 
 export function sellerRecordVariableMeasured(detail: SellerDetail): VariableMeasuredEntry[] {
@@ -94,7 +92,7 @@ export function sellerPurchaseRecordDatasetJsonLd(detail: SellerDetail) {
   const path = sellerPath(detail.host);
   const name = sellerHeading(detail.host, head.at, head.chain);
   const description = sellerDescription(detail.host, head.chain);
-  const days = ledgerExportWindowDays(detail);
+  const days = ledgerExportWindowDays(head.at, detail.fetchedAt);
   return datasetJsonLd({
     name,
     citeName: `seller purchase record for ${detail.host}`,
@@ -126,6 +124,11 @@ export function sellerReputationDatasetJsonLd(detail: SellerDetail) {
   const path = reputationSellerPath(detail.host);
   const name = reputationHeadline(detail.host, detail);
   const description = `vet402 purchase records for ${detail.host}: each listing vet402 bought with a real x402 payment where the latest purchase delivered a response, with delivery age on each row.`;
+  // Claimed hosts stay indexed after 30 days, so the window follows the newest delivered row.
+  const days = ledgerExportWindowDays(
+    reputationHostEvidence(detail).last_delivered_at ?? sellerHeadline(detail).at,
+    detail.fetchedAt,
+  );
   return datasetJsonLd({
     name,
     citeName: `seller delivery record for ${detail.host}`,
@@ -146,7 +149,7 @@ export function sellerReputationDatasetJsonLd(detail: SellerDetail) {
       {
         name: "Purchase ledger (CSV). Filter rows by resource_key for this host",
         encodingFormat: "text/csv",
-        contentUrl: `${SITE_URL}/api/v1/observatory/export.csv?days=${SELLER_INDEX_DELIVERY_WINDOW_DAYS}`,
+        contentUrl: `${SITE_URL}/api/v1/observatory/export.csv?days=${days}`,
       },
     ],
   });

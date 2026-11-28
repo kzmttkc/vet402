@@ -164,3 +164,15 @@ test("Dataset JSON-LD on indexed seller pages parses and listing count matches r
   ) as { value: number };
   assert.equal(listings.value, detail.summary.listings);
 });
+test("ledger CSV link covers the newest delivered row on both seller pages (claimed hosts older than 30 days)", () => {
+  const listing = { endpointId: "e1", resourceKey: "old.example/api", resourceUrl: "https://old.example/api", method: "GET", priceAmount: "1" };
+  const ledgerUrl = (doc: { distribution: { contentUrl: string }[] }) =>
+    doc.distribution.find((d) => d.contentUrl.includes("/api/v1/observatory/export.csv"))?.contentUrl;
+  const old = buildSellerDetail("old.example", [listing], [{ ...delivered, attemptedAt: "2026-09-20T12:00:00Z" }], "2026-11-16T13:00:00.000Z");
+  assert.equal(ledgerUrl(sellerPurchaseRecordDatasetJsonLd(old)), `${SITE_URL}/api/v1/observatory/export.csv?days=59`);
+  assert.equal(ledgerUrl(sellerReputationDatasetJsonLd(old)), `${SITE_URL}/api/v1/observatory/export.csv?days=59`);
+  const ancient = buildSellerDetail("old.example", [listing], [{ ...delivered, attemptedAt: "2025-01-01T00:00:00Z" }], "2026-11-16T13:00:00.000Z");
+  assert.equal(ledgerUrl(sellerReputationDatasetJsonLd(ancient)), `${SITE_URL}/api/v1/observatory/export.csv?days=366`);
+  const fresh = sampleDetail();
+  assert.equal(ledgerUrl(sellerReputationDatasetJsonLd(fresh)), `${SITE_URL}/api/v1/observatory/export.csv?days=30`);
+});
