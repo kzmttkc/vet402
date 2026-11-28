@@ -124,7 +124,7 @@ export default async function PrivacyPage() {
               address we wrote to, the seller&apos;s name and endpoints, the measurement facts in the
               message, and any reply. See{" "}
               <a className="doc-link" href="#seller-notices">
-                emails we send to sellers before we publish
+                emails vet402 sends to sellers before vet402 publishes
               </a>{" "}
               below
             </li>
@@ -266,9 +266,9 @@ export default async function PrivacyPage() {
               with securing the service and preventing abuse. The interest is providing an
               independent fraud-risk signal for on-chain payments; the data is already public
               on-chain; and anyone scored has a free route to object and to have factual errors
-              corrected (see below). The same basis covers the pre-publication notices we email to
+              corrected (see below). The same basis covers the pre-publication notices vet402 emails to
               sellers, whose interest is to hear about a result before it is published. You can ask
-              us for our balancing assessment.
+              vet402 for the balancing assessment.
             </li>
             <li>
               <strong>Legitimate interests</strong> (Art. 6(1)(f)) for weekly key-less caller counts. The
@@ -296,34 +296,34 @@ export default async function PrivacyPage() {
             結果通知を Resend で送った。ポリシーは「Resend は購読通知と異議の返信だけ」と
             書いていて、実態と食い違っていた。目的・宛先の入手元・停止の方法を書く。 */}
         <section id="seller-notices" className="scroll-mt-24 space-y-2">
-          <h2 className="sec-head">Emails we send to sellers before we publish</h2>
+          <h2 className="sec-head">Emails vet402 sends to sellers before vet402 publishes</h2>
           <p>
-            Before we publish results that name a seller, we may email that seller to tell them what
-            we measured — for example that paid calls to their endpoint were not delivered — and when
-            we plan to publish, so they can correct us or fix the problem first. These notices come
+            Before vet402 publishes results that name a seller, vet402 may email that seller to tell them what
+            vet402 measured — for example that paid calls to their endpoint were not delivered — and when
+            vet402 plans to publish, so they can correct vet402 or fix the problem first. These notices come
             from <code>records@vet402.com</code> and replies go to{" "}
             <a className="doc-link" href={SUPPORT_MAILTO}>
               {SUPPORT_EMAIL}
             </a>
-            . They report measurement facts; they are not advertising and we do not use them to
+            . They report measurement facts; they are not advertising and vet402 does not use them to
             sell anything.
           </p>
           <p>
-            <strong>Where the address comes from.</strong> We write to a business contact the
+            <strong>Where the address comes from.</strong> vet402 writes to a business contact the
             seller has published: the contact in its public listing in an x402 discovery catalog,
             or the support or contact address published on the seller&apos;s own website or domain.
-            We do not buy address lists and do not guess personal addresses.
+            vet402 does not buy address lists and does not guess personal addresses.
           </p>
           <p>
             <strong>How to stop them.</strong> Reply to a notice, or write to{" "}
             <a className="doc-link" href={SUPPORT_MAILTO}>
               {SUPPORT_EMAIL}
             </a>
-            , and say you do not want these notices; one person reads that inbox and we will not
+            , and say you do not want these notices; one person reads that inbox and vet402 will not
             send further pre-publication notices to that address. Stopping notices does not stop
-            the measurement or its publication, which follow our published methodology either way.
-            We keep the message and any reply in the support inbox and in Resend&apos;s sending log;
-            we do not add these addresses to any mailing list.
+            the measurement or its publication, which follow vet402&apos;s published methodology either way.
+            vet402 keeps the message and any reply in the support inbox and in Resend&apos;s sending log;
+            vet402 does not add these addresses to any mailing list.
           </p>
         </section>
 
@@ -489,7 +489,7 @@ export default async function PrivacyPage() {
             <li>
               <strong>Resend</strong> (United States) — email delivery for the record-change
               notifications you asked for, for replies about a dispute, and for the pre-publication
-              notices we send to sellers (see{" "}
+              notices vet402 sends to sellers (see{" "}
               <a className="doc-link" href="#seller-notices">
                 above
               </a>

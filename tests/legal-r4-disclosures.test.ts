@@ -92,7 +92,7 @@ test("privacy: seller notices, controller identity, storage countries, security 
   assert.match(privacy, /Where the address comes from/);
   assert.match(privacy, /How to stop them/);
   assert.doesNotMatch(privacy, /It is not used for marketing, and there is no newsletter\./);
-  assert.match(privacy, /pre-publication notices we send to sellers/);
+  assert.match(privacy, /pre-publication notices vet402 sends to sellers/);
   assert.match(privacy, /The controller of the personal data/);
   assert.match(privacy, /id="where-stored"/);
   assert.match(privacy, /United States/);
