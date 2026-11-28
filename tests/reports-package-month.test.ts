@@ -1,4 +1,4 @@
-// I6: 月次凍結の外部公開束 — 決定性、未凍結、C2 列許可リスト。
+// I6: 月次凍結の外部公開束: 決定性、未凍結、C2 列許可リスト。
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -145,4 +145,12 @@ test("publishedCsvWithHeader は見出し付きで本文 sha が summary と一�
   assert.match(withHeader, new RegExp(`^${EXPORT_CSV_COLUMNS[0]},`));
   const bodyOnly = createHash("sha256").update(input.csvBody, "utf8").digest("hex");
   assert.equal(bodyOnly, input.summary.contentSha256);
+});
+test("公開する説明文は英語の事実だけ（em-dash と we/our/us を含まない）", () => {
+  const files = buildMonthlyReportBundleFiles(fixtureInput());
+  for (const rel of ["zenodo/README.md", "zenodo/metadata.json", "huggingface/README.md", "dune/DESCRIPTION.md"]) {
+    const text = files[rel]!;
+    assert.doesNotMatch(text, /[—–]/, `${rel} has a dash`);
+    assert.doesNotMatch(text, /\b(we|our|us)\b/i, `${rel} uses first person plural`);
+  }
 });

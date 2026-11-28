@@ -1,4 +1,4 @@
-# Monthly ledger freeze — external publish runbook (I6)
+# Monthly ledger freeze: external publish runbook (I6)
 
 vet402 builds upload bundles under `dist/reports/{month}/` with `npx tsx scripts/reports/package-month.ts {month} --fetch`. That script only reads public URLs. It does not upload. First publication on each platform needs owner approval (C4).
 
@@ -22,15 +22,15 @@ If the month is not frozen yet, the process prints `未凍結` and exits 0 witho
 
 Output layout:
 
-- `dist/reports/{month}/zenodo/` — `metadata.json`, `README.md`, `vet402-ledger-{month}.csv`, `SHA256SUMS`
-- `dist/reports/{month}/huggingface/` — `README.md` (dataset card), `vet402-ledger-{month}.csv`
-- `dist/reports/{month}/dune/` — `DESCRIPTION.md`, `vet402-ledger-{month}.csv`
+- `dist/reports/{month}/zenodo/` - `metadata.json`, `README.md`, `vet402-ledger-{month}.csv`, `SHA256SUMS`
+- `dist/reports/{month}/huggingface/` - `README.md` (dataset card), `vet402-ledger-{month}.csv`
+- `dist/reports/{month}/dune/` - `DESCRIPTION.md`, `vet402-ledger-{month}.csv`
 
 ## Zenodo
 
-**Credentials (owner only, not in repo):** `ZENODO_ACCESS_TOKEN` — personal access token from https://zenodo.org/account/settings/applications/tokens/new (or sandbox equivalent).
+**Credentials (owner only, not in repo):** `ZENODO_ACCESS_TOKEN` - personal access token from https://zenodo.org/account/settings/applications/tokens/new (or sandbox equivalent).
 
-**API:** REST deposition API v1 — https://developers.zenodo.org/#deposition-actions
+**API:** REST deposition API v1 - https://developers.zenodo.org/#deposition-actions
 
 Typical flow (owner):
 
@@ -43,9 +43,9 @@ Typical flow (owner):
 
 ## Hugging Face Datasets
 
-**Credentials (owner only):** `HF_TOKEN` with write access — https://huggingface.co/settings/tokens
+**Credentials (owner only):** `HF_TOKEN` with write access - https://huggingface.co/settings/tokens
 
-**CLI:** Hugging Face Hub — https://huggingface.co/docs/huggingface_hub/guides/cli
+**CLI:** Hugging Face Hub - https://huggingface.co/docs/huggingface_hub/guides/cli
 
 ```bash
 # Example (owner adjusts repo id and visibility)
@@ -58,7 +58,7 @@ Dataset card is `README.md` in the bundle. License tag `cc-by-4.0`.
 
 ## Dune
 
-**Credentials (owner only):** Dune API key — https://dune.com/settings/api (for scripted upload if used)
+**Credentials (owner only):** Dune API key - https://dune.com/settings/api (for scripted upload if used)
 
 **Import (manual, usual path):**
 

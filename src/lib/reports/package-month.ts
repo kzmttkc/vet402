@@ -219,7 +219,7 @@ Frozen purchase ledger for UTC month \`${month}\`, published by vet402. Rows are
 
 ## Files
 
-- \`${csvFilename(month)}\` — CSV with the same columns as \`/api/v1/observatory/export.csv\`.
+- \`${csvFilename(month)}\` is a CSV with the same columns as \`/api/v1/observatory/export.csv\`.
 
 ## Source
 
