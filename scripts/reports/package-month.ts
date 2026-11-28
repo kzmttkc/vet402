@@ -42,11 +42,17 @@ export function parsePackageMonthArgv(argv: string[]): {
 }
 
 function loadFixture(path: string): MonthlyPackageInput {
-  const raw = JSON.parse(readFileSync(path, "utf8")) as MonthlyPackageInput;
+  const raw = JSON.parse(readFileSync(path, "utf8")) as Omit<MonthlyPackageInput, "deliveredPurchaseIds"> & {
+    deliveredPurchaseIds?: unknown;
+  };
   if (!raw.summary || typeof raw.csvBody !== "string") {
-    throw new Error("fixture must be { summary, csvBody }");
+    throw new Error("fixture must be { summary, csvBody, deliveredPurchaseIds }");
   }
-  return raw;
+  if (!Array.isArray(raw.deliveredPurchaseIds)) {
+    throw new Error("fixture must carry deliveredPurchaseIds (delivered purchase_id values from delivery.csv)");
+  }
+  const ids = new Set(raw.deliveredPurchaseIds.filter((v): v is string => typeof v === "string"));
+  return { summary: raw.summary, csvBody: raw.csvBody, deliveredPurchaseIds: ids };
 }
 
 async function main() {

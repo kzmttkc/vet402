@@ -5,6 +5,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isDeliveryHttp } from "@/lib/observatory/delivery";
 import { EXPORT_CSV_COLUMNS } from "@/lib/observatory/export-columns";
 import type { MonthlyFreezeSummary } from "@/lib/observatory/monthly-freeze";
 import {
@@ -56,7 +57,111 @@ export type MonthlyPackageInput = {
   summary: MonthlyFreezeSummary;
   /** 見出しなしの凍結 CSV 本文（サーバーが返す content_csv と同じ形）。 */
   csvBody: string;
+  /**
+   * 公開の /api/v1/observatory/delivery.csv で delivery = delivered の purchase_id。行の述語に加えて
+   * この集合にも入っている行だけを配達に数える（台帳の CSV だけでは 2026-11-24 より前の空の本文を見分けられない）。
+   * 必須: 無ければ束を作らない（C1 を台帳の列だけで判定しない）。
+   */
+  deliveredPurchaseIds: ReadonlySet<string>;
 };
+
+/**
+ * C1: 束（外部に出す物）では、その月に 1 行も配達が無い売り手を名指ししない。resource_key だけを空にし、
+ * 行は消さない（件数・並び・ほかの列は凍結のまま）。配達の述語は isDelivered と同じ形を台帳の列で当てる:
+ * settled かつ有料の HTTP が 2xx（202 を除く）かつ response_bytes が 0 でない。
+ */
+export const REPORTS_PACKAGE_WITHHELD_RESOURCE_KEY = "";
+
+/** RFC 4180 の CSV 本文を、各セルの原文（引用符ごと）のまま行に分ける。末尾の改行は行の終わりとして扱う。 */
+export function splitCsvRecordsRaw(body: string): string[][] {
+  const records: string[][] = [];
+  let fields: string[] = [];
+  let start = 0;
+  let quoted = false;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (quoted) {
+      if (ch === '"') {
+        if (body[i + 1] === '"') i++;
+        else quoted = false;
+      }
+      continue;
+    }
+    if (ch === '"') quoted = true;
+    else if (ch === ",") {
+      fields.push(body.slice(start, i));
+      start = i + 1;
+    } else if (ch === "\n") {
+      fields.push(body.slice(start, i));
+      records.push(fields);
+      fields = [];
+      start = i + 1;
+    }
+  }
+  if (quoted) throw new Error("csv body has an unterminated quoted field");
+  if (start < body.length) {
+    fields.push(body.slice(start));
+    records.push(fields);
+  }
+  return records;
+}
+
+function unquoteCell(raw: string): string {
+  return raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1).replace(/""/g, '"') : raw;
+}
+
+function ledgerRowDelivered(cells: readonly string[], col: (name: string) => number, delivered: ReadonlySet<string>): boolean {
+  if (unquoteCell(cells[col("status")]!) !== "settled") return false;
+  const http = unquoteCell(cells[col("http_status_paid")]!);
+  if (!/^[0-9]+$/.test(http) || !isDeliveryHttp(Number(http))) return false;
+  if (unquoteCell(cells[col("response_bytes")]!) === "0") return false;
+  if (!delivered.has(unquoteCell(cells[col("purchase_id")]!))) return false;
+  return true;
+}
+
+export type WithheldCsv = { csvBody: string; rows: number; withheldRows: number; namedSellers: number };
+
+/** C1: その月に配達が 1 行も無い売り手の行の resource_key を空にした本文を返す。行の数と順序は変えない。 */
+export function withholdUndeliveredSellers(
+  csvBody: string,
+  columns: readonly string[],
+  deliveredPurchaseIds: ReadonlySet<string>,
+): WithheldCsv {
+  if (!(deliveredPurchaseIds instanceof Set)) {
+    throw new Error("deliveredPurchaseIds is required (read delivery.csv before building a bundle)");
+  }
+  const index = new Map(columns.map((c, i) => [c, i]));
+  const col = (name: string): number => {
+    const i = index.get(name);
+    if (i === undefined) throw new Error(`columns lack ${name}`);
+    return i;
+  };
+  const keyCol = col("resource_key");
+  const records = splitCsvRecordsRaw(csvBody);
+  for (const cells of records) {
+    if (cells.length !== columns.length) {
+      throw new Error(`csv row has ${cells.length} cells, expected ${columns.length}`);
+    }
+  }
+  const deliveredKeys = new Set<string>();
+  for (const cells of records) {
+    if (ledgerRowDelivered(cells, col, deliveredPurchaseIds)) deliveredKeys.add(cells[keyCol]!);
+  }
+  let withheldRows = 0;
+  const lines = records.map((cells) => {
+    if (deliveredKeys.has(cells[keyCol]!)) return cells.join(",");
+    withheldRows++;
+    const out = [...cells];
+    out[keyCol] = REPORTS_PACKAGE_WITHHELD_RESOURCE_KEY;
+    return out.join(",");
+  });
+  return {
+    csvBody: lines.length === 0 ? "" : `${lines.join("\n")}\n`,
+    rows: records.length,
+    withheldRows,
+    namedSellers: deliveredKeys.size,
+  };
+}
 
 export type PackageMonthBuildResult = {
   month: string;
@@ -148,7 +253,7 @@ function zenodoMetadata(summary: MonthlyFreezeSummary): Record<string, unknown> 
       title: `vet402 monthly ledger freeze: ${month}`,
       upload_type: "dataset",
       publication_date: pubDate,
-      description: `<p>Frozen purchase ledger rows for UTC month ${month}. Column definitions match GET /api/v1/observatory/export.csv. Methodology: https://vet402.com/observatory/methodology. Summary JSON: https://vet402.com/api/v1/reports/${month}.json</p>`,
+      description: `<p>Frozen purchase ledger rows for UTC month ${month}. Column definitions match GET /api/v1/observatory/export.csv. resource_key is left empty on rows of a seller with no delivered row in this month. Methodology: https://vet402.com/observatory/methodology. Summary JSON: https://vet402.com/api/v1/reports/${month}.json</p>`,
       creators: [{ name: "KIZUNA Creation", affiliation: "vet402" }],
       access_right: "open",
       license: "CC-BY-4.0",
@@ -164,7 +269,14 @@ function zenodoMetadata(summary: MonthlyFreezeSummary): Record<string, unknown> 
   };
 }
 
-function zenodoReadme(summary: MonthlyFreezeSummary): string {
+const WITHHELD_NOTE =
+  "Rows of a seller with no delivered row in this month keep their place and every other value, with `resource_key` left empty, so the bundle does not name a seller that did not deliver. A delivered row is settled, with a paid HTTP status of 2xx other than 202 and a non-empty body.";
+
+function withheldLines(w: WithheldCsv): string {
+  return `- Rows: ${w.rows}\n- Rows with \`resource_key\` left empty: ${w.withheldRows}\n- Sellers named: ${w.namedSellers}`;
+}
+
+function zenodoReadme(summary: MonthlyFreezeSummary, w: WithheldCsv): string {
   const month = summary.month;
   const frozenAt = summary.frozenAt;
   return `# vet402 monthly ledger freeze: ${month}
@@ -174,7 +286,7 @@ This directory is a Zenodo upload bundle for one frozen UTC month of vet402 purc
 ## Contents
 
 - \`metadata.json\` is deposition metadata for the Zenodo REST API (not uploaded by itself; merge into a deposition).
-- \`${csvFilename(month)}\` is the frozen CSV with the public export header row added. The rows after the header are byte for byte the body of GET /api/v1/reports/${month}.csv.
+- \`${csvFilename(month)}\` is the frozen CSV with the public export header row added. The rows after the header are the rows of GET /api/v1/reports/${month}.csv in the same order. ${WITHHELD_NOTE}
 - \`README.md\` is this note.
 - \`SHA256SUMS\` lists sha256 digests for every other file in this directory.
 
@@ -185,11 +297,15 @@ This directory is a Zenodo upload bundle for one frozen UTC month of vet402 purc
 - \`rowCount\`: ${summary.rowCount}
 - Period: [${summary.periodStart}, ${summary.periodEndExclusive})
 
+\`contentSha256\` is the digest of the freeze body before \`resource_key\` was left empty. \`SHA256SUMS\` has the digest of the CSV in this bundle.
+
+${withheldLines(w)}
+
 Column definitions: https://vet402.com/openapi.yaml
 `;
 }
 
-function huggingFaceReadme(summary: MonthlyFreezeSummary): string {
+function huggingFaceReadme(summary: MonthlyFreezeSummary, w: WithheldCsv): string {
   const month = summary.month;
   const frozenAt = summary.frozenAt;
   return `---
@@ -218,9 +334,13 @@ Frozen purchase ledger for UTC month \`${month}\`, published by vet402. Rows are
 | periodStart | ${summary.periodStart} |
 | periodEndExclusive | ${summary.periodEndExclusive} |
 
+\`contentSha256\` is the digest of the freeze body before \`resource_key\` was left empty.
+
 ## Files
 
-- \`${csvFilename(month)}\` is a CSV with the same columns as \`/api/v1/observatory/export.csv\`.
+- \`${csvFilename(month)}\` is a CSV with the same columns as \`/api/v1/observatory/export.csv\`. ${WITHHELD_NOTE}
+
+${withheldLines(w)}
 
 ## Source
 
@@ -231,7 +351,7 @@ Column definitions: https://vet402.com/openapi.yaml
 `;
 }
 
-function duneDescription(summary: MonthlyFreezeSummary): string {
+function duneDescription(summary: MonthlyFreezeSummary, w: WithheldCsv): string {
   const month = summary.month;
   return `# Dune import: vet402 monthly ledger freeze ${month}
 
@@ -240,8 +360,11 @@ Import \`${csvFilename(month)}\` as a comma-separated table.
 - Time column: \`attempted_at\` (UTC, ISO-8601 with Z suffix).
 - Amount columns \`amount_units\`, \`spent_units\`, and \`confirmed_units\` are 6-decimal integer strings in USDC micro-units, not dollars.
 - This extract is purchase-attempt metadata only. It does not include vet402 revenue, MRR, subscriber counts, or other KPI fields.
+- ${WITHHELD_NOTE}
 
-Freeze \`contentSha256\`: ${summary.contentSha256}
+${withheldLines(w)}
+
+Freeze \`contentSha256\` (the freeze body before \`resource_key\` was left empty): ${summary.contentSha256}
 Frozen at (UTC): ${summary.frozenAt}
 `;
 }
@@ -257,7 +380,11 @@ export function buildMonthlyReportBundleFiles(input: MonthlyPackageInput): Recor
     throw new Error("csvBody sha256 does not match summary.contentSha256");
   }
   const month = input.summary.month;
-  const csvWithHeader = publishedCsvWithHeader(input.csvBody, input.summary.columns);
+  const withheld = withholdUndeliveredSellers(input.csvBody, input.summary.columns, input.deliveredPurchaseIds);
+  if (withheld.rows !== input.summary.rowCount) {
+    throw new Error(`csv has ${withheld.rows} rows, summary.rowCount is ${input.summary.rowCount}`);
+  }
+  const csvWithHeader = publishedCsvWithHeader(withheld.csvBody, input.summary.columns);
   assertMonthlyPackageColumns(headerLineOfCsv(csvWithHeader));
 
   const files: Record<string, string> = {};
@@ -271,9 +398,9 @@ export function buildMonthlyReportBundleFiles(input: MonthlyPackageInput): Recor
   files[duneCsv] = csvWithHeader;
 
   files["zenodo/metadata.json"] = `${JSON.stringify(zenodoMetadata(input.summary), null, 2)}\n`;
-  files["zenodo/README.md"] = zenodoReadme(input.summary);
-  files["huggingface/README.md"] = huggingFaceReadme(input.summary);
-  files["dune/DESCRIPTION.md"] = duneDescription(input.summary);
+  files["zenodo/README.md"] = zenodoReadme(input.summary, withheld);
+  files["huggingface/README.md"] = huggingFaceReadme(input.summary, withheld);
+  files["dune/DESCRIPTION.md"] = duneDescription(input.summary, withheld);
 
   const zenodoPlain = ["metadata.json", "README.md", csvFilename(month)] as const;
   const zenodoDigests: Record<string, string> = {};
@@ -350,5 +477,31 @@ export async function fetchPublicMonthlyFreeze(
   if (headerSha && headerSha !== summary.contentSha256) {
     throw new Error("x-vet402-content-sha256 does not match summary.contentSha256");
   }
-  return { ok: true, input: { summary: { ...summary, month: parsed.month }, csvBody } };
+  const deliveredPurchaseIds = await fetchPublicDeliveredPurchaseIds(base, fetchFn);
+  return { ok: true, input: { summary: { ...summary, month: parsed.month }, csvBody, deliveredPurchaseIds } };
+}
+/** 公開の delivery.csv（直近 366 日）から delivery = delivered の purchase_id を読む。読めなければ束を作らない。 */
+export async function fetchPublicDeliveredPurchaseIds(
+  origin: string = DEFAULT_REPORTS_ORIGIN,
+  fetchFn: typeof fetch = fetch,
+): Promise<Set<string>> {
+  const base = origin.replace(/\/$/, "");
+  const res = await fetchFn(`${base}/api/v1/observatory/delivery.csv?days=366`);
+  if (!res.ok) throw new Error(`delivery csv fetch failed: HTTP ${res.status}`);
+  return deliveredPurchaseIdsOfDeliveryCsv(await res.text());
+}
+
+/** delivery.csv（見出しつき）から delivery = delivered の purchase_id の集合を作る。 */
+export function deliveredPurchaseIdsOfDeliveryCsv(csvWithHeader: string): Set<string> {
+  const records = splitCsvRecordsRaw(csvWithHeader);
+  const header = (records[0] ?? []).map(unquoteCell);
+  const idCol = header.indexOf("purchase_id");
+  const deliveryCol = header.indexOf("delivery");
+  if (idCol === -1 || deliveryCol === -1) throw new Error("delivery csv lacks purchase_id or delivery");
+  const out = new Set<string>();
+  for (const cells of records.slice(1)) {
+    if (cells.length !== header.length) throw new Error("delivery csv row has the wrong number of cells");
+    if (unquoteCell(cells[deliveryCol]!) === "delivered") out.add(unquoteCell(cells[idCol]!));
+  }
+  return out;
 }
