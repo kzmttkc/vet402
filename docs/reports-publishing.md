@@ -50,7 +50,7 @@ Typical flow (owner):
 ```bash
 # Example (owner adjusts repo id and visibility)
 export HF_TOKEN=...   # owner sets locally; never commit
-huggingface-cli repo create vet402-monthly-ledger-2026-10 --type dataset --private
+huggingface-cli repo create vet402/vet402-monthly-ledger-2026-10 --type dataset --private
 huggingface-cli upload vet402/vet402-monthly-ledger-2026-10 dist/reports/2026-10/huggingface/. --repo-type dataset
 ```
 

@@ -154,3 +154,12 @@ test("公開する説明文は英語の事実だけ（em-dash と we/our/us を�
     assert.doesNotMatch(text, /\b(we|our|us)\b/i, `${rel} uses first person plural`);
   }
 });
+
+test("frozenAt が無い summary は日付を作らずに止める", () => {
+  const input = fixtureInput();
+  const { frozenAt: _drop, ...rest } = input.summary;
+  assert.throws(
+    () => buildMonthlyReportBundleFiles({ ...input, summary: rest as typeof input.summary }),
+    /frozenAt is missing/,
+  );
+});

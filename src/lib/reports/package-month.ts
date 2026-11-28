@@ -173,7 +173,7 @@ This directory is a Zenodo upload bundle for one frozen UTC month of vet402 purc
 ## Contents
 
 - \`metadata.json\` is deposition metadata for the Zenodo REST API (not uploaded by itself; merge into a deposition).
-- \`${csvFilename(month)}\` is the frozen CSV with the public export header row. Body bytes match GET /api/v1/reports/${month}.csv.
+- \`${csvFilename(month)}\` is the frozen CSV with the public export header row added. The rows after the header are byte for byte the body of GET /api/v1/reports/${month}.csv.
 - \`README.md\` is this note.
 - \`SHA256SUMS\` lists sha256 digests for every other file in this directory.
 
@@ -207,7 +207,7 @@ task_categories:
 
 ## Dataset description
 
-Frozen purchase ledger for UTC month \`${month}\`, published by vet402. Rows are vet402's own x402 purchase attempts. This file does not include revenue, MRR, or other KPI values (vet402 constraint C2).
+Frozen purchase ledger for UTC month \`${month}\`, published by vet402. Rows are vet402's own x402 purchase attempts. This file does not include revenue, MRR, or other KPI values.
 
 | Field | Value |
 | --- | --- |
@@ -247,6 +247,10 @@ Frozen at (UTC): ${summary.frozenAt}
 
 export function buildMonthlyReportBundleFiles(input: MonthlyPackageInput): Record<string, string> {
   assertMonthlyPackageSummary(input.summary);
+  // frozenAt は DB の trigger が summary_json に書く（scripts/sql/2026-11-27-ledger-monthly-frozen.sql）。無ければ日付を作らず止める。
+  if (typeof input.summary.frozenAt !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(input.summary.frozenAt)) {
+    throw new Error("summary.frozenAt is missing or not an ISO timestamp");
+  }
   const digest = sha256Utf8(input.csvBody);
   if (digest !== input.summary.contentSha256) {
     throw new Error("csvBody sha256 does not match summary.contentSha256");
