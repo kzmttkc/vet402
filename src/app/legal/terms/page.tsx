@@ -220,7 +220,7 @@ export default async function TermsPage() {
             vet402&apos;s methodology uses public lists — including the US Treasury OFAC list of sanctioned
             digital-currency addresses — as one benchmark of known-bad addresses to measure vet402&apos;s
             scoring against. Using that list as a benchmark is not vet402 making a sanctions
-            determination: vet402 does not decide who is on it, it does not screen for sanctions compliance,
+            determination: vet402 does not decide who is on it, vet402 does not screen for sanctions compliance,
             and a low score or a BLOCK is not a statement that an address is sanctioned or that
             transacting with it is unlawful. If you have a sanctions- or AML-compliance obligation,
             meet it with a service built and licensed for that purpose; vet402 is not one.
@@ -318,7 +318,7 @@ export default async function TermsPage() {
               with the address and what you think is wrong. One person reads that inbox. vet402 will
               acknowledge within 5 business days (Japan time). vet402 cannot promise to change a score —
               it is vet402&apos;s opinion, and sometimes vet402 will disagree with you — but vet402 will look, it will
-              tell you what it concluded, and if vet402 got a fact wrong it will fix it and re-score.
+              tell you what it concluded, and if vet402 got a fact wrong vet402 will fix it and re-score.
             </li>
           </ul>
           {/* 2026-09-02: endpoint 記録（L0–L2）への異議の経路。上の 2 経路は score 用。 */}
@@ -452,7 +452,7 @@ export default async function TermsPage() {
             </a>
             , these terms are the whole agreement between you and vet402 about vet402. You may not
             transfer your rights under them; vet402 may transfer its rights if the project moves to a company
-            or is acquired, and it will say so on this page if that happens.
+            or is acquired, and vet402 will say so on this page if that happens.
           </p>
           <p>
             Questions about these terms? Email{" "}
@@ -479,7 +479,7 @@ export default async function TermsPage() {
             verification result is different in kind from a score, so it gets its own section. A
             score is vet402&apos;s opinion (section 6). A verification result is a record of a measurement:
             at the moment shown on the result, vet402 paid the endpoint&apos;s published price with
-            real funds, following its published methodology, and it recorded what happened. vet402
+            real funds, following vet402&apos;s published methodology, and vet402 recorded what happened. vet402
             publishes the record, the transaction hash, and the timestamp, and it describes what it
             observed in plain factual terms.
           </p>
