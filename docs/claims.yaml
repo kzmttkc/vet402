@@ -2436,7 +2436,7 @@ claims:
     verified_at: 2026-10-28
   - id: docs_mcp_hosted_entry
     surface: src/app/docs/mcp/page.tsx
-    quote: "Hosted MCP server"
+    quote: "x402 MCP server: check a seller before paying"
     means: "/docs/mcp が hosted MCP の入口・tool・配達フィード・枠を英語で説明する"
     check: null
     why_unverifiable: "文書面の主張。tests/mcp-plain-english.test.ts と tests/delivery-feed-surface.test.ts が固定する"
