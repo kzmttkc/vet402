@@ -1,5 +1,6 @@
 // Listing draft generation from openapi (I5).
-import { mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -17,15 +18,6 @@ test("generateListingFiles is deterministic for the same openapi input", () => {
   const b = generateListingFiles(spec, ROOT);
   for (const dest of Object.keys(LISTING_OUTPUT_PATHS) as ListingDestination[]) {
     assert.equal(a[dest], b[dest], dest);
-  }
-});
-
-test("committed listing drafts match generator output (drift 0)", () => {
-  const spec = loadOpenApiFromRepo(ROOT);
-  const generated = generateListingFiles(spec, ROOT);
-  for (const dest of Object.keys(LISTING_OUTPUT_PATHS) as ListingDestination[]) {
-    const onDisk = readFileSync(join(ROOT, LISTING_OUTPUT_PATHS[dest]), "utf8");
-    assert.equal(countLineDrift(generated[dest], onDisk), 0, LISTING_OUTPUT_PATHS[dest]);
   }
 });
 
@@ -65,17 +57,62 @@ test("bazaar declaration includes CDP bazaar info copied from payment terms", ()
   assert.equal(doc.declarations[0]?.extensions?.bazaar?.info?.input?.method, "GET");
 });
 
-test("check mode detects drift against a temp copy", () => {
+function runGenerator(root: string, ...args: string[]) {
+  return spawnSync(process.execPath, ["--import", "tsx", join(ROOT, "scripts/listings/generate.ts"), "--root", root, ...args], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+}
+
+function tempRepoCopy(): string {
   const dir = mkdtempSync(join(tmpdir(), "listings-drift-"));
+  mkdirSync(join(dir, "docs"), { recursive: true });
+  mkdirSync(join(dir, "packages/mcp-server"), { recursive: true });
+  copyFileSync(join(ROOT, "docs/openapi.yaml"), join(dir, "docs/openapi.yaml"));
+  copyFileSync(join(ROOT, "packages/mcp-server/package.json"), join(dir, "packages/mcp-server/package.json"));
+  return dir;
+}
+
+test("--check exits 0 with drift 0 right after generate, per destination", () => {
+  const dir = tempRepoCopy();
   try {
-    const spec = loadOpenApiFromRepo(ROOT);
-    const generated = generateListingFiles(spec, ROOT);
-    const dest = LISTING_OUTPUT_PATHS.openapi;
-    const abs = join(dir, dest);
-    mkdirSync(join(dir, "data/listings"), { recursive: true });
-    writeFileSync(abs, generated.openapi);
-    const mutated = generated.openapi.replace('"openapi": "3.1.0"', '"openapi": "3.1.1"');
-    assert.ok(countLineDrift(mutated, generated.openapi) > 0);
+    assert.equal(runGenerator(dir).status, 0);
+    const out = runGenerator(dir, "--check");
+    assert.equal(out.status, 0, out.stdout + out.stderr);
+    for (const dest of Object.keys(LISTING_OUTPUT_PATHS) as ListingDestination[]) {
+      assert.match(out.stdout, new RegExp(`drift_lines=0 path=${LISTING_OUTPUT_PATHS[dest].replace(/[.]/g, "\\.")}`));
+    }
+    assert.match(out.stdout, /listings: total_drift_lines=0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--check counts drift on the edited destination and exits 1; --observe exits 0", () => {
+  const dir = tempRepoCopy();
+  try {
+    assert.equal(runGenerator(dir).status, 0);
+    const target = join(dir, LISTING_OUTPUT_PATHS["x402-ecosystem"]);
+    writeFileSync(target, readFileSync(target, "utf8").replace('"name": "vet402"', '"name": "edited"'));
+    const strict = runGenerator(dir, "--check");
+    assert.equal(strict.status, 1);
+    assert.match(strict.stdout, /x402\.org metadata\.json: drift_lines=1 /);
+    assert.match(strict.stdout, /openapi\.json: drift_lines=0 path=data\/listings\/openapi\.json/);
+    const observe = runGenerator(dir, "--check", "--observe");
+    assert.equal(observe.status, 0);
+    assert.match(observe.stdout, /listings: total_drift_lines=1/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an openapi edit reaches the generated drafts", () => {
+  const dir = tempRepoCopy();
+  try {
+    const yamlPath = join(dir, "docs/openapi.yaml");
+    writeFileSync(yamlPath, readFileSync(yamlPath, "utf8").replace("name: rwa-facts", "name: rwa-facts-edited"));
+    assert.equal(runGenerator(dir).status, 0);
+    assert.match(readFileSync(join(dir, LISTING_OUTPUT_PATHS["pay-sh-paymd"]), "utf8"), /name: 'rwa-facts-edited'/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

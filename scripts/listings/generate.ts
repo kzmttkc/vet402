@@ -4,6 +4,7 @@
 //   npx tsx scripts/listings/generate.ts              # write data/listings/*
 //   npx tsx scripts/listings/generate.ts --check      # drift line counts; exit 1 when any > 0
 //   npx tsx scripts/listings/generate.ts --check --observe   # print drift, always exit 0
+//   --root <dir>   read docs/openapi.yaml and write data/listings under <dir> (tests)
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { countLineDrift } from "@/lib/listings/stable-json";
@@ -15,7 +16,8 @@ import {
 import { loadOpenApiFromRepo } from "@/lib/listings/load-openapi";
 import type { ListingDestination } from "@/lib/listings/types";
 
-const root = process.cwd();
+const rootFlag = process.argv.indexOf("--root");
+const root = rootFlag !== -1 && process.argv[rootFlag + 1] ? process.argv[rootFlag + 1]! : process.cwd();
 const check = process.argv.includes("--check");
 const observe = process.argv.includes("--observe");
 

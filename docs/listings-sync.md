@@ -49,7 +49,7 @@ External listings still need owner approval (C4). Automate preparation only insi
    - For each destination, open a **draft** PR in the target repo using a machine account token stored in GitHub Actions secrets (pay-skills fork, MCP registry publish API, x402-foundation ecosystem repo).
 3. **Guards:**
    - PRs stay **draft** until a human reviewer marks ready.
-   - No publish, merge, or registry write in CI—only branch + PR creation.
+   - No publish, merge, or registry write in CI: only branch and PR creation.
    - Secrets: `PAYSH_PR_TOKEN`, `MCP_REGISTRY_TOKEN`, `X402_ECOSYSTEM_PR_TOKEN` (names TBD at implementation).
 4. **Artifacts:** attach `data/listings/*` and the drift summary as workflow artifacts for audit.
 
@@ -58,7 +58,7 @@ External listings still need owner approval (C4). Automate preparation only insi
 | Destination | Upstream | Notes |
 | --- | --- | --- |
 | pay.sh | `solana-foundation/pay-skills` | `providers/vet402/rwa-facts/` |
-| MCP registry | MCP Registry API | `com.vet402/vet402` — `repository.url` must be `vet402/vet402` |
+| MCP registry | MCP Registry API | `com.vet402/vet402` - `repository.url` must be `vet402/vet402` |
 | x402.org | `x402-foundation/x402` (site tree) | `partners-data/vet402/metadata.json` |
 | Bazaar | n/a | declaration shipped on the live 402; this repo only validates JSON |
 

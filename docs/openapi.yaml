@@ -3327,7 +3327,7 @@ paths:
         - in: header
           name: PAYMENT-SIGNATURE
           required: false
-          schema: { type: string, description: base64 JSON PaymentPayload (x402 v2, EIP-3009) }
+          schema: { type: string, description: "base64 JSON PaymentPayload (x402 v2, EIP-3009)" }
       responses:
         "200":
           description: The reconstruction (same body as getRwaFacts). X-Payment-Status is `settled` (with PAYMENT-RESPONSE and optional X-Bazaar-Status) or `unknown`.

@@ -33,8 +33,7 @@
             "name": "PAYMENT-SIGNATURE",
             "required": false,
             "schema": {
-              "EIP-3009)": null,
-              "description": "base64 JSON PaymentPayload (x402 v2",
+              "description": "base64 JSON PaymentPayload (x402 v2, EIP-3009)",
               "type": "string"
             }
           }
