@@ -151,3 +151,31 @@ test("checkSeller: resource 当たりの成功応答は endpoints を使わな�
   assert.deepEqual(out.same_host_listings, []);
   assert.equal(db.domainReads, 0);
 });
+test("checkSeller: resource 当たり・decision null では same_host_listings が skip 前と同じ", async () => {
+  const sameHost = "https://listed-seller.example/other";
+  const hostRows = [{ url: sameHost }, { url: OTHER }];
+  const fixedNow = () => new Date("2026-11-28T00:00:00.000Z");
+  const depsWith = (strip: boolean): Pick<McpDeps, "resolve" | "resolveForRoute" | "decide" | "l1Purchases"> & {
+    now: () => Date;
+  } => {
+    const o = (opts?: Parameters<typeof resolve>[1]) => (strip && opts ? { method: opts.method } : opts);
+    return {
+      resolve: (q, opts) => resolve(q, o(opts)),
+      resolveForRoute: (q, opts) => resolveForRoute(q, o(opts)),
+      decide: async () => null,
+      l1Purchases: async () => [],
+      now: fixedNow,
+    };
+  };
+  const dbOld = countingDb(URL, hostRows);
+  __setDbForTests(dbOld as never);
+  const before = await checkSeller(depsWith(true), { url: URL });
+  const dbNew = countingDb(URL, hostRows);
+  __setDbForTests(dbNew as never);
+  const after = await checkSeller(depsWith(false), { url: URL });
+  assert.equal(after.not_in_catalog, true);
+  assert.equal(after.same_host_listings.length, 1, "同じホストの掲載が出る");
+  assert.equal(after.same_host_listings[0].url, sameHost);
+  assert.deepEqual(after, before, "応答は skip 前と同じ");
+  assert.equal(dbNew.domainReads, 1, "判定が無い時だけ同じホストの掲載を後から読む");
+});

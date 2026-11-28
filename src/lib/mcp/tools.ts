@@ -308,8 +308,14 @@ export async function checkSeller(
     }
   }
   if (!resource || !decision) {
+    // resource は当たったが判定が無い時、skip で同じホストの掲載を読んでいない。公開 resolve と同じ読み
+    // （skip なし）をここで1回して、same_host_listings を今までと同じにする（2026-11-28）。
+    let endpoints = resolved.endpoints;
+    if (resource && endpoints === undefined) {
+      endpoints = (await deps.resolve(input.url, method ? { method } : {})).endpoints;
+    }
     const host = hostnameOf(input.url);
-    const same = (resolved.endpoints ?? []).filter((e) => host !== null && hostnameOf(e.canonical_url) === host).slice(0, 5);
+    const same = (endpoints ?? []).filter((e) => host !== null && hostnameOf(e.canonical_url) === host).slice(0, 5);
     return fitBudget<CheckSellerOutput>(
       {
         evidence_age: null,
