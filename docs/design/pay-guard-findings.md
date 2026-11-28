@@ -103,4 +103,4 @@ Bulk `GET /api/v1/resolve?url=…` against all 150 buy URLs hit **rate limit** b
 
 ## Presign p99 (A0 note)
 
-Public: `https://vet402.com/data/presign-latency.json` (retrieved 2026-11-28). Warm, same seller within the 60-second cache (measured 2026-11-27T23:03Z): server p50 23.7 ms, p99 117.6 ms, `target_met: true` against 300 ms. First check of 99 distinct sellers, nothing cached (measured 2026-11-28T00:08Z): server p50 574.4 ms, p99 2533.9 ms. The 300 ms target is met warm only; the SDK prewarm step in `pay-guard.md` section 2a moves the payment-time call into the warm series.
+Public: `https://vet402.com/data/presign-latency.json` (retrieved 2026-11-28). Warm, same seller within the 60-second cache (measured 2026-11-27T23:03Z): server p50 23.7 ms, p99 117.6 ms, `target_met: true` against 300 ms. First check of 99 distinct sellers, each URL sent once (a value another caller left in the last 60 seconds can still be reused; measured 2026-11-28T00:08Z): server p50 574.4 ms, p99 2533.9 ms. The 300 ms target is met warm only; the SDK prewarm step in `pay-guard.md` section 2a moves the payment-time call into the warm series.

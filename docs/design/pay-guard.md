@@ -66,7 +66,7 @@ Today wired on `GET /api/v1/resources/{resourceId}/decision` (`src/app/api/v1/re
 
 | Capability | Existing symbols |
 | --- | --- |
-| Policy ceiling / L1 floor / require allow | `PayPolicy`, `evaluateMoneyGate`, `requireVet402Allow`, `DEFAULT_MAX_PER_TX_USD` |
+| Policy ceiling / L1 floor / require allow | `PayPolicy` (its `requireVet402Allow` field), `DEFAULT_MAX_PER_TX_USD`; the internal gate `evaluateMoneyGate` is not exported today and would be exported or moved for guard use |
 | Refuse reason vocabulary | `PAY_REFUSE_REASONS`, `PayRefuseReason` |
 | Terms vs 402 | `matchDeclaredPayTerms`, `normalizeAccept` (`terms-match.ts`) |
 | Server policy parity | reads `decision.caller_policy` (migrate to presign `guard.reason_codes` for E1) |
@@ -131,7 +131,7 @@ These rules override any reading of SPEC §4.6 that would enable fail-open by de
 1. **Server promise: fail-closed.** E1 never returns a seller value older than 60 seconds. When the cached value is past 60 seconds, the server reads the seller again in the request. When that read also fails, the answer is HTTP 503 with no `guard` object. This matches `getCheckSellerCached` today (`src/lib/api/check-seller-cache.ts`: a stale value is not returned and a failed read is not cached).
 2. **SDK fail-open is separate from the server promise and is off by default.** The amount-based fail-open in SPEC §4.6 (`fail_open_max_usd`) is a buyer-side SDK option. The SDK default is no fail-open: the SPEC value 0.01 is not enabled by default. It applies only when the caller sets it explicitly, for example `withPayGuard(client, { failOpen: { maxUsd: 0.01 } })` (name final in the A1 PR).
 3. **Every fail-open payment is recorded.** A payment that the SDK let through under fail-open carries `fail_mode_applied: "open"` in the delivery receipt (E2, §4.5.1) and in the bundle receipt (Track B, §4.5.2). The field is required on both receipt kinds, so a receipt without it does not verify. Payments decided by a live E1 answer carry `fail_mode_applied: "closed"`.
-4. **Latency is reported in two series.** The cold series is the first call with nothing cached (cache miss). The warm series is a repeat call within the 60-second cache. Public values in `https://vet402.com/data/presign-latency.json` (measured 2026-11-27T23:03Z and 2026-11-28T00:08Z, retrieved 2026-11-28): warm same-seller server p50 23.7 ms, p99 117.6 ms (`target_met: true` against 300 ms); first check of 99 distinct sellers server p50 574.4 ms, p99 2533.9 ms. Documents and UI copy quote the two series separately and never present the warm p99 as the first-call time.
+4. **Latency is reported in two series.** The cold series is the first call for a seller (cache miss). A value another caller left in the last 60 seconds can still make a first call faster. The warm series is a repeat call within the 60-second cache. Public values in `https://vet402.com/data/presign-latency.json` (measured 2026-11-27T23:03Z and 2026-11-28T00:08Z, retrieved 2026-11-28): warm same-seller server p50 23.7 ms, p99 117.6 ms (`target_met: true` against 300 ms); first check of 99 distinct sellers server p50 574.4 ms, p99 2533.9 ms. Documents and UI copy quote the two series separately and never present the warm p99 as the first-call time.
 5. **Recommended SDK step: warm first.** The SDK documents one presign call when the page opens or when the job starts (for example `guard.prewarm(url)`), so the payment-time call lands in the warm series. The prewarm call does not sign or pay.
 
 ---
@@ -222,7 +222,7 @@ guardedFetch(fetch, { walletAdapter, policy, intentKey?, idempotencyStore?, onAs
 createIdempotencyStore('memory' | 'localStorage' | custom)
 ```
 
-Celo constants: **`CHAIN_PROFILES.celo`** (`packages/sdk/src/chain-profile.ts`), not hard-coded in guard logic (§4.7).
+Celo constants: `CHAIN_PROFILES` in `packages/sdk/src/chain-profile.ts` has only `base` and `base-sepolia` today. A1 adds a `celo` profile (`eip155:42220`, assets and decimals per SPEC §4.7), and guard logic reads it from there instead of hard-coding (§4.7).
 
 ---
 
@@ -256,7 +256,7 @@ Schema: align with `docs/kpi-definitions.md` and monthly freeze (v3 I0). C6 excl
 | Server never returns a value older than 60 s | `check-seller-cache` tests: stale value plus failed re-read gives 503 |
 | Cold vs warm latency reported apart | `presign-latency.json` keeps `cold_start_*` and `distinct_sellers` apart from `server_ms` |
 | Idempotency | Sepolia integration (A1+); store unit tests |
-| Decimal assets USDC/USDm | `terms-match` / Celo lane tests (`tests/x402-celo-lane.test.ts`) |
+| Decimal assets USDC/USDm | `terms-match` / Celo lane tests (`tests/x402-celo-lane.test.ts`) plus a new `CHAIN_PROFILES.celo` test pinning network, asset addresses and decimals |
 | C1 no undelivered names in fixtures | `rg` gate in CI (existing pattern) |
 | G6 no MiniPay false claims | `rg` gate on docs/UI strings |
 | E2 verify / tamper | `verdict-receipt` pattern + delivery message tests |
