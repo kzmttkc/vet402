@@ -1,4 +1,4 @@
-# Pay Guard — A0 findings (Track A)
+# Pay Guard: A0 findings (Track A)
 
 `retrievedAt`: 2026-11-28 08:30 JST (2026-11-27 23:30 UTC)
 
@@ -6,7 +6,7 @@ Sources: production HTTP probes, public CSV/RPC, npm pack (no install into this 
 
 ---
 
-## Q9 / N7 — CORS on E1 and payment / receipt routes
+## Q9 / N7: CORS on E1 and payment / receipt routes
 
 ### Code (this repo)
 
@@ -34,7 +34,7 @@ Command: `curl -sIL -X OPTIONS https://vet402.com/api/v1/check/presign` (same fo
 
 ---
 
-## Q6 — Celo L1 payment gas (G3 input)
+## Q6: Celo L1 payment gas (G3 input)
 
 ### Inputs
 
@@ -64,13 +64,13 @@ Cost per tx: `gasUsed × effectiveGasPrice` (wei → CELO, divide by 1e18).
 | Median ≈ USD | **~$0.00105** |
 | p90 ≈ USD | **~$0.00106** |
 
-【推測】327 missing receipts may include non-EVM-style settlement refs, pruned history, or rate/noise; follow-up can re-query failed hashes slowly. Payment gas here is **payer-side** L1; Celo x402 facilitator gas sponsorship for buyers is separate.
+(Estimate) 327 missing receipts may include non-EVM-style settlement refs, pruned history, or rate/noise; follow-up can re-query failed hashes slowly. Payment gas here is **payer-side** L1; Celo x402 facilitator gas sponsorship for buyers is separate.
 
 G3 remains: do not price vet402 Celo x402 at 0.005 USDC until margin KPI confirms; this sample suggests chain gas is small vs 0.005 USDC but does not include facilitator fee.
 
 ---
 
-## Q2 — Privy `useX402Fetch` / `createX402Client` (npm types only)
+## Q2: Privy `useX402Fetch` / `createX402Client` (npm types only)
 
 Package: `@privy-io/react-auth@3.52.1` (`npm pack` into `/tmp`, read `dist/dts/index.d.ts`). **No repo install.**
 
@@ -78,7 +78,7 @@ Package: `@privy-io/react-auth@3.52.1` (`npm pack` into `/tmp`, read `dist/dts/i
 | --- | --- |
 | `createX402Client` | **Not exported** in this package’s public `.d.ts` (grep: no symbol). |
 | `useX402Fetch` | **Present.** Returns `{ wrapFetchWithPayment }` only (hook does not accept chain config). |
-| Celo `eip155:42220` | **Not named** in `useX402Fetch` types. `wrapFetchWithPayment` accepts `walletAddress`, `fetch`, optional `maxValue`, `allowedAssets`, `paymentRequirementsSelector`, `signatureOptions`. Network choice is via **`paymentRequirementsSelector(paymentRequirements, network?, scheme?)`** where `network` is `string \| string[]` — caller can pass `eip155:42220` when selecting among accepts. |
+| Celo `eip155:42220` | **Not named** in `useX402Fetch` types. `wrapFetchWithPayment` accepts `walletAddress`, `fetch`, optional `maxValue`, `allowedAssets`, `paymentRequirementsSelector`, `signatureOptions`. Network choice is via **`paymentRequirementsSelector(paymentRequirements, network?, scheme?)`** where `network` is `string \| string[]` - caller can pass `eip155:42220` when selecting among accepts. |
 | External pre-pay hook | **No** `onBeforePaymentCreation` in Privy types. Only extension points seen: `paymentRequirementsSelector`, `allowedAssets`, `signatureOptions`. |
 | Deprecation note in types | `config.svmConfig` marked deprecated; comment says payments are signed with EVM wallets. |
 
@@ -86,7 +86,7 @@ Package: `@privy-io/react-auth@3.52.1` (`npm pack` into `/tmp`, read `dist/dts/i
 
 ---
 
-## Q10 — buy gateway routes vs vet402 catalog
+## Q10: buy gateway routes vs vet402 catalog
 
 Public data (2026-11-28):
 
@@ -97,10 +97,10 @@ Public data (2026-11-28):
 
 Bulk `GET /api/v1/resolve?url=…` against all 150 buy URLs hit **rate limit** before completion; no per-seller names are recorded here (C1).
 
-**Conservative statement:** vet402’s catalog intentionally contains **7** operator-synced gateway routes today; buy’s public catalog lists **150** paid capabilities — **most are not** in vet402’s index yet (consistent with SPEC §1.4: Celo catalog 17 endpoints, buy representative route often `l1_not_attempted`). Full pairwise match needs a slow resolve pass or DB read after 12/8 expansion (G4).
+**Conservative statement:** vet402’s catalog intentionally contains **7** operator-synced gateway routes today; buy’s public catalog lists **150** paid capabilities - **most are not** in vet402’s index yet (consistent with SPEC §1.4: Celo catalog 17 endpoints, buy representative route often `l1_not_attempted`). Full pairwise match needs a slow resolve pass or DB read after 12/8 expansion (G4).
 
 ---
 
 ## Presign p99 (A0 note)
 
-Public: `https://vet402.com/data/presign-latency.json` — `target_met: false`, server p99 **410.6 ms** vs target 300 ms (SPEC §4.6 / §12). Root-cause work is Track A1; A0 only records the gap.
+Public: `https://vet402.com/data/presign-latency.json` (retrieved 2026-11-28). Warm, same seller within the 60-second cache (measured 2026-11-27T23:03Z): server p50 23.7 ms, p99 117.6 ms, `target_met: true` against 300 ms. First check of 99 distinct sellers, nothing cached (measured 2026-11-28T00:08Z): server p50 574.4 ms, p99 2533.9 ms. The 300 ms target is met warm only; the SDK prewarm step in `pay-guard.md` section 2a moves the payment-time call into the warm series.
