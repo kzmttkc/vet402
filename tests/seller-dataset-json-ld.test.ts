@@ -77,7 +77,7 @@ test("seller purchase record Dataset has required fields and public distribution
   assert.ok(doc.description.includes("shop.example"));
   assert.equal(doc.url, `${SITE_URL}/sellers/shop.example`);
   assert.equal(doc.license, DATA_LICENSE_URL);
-  assert.equal(doc.dateModified, detail.fetchedAt);
+  assert.equal(doc.dateModified, "2026-11-16T12:00:00Z", "newest attempt shown on the page, not the read time");
   assert.equal(doc.creator["@id"], ORGANIZATION_ID);
   assert.equal(doc.publisher["@id"], ORGANIZATION_ID);
   assert.ok(doc.distribution.length >= 2);

@@ -158,7 +158,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
   const pageDescription = sellerDescription(detail.host, head.chain);
   const structuredData = indexable
     ? [
-        sellerItemPageJsonLd(detail, path, pageName, pageDescription),
+        sellerItemPageJsonLd(detail, path, pageName, pageDescription, head.at),
         sellerPurchaseRecordDatasetJsonLd(detail),
         breadcrumb,
       ]

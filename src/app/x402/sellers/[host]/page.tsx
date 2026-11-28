@@ -86,7 +86,7 @@ export function ReputationSellerArticle({
   const description = `vet402 purchase records for ${host}: each listing vet402 bought with a real x402 payment where the latest purchase delivered a response, with delivery age on each row.`;
   const structuredData = indexable
     ? [
-        sellerItemPageJsonLd(detail, path, headline, description),
+        sellerItemPageJsonLd(detail, path, headline, description, detail.fetchedAt),
         sellerReputationDatasetJsonLd(detail),
         breadcrumb,
       ]

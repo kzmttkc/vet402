@@ -184,8 +184,8 @@ test("売り手頁の題と dateModified は sellerHeadline の時刻", () => {
   const jsonLd = readFileSync("src/lib/sellers/seller-json-ld.ts", "utf8");
   assert.match(src, /sellerHeadline\(detailForTitle\)/);
   assert.match(src, /sellerHeadline\(detail\)/);
-  assert.match(jsonLd, /dateModified: detail\.fetchedAt/);
-  assert.match(src, /sellerItemPageJsonLd\(detail/);
+  assert.match(jsonLd, /dateModified: head\.at/);
+  assert.match(src, /sellerItemPageJsonLd\(detail, path, pageName, pageDescription, head\.at\)/);
   assert.doesNotMatch(src, /dateModified: detail\.summary\.lastAttemptAt/);
 });
 

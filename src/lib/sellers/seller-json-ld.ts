@@ -74,6 +74,7 @@ export function sellerItemPageJsonLd(
   path: string,
   name: string,
   description: string,
+  dateModified: string | null,
 ) {
   return {
     "@context": "https://schema.org",
@@ -81,7 +82,7 @@ export function sellerItemPageJsonLd(
     name,
     description,
     url: `${SITE_URL}${path}`,
-    dateModified: detail.fetchedAt,
+    ...(dateModified ? { dateModified } : {}),
     isBasedOn: `${SITE_URL}/observatory/methodology`,
     publisher: publisherOrg(),
     about: { "@type": "Thing" as const, name: detail.host, identifier: detail.host },
@@ -100,7 +101,8 @@ export function sellerPurchaseRecordDatasetJsonLd(detail: SellerDetail) {
     description,
     path,
     citeUrl: `${SITE_URL}${path}`,
-    dateModified: detail.fetchedAt,
+    // Data time: the newest purchase attempt the page shows (sellerHeadline), not the read time.
+    ...(head.at ? { dateModified: head.at } : {}),
     retrievedAt: detail.fetchedAt,
     measurementTechnique: SELLER_RECORD_TECHNIQUE,
     variableMeasured: sellerRecordVariableMeasured(detail),
