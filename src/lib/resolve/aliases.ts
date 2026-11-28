@@ -14,6 +14,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import type { getDb } from "@/lib/db/client";
+import { timedDbExecute } from "@/lib/db/miss-timing";
 import { isMissingSchemaError } from "@/lib/db/pg-errors";
 import { x402ResourceAliases } from "@/lib/db/schema";
 import { resourceId as toResourceId, resourceIdAliases, SHA256_HEX_RE } from "@/lib/ids/canonical";
@@ -26,7 +27,7 @@ export async function canonicalIdForAlias(db: Db, aliasId: string): Promise<stri
   if (!SHA256_HEX_RE.test(aliasId)) return null;
   try {
     const rows = rowsOf<{ resource_id: string }>(
-      await db.execute(sql`SELECT resource_id FROM x402_resource_aliases WHERE alias_id = ${aliasId} LIMIT 1`),
+      await timedDbExecute(() => db.execute(sql`SELECT resource_id FROM x402_resource_aliases WHERE alias_id = ${aliasId} LIMIT 1`)),
     );
     return rows[0]?.resource_id ?? null;
   } catch (error) {

@@ -2,10 +2,24 @@
 
 export type CheckSellerMissTimingMs = {
   db_resolve?: number;
+  /** resolve: ドライバ・プールの用意（ms）。 */
+  db_resolve_conn?: number;
+  /** resolve: 問い合わせの合計（ms）。 */
+  db_resolve_q?: number;
+  /** resolve: 問い合わせの本数（dur に載せる）。 */
+  db_resolve_qn?: number;
+  /** resolve: 行の選び分けなどアプリ側（ms）。 */
+  db_resolve_app?: number;
+  /** resolve: このプロセスで resolve 計測が初めて走った要求なら 1、それ以外 0。 */
+  db_resolve_cold?: number;
   /** loadSellerFacts（判定の売り手事実の DB 読み）。 */
   db_outcomes?: number;
   /** decide の残り（registry・refunds の付与など）。 */
   db_decide?: number;
+  db_decide_conn?: number;
+  db_decide_q?: number;
+  db_decide_qn?: number;
+  db_decide_app?: number;
   /** 応答用の最新 L1 数件。 */
   db_l1_recent?: number;
   /** verified_terms が無いときの facts.payees 取得（check と同じ 1 回から取れれば 0）。 */
@@ -49,8 +63,17 @@ export function formatPresignCheckTiming(
   if (miss) {
     for (const line of [
       durLine("db_resolve", miss.db_resolve),
+      durLine("db_resolve_conn", miss.db_resolve_conn),
+      durLine("db_resolve_q", miss.db_resolve_q),
+      durLine("db_resolve_qn", miss.db_resolve_qn),
+      durLine("db_resolve_app", miss.db_resolve_app),
+      durLine("db_resolve_cold", miss.db_resolve_cold),
       durLine("db_outcomes", miss.db_outcomes),
       durLine("db_decide", miss.db_decide),
+      durLine("db_decide_conn", miss.db_decide_conn),
+      durLine("db_decide_q", miss.db_decide_q),
+      durLine("db_decide_qn", miss.db_decide_qn),
+      durLine("db_decide_app", miss.db_decide_app),
       durLine("db_l1_recent", miss.db_l1_recent),
       durLine("terms_payees", miss.terms_payees),
     ]) {

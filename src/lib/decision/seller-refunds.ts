@@ -4,6 +4,7 @@
 // verdict / score の変更は 2026-11-30 のレビューまで待つ（seller_refunded_failures は effect: none）。
 // ============================================================
 import { getDb } from "@/lib/db/client";
+import { timedDbExecute } from "@/lib/db/miss-timing";
 import { isNoDataCacheError } from "@/lib/observatory/state-reads";
 import { sellerHostOf } from "@/lib/sellers/host";
 import { getSellerRefundStatsCached } from "@/lib/sellers/cached";
@@ -82,7 +83,7 @@ async function readRefundStatsCached(host: string): Promise<RefundStats | null> 
     if (isNoDataCacheError(err)) {
       const db = getDb();
       if (!db) return null;
-      return readSellerRefundStats(db, { host });
+      return timedDbExecute(() => readSellerRefundStats(db, { host })) as Promise<RefundStats | null>;
     }
     throw err;
   }

@@ -16,6 +16,7 @@
 // ============================================================
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { runDbMissTimingPhase, sliceWithApp, timedDbExecute } from "@/lib/db/miss-timing";
 import { logAndSwallowSafe } from "@/lib/util/log-safe";
 import { isRegistryWritesEnabled } from "@/lib/chain/registry";
 import type { LruCache } from "@/lib/util/lru-cache";
@@ -292,10 +293,12 @@ async function registryStatusFor(observatoryId: string): Promise<RegistryStatus>
   const db = getDb();
   if (!db) return { status: "pending", tx_hash: null };
   const rows = rowsOf<{ tx_hash: string | null; status: string }>(
-    await db.execute(sql`
+    await timedDbExecute(() =>
+      db.execute(sql`
       SELECT tx_hash, status FROM registry_writes WHERE endpoint_id = ${observatoryId}::uuid
       ORDER BY created_at DESC LIMIT 1
     `),
+    ),
   );
   const r = rows[0];
   if (!r) return { status: "pending", tx_hash: null };
@@ -411,62 +414,76 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   if (req.missTiming) req.missTiming.db_outcomes = performance.now() - tOutcomes;
   if (!loaded) return null;
   const subject = subjectOf(loaded);
-  const tDecideRest = req.missTiming ? performance.now() : 0;
-  const refundsP = req.role === "payer" ? prefetchSellerRefundStats(loaded.endpoint.canonicalUrl) : null;
 
-  let result: DecisionResult;
-  if (req.role === "payer") {
-    let score: { trustScore: number; recommendation: Recommendation } | null = null;
-    const payTo = loaded.endpoint.payTo;
-    if (!req.skipScore && payTo && /^0x[0-9a-fA-F]{40}$/.test(payTo)) {
-      try {
-        const { scorePayeeWallet } = await import("@/lib/scoring/payee-engine");
-        const s = await scorePayeeWallet(payTo);
-        score = { trustScore: s.score, recommendation: s.recommendation };
-      } catch {
-        score = null; // 移行用の併記が取れなくても判定は落とさない
+  const finishDecide = async (): Promise<DecisionResult> => {
+    const refundsP = req.role === "payer" ? prefetchSellerRefundStats(loaded.endpoint.canonicalUrl) : null;
+    if (req.role === "payer") {
+      let score: { trustScore: number; recommendation: Recommendation } | null = null;
+      const payTo = loaded.endpoint.payTo;
+      if (!req.skipScore && payTo && /^0x[0-9a-fA-F]{40}$/.test(payTo)) {
+        try {
+          const { scorePayeeWallet } = await import("@/lib/scoring/payee-engine");
+          const s = await scorePayeeWallet(payTo);
+          score = { trustScore: s.score, recommendation: s.recommendation };
+        } catch {
+          score = null; // 移行用の併記が取れなくても判定は落とさない
+        }
       }
+      const registry = await registryOf();
+      return attachSellerRefundsToDecision(
+        buildDecision({
+          role: "payer",
+          subject,
+          spendingHalted: halt.halted,
+          facts: loaded.facts,
+          options: {
+            callerDialect: req.callerDialect,
+            allowWithoutL1: req.allowWithoutL1,
+            operatorBlacklist: req.operatorBlacklist,
+            // 2026-09-29: /sellers と同じ規則で、売り手の不履行として数えない試行（vet402 の側・保留・課金なし）。
+            l1NotCounted: loaded.l1NotCounted,
+            // 2026-09-29 再監査: l0 が unverified のとき、何が測れなかったかの下位コードを添える（判定は変えない）。
+            l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
+            // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
+            l1Timeline: loaded.l1Timeline,
+            l2ConformNoRequiredKeys: loaded.l2ConformNoRequiredKeys,
+          },
+          score,
+          registry,
+          notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
+          verifiedTerms: loaded.verifiedTerms ?? null,
+          verifiedPayToByNetwork: loaded.verifiedPayToByNetwork ?? [],
+          l2ContentType: loaded.l2ContentType,
+          l2PurchaseId: loaded.l2PurchaseId,
+        }),
+        loaded.endpoint.canonicalUrl,
+        undefined,
+        refundsP,
+      );
     }
-    const registry = await registryOf();
-    result = await attachSellerRefundsToDecision(
-      buildDecision({
-        role: "payer",
-        subject,
-        spendingHalted: halt.halted,
-        facts: loaded.facts,
-        options: {
-          callerDialect: req.callerDialect,
-          allowWithoutL1: req.allowWithoutL1,
-          operatorBlacklist: req.operatorBlacklist,
-          // 2026-09-29: /sellers と同じ規則で、売り手の不履行として数えない試行（vet402 の側・保留・課金なし）。
-          l1NotCounted: loaded.l1NotCounted,
-          // 2026-09-29 再監査: l0 が unverified のとき、何が測れなかったかの下位コードを添える（判定は変えない）。
-          l0UnverifiedCause: loaded.l0UnverifiedCause ?? null,
-          // 2026-09-29.2: 支払い済み未配達・最新の試行・鮮度の材料。渡さないと facts から保守的に作る（本番は必ず渡す）。
-          l1Timeline: loaded.l1Timeline,
-          l2ConformNoRequiredKeys: loaded.l2ConformNoRequiredKeys,
-        },
-        score,
-        registry,
-        notAttemptedReason: notAttemptedReasonOf(halt.halted, loaded.lastAttempt.status),
-        verifiedTerms: loaded.verifiedTerms ?? null,
-        verifiedPayToByNetwork: loaded.verifiedPayToByNetwork ?? [],
-        l2ContentType: loaded.l2ContentType,
-        l2PurchaseId: loaded.l2PurchaseId,
-      }),
-      loaded.endpoint.canonicalUrl,
-      undefined,
-      refundsP,
-    );
-  } else {
     const facts = await loadBuyerFacts(req.payerId);
     const registry = await registryOf();
-    result = await attachSellerRefundsToDecision(
+    return attachSellerRefundsToDecision(
       buildDecision({ role: "payee", subject, payer: req.payerId, facts, operatorBlacklist: req.operatorBlacklist, registry, spendingHalted: halt.halted }),
       loaded.endpoint.canonicalUrl,
     );
+  };
+
+  let result: DecisionResult;
+  if (req.missTiming) {
+    const tDecideRest = performance.now();
+    const { value, slice } = await runDbMissTimingPhase("decide", finishDecide);
+    result = value;
+    const wall = performance.now() - tDecideRest;
+    req.missTiming.db_decide = wall;
+    const s = sliceWithApp(slice, wall);
+    req.missTiming.db_decide_conn = s.conn;
+    req.missTiming.db_decide_q = s.q;
+    req.missTiming.db_decide_qn = s.qn;
+    req.missTiming.db_decide_app = s.app;
+  } else {
+    result = await finishDecide();
   }
-  if (req.missTiming) req.missTiming.db_decide = performance.now() - tDecideRest;
   cache.set(key, { result, expiresAt: Date.now() + DECISION_CACHE_TTL_MS });
   return result;
 }

@@ -8,6 +8,14 @@ import * as schema from "./schema";
 type AppDatabase = NeonHttpDatabase<typeof schema> | PostgresJsDatabase<typeof schema>;
 
 let db: AppDatabase | null = null;
+/** getDb が drizzle / ドライバを新規に作った直後の ms。計測用で、1 回読み出すと 0 に戻る。 */
+let dbClientInitMs = 0;
+
+export function takeDbClientInitMs(): number {
+  const ms = dbClientInitMs;
+  dbClientInitMs = 0;
+  return ms;
+}
 
 /**
  * The HTTP driver speaks Neon's proxy protocol — it works ONLY against
@@ -101,6 +109,7 @@ export function getDb(): AppDatabase | null {
     const url = process.env.DATABASE_URL;
     const refusal = testRunDatabaseRefusal(url);
     if (refusal) throw new Error(`db: ${refusal}`);
+    const t0 = performance.now();
     if (isNeonDatabaseUrl(url)) {
       const sql = neon(url);
       db = drizzleNeon(sql, { schema });
@@ -108,6 +117,7 @@ export function getDb(): AppDatabase | null {
       const client = postgres(url, { max: 10 });
       db = drizzlePostgres(client, { schema });
     }
+    dbClientInitMs = performance.now() - t0;
   }
 
   return db;

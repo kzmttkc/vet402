@@ -13,6 +13,8 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { decide as decideFn } from "@/lib/decision/decide";
 import type { resolve as resolveFn, resolveForRoute as resolveForRouteFn } from "@/lib/resolve/lookup";
+import { takeResolveModuleCold } from "@/lib/resolve/lookup";
+import { runDbMissTimingPhase, sliceWithApp } from "@/lib/db/miss-timing";
 import { usageChainOf } from "@/lib/api/decision-usage";
 import { canonicalUrl } from "@/lib/ids/canonical";
 import type { SellerFacts } from "@/lib/decision/types";
@@ -243,15 +245,33 @@ export async function checkSeller(
   const method = input.method ? input.method.toUpperCase() : undefined;
   const miss = timing?.miss ?? (timing ? (timing.miss = {}) : undefined);
   let resolved: Awaited<ReturnType<typeof resolveFn>>;
-  const tResolve = miss ? performance.now() : 0;
-  if (deps.resolveForRoute) {
+  if (miss) {
+    const tResolve = performance.now();
+    miss.db_resolve_cold = takeResolveModuleCold();
+    const read = async () => {
+      if (deps.resolveForRoute) {
+        const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
+        if (bundle.usageNetwork) deps.captureUsageNetwork?.(bundle.usageNetwork);
+        return bundle.result;
+      }
+      return deps.resolve(input.url, method ? { method } : {});
+    };
+    const { value, slice } = await runDbMissTimingPhase("resolve", read);
+    resolved = value;
+    const wall = performance.now() - tResolve;
+    miss.db_resolve = wall;
+    const s = sliceWithApp(slice, wall);
+    miss.db_resolve_conn = s.conn;
+    miss.db_resolve_q = s.q;
+    miss.db_resolve_qn = s.qn;
+    miss.db_resolve_app = s.app;
+  } else if (deps.resolveForRoute) {
     const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
     resolved = bundle.result;
     if (bundle.usageNetwork) deps.captureUsageNetwork?.(bundle.usageNetwork);
   } else {
     resolved = await deps.resolve(input.url, method ? { method } : {});
   }
-  if (miss) miss.db_resolve = performance.now() - tResolve;
   const resource = resolved.resource;
   const decideReq = {
     role: "payer" as const,
