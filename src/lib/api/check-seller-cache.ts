@@ -103,7 +103,8 @@ const prefetchedByStoreKey = new Map<string, CheckSellerCachedPayload>();
 const prefetchInflight = new Map<string, Promise<void>>();
 /** 裏読みの本読み（checkSeller ＋ 載せる）だけが終わる約束。unstable_cache の温め直しは含めない（表は温めを待たない）。 */
 const prefetchReady = new Map<string, Promise<void>>();
-const freshInflight = new Map<string, Promise<{ out: CheckSellerOutput; usageNetwork?: string }>>();
+/** 同じ鍵の読み直し。startedAt はその読みを始めた時刻（合流した側もこの時刻で 60 秒を数える）。 */
+const freshInflight = new Map<string, { read: Promise<{ out: CheckSellerOutput; usageNetwork?: string }>; startedAt: string }>();
 
 /** 裏読みの持ち数の上限。超えたら古い順に捨てる（URL ごとに増え続けない）。 */
 const PREFETCH_MAX_ENTRIES = 256;
@@ -172,6 +173,8 @@ type CoalescedFresh = {
   fresh: Awaited<ReturnType<typeof readCheckSellerFresh>>;
   /** 他の呼び手（または unstable_cache の裏再検証）が載せた同時読みに合流した。 */
   joined: boolean;
+  /** 実際に読みを始めた時刻（ISO8601 UTC）。合流した時は先に始めた読みの時刻。 */
+  startedAt: string;
 };
 
 async function coalescedFreshRead(
@@ -181,7 +184,7 @@ async function coalescedFreshRead(
   timing?: CheckSellerCacheTiming,
 ): Promise<CoalescedFresh> {
   const pending = freshInflight.get(inflightKey);
-  if (pending) return { fresh: await pending, joined: true };
+  if (pending) return { fresh: await pending.read, joined: true, startedAt: pending.startedAt };
   type Fresh = Awaited<ReturnType<typeof readCheckSellerFresh>>;
   let release!: (value: Fresh) => void;
   let fail!: (error: unknown) => void;
@@ -189,7 +192,9 @@ async function coalescedFreshRead(
     release = resolve;
     fail = reject;
   });
-  freshInflight.set(inflightKey, slot);
+  // 読み始めの時刻で数える。合流した側に後の時刻を付けると、読み始めから 60 秒を超えた値が fresh に見える（2026-11-28 点検）。
+  const startedAt = new Date().toISOString();
+  freshInflight.set(inflightKey, { read: slot, startedAt });
   void readCheckSellerFresh(deps, input, timing).then(
     (value) => {
       freshInflight.delete(inflightKey);
@@ -200,7 +205,7 @@ async function coalescedFreshRead(
       fail(error);
     },
   );
-  return { fresh: await slot, joined: false };
+  return { fresh: await slot, joined: false, startedAt };
 }
 
 /** 同じ鍵の読み直しを1本にまとめ、diagnose_url はこの要求の URL から作り直す（他の呼び手の URL を返さない）。 */
@@ -239,9 +244,8 @@ function scheduleCheckSellerPrefetch(
   if (prefetchInflight.has(storeK)) return;
   const ready = (async () => {
     try {
-      const cacheReadStarted = new Date().toISOString();
-      const { fresh } = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK, undefined);
-      const payload = payloadFromFresh(fresh, cacheReadStarted);
+      const { fresh, startedAt } = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK, undefined);
+      const payload = payloadFromFresh(fresh, startedAt);
       if (isCheckSellerCachedReadFresh(payload.cacheReadAt)) {
         rememberPrefetched(storeK, payload);
       }
@@ -315,17 +319,16 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
     const storeK = storeKey(urlKey, methodKey);
     const read = cache(
       async (): Promise<CheckSellerCachedPayload> => {
-        // 読み始めの時刻で数える。読み終わりで数えると、読み取りにかかった分だけ 60 秒を超える。
-        const cacheReadAt = new Date().toISOString();
+        // 読み始めの時刻で数える（合流した時は先に始めた読みの時刻）。読み終わりや合流した時刻で数えると、その分だけ 60 秒を超える。
         // unstable_cache の裏再検証と表の読み直しを同じ freshInflight に載せ、二重読みを防ぐ（2026-11-28 依頼 Z）。
         const joined = freshInflight.has(storeK);
-        const { fresh } = await coalescedFreshRead(
+        const { fresh, startedAt } = await coalescedFreshRead(
           deps,
           { url: urlKey, method: methodKey || undefined },
           storeK,
           joined ? undefined : timing,
         );
-        return payloadFromFresh(fresh, cacheReadAt);
+        return payloadFromFresh(fresh, startedAt);
       },
       ["check-seller:v2", urlKey, methodKey],
       { revalidate: CHECK_SELLER_CACHE_SECONDS, tags: ["check-seller"] },

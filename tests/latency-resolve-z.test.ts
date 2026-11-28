@@ -5,6 +5,7 @@ import { __setDbForTests } from "@/lib/db/client";
 import {
   __resetCheckSellerLatencyHelpersForTests,
   __setCheckSellerCacheForTests,
+  isCheckSellerCachedReadFresh,
   makeGetCheckSellerCached,
   type CheckSellerCacheTiming,
 } from "@/lib/api/check-seller-cache";
@@ -294,4 +295,43 @@ test("resourceHitDefaultMethods: 直す前（GET/POST 並列＋GET 優先）と�
       assert.equal(fakeAfter.executes, 1, `world ${name}: GET が完全一致で当たれば問い合わせは 1 本`);
     }
   }
+});
+
+// 点検の指摘（2026-11-28）: 走っている読みに合流した callback が「合流した時刻」を cacheReadAt に付けると、
+// 読み始めから 60 秒を超えた値が fresh に見える。合流した側も先に始めた読みの時刻で数える。
+test("callback joining an in-flight read keeps the read start as cacheReadAt (no 60 s overrun)", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let firstReadStartedMs = 0;
+  let reads = 0;
+  const deps = {
+    ...countingDeps("2026-11-28T12:00:00.000Z"),
+    resolve: (async () => {
+      reads++;
+      if (!firstReadStartedMs) firstReadStartedMs = Date.now();
+      await gate;
+      return { resource: null, endpoints: [] };
+    }) as unknown as McpDeps["resolve"],
+  } as unknown as McpDeps;
+  let calls = 0;
+  const box: { stored: { cacheReadAt: string } | null } = { stored: null };
+  const cache = ((fn: () => Promise<{ cacheReadAt: string }>) => async () => {
+    calls++;
+    if (calls === 1) return { out: {}, cacheReadAt: "2026-01-01T00:00:00.000Z" };
+    box.stored = await fn();
+    return box.stored;
+  }) as unknown as Parameters<typeof makeGetCheckSellerCached>[0];
+  const read = makeGetCheckSellerCached(cache);
+  const a = read(deps, { url: URL_A });
+  await new Promise((r) => setTimeout(r, 300));
+  const b = read(deps, { url: URL_A });
+  await new Promise((r) => setTimeout(r, 10));
+  release();
+  await Promise.all([a, b]);
+  assert.equal(reads, 1, "the second request joins the first read");
+  const stored = box.stored;
+  assert.ok(stored, "the callback stored a payload");
+  const skew = Date.parse(stored.cacheReadAt) - firstReadStartedMs;
+  assert.ok(skew <= 5, `stored cacheReadAt must not be later than the read start (skew ${skew} ms)`);
+  assert.equal(isCheckSellerCachedReadFresh(stored.cacheReadAt, firstReadStartedMs + 60_100), false);
 });
