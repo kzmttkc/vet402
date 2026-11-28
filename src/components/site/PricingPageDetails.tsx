@@ -19,15 +19,15 @@ export function PricingPageDetails() {
         </h2>
         <p className="doc-p">
           The quota counts authenticated score API calls: one unit per <code className="text-brand-deep">GET /api/v1/score</code>, one
-          unit per keyed <code className="text-brand-deep">GET /api/v1/decision</code>, and{" "}
+          unit per <code className="text-brand-deep">GET /api/v1/resources/{"{resource_id}"}/decision</code> sent with a key, and{" "}
           <code className="text-brand-deep">N</code> units for{" "}
           <code className="text-brand-deep">POST /api/v1/scores/batch</code> with <code className="text-brand-deep">N</code> targets.
           One quota pool covers the account and is shared across its API keys. The counter resets at 00:00 UTC on the first day of each calendar
           month; unused units do not roll over.
         </p>
         <p className="doc-p">
-          Score history (<code className="text-brand-deep">GET /api/v1/agents/…/history</code> and related routes) requires Pro or
-          Scale; Free receives <code className="text-brand-deep">403</code> on those paths.
+          Score history (<code className="text-brand-deep">GET /api/v1/agents/{"{agent_id}"}/history</code>) requires Pro or
+          Scale; Free receives <code className="text-brand-deep">403</code> on that path.
         </p>
       </section>
 
@@ -37,11 +37,12 @@ export function PricingPageDetails() {
         </h2>
         <p className="doc-p">
           Seller checks at <code className="text-brand-deep">GET /api/v1/check</code> need no API key and do not spend the monthly
-          score quota. Keyless reads of <code className="text-brand-deep">/api/v1/decision</code>,{" "}
-          <code className="text-brand-deep">/api/v1/resolve</code>, and related public routes also do not spend that quota. Each
-          such route has its own IP bucket (for example, while keyless reads are available,{" "}
-          <code className="text-brand-deep">/decision</code> allows {keylessDecisionPerMinute()} requests a minute per IP and{" "}
-          <code className="text-brand-deep">/resolve</code> allows {keylessResolvePerMinute()}).
+          score quota. Requests without a key to{" "}
+          <code className="text-brand-deep">/api/v1/resources/{"{resource_id}"}/decision</code> and{" "}
+          <code className="text-brand-deep">/api/v1/resolve</code> also do not spend that quota; they are limited per IP instead
+          (while keyless reads are available, <code className="text-brand-deep">/decision</code> allows{" "}
+          {keylessDecisionPerMinute()} requests a minute per IP and <code className="text-brand-deep">/resolve</code> allows{" "}
+          {keylessResolvePerMinute()}).
         </p>
       </section>
 
@@ -50,7 +51,7 @@ export function PricingPageDetails() {
           Per-key limits (today)
         </h2>
         <p className="doc-p">
-          Free, Pro, and Scale share the same per-key caps until a release raises them for a paid tier. The API enforces these numbers.
+          Free, Pro, and Scale share the same per-key caps today. The API enforces these numbers.
         </p>
         <ul className="list-disc space-y-1 pl-5 text-brand-deep">
           <li>Webhook endpoints: {MAX_WEBHOOKS_PER_KEY} per key</li>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BILLING_PLANS } from "@/lib/billing/plans";
 import { dashboardFetch } from "@/lib/dashboard/client";
 import { dashboardErrorMessage } from "@/lib/dashboard/errors";
 import { buttonClass } from "@/components/ui/Button";
@@ -101,7 +102,7 @@ export default function DashboardBillingPage() {
       <div>
         <h2 className="dash-title">Billing</h2>
         <p className="dash-lede">
-          Quota is shared across every key on this account. Free is 1,000 lookups a month.
+          Quota is shared across every key on this account. Free is {BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} lookups a month.
           Upgrading agrees to the{" "}
           <a className="underline" href="/legal/terms#paid-subscriptions">
             Terms of Service

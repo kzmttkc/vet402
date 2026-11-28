@@ -16,6 +16,7 @@ import {
   syncTimesText,
 } from "@/lib/observatory/listing-sources";
 import { DECLARED_BODY_MAX_BYTES } from "@/lib/observatory/declared-input-rules";
+import { BILLING_PLANS } from "@/lib/billing/plans";
 import {
   EIP3009_CHAINS_TEXT,
   PINNED_ASSETS_TEXT,
@@ -32,6 +33,7 @@ const BAZAAR = listingSource("cdp_bazaar");
 const MPP = listingSource("mpp_directory");
 const CIRCLE = listingSource("circle_discovery");
 const BLOCKY402 = listingSource("blocky402_discovery");
+const FREE_SCORE_LOOKUPS = BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US");
 
 export const FAQS: FaqItem[] = [
   {
@@ -97,12 +99,12 @@ export const FAQS: FaqItem[] = [
   {
     question: "Do I need an account?",
     answer:
-      "No. The observatory (catalog measurements) and the payee lookup are public. Seller checks need no key and do not count against the monthly quota. An API key is for score lookups on the score API: 1,000 a month on Free, then upgrade from Billing after you have a key.",
+      `No. The observatory (catalog measurements) and the payee lookup are public. Seller checks need no key and do not count against the monthly quota. An API key is for score lookups on the score API: ${FREE_SCORE_LOOKUPS} a month on Free, then upgrade from Billing after you have a key.`,
   },
   {
     question: "How much does it cost?",
     answer:
-      "Public pages are free. The score API is free for 1,000 lookups a month. Paid plans raise that quota; you upgrade from the dashboard once a key exists. See Access tiers on the homepage.",
+      `Public pages are free. The score API is free for ${FREE_SCORE_LOOKUPS} lookups a month. Paid plans raise that quota; you upgrade from the dashboard once a key exists. See Access tiers on the homepage.`,
   },
   {
     question: "I lost my API key. How do I get back in?",

@@ -195,8 +195,8 @@ curl "${SITE_URL}/api/v1/resources/baad6a17bfaf57b11c0c1d8cfb0b38d3d01f09736b7d8
             The buyer-side question.{" "}
             <Link href="/signup" className="doc-link">
               Get a key
-            </Link>{" "}
-            &mdash; the free tier is {BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} score lookups a month.
+            </Link>
+            . The free tier is {BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")} score lookups a month.
           </p>
           {/* 2026-08-12 FIX-4: 発行されるキーの形が docs のどこにも書いておらず、
               LP の MCP 例だけが `vk_...` という実在しない接頭辞を載せていた
@@ -666,7 +666,7 @@ app.use("/api/paid", createExpressGate({
               </tr>
             </thead>
             <tbody>
-              <tr><td className="text-brand-deep">Free</td><td className="num text-brand-deep">1,000</td></tr>
+              <tr><td className="text-brand-deep">Free</td><td className="num text-brand-deep">{BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US")}</td></tr>
               <tr><td className="text-brand-deep">Pro</td><td className="num text-brand-deep">50,000</td></tr>
               <tr><td className="text-brand-deep">Scale</td><td className="num text-brand-deep">500,000</td></tr>
             </tbody>
