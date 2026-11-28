@@ -130,13 +130,13 @@ afterEach(() => {
   __resetCheckSellerLatencyHelpersForTests();
 });
 
-test("presign miss: Server-Timing lists db_resolve and db_outcomes on coalesced path", async () => {
+test("presign miss: Server-Timing lists db_resolve and db_outcomes on stale refresh (fresh path)", async () => {
   __setCheckSellerCacheForTests(staleCoalesced);
   const d = depsFromOutput(baseOutput(true));
   const res = await handlePresign(post(CHALLENGE), d);
   assert.equal(res.status, 200);
   const timing = res.headers.get("server-timing") ?? "";
-  assert.match(timing, /cache;dur=[0-9.]+;desc="coalesced"/);
+  assert.match(timing, /cache;dur=[0-9.]+;desc="fresh"/);
   assert.match(timing, /db_resolve;dur=[0-9.]+/);
   assert.match(timing, /db_outcomes;dur=[0-9.]+/);
   assert.match(timing, /terms;dur=[0-9.]+, sign;dur=/);

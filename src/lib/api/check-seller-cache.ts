@@ -168,14 +168,20 @@ function finishFreshRead(deps: CheckSellerDeps, fresh: Awaited<ReturnType<typeof
   return fresh.out;
 }
 
+type CoalescedFresh = {
+  fresh: Awaited<ReturnType<typeof readCheckSellerFresh>>;
+  /** 他の呼び手（または unstable_cache の裏再検証）が載せた同時読みに合流した。 */
+  joined: boolean;
+};
+
 async function coalescedFreshRead(
   deps: CheckSellerDeps,
   input: { url: string; method?: string },
   inflightKey: string,
   timing?: CheckSellerCacheTiming,
-): Promise<Awaited<ReturnType<typeof readCheckSellerFresh>>> {
+): Promise<CoalescedFresh> {
   const pending = freshInflight.get(inflightKey);
-  if (pending) return pending;
+  if (pending) return { fresh: await pending, joined: true };
   type Fresh = Awaited<ReturnType<typeof readCheckSellerFresh>>;
   let release!: (value: Fresh) => void;
   let fail!: (error: unknown) => void;
@@ -194,7 +200,7 @@ async function coalescedFreshRead(
       fail(error);
     },
   );
-  return slot;
+  return { fresh: await slot, joined: false };
 }
 
 /** 同じ鍵の読み直しを1本にまとめ、diagnose_url はこの要求の URL から作り直す（他の呼び手の URL を返さない）。 */
@@ -205,8 +211,16 @@ async function coalescedForCaller(
   methodKey: string,
   storeK: string,
   timing?: CheckSellerCacheTiming,
+  cachePath: CheckSellerCachePath = "fresh",
 ): Promise<CheckSellerOutput> {
-  const fresh = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK, timing);
+  const joined = freshInflight.has(storeK);
+  const { fresh, joined: merged } = await coalescedFreshRead(
+    deps,
+    { url: urlKey, method: methodKey || undefined },
+    storeK,
+    joined ? undefined : timing,
+  );
+  markPath(timing, merged || joined ? "coalesced" : cachePath);
   return checkSellerForCaller(checkSellerForStore(finishFreshRead(deps, fresh)), callerUrl);
 }
 
@@ -226,7 +240,7 @@ function scheduleCheckSellerPrefetch(
   const ready = (async () => {
     try {
       const cacheReadStarted = new Date().toISOString();
-      const fresh = await readCheckSellerFresh(deps, { url: urlKey, method: methodKey || undefined }, undefined);
+      const { fresh } = await coalescedFreshRead(deps, { url: urlKey, method: methodKey || undefined }, storeK, undefined);
       const payload = payloadFromFresh(fresh, cacheReadStarted);
       if (isCheckSellerCachedReadFresh(payload.cacheReadAt)) {
         rememberPrefetched(storeK, payload);
@@ -303,7 +317,14 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
       async (): Promise<CheckSellerCachedPayload> => {
         // 読み始めの時刻で数える。読み終わりで数えると、読み取りにかかった分だけ 60 秒を超える。
         const cacheReadAt = new Date().toISOString();
-        const fresh = await readCheckSellerFresh(deps, { ...input, url: urlKey }, timing);
+        // unstable_cache の裏再検証と表の読み直しを同じ freshInflight に載せ、二重読みを防ぐ（2026-11-28 依頼 Z）。
+        const joined = freshInflight.has(storeK);
+        const { fresh } = await coalescedFreshRead(
+          deps,
+          { url: urlKey, method: methodKey || undefined },
+          storeK,
+          joined ? undefined : timing,
+        );
         return payloadFromFresh(fresh, cacheReadAt);
       },
       ["check-seller:v2", urlKey, methodKey],
@@ -322,12 +343,10 @@ export function makeGetCheckSellerCached(cache: CacheFn): GetCheckSellerCached {
       const prefetched = await deliverPrefetchOrWait(deps, storeK, input.url, timing);
       if (prefetched) return prefetched;
 
-      markPath(timing, "coalesced");
-      return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing);
+      return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing, "fresh");
     } catch (error) {
       if (isNoDataCacheError(error)) {
-        markPath(timing, "coalesced");
-        return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing);
+        return coalescedForCaller(deps, input.url, urlKey, methodKey, storeK, timing, "direct");
       }
       logServerErrorSafe("check_seller_cache", error);
       throw error;
