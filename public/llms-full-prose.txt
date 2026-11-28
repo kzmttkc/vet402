@@ -22,7 +22,7 @@ https://vet402.com/x402/check-a-seller
 
 ### Which chains does vet402 measure for x402 and MPP payments?
 
-vet402 measures Base (USDC over x402), Solana (USDC over x402), Tempo (USDC.e over MPP, the Machine Payments Protocol), XRPL (RLUSD over x402), Arc (USDC over x402), Celo (USDC over x402), Stellar (USDC over x402), Arbitrum One (USDC over x402), BNB Chain (USD1 over x402), and Avalanche C-Chain (USDC over x402). A count appears when that ledger read has a row for the chain. An empty read shows no counts.
+vet402 measures Base (USDC over x402), Solana (USDC over x402), Tempo (USDC.e over MPP, the Machine Payments Protocol), XRPL (RLUSD over x402), Arc (USDC over x402), Celo (USDC over x402), Stellar (USDC over x402), Arbitrum One (USDC over x402), BNB Chain (USD1 over x402), and Avalanche C-Chain (USDC over x402). Each count is vet402's own paid purchase on that chain. It is not ecosystem-wide settlement volume. A count appears when that ledger read has a row for the chain. An empty read shows no counts.
 
 https://vet402.com/x402/chains
 https://vet402.com/x402/chains/base

@@ -209,7 +209,7 @@ test("Which chains の先頭の文は SUPPORTED_CHAINS から作り、Tempo は 
   assert.match(lead, /Stellar \(USDC over x402\)/);
   assert.match(lead, /Avalanche C-Chain \(USDC over x402\)/);
   assert.ok(read("public/llms-full-prose.txt").includes(lead));
-  assert.equal(CHAINS_HUB.h1, "x402 and MPP payments by chain");
+  assert.equal(CHAINS_HUB.h1, "x402 settlements by chain");
 });
 
 function sourceFiles(dir: string, out: string[] = []): string[] {

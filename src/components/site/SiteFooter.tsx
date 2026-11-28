@@ -41,6 +41,8 @@ const COLUMNS: { caption: string; label: string; links: { label: string; href: s
     links: [
       { label: "What is x402", href: "/x402" },
       { label: "Check a seller", href: "/#lp-paste-url" },
+      { label: "Seller reputation API", href: "/x402/seller-reputation-api" },
+      { label: "x402 trust score", href: "/x402/trust-score" },
       { label: "x402 by chain", href: "/x402/chains" },
       { label: "Stablecoin payments", href: "/x402/stablecoin-payments" },
       { label: "What is ERC-8004", href: "/erc-8004" },

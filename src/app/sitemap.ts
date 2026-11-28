@@ -8,6 +8,7 @@ import {
   LEGAL_TERMS_PRIVACY_LAST_MODIFIED,
 } from "@/lib/legal/document-dates";
 import { fetchLeaderboard } from "@/lib/db/leaderboard";
+import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { SITE_URL } from "@/lib/site-url";
 
 // 2026-11-27 I4: without this the sitemap was rendered once at build and kept until the next deploy
@@ -79,8 +80,13 @@ const REV_2026_11_16 = "2026-11-16";
 /** 2026-11-24: /erc-8004 pillar and /x402/glossary (SEO/AEO/LLMO proposal). */
 const REV_2026_11_24 = "2026-11-24";
 
+/** 2026-11-28: AEO pages seller-reputation-api, trust-score, chains hub title, refunds ledger read. */
+const REV_2026_11_28 = "2026-11-28";
+
 async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
   const dataMods = await dataBackedLastMods();
+  const stats = await getObservatoryStatsCached().catch(() => null);
+  const ledgerDay = stats?.readAt ? sitemapDay(stats.readAt, REV_2026_10_26) : REV_2026_10_26;
   const last = (path: string, fallback: string) => dataMods[path] ?? fallback;
 
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -88,7 +94,7 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
     // /memo is the long document the front page used to be, linked from /, indexable with a self canonical.
     { url: `${SITE_URL}/memo`, lastModified: REV_2026_11_08, changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/docs/api`, lastModified: REV_2026_10_31, changeFrequency: "monthly", priority: 0.9 },
-    { url: `${SITE_URL}/docs/mcp`, lastModified: "2026-10-28", changeFrequency: "monthly", priority: 0.9 },
+    { url: `${SITE_URL}/docs/mcp`, lastModified: REV_2026_11_28, changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/connect`, lastModified: "2026-11-08", changeFrequency: "monthly", priority: 0.9 },
     { url: `${SITE_URL}/accuracy`, lastModified: REV_2026_09_05, changeFrequency: "weekly", priority: 0.8 },
     { url: `${SITE_URL}/leaderboard`, lastModified: last("/leaderboard", SITE_REVISION), changeFrequency: "daily", priority: 0.7 },
@@ -142,18 +148,20 @@ async function coreStaticSitemap(): Promise<MetadataRoute.Sitemap> {
     },
     { url: `${SITE_URL}/x402/stablecoin-payments`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/check-a-seller`, lastModified: REV_2026_10_26, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${SITE_URL}/x402/refunds`, lastModified: REV_2026_11_12, changeFrequency: "monthly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/seller-reputation-api`, lastModified: REV_2026_11_28, changeFrequency: "monthly", priority: 0.85 },
+    { url: `${SITE_URL}/x402/trust-score`, lastModified: REV_2026_11_28, changeFrequency: "monthly", priority: 0.85 },
+    { url: `${SITE_URL}/x402/refunds`, lastModified: ledgerDay, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/x402/glossary`, lastModified: REV_2026_11_24, changeFrequency: "monthly", priority: 0.7 },
     // 2026-11-27 F9: Integrity Terms と失敗の帰属の一覧。
     { url: `${SITE_URL}/integrity`, lastModified: "2026-11-27", changeFrequency: "monthly", priority: 0.6 },
     { url: `${SITE_URL}/erc-8004`, lastModified: REV_2026_11_24, changeFrequency: "daily", priority: 0.9 },
     { url: `${SITE_URL}/x402/ways-to-check-a-seller`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
     { url: `${SITE_URL}/pricing`, lastModified: REV_2026_11_16, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${SITE_URL}/x402/chains`, lastModified: REV_2026_10_26, changeFrequency: "weekly", priority: 0.8 },
-    { url: `${SITE_URL}/x402/statistics`, lastModified: "2026-11-27", changeFrequency: "daily", priority: 0.85 },
+    { url: `${SITE_URL}/x402/chains`, lastModified: ledgerDay, changeFrequency: "weekly", priority: 0.8 },
+    { url: `${SITE_URL}/x402/statistics`, lastModified: ledgerDay, changeFrequency: "daily", priority: 0.85 },
     ...GUIDE_CHAINS.map((chain) => ({
       url: `${SITE_URL}/x402/chains/${chain.slug}`,
-      lastModified: REV_2026_10_26,
+      lastModified: ledgerDay,
       changeFrequency: "weekly" as const,
       priority: 0.7,
     })),

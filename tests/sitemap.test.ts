@@ -58,6 +58,8 @@ test("sitemap includes the dated x402 report snapshot", async () => {
 test("sitemap includes x402 guide entry points", async () => {
   const urls = (await sitemap()).map((entry) => entry.url);
   assert.ok(urls.includes("https://vet402.com/x402/check-a-seller"), "missing /x402/check-a-seller");
+  assert.ok(urls.includes("https://vet402.com/x402/seller-reputation-api"), "missing /x402/seller-reputation-api");
+  assert.ok(urls.includes("https://vet402.com/x402/trust-score"), "missing /x402/trust-score");
   assert.ok(urls.includes("https://vet402.com/x402/chains"), "missing /x402/chains");
   assert.ok(urls.includes("https://vet402.com/x402/stablecoin-payments"), "missing /x402/stablecoin-payments");
   const slugs = getAllPosts().map((p) => p.slug);
