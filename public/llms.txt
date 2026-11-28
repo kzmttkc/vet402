@@ -21,6 +21,8 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 ## Check a seller before paying
 
+- [x402 seller reputation API](https://vet402.com/x402/seller-reputation-api): key-less GET /api/v1/check and decision fields (ALLOW, WARN, BLOCK) from real purchases.
+- [x402 trust score](https://vet402.com/x402/trust-score): vet402 deprecated its 0 to 100 score in September 2026. It publishes delivery facts and an ALLOW, WARN or BLOCK recommendation instead.
 - [How a seller check works](https://vet402.com/x402/check-a-seller): read the purchases vet402 made and the ALLOW, WARN or BLOCK decision they support.
 - [Check by URL, no key](https://vet402.com/docs/api): `GET https://vet402.com/api/v1/check?url=` followed by the URL-encoded x402 URL
 - [Scan a 402 before signing, no key](https://vet402.com/docs/api): `POST https://vet402.com/api/v1/check/presign` with the 402 body the seller returned. Probe latency for one seller checked again and for the first check of distinct sellers (p50, p99, run time): https://vet402.com/data/presign-latency.json
@@ -40,7 +42,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 
 ## Chains
 
-- [x402 by chain](https://vet402.com/x402/chains): Base, Solana, Tempo (MPP), XRPL, Arc, Celo, Stellar, Arbitrum One, BNB Chain, Avalanche C-Chain.
+- [x402 settlements by chain](https://vet402.com/x402/chains): vet402's own L1 purchase counts per chain. It is not ecosystem-wide settlement volume. Base, Solana, Tempo (MPP), XRPL, Arc, Celo, Stellar, Arbitrum One, BNB Chain, Avalanche C-Chain.
 - [x402 purchase statistics](https://vet402.com/x402/statistics): paid purchase attempts, settled on-chain, delivered, and counts by chain from `GET /api/v1/observatory/state`.
 
 ## Source and packages
@@ -53,6 +55,8 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 Markdown versions of key pages. Lists, terms, definitions and live counts come from the same modules as the HTML. The remaining prose is copied from each page and tests compare it with the page source. methodology.md is a summary: the section headings, the 60-second summary and the one-line definitions. The full text of each section is on the HTML page.
 
 - https://vet402.com/x402/check-a-seller.md: how to check a seller before paying
+- https://vet402.com/x402/seller-reputation-api.md: seller reputation API (check and decision)
+- https://vet402.com/x402/trust-score.md: what vet402 publishes instead of a 0 to 100 trust score
 - https://vet402.com/observatory/methodology.md: L0, L1 and L2 definitions
 - https://vet402.com/x402/glossary.md: x402 and ERC-8004 terms
 - https://vet402.com/integrity.md: integrity terms and failure attribution

@@ -39,11 +39,12 @@ import { pageMetadata, breadcrumbJsonLd, webApiJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { buildMonth } from "@/lib/build-month";
 
+const MCP_PAGE_TITLE = "x402 MCP server: check a seller before paying";
 const MCP_DOCS_BLURB =
-  "Streamable HTTP MCP at https://vet402.com/mcp and the delivery feed at /api/v1/delivery/sellers.json. Keyless reads.";
+  "Streamable HTTP at https://vet402.com/mcp. Tool check_x402_seller reads what vet402 recorded when it paid an x402 listing. Keyless reads.";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Hosted MCP server for x402 seller checks",
+  title: MCP_PAGE_TITLE,
   description: MCP_DOCS_BLURB,
   path: "/docs/mcp",
 });
@@ -111,13 +112,17 @@ export default async function McpDocsPage() {
               <span>{buildMonth()}</span>
             </div>
           </div>
-          <h1 className="doc-title mt-8">Hosted MCP server</h1>
+          <h1 className="doc-title mt-8">{MCP_PAGE_TITLE}</h1>
           <p className="mx-auto mt-3 max-w-[62ch] text-center text-brand">{MCP_DOCS_INTRO}</p>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
         </div>
 
         <section id="connect" className="scroll-mt-32 space-y-3">
           <h2 className="sec-head">Connect</h2>
+          <p className="text-[0.84375rem] text-brand">
+            Endpoint: <code className="text-brand-deep">https://vet402.com/mcp</code>. Primary tool:{" "}
+            <code className="text-brand-deep">check_x402_seller</code> (same JSON as GET /api/v1/check).
+          </p>
           <p className="text-[0.84375rem] text-brand">
             Cursor: add this object to <code className="text-brand-deep">.cursor/mcp.json</code>:
           </p>
@@ -127,7 +132,7 @@ export default async function McpDocsPage() {
             <code className="text-brand-deep">claude mcp add --transport http vet402 https://vet402.com/mcp</code>
           </p>
           <p className="text-[0.84375rem] text-brand">
-            Claude.ai: open Settings, Connectors, add a custom connector with URL{" "}
+            Claude Desktop and Claude.ai: open Settings, Connectors, add a custom connector with URL{" "}
             <code className="text-brand-deep">https://vet402.com/mcp</code>.
           </p>
           <p className="text-[0.84375rem] text-brand">

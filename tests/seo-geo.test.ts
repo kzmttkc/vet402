@@ -54,6 +54,8 @@ test("新しい回答の公開文に we、セミコロン、ダッシュが無�
     "src/components/site/x402-guides.ts",
     "src/app/x402/stablecoin-payments/page.tsx",
     "src/app/x402/check-a-seller/page.tsx",
+    "src/app/x402/seller-reputation-api/page.tsx",
+    "src/app/x402/trust-score/page.tsx",
     "src/app/x402/chains/page.tsx",
     "src/app/x402/chains/[slug]/page.tsx",
     "src/components/site/home/HomeIntro.tsx",

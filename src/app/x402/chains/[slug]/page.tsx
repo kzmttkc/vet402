@@ -9,6 +9,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { publicChainLabel } from "@/lib/observatory/chains";
 import { chainHeldLines } from "@/lib/observatory/chain-page-words";
+import { getIndexableHostsOnChainCached, SELLER_INDEX_DELIVERY_WINDOW_DAYS } from "@/lib/sellers/seller-index";
 
 export function generateStaticParams() {
   return GUIDE_CHAINS.map((c) => ({ slug: c.slug }));
@@ -50,6 +51,7 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
       )
     : undefined;
   const path = `/x402/chains/${chain.slug}`;
+  const indexableHosts = await getIndexableHostsOnChainCached(chain.caip2).catch(() => [] as string[]);
   const article = articleJsonLd({
     headline: chain.headline,
     description: chain.description,
@@ -109,24 +111,24 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
           <>
             <p className="doc-p">
               Delivered counts settled purchases whose paid request answered HTTP 2xx other than 202 Accepted, with a
-              non-empty body. The row is <code>l1.byChain</code> for{" "}
-              {chain.publicName}. CAIP-2 {chain.caip2}.
+              non-empty body. Each count is vet402&apos;s own L1 purchase on {chain.publicName}, not ecosystem-wide
+              settlement volume. The row is <code>l1.byChain</code> for {chain.publicName}. CAIP-2 {chain.caip2}.
             </p>
             <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="border-t border-brand-deep pt-3">
-                <dt className="doc-caption">Paid attempts</dt>
+                <dt className="doc-caption">Paid attempts (vet402)</dt>
                 <dd className="mt-1 text-[1.75rem] tabular-nums text-brand-deep">{fmt(row.attempts)}</dd>
               </div>
               <div className="border-t border-brand-deep pt-3">
-                <dt className="doc-caption">Settled</dt>
+                <dt className="doc-caption">Settled (vet402)</dt>
                 <dd className="mt-1 text-[1.75rem] tabular-nums text-brand-deep">{fmt(row.settled)}</dd>
               </div>
               <div className="border-t border-brand-deep pt-3">
-                <dt className="doc-caption">Delivered</dt>
+                <dt className="doc-caption">Delivered (vet402)</dt>
                 <dd className="mt-1 text-[1.75rem] tabular-nums text-brand-deep">{fmt(row.delivered)}</dd>
               </div>
               <div className="border-t border-brand-deep pt-3">
-                <dt className="doc-caption">Held (settled, then 4xx)</dt>
+                <dt className="doc-caption">Held, settled then 4xx (vet402)</dt>
                 <dd className="mt-1 text-[1.75rem] tabular-nums text-brand-deep">{fmt(row.inconclusiveSettled)}</dd>
               </div>
             </dl>
@@ -144,6 +146,36 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
 
         <h2 className="sec-head">
           <span className="sec-no">2.</span>
+          <span>Sellers with a delivered vet402 purchase on {chain.publicName}</span>
+        </h2>
+        {indexableHosts.length > 0 ? (
+          <>
+            <p className="doc-p">
+              Hosts below delivered at least once on {chain.publicName} and pass the same index gate as{" "}
+              <Link href="/sellers" className="doc-link">
+                /sellers
+              </Link>{" "}
+              (delivery in the last {SELLER_INDEX_DELIVERY_WINDOW_DAYS} days or a signed payee claim). vet402 does not list hosts that failed to
+              deliver or that do not pass that gate.
+            </p>
+            <ul className="mt-4 columns-1 gap-x-8 sm:columns-2 lg:columns-3">
+              {indexableHosts.map((host) => (
+                <li key={host} className="break-inside-avoid pb-2">
+                  <Link href={`/x402/sellers/${encodeURIComponent(host)}`} className="doc-link font-mono text-sm">
+                    {host}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="doc-p">
+            This read lists no sellers on {chain.publicName} that both delivered to vet402 and pass the index gate.
+          </p>
+        )}
+
+        <h2 className="sec-head">
+          <span className="sec-no">3.</span>
           <span>How a purchase is tied to its settlement</span>
         </h2>
         <p className="doc-p">
@@ -151,7 +183,7 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
         </p>
 
         <h2 className="sec-head">
-          <span className="sec-no">3.</span>
+          <span className="sec-no">4.</span>
           <span>Where to read on</span>
         </h2>
         <p className="doc-p">

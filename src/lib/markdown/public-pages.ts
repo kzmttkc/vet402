@@ -3,6 +3,8 @@ import { GLOSSARY } from "@/app/x402/glossary/page";
 import { ERC8004_FAQ, ERC8004_PAGE_DESCRIPTION, ERC8004_TERMS } from "@/app/erc-8004/page";
 import { INTEGRITY_TERMS, DOES_NOT_TEXT, L1_USER_AGENT } from "@/app/integrity/page";
 import { CHECK_SELLER_SECTIONS } from "@/lib/x402/check-a-seller-sections";
+import { SELLER_REPUTATION_API, SELLER_REPUTATION_CHECK_FIELDS, SELLER_REPUTATION_API_PUBLISHED } from "@/lib/x402/seller-reputation-sections";
+import { TRUST_SCORE_PAGE, TRUST_SCORE_PUBLISHED } from "@/lib/x402/trust-score-sections";
 import {
   METHODOLOGY_BLURB,
   METHODOLOGY_H2,
@@ -94,6 +96,71 @@ export function renderCheckASellerMarkdown(): string {
     "",
     `Canonical HTML: ${SITE_URL}${s.path}`,
     `Updated: ${GUIDE_UPDATED}`,
+  ];
+  return lines.join("\n");
+}
+
+export function renderSellerReputationApiMarkdown(): string {
+  const p = SELLER_REPUTATION_API;
+  const lines = [
+    `# ${p.h1}`,
+    "",
+    ...p.lead,
+    "",
+    `## 1. ${p.sections.curl.title}`,
+    p.sections.curl.body,
+    "",
+    `## 2. ${p.sections.fields.title}`,
+    p.sections.fields.body,
+    "",
+    "| Field | Meaning |",
+    "| --- | --- |",
+    ...SELLER_REPUTATION_CHECK_FIELDS.map((r) => `| ${r.field} | ${r.meaning} |`),
+    "",
+    `## 3. ${p.sections.decision.title}`,
+    p.sections.decision.body,
+    "",
+    `## 4. ${p.sections.verdicts.title}`,
+    `- ALLOW: ${p.sections.verdicts.allow}`,
+    `- WARN: ${p.sections.verdicts.warn}`,
+    `- BLOCK: ${p.sections.verdicts.block}`,
+    "",
+    `Canonical HTML: ${SITE_URL}${p.path}`,
+    `Updated: ${SELLER_REPUTATION_API_PUBLISHED}`,
+  ];
+  return lines.join("\n");
+}
+
+export async function renderTrustScoreMarkdown(): Promise<string> {
+  const p = TRUST_SCORE_PAGE;
+  const stats = await getObservatoryStatsCached().catch(() => null);
+  const counts =
+    stats && stats.l1.attempts > 0 && stats.readAt
+      ? `This ledger read: ${fmt(stats.l1.settled)} settled, ${fmt(stats.l1.delivered)} delivered, as of ${stats.readAt.slice(0, 10)} (UTC).`
+      : "The ledger could not be read for this rendering, so no counts are shown.";
+  const lines = [
+    `# x402 trust score`,
+    "",
+    ...p.lead,
+    "",
+    `## 1. ${p.sections.discontinued.title}`,
+    p.sections.discontinued.body,
+    "",
+    `## 2. ${p.sections.delivered.title}`,
+    p.sections.delivered.body,
+    "",
+    `## 3. ${p.sections.counts.title}`,
+    p.sections.counts.body,
+    counts,
+    "",
+    `## 4. ${p.sections.verify.title}`,
+    p.sections.verify.body,
+    "",
+    `## 5. ${p.sections.window.title}`,
+    p.sections.window.body,
+    "",
+    `Canonical HTML: ${SITE_URL}${p.path}`,
+    `Updated: ${TRUST_SCORE_PUBLISHED}`,
   ];
   return lines.join("\n");
 }

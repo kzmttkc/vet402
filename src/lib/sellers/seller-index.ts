@@ -7,7 +7,12 @@ import { getDb } from "@/lib/db/client";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { parseSellerHostParam } from "./host";
 import { getSellerBoardCached } from "./cached";
-import { HOST_BADGE_WINDOW_DAYS, readHostsWithDeliveredInWindow, readHostsWithPayeeClaim } from "./reader";
+import {
+  HOST_BADGE_WINDOW_DAYS,
+  readHostsWithDeliveredInWindow,
+  readHostsWithDeliveredOnNetwork,
+  readHostsWithPayeeClaim,
+} from "./reader";
 
 /** Same 30-day window as the host badge and export.csv?days=30. */
 export const SELLER_INDEX_DELIVERY_WINDOW_DAYS = HOST_BADGE_WINDOW_DAYS;
@@ -91,3 +96,32 @@ export async function readSellerIndexCounts(): Promise<SellerIndexCounts> {
   const hosts = await getIndexableSellerHostsCached().catch(() => [] as string[]);
   return sellerIndexCounts(hosts);
 }
+
+/** Hosts that delivered on the chain and pass the I4 index gate (same sets as /sellers/{host} and sitemap). */
+export async function readIndexableHostsOnNetwork(db: Db, networkFilter: string): Promise<string[]> {
+  const [deliveredOnNetwork, deliveredHosts, claimedHosts] = await Promise.all([
+    readHostsWithDeliveredOnNetwork(db, networkFilter),
+    readHostsWithDeliveredInWindow(db, SELLER_INDEX_DELIVERY_WINDOW_DAYS),
+    readHostsWithPayeeClaim(db),
+  ]);
+  const candidates = [...deliveredOnNetwork].sort((a, b) => a.localeCompare(b));
+  return selectIndexableSellerHosts(candidates, deliveredHosts, claimedHosts);
+}
+
+async function collectIndexableHostsOnNetwork(networkFilter: string): Promise<string[]> {
+  const db = getDb();
+  if (!db) return [];
+  // C1: keep only hosts that are also in the /sellers index set (board hosts that pass the I4 gate).
+  const [onNetwork, indexable] = await Promise.all([
+    readIndexableHostsOnNetwork(db, networkFilter),
+    getIndexableSellerHostsCached(),
+  ]);
+  const allowed = new Set(indexable);
+  return onNetwork.filter((h) => allowed.has(h));
+}
+
+export const getIndexableHostsOnChainCached: (networkFilter: string) => Promise<string[]> = unstable_cache(
+  async (networkFilter: string) => collectIndexableHostsOnNetwork(networkFilter),
+  ["sellers:indexable-hosts-on-chain:v1"],
+  { revalidate: PUBLIC_READ_REVALIDATE, tags: ["observatory"] },
+);

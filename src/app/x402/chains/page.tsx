@@ -8,6 +8,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import type { L1ChainStats } from "@/lib/observatory/reader";
 import { publicChainLabel } from "@/lib/observatory/chains";
+import { TableScroll } from "@/components/site/TableScroll";
 
 const PAGE = CHAINS_HUB;
 
@@ -93,7 +94,39 @@ export default async function ChainsHubPage() {
         </h2>
         {!readable ? (
           <p className="doc-p">The ledger could not be read for this rendering, so no counts are shown.</p>
-        ) : null}
+        ) : (
+          <TableScroll label="vet402 L1 purchases by chain" className="mt-4">
+            <table className="fact-table">
+              <caption className="sr-only">vet402 own L1 purchases by chain in this ledger read</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Chain</th>
+                  <th scope="col" className="num">
+                    Paid attempts (vet402)
+                  </th>
+                  <th scope="col" className="num">
+                    Settled (vet402)
+                  </th>
+                  <th scope="col" className="num">
+                    Delivered (vet402)
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows
+                  .filter((r) => r.settled > 0)
+                  .map((r) => (
+                    <tr key={r.chain}>
+                      <td>{r.label || publicChainLabel(r.chain)}</td>
+                      <td className="num">{fmt(r.attempts)}</td>
+                      <td className="num">{fmt(r.settled)}</td>
+                      <td className="num">{fmt(r.delivered)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </TableScroll>
+        )}
         <ul className="mt-4 space-y-4">
           {GUIDE_CHAINS.map((c) => {
             const row = readable ? rowFor(c.chain, rows) : undefined;

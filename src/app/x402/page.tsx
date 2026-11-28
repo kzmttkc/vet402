@@ -345,8 +345,16 @@ export default async function X402PillarPage() {
             How to check a seller
           </Link>
           ,{" "}
+          <Link href="/x402/seller-reputation-api" className="doc-link">
+            x402 seller reputation API
+          </Link>
+          ,{" "}
+          <Link href="/x402/trust-score" className="doc-link">
+            x402 trust score
+          </Link>
+          ,{" "}
           <Link href="/docs/mcp" className="doc-link">
-            Hosted MCP server
+            x402 MCP server
           </Link>
           ,{" "}
           <Link href="/docs/api" className="doc-link">
