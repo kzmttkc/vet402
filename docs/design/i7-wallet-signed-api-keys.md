@@ -16,12 +16,12 @@
 | Observatory watch | `observatoryWatchMessage(wallet, apiKeyId)` | `GET/POST /api/v1/observatory/watch` | **Bearer 必須** |
 | Delist alert | payee 系 | 同上 watch | Bearer |
 
-共通実装: `src/lib/verify-message.ts` — `matchSignatureForm`, `SIGNING_DOMAIN`, `LEGACY_MESSAGE_ACCEPT_UNTIL`, `isValidIssuedAt`, `verifyMessage` (viem EIP-191)。
+共通実装: `src/lib/verify-message.ts`: `matchSignatureForm`, `SIGNING_DOMAIN`, `LEGACY_MESSAGE_ACCEPT_UNTIL`, `isValidIssuedAt`, `verifyMessage` (viem EIP-191)。
 
-**I7 で新設するメッセージ（案）** `apiKeyWalletMessage(wallet, nonce, issued)`:
+**I7 で新設するメッセージ（案）** `apiKeyWalletMessage(wallet, nonce, issued)`（新しい面なので 1 行目は em-dash を使わない `vet402.com API key registration` とする。既存 5 面の `titleLine` は em-dash を含むが、署名済みの文面と照合を変えないため I7 では触らない）:
 
 ```
-vet402.com — API key registration
+vet402.com API key registration
 domain: vet402.com
 wallet: 0x…
 nonce: <uuid-v4>
@@ -50,7 +50,7 @@ This signature registers one API key for this wallet on vet402.com. It does not 
 | ルール | 実装案 |
 | --- | --- |
 | 1 active key / wallet | `wallet_api_key_bindings.wallet` UNIQUE（lower case） |
-| 再発行 | 旧キー `revoked_at`、新 nonce で POST。48 時間は旧キーが残る **としない**（即失効 — エージェント向けは漏えい窓を短く）。 |
+| 再発行 | 旧キー `revoked_at`、新 nonce で POST。48 時間は旧キーが残る **としない**（即失効。エージェント向けは漏えい窓を短く）。 |
 | 失効 | `POST /api/v1/keys/wallet/revoke`（同ウォレット署名、別メッセージ purpose）またはダッシュボードから（人間経路）。 |
 | メールアカウントとの関係 | ウォレット発行キーは `user_id` を synthetic account に結ぶか、nullable user + wallet 主体（I0 ウォレット顧客数は binding テーブルから数える）。 |
 
@@ -82,7 +82,7 @@ This signature registers one API key for this wallet on vet402.com. It does not 
 | 項目 | ダッシュボード鍵（現行） | I7 ウォレット鍵 |
 | --- | --- | --- |
 | 認証 | メール/OAuth アカウント | EIP-191 のみ |
-| 課金 | Stripe 顧客と結合 | 初期は Free プラン自動（Pro は別途 Stripe — エージェントが Stripe を通るのは後続） |
+| 課金 | Stripe 顧客と結合 | 初期は Free プラン自動（Pro は別途 Stripe。エージェントが Stripe を通るのは後続） |
 | observatory watch | キー ID がメッセージに入る | 同じ。ウォレット発行キーも `observatoryWatchMessage(wallet, apiKeyId)` 可能 |
 
 ## C10
@@ -113,4 +113,4 @@ This signature registers one API key for this wallet on vet402.com. It does not 
 - `src/app/api/v1/agents/verify/route.ts`
 - `src/app/api/v1/observatory/watch/route.ts`
 - `docs/kpi-definitions.md`（Paid customer / wallet 主体）
-- `docs/operations/api-key-owner-relation.md`（owner_relation は人手 — I7 鍵は初期 NULL）
+- `docs/operations/api-key-owner-relation.md`（owner_relation は人手。I7 鍵は初期 NULL）

@@ -18,7 +18,7 @@
 | **webhook** | キーあたり 5 本（ドキュメント・既存ルート）。 | check 結果画面からの登録導線なし。Seller Watch 専用イベント整理なし。 |
 | **売り手ページ** | `/sellers/{host}`、I4 index ゲート（`src/lib/sellers/seller-index.ts`：30 日 delivered または payee claim）。 | I3 の「1 画面」は seller ページではなく **オペレータ診断面**として新設が妥当。 |
 | **日次計測** | `GET /api/v1/stats/badge-fetches?days=`（referer_host 別・kind 別）。`client_usage_daily` / site events（`watch_sellers_interest` は event 定義のみ、直近需要弱）。 | **claim 数・有効 watch 数**の日次 KPI 行が無い。vet402.com / referer なしのバッジ分離は DB 上 `(none)` と hostname で可能だが、日次ジョブ・I0 取り込み未配線。 |
-| **Stripe / 料金** | Pro / Scale のみ（`src/lib/billing/plans.ts`）。P4 Seller Watch は **未登録**（意図どおり）。 | Price ID、サブスク状態、10 EP 上限、年額 $90 — **設計・下書きのみ**（C11 まで公開しない）。 |
+| **Stripe / 料金** | Pro / Scale のみ（`src/lib/billing/plans.ts`）。P4 Seller Watch は **未登録**（意図どおり）。 | Price ID、サブスク状態、10 EP 上限、年額 $90。**設計・下書きのみ**（C11 まで公開しない）。 |
 | **C10 試験** | L1 独立性の各種試験は散在（verify-now 系は I8 想定）。 | **Seller Watch 加入の有無で L1 スケジュール・判定・公開 JSON が同一**であることを固定する専用試験なし。 |
 | **C1 バッジ** | host バッジは未購入時「no paid calls」、名指しの「未配達」文言なし。404 は未掲載 host。trust バッジは署名+ALLOW 必須（`src/lib/badge/trust-badge.ts`）。 | エンドポイントバッジ・payee バッジの **settled 未配達** 組み合わせの回帰試験を I3 受け入れに明示追加。 |
 | **粗利 KPI** | I0 x402 着金（`src/lib/kpi/x402-revenue.ts`）。 | 製品ライン `seller_watch` の Stripe 手数料・枠コストの日次行（A1）は未実装。 |
