@@ -32,11 +32,12 @@ import { logServerErrorSafe } from "@/lib/util/log-safe";
 import { mcpDeps } from "@/lib/mcp/deps";
 import { FIND_TOOL_ENABLED, registerVet402Tools, TOOL_NAMES, type McpRequestState } from "@/lib/mcp/tools";
 import { SERVER_INSTRUCTIONS } from "@/lib/mcp/text";
+import { MCP_SERVER_INFO } from "@/lib/mcp/server-info";
+
+export { MCP_SERVER_INFO };
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
-
-export const MCP_SERVER_INFO = { name: "vet402", version: "1.0.0" } as const;
 export const MCP_MAX_BODY_BYTES = 64 * 1024;
 export const MCP_RATE_LIMIT_CODE = -32029;
 const DEFAULT_RATE_PER_MIN = 120;
