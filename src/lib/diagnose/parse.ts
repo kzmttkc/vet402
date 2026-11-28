@@ -137,15 +137,18 @@ function normUrl(value: string): string {
 
 /** ヘッダと本文が同じ挑戦か。表記ゆれ（0x の大文字、既知の網の別名）は同じと見る。 */
 export function challengeFinger(challenge: ParsedChallenge): string {
+  // Deduplicate resources: v2 puts resource at top level (topResource), v1 puts it in accepts[].resource.
+  // resourceUrls() collects both, so v2 gets duplicates. Use a Set to deduplicate before comparing.
+  // Exclude accept.resource from fingerprint since resources array already captures all unique URLs.
+  const uniqueResources = [...new Set(resourceUrls(challenge).map(normUrl))].sort();
   return JSON.stringify({
-    resources: resourceUrls(challenge).map(normUrl).sort(),
+    resources: uniqueResources,
     accepts: challenge.accepts.map((accept) => ({
       scheme: accept.scheme.toLowerCase(),
       amount: accept.amount,
       asset: normToken(accept.asset),
       network: normNetwork(accept.network),
       payTo: normToken(accept.payTo),
-      resource: accept.resource ? normUrl(accept.resource) : "",
     })),
   });
 }

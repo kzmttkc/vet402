@@ -169,6 +169,48 @@ test("header and body fail when the body carries accepts under an unreadable ver
   assert.equal(body.verdict, "BLOCK");
 });
 
+test("header (v2) and body (v1) pass when they carry the same terms with different field names", () => {
+  // Issue #101: v2 header uses network="eip155:8453", amount="20000", resource at top level
+  // v1 body uses network="base", maxAmountRequired="20000", resource in accepts[0].resource
+  // Both should be treated as the same challenge after normalization
+  const headerV2 = JSON.stringify({
+    x402Version: 2,
+    resource: { url: "https://api.veritylayer.dev/verify/quick" },
+    accepts: [
+      {
+        scheme: "exact",
+        network: "eip155:8453",
+        amount: "20000",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        payTo: "0x89d38023167bdA453BeD9F6CbF22dDd1EC5f70a7",
+      },
+    ],
+  });
+  const bodyV1 = JSON.stringify({
+    x402Version: 1,
+    accepts: [
+      {
+        scheme: "exact",
+        network: "base",
+        maxAmountRequired: "20000",
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        payTo: "0x89d38023167bdA453BeD9F6CbF22dDd1EC5f70a7",
+        resource: "https://api.veritylayer.dev/verify/quick",
+      },
+    ],
+  });
+  const headers = new Headers({ "payment-required": Buffer.from(headerV2).toString("base64") });
+  const body = judge(bodyV1, { headers, requestedUrl: "https://api.veritylayer.dev/verify/quick" });
+  // Should pass header_body check (they represent the same challenge)
+  assert.equal(one(body, "header_body"), "pass");
+  // Should not be BLOCKed due to header/body mismatch
+  assert.notEqual(body.verdict, "BLOCK");
+  // Should recommend the accept
+  assert.ok(body.recommended_accept);
+  assert.equal(body.recommended_accept?.amount, "20000");
+  assert.equal(body.recommended_accept?.network, "base"); // v1 network name preserved in output
+});
+
 test("resource_url pass and fail", () => {
   assert.equal(one(clean(), "resource_url"), "pass");
   const bad = judge(challenge([accept()], { resource: { url: "https://evil.example/other" } }));
