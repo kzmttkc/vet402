@@ -12,9 +12,13 @@ import {
   assertMonthlyPackageColumns,
   assertMonthlyPackageSummary,
   buildMonthlyReportBundleFiles,
+  deliveredPurchaseIdsOfDeliveryCsv,
+  fetchPublicMonthlyFreeze,
   headerLineOfCsv,
   packageMonthFromInput,
   publishedCsvWithHeader,
+  splitCsvRecordsRaw,
+  withholdUndeliveredSellers,
   writeMonthlyReportBundles,
 } from "@/lib/reports/package-month";
 
@@ -174,4 +178,119 @@ test("L1 の証拠 2 列と呼び手のハッシュは束の見出しに出な�
   }
   const withEvidence = [...EXPORT_CSV_COLUMNS, "challenge_402"].join(",");
   assert.throws(() => assertMonthlyPackageColumns(withEvidence), /column count/);
+});
+
+// C1: 外部に出す束は、その月に配達が無い売り手を名指ししない（2026-11-28）。
+const BASE_ROW = sampleRows[0];
+function row(over: Partial<Record<keyof typeof BASE_ROW, string | number>>): Record<string, unknown> {
+  return { ...BASE_ROW, ...over };
+}
+const c1Rows = [
+  row({ resource_key: "good.example/api", purchase_id: "00000000-0000-4000-8000-0000000000a1", attempted_at: "2026-10-02T00:00:00Z" }),
+  row({ resource_key: "good.example/api", status: "settle_failed", http_status_paid: "", tx_hash: "", purchase_id: "00000000-0000-4000-8000-0000000000a2", attempted_at: "2026-10-03T00:00:00Z" }),
+  row({ resource_key: "accepted.example/api", http_status_paid: 202, purchase_id: "00000000-0000-4000-8000-0000000000b1", attempted_at: "2026-10-04T00:00:00Z" }),
+  row({ resource_key: "empty.example/api", response_bytes: "0", purchase_id: "00000000-0000-4000-8000-0000000000c1", attempted_at: "2026-10-05T00:00:00Z" }),
+  row({ resource_key: "err.example/api", http_status_paid: 500, purchase_id: "00000000-0000-4000-8000-0000000000d1", attempted_at: "2026-10-06T00:00:00Z" }),
+  row({ resource_key: "q\"uote,comma.example/api", http_status_paid: 400, purchase_id: "00000000-0000-4000-8000-0000000000e1", attempted_at: "2026-10-07T00:00:00Z" }),
+  row({ resource_key: "old.example/api", response_bytes: "", purchase_id: "00000000-0000-4000-8000-0000000000f1", attempted_at: "2026-10-08T00:00:00Z" }),
+];
+
+function c1Input(deliveredPurchaseIds?: Set<string>) {
+  const summary = { ...buildMonthlyFreezeSummary("2026-10", c1Rows, EXPORT_CSV_COLUMNS), frozenAt: FROZEN_AT };
+  const csvBody = serializeMonthlyLedgerExportBody(c1Rows, EXPORT_CSV_COLUMNS);
+  return { summary, csvBody, ...(deliveredPurchaseIds ? { deliveredPurchaseIds } : {}) };
+}
+
+function bodyRows(csvWithHeader: string): string[][] {
+  return splitCsvRecordsRaw(csvWithHeader).slice(1);
+}
+
+test("C1: 配達が無い売り手の resource_key は空になり、行の数・順序・ほかの列は凍結のまま", () => {
+  const input = c1Input();
+  const original = splitCsvRecordsRaw(input.csvBody);
+  const keyCol = EXPORT_CSV_COLUMNS.indexOf("resource_key");
+  const files = buildMonthlyReportBundleFiles(input);
+  for (const rel of ["zenodo/vet402-ledger-2026-10.csv", "huggingface/vet402-ledger-2026-10.csv", "dune/vet402-ledger-2026-10.csv"]) {
+    const rows = bodyRows(files[rel]!);
+    assert.equal(rows.length, original.length, `${rel} keeps every row`);
+    assert.equal(rows.length, input.summary.rowCount);
+    for (let i = 0; i < rows.length; i++) {
+      const a = [...rows[i]!];
+      const b = [...original[i]!];
+      a[keyCol] = "";
+      b[keyCol] = "";
+      assert.deepEqual(a, b, `${rel} row ${i} changes only resource_key`);
+    }
+    const named = new Set(rows.map((r) => r[keyCol]).filter((k) => k !== ""));
+    assert.deepEqual([...named].sort(), ["good.example/api", "old.example/api"]);
+    const text = files[rel]!;
+    for (const hidden of ["accepted.example", "empty.example", "err.example", "uote,comma.example"]) {
+      assert.ok(!text.includes(hidden), `${rel} names ${hidden}`);
+    }
+  }
+});
+
+test("C1: 金額の列の合計は伏せる前と同じ", () => {
+  const input = c1Input();
+  const sum = (rows: string[][], name: string) => {
+    const i = EXPORT_CSV_COLUMNS.indexOf(name as (typeof EXPORT_CSV_COLUMNS)[number]);
+    return rows.reduce((acc, r) => acc + BigInt(r[i] === "" ? "0" : r[i]!), 0n);
+  };
+  const before = splitCsvRecordsRaw(input.csvBody);
+  const after = bodyRows(buildMonthlyReportBundleFiles(input)["zenodo/vet402-ledger-2026-10.csv"]!);
+  for (const name of ["amount_units", "spent_units", "confirmed_units"]) {
+    assert.equal(sum(after, name), sum(before, name), name);
+  }
+});
+
+test("C1: delivery.csv の delivered に無い purchase_id の行は配達に数えない", () => {
+  const ids = new Set(["00000000-0000-4000-8000-0000000000a1"]);
+  const rows = bodyRows(buildMonthlyReportBundleFiles(c1Input(ids))["zenodo/vet402-ledger-2026-10.csv"]!);
+  const keyCol = EXPORT_CSV_COLUMNS.indexOf("resource_key");
+  const named = new Set(rows.map((r) => r[keyCol]).filter((k) => k !== ""));
+  assert.deepEqual([...named], ["good.example/api"]);
+  const w = withholdUndeliveredSellers(c1Input(ids).csvBody, EXPORT_CSV_COLUMNS, ids);
+  assert.equal(w.rows, c1Rows.length);
+  assert.equal(w.withheldRows, c1Rows.length - 2);
+  assert.equal(w.namedSellers, 1);
+});
+
+test("C1: 説明文に伏せた行の数と、contentSha256 が伏せる前の本文の値であることを書く", () => {
+  const files = buildMonthlyReportBundleFiles(c1Input());
+  assert.match(files["zenodo/README.md"]!, /Rows with `resource_key` left empty: 4/);
+  assert.match(files["zenodo/README.md"]!, /before `resource_key` was left empty/);
+  assert.doesNotMatch(files["zenodo/README.md"]!, /byte for byte/);
+  assert.match(files["huggingface/README.md"]!, /Sellers named: 2/);
+  assert.match(files["dune/DESCRIPTION.md"]!, /does not name a seller that did not deliver/);
+  for (const rel of ["zenodo/README.md", "zenodo/metadata.json", "huggingface/README.md", "dune/DESCRIPTION.md"]) {
+    assert.doesNotMatch(files[rel]!, /[—–]/);
+    assert.doesNotMatch(files[rel]!, /\b(we|our|us)\b/i);
+  }
+});
+
+test("C1: 本文の行数が summary.rowCount と違えば束を作らない", () => {
+  const input = c1Input();
+  assert.throws(() => buildMonthlyReportBundleFiles({ ...input, summary: { ...input.summary, rowCount: input.summary.rowCount + 1 } }), /rowCount/);
+});
+
+test("C1: delivery.csv から delivered の purchase_id だけを読む", () => {
+  const csv = [
+    "purchase_id,attempted_at,latency_ms,observed_at,resource_key,network,delivery,delivery_reason,http_status_paid,body_bytes,payload_non_empty,held_reason,tx_hash,buyer,payer",
+    "p1,2026-10-01T00:00:00Z,1,2026-10-01T00:00:01Z,a.example/x,eip155:8453,delivered,,200,10,true,,0x1,vet402,0x2",
+    'p2,2026-10-01T00:00:00Z,1,2026-10-01T00:00:01Z,"b,example/x",eip155:8453,no_body_observed,empty_body,200,0,false,,0x1,vet402,0x2',
+    "p3,2026-10-01T00:00:00Z,1,2026-10-01T00:00:01Z,c.example/x,eip155:8453,not_established,settled_4xx,400,,true,settled_4xx,0x1,vet402,0x2",
+    "",
+  ].join("\n");
+  assert.deepEqual([...deliveredPurchaseIdsOfDeliveryCsv(csv)], ["p1"]);
+  assert.throws(() => deliveredPurchaseIdsOfDeliveryCsv("purchase_id,status\np1,settled\n"), /lacks purchase_id or delivery/);
+});
+
+test("C1: --fetch は delivery.csv が読めなければ束を作らない", async () => {
+  const input = c1Input();
+  const fetchFn = (async (url: string) => {
+    if (url.endsWith("/api/v1/reports/2026-10.json")) return new Response(JSON.stringify(input.summary), { status: 200 });
+    if (url.endsWith("/api/v1/reports/2026-10.csv")) return new Response(input.csvBody, { status: 200 });
+    return new Response("busy", { status: 503 });
+  }) as typeof fetch;
+  await assert.rejects(fetchPublicMonthlyFreeze("2026-10", "https://vet402.test", fetchFn), /delivery csv fetch failed/);
 });
