@@ -33,7 +33,7 @@ const BAZAAR = listingSource("cdp_bazaar");
 const MPP = listingSource("mpp_directory");
 const CIRCLE = listingSource("circle_discovery");
 const BLOCKY402 = listingSource("blocky402_discovery");
-const FREE_SCORE_LOOKUPS = BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US");
+const FREE_SCORE_LOOKUPS = BILLING_PLANS.free.monthlyLimit.toLocaleString("en");
 
 export const FAQS: FaqItem[] = [
   {
