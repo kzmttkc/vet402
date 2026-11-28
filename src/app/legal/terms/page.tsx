@@ -142,7 +142,7 @@ export default async function TermsPage() {
           </h2>
           <p>
             Do not abuse the API, attempt to circumvent rate limits, or use the service for unlawful
-            activity. We may suspend accounts that violate these terms.
+            activity. vet402 may suspend accounts that violate these terms.
           </p>
         </section>
 
@@ -155,13 +155,13 @@ export default async function TermsPage() {
             The service is provided &quot;as is&quot; and &quot;as available,&quot; without
             warranties of any kind, express or implied, including accuracy, completeness,
             merchantability, or fitness for a particular purpose. Scores are computed from public
-            on-chain data and third-party sources we do not control, which can be incomplete,
-            delayed, throttled, or wrong. Nothing we publish about how well the scores have
+            on-chain data and third-party sources vet402 does not control, which can be incomplete,
+            delayed, throttled, or wrong. Nothing vet402 publishes about how well the scores have
             performed in the past — including the figures on{" "}
             <a className="doc-link" href="/accuracy">
               /accuracy
             </a>{" "}
-            — is a promise about how they will perform on your traffic. What we will and will not
+            — is a promise about how they will perform on your traffic. What vet402 will and will not
             pay for if something goes wrong is in section 9.
           </p>
         </section>
@@ -174,13 +174,13 @@ export default async function TermsPage() {
             <span>What a score is — and what it is not</span>
           </h2>
           <p>
-            A vet402 score is our <strong>opinion</strong>, expressed as a number and a
+            A vet402 score is vet402&apos;s <strong>opinion</strong>, expressed as a number and a
             recommendation, about the risk profile of a blockchain address or an ERC-8004 agent
             identifier, based on data that is already public on-chain. It is not a statement of fact
             about any person or business, and it is not an accusation. A low score does not say
             that anyone is a fraudster, a criminal, insolvent, or untrustworthy as a person; it says
-            that the public record attached to that address, read through our published
-            methodology, looks risky to us on the day we read it.
+            that the public record attached to that address, read through vet402&apos;s published
+            methodology, looks risky to vet402 on the day vet402 read it.
           </p>
           {/* 2026-08-14 (B-2 暫定実装): 意見と事実の区別を運用方針として明文化。
               意見は検証可能な事実的根拠（オンチェーン記録＋公開手法）に立脚し、
@@ -189,18 +189,18 @@ export default async function TermsPage() {
               即して記述——裁定的認定と誤読されないように。 */}
           <p>
             The opinion is not free-floating: every verdict rests on <strong>verifiable factual
-            grounds</strong> — the on-chain record we read, which anyone can re-read, and the
-            methodology we publish at{" "}
+            grounds</strong> — the on-chain record vet402 reads, which anyone can re-read, and the
+            methodology vet402 publishes at{" "}
             <a className="doc-link" href="/observatory/methodology">
               /observatory/methodology
             </a>
-            . Our policy is to state the underlying facts as facts, the assessment as an
+            . vet402&apos;s policy is to state the underlying facts as facts, the assessment as an
             assessment, and never to assert an evaluative label — &quot;fraud,&quot;
             &quot;scam,&quot; or anything like them — as a statement of fact about a person. Where
             a category label such as <code className="text-brand-deep">confirmed_fraud</code>{" "}
-            appears in our data or API, it is the name of an outcome category — how the customer
+            appears in vet402&apos;s data or API, it is the name of an outcome category — how the customer
             who ran the transaction reported it, or what an automated on-chain pattern check
-            recorded — kept to measure our own accuracy. It is not a finding by us that anyone
+            recorded — kept to measure vet402&apos;s own accuracy. It is not a finding by vet402 that anyone
             committed fraud, and it must not be quoted as one. Every published verdict carries the
             same free, key-less challenge route (section 8), and corrections are published openly
             on{" "}
@@ -213,14 +213,14 @@ export default async function TermsPage() {
             A score is also not identity verification, KYC/AML screening, a sanctions check, a
             credit assessment, a background check, or any kind of certification or accreditation.
             Addresses are pseudonymous: the same address may be controlled by different parties over
-            time, one party may control many addresses, and we generally do not know who is behind
+            time, one party may control many addresses, and vet402 generally does not know who is behind
             any of them.
           </p>
           <p>
-            Our methodology uses public lists — including the US Treasury OFAC list of sanctioned
-            digital-currency addresses — as one benchmark of known-bad addresses to measure our
-            scoring against. Using that list as a benchmark is not us making a sanctions
-            determination: we do not decide who is on it, we do not screen for sanctions compliance,
+            vet402&apos;s methodology uses public lists — including the US Treasury OFAC list of sanctioned
+            digital-currency addresses — as one benchmark of known-bad addresses to measure vet402&apos;s
+            scoring against. Using that list as a benchmark is not vet402 making a sanctions
+            determination: vet402 does not decide who is on it, it does not screen for sanctions compliance,
             and a low score or a BLOCK is not a statement that an address is sanctioned or that
             transacting with it is unlawful. If you have a sanctions- or AML-compliance obligation,
             meet it with a service built and licensed for that purpose; vet402 is not one.
@@ -228,26 +228,26 @@ export default async function TermsPage() {
           <p>
             ALLOW, WARN, and BLOCK are <strong>recommendations to the customer who asked</strong>,
             not instructions and not decisions. vet402 never accepts, refuses, delays, or reverses
-            anyone&apos;s payment — we take no custody of customer funds, hold no signing authority
-            over any key of yours, and have no place in your transaction. (vet402 does spend its
+            anyone&apos;s payment — vet402 takes no custody of customer funds, holds no signing authority
+            over any key of yours, and has no place in your transaction. (vet402 does spend its
             own funds: the observatory buys from x402 endpoints with an operator wallet to produce
-            the settle-through record. That is our money and our transaction, never yours.) If a payment of yours was refused, or accepted and then went wrong, the
+            the settle-through record. That is vet402&apos;s money and vet402&apos;s transaction, never yours.) If a payment of yours was refused, or accepted and then went wrong, the
             decision was made by the business you were transacting with, applying its own policy.
-            Section 2 puts that responsibility on our customers in so many words, and we are
-            repeating it here so that it is legible to someone who is not our customer and never
+            Section 2 puts that responsibility on vet402&apos;s customers in so many words, and vet402 is
+            repeating it here so that it is legible to someone who is not vet402&apos;s customer and never
             agreed to these terms.
           </p>
           <p>
-            Our methodology is published at{" "}
+            vet402&apos;s methodology is published at{" "}
             <a className="doc-link" href="/observatory/methodology">
               /observatory/methodology
             </a>
-            , and our own measured error rates, including the false positives that make us look
+            , and vet402&apos;s own measured error rates, including the false positives that make vet402 look
             bad, at{" "}
             <a className="doc-link" href="/accuracy">
               /accuracy
             </a>
-            . We publish them because a score that presents itself as infallible is the more
+            . vet402 publishes them because a score that presents itself as infallible is the more
             dangerous product.
           </p>
         </section>
@@ -258,23 +258,23 @@ export default async function TermsPage() {
             <span>No third-party beneficiaries, and no duty to non-customers</span>
           </h2>
           <p>
-            These terms are an agreement between us and the customer who holds the API key. Nobody
+            These terms are an agreement between vet402 and the customer who holds the API key. Nobody
             else acquires rights under them. In particular, a person or business that is
-            <em> scored</em> by vet402, or that is on the other side of a transaction where our
-            customer used vet402, is not a party to this agreement and is not an intended third-party
-            beneficiary of it. Our customers cannot promise, on our behalf, that a score is accurate,
+            <em> scored</em> by vet402, or that is on the other side of a transaction where
+            vet402&apos;s customer used vet402, is not a party to this agreement and is not an intended third-party
+            beneficiary of it. vet402&apos;s customers cannot promise, on vet402&apos;s behalf, that a score is accurate,
             current, or fit for anything.
           </p>
           <p>
-            To the fullest extent permitted by applicable law, we do not accept and do not assume a
-            duty of care toward people who are not our customers. We do not investigate the parties
-            behind the addresses we score, we do not adjudicate disputes between a payer and a
-            payee, and we do not undertake to protect any particular party from loss. If you are not
-            our customer and a score affected you, our undertaking to you is the correction route in
+            To the fullest extent permitted by applicable law, vet402 does not accept and does not assume a
+            duty of care toward people who are not its customers. vet402 does not investigate the parties
+            behind the addresses it scores, it does not adjudicate disputes between a payer and a
+            payee, and it does not undertake to protect any particular party from loss. If you are not
+            vet402&apos;s customer and a score affected you, vet402&apos;s undertaking to you is the correction route in
             section 8 — a real one, free and open to anyone — and not an assurance of any outcome.
           </p>
           <p>
-            Nothing in this section is an attempt to escape liability for our own fraud,
+            Nothing in this section is an attempt to escape liability for vet402&apos;s own fraud,
             intentional misconduct, or gross negligence, or for anything that applicable law does
             not allow to be excluded. Those remain exactly where the law puts them.
           </p>
@@ -296,7 +296,7 @@ export default async function TermsPage() {
           </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong>Prove control of the address.</strong> Sign our canonical message with the
+              <strong>Prove control of the address.</strong> Sign vet402&apos;s canonical message with the
               wallet in question and{" "}
               <code className="text-brand-deep">POST /api/v1/payees/verify</code>. A valid
               signature is the proof — no key required, no charge. That marks the address as
@@ -311,14 +311,14 @@ export default async function TermsPage() {
               you attempt anything.
             </li>
             <li>
-              <strong>Or just email us.</strong> Write to{" "}
+              <strong>Or just email vet402.</strong> Write to{" "}
               <a className="doc-link" href={SUPPORT_MAILTO}>
                 {SUPPORT_EMAIL}
               </a>{" "}
-              with the address and what you think is wrong. One person reads that inbox. We will
-              acknowledge within 5 business days (Japan time). We cannot promise to change a score —
-              it is our opinion, and sometimes we will disagree with you — but we will look, we will
-              tell you what we concluded, and if we got a fact wrong we will fix it and re-score.
+              with the address and what you think is wrong. One person reads that inbox. vet402 will
+              acknowledge within 5 business days (Japan time). vet402 cannot promise to change a score —
+              it is vet402&apos;s opinion, and sometimes vet402 will disagree with you — but vet402 will look, it will
+              tell you what it concluded, and if vet402 got a fact wrong it will fix it and re-score.
             </li>
           </ul>
           {/* 2026-09-02: endpoint 記録（L0–L2）への異議の経路。上の 2 経路は score 用。 */}
@@ -328,18 +328,18 @@ export default async function TermsPage() {
             <code className="text-brand-deep">/observatory/e/</code> ends with a{" "}
             <em>Dispute this record</em> form. Send your email address and what you believe is wrong
             (20–2,000 characters); you receive a receipt number, and one person reads it and tells
-            you what we concluded. Records are never deleted on dispute. If the measurement was
+            you what vet402 concluded. Records are never deleted on dispute. If the measurement was
             wrong, the correction is published with the same weight as the record; if it was right,
-            the record stands and we say so. If you control the endpoint&apos;s receiving address,
+            the record stands and vet402 says so. If you control the endpoint&apos;s receiving address,
             you can also sign the dispute (
             <code className="text-brand-deep">POST /api/v1/observatory/disputes</code>), which
             triggers a re-measurement through the normal publication gate.
           </p>
           <p>
             If you intend to bring a claim about a score, please use one of those routes first and
-            give us 30 days. This is not a waiver of any right and it does not stop any clock that
+            give vet402 30 days. This is not a waiver of any right and it does not stop any clock that
             the law is running; it is a request, because most of these are fixable in an afternoon
-            and neither of us wants the alternative.
+            and neither party wants the alternative.
           </p>
         </section>
 
@@ -349,35 +349,35 @@ export default async function TermsPage() {
             <span>Limitation of liability</span>
           </h2>
           <p>
-            To the fullest extent permitted by applicable law, we are not liable for indirect,
+            To the fullest extent permitted by applicable law, vet402 is not liable for indirect,
             incidental, special, consequential, exemplary, or punitive damages, or for lost profits,
             lost revenue, lost or corrupted data, lost business, business interruption, loss of
             goodwill or reputation, or the cost of substitute services — whether the claim is
-            framed in contract, in tort (including negligence), or otherwise, and whether or not we
-            were told such damages were possible. This includes losses from a payment you accepted
+            framed in contract, in tort (including negligence), or otherwise, and whether or not vet402
+            was told such damages were possible. This includes losses from a payment you accepted
             after an ALLOW, a payment or counterparty you turned away after a WARN or BLOCK, and
             funds sent to a wallet that scored well and misbehaved anyway.
           </p>
           <p>
-            Our total liability for all claims relating to vet402, taken together, will not exceed
-            the greater of (a) the amount you paid us for the service in the twelve months before
+            vet402&apos;s total liability for all claims relating to vet402, taken together, will not exceed
+            the greater of (a) the amount you paid vet402 for the service in the twelve months before
             the claim and (b) US$100 (or its equivalent in Japanese yen). On the Free plan (a) is
             zero, so the US$100 floor is what applies. On Pro that ceiling is at most US$588, and on
             Scale at most US$2,388.
           </p>
           <p>
-            We would rather state that plainly than bury it. vet402 is run by one person and priced
+            vet402 would rather state that plainly than bury it. vet402 is run by one person and priced
             between US$0 and US$199 a month; it cannot carry exposure larger than the revenue an
-            account actually produced, and pretending otherwise would be a promise we could not
+            account actually produced, and pretending otherwise would be a promise it could not
             keep. Size your reliance accordingly: if a single wrong verdict would cost you more than
             the cap, vet402 should be one input into your decision and not the decision. If you need
-            cover beyond this, talk to us <em>before</em> you build it into a payment path — the
+            cover beyond this, talk to vet402 <em>before</em> you build it into a payment path — the
             answer may be no, but you will have it in writing and in advance.
           </p>
           <p>
             Nothing in these terms limits or excludes liability that cannot be limited or excluded
             under the law that applies to you — including liability for fraud or fraudulent
-            misrepresentation, for our own intentional misconduct or gross negligence, or for death
+            misrepresentation, for vet402&apos;s own intentional misconduct or gross negligence, or for death
             or personal injury. Section 0 allows anyone a free account and treats paid plans as for
             business use. This section is written with paid business use in mind. If mandatory
             consumer-protection rules nonetheless apply to you, they apply whether or not this
@@ -388,17 +388,17 @@ export default async function TermsPage() {
         <section className="space-y-2">
           <h2 className="sec-head">
             <span className="sec-no">10.</span>
-            <span>Your responsibility to us</span>
+            <span>Your responsibility to vet402</span>
           </h2>
           <p>
-            If a third party brings a claim against us because of how you used vet402 — because you
+            If a third party brings a claim against vet402 because of how you used vet402 — because you
             used it unlawfully or in breach of these terms, because you presented a score as
             something it is not (a certification, a fraud determination, a KYC or sanctions result,
             a statement of fact about a person), because you republished or resold score output in a
             way these terms do not permit, or because of a decision you made to allow, warn, or
-            block someone — you agree to cover the direct costs we reasonably incur from that claim,
-            including reasonable legal fees. This does not apply to anything caused by our own act
-            or omission, and it is limited to what applicable law allows. We will tell you promptly
+            block someone — you agree to cover the direct costs vet402 reasonably incurs from that claim,
+            including reasonable legal fees. This does not apply to anything caused by vet402&apos;s own act
+            or omission, and it is limited to what applicable law allows. vet402 will tell you promptly
             about any such claim, will not settle it without asking you first, and will let you take
             over the defense if you want it.
           </p>
@@ -423,13 +423,13 @@ export default async function TermsPage() {
             use. This clause is written with paid business use in mind. If you are somehow using
             vet402 in a capacity where mandatory local rules give you a forum in your
             own country, those rules apply on their own terms regardless of this clause. If you need
-            to know the specific court by name before you can approve vet402 internally, ask us by
-            email and we will tell you in writing.
+            to know the specific court by name before you can approve vet402 internally, ask vet402 by
+            email and vet402 will tell you in writing.
           </p>
           <p>
-            Before starting formal proceedings, please email us and give us 30 days to sort it out.
+            Before starting formal proceedings, please email vet402 and give it 30 days to sort it out.
             One person reads that inbox and answers. These terms contain no mandatory arbitration
-            clause and no class-action waiver — we are not asking you to sign away a forum.
+            clause and no class-action waiver — vet402 is not asking you to sign away a forum.
           </p>
           <p>These terms are written in English, and the English text governs.</p>
         </section>
@@ -440,19 +440,19 @@ export default async function TermsPage() {
             <span>Changes, and the rest</span>
           </h2>
           <p>
-            We may update these terms as the product changes. Material changes will be reflected on
+            vet402 may update these terms as the product changes. Material changes will be reflected on
             this page with an updated date before they take effect; continuing to use vet402 after
             that means the updated terms apply. If any part of these terms turns out to be
             unenforceable, the rest stays in force and that part is read as narrowly as needed to
-            make it valid. If we do not enforce something immediately, we have not given it up.
+            make it valid. If vet402 does not enforce something immediately, it has not given it up.
             Sections 5 through 11, and sections 13 through 16, survive after you stop using the
             service. Together with the{" "}
             <a className="doc-link" href="/legal/privacy">
               Privacy Policy
             </a>
-            , these terms are the whole agreement between you and us about vet402. You may not
-            transfer your rights under them; we may transfer ours if the project moves to a company
-            or is acquired, and we will say so on this page if that happens.
+            , these terms are the whole agreement between you and vet402 about vet402. You may not
+            transfer your rights under them; vet402 may transfer its rights if the project moves to a company
+            or is acquired, and it will say so on this page if that happens.
           </p>
           <p>
             Questions about these terms? Email{" "}
@@ -477,10 +477,10 @@ export default async function TermsPage() {
           <p>
             Alongside trust scores, vet402 publishes verification results for x402 endpoints. A
             verification result is different in kind from a score, so it gets its own section. A
-            score is our opinion (section 6). A verification result is a record of a measurement:
-            at the moment shown on the result, we paid the endpoint&apos;s published price with
-            real funds, following our published methodology, and we recorded what happened. We
-            publish the record, the transaction hash, and the timestamp, and we describe what we
+            score is vet402&apos;s opinion (section 6). A verification result is a record of a measurement:
+            at the moment shown on the result, vet402 paid the endpoint&apos;s published price with
+            real funds, following its published methodology, and it recorded what happened. vet402
+            publishes the record, the transaction hash, and the timestamp, and it describes what it
             observed in plain factual terms.
           </p>
           <p>
@@ -500,8 +500,8 @@ export default async function TermsPage() {
             wall answered a valid <code>402</code> challenge consistent with what the catalog
             declares, and fail means it contradicted that on two or more consecutive probes. L0
             says nothing about whether the endpoint delivers anything, because nothing was
-            purchased. What happened when we did pay is L1, and L1 has its own words —{" "}
-            <strong>settled</strong> (we re-read the transfer on-chain), <strong>delivered</strong>{" "}
+            purchased. What happened when vet402 did pay is L1, and L1 has its own words —{" "}
+            <strong>settled</strong> (vet402 re-reads the transfer on-chain), <strong>delivered</strong>{" "}
             (settled and the paid request answered <code>2xx</code> other than <code>202 Accepted</code>{" "}
             with a non-empty body),{" "}
             <strong>settle_failed</strong>, and the settlement-claim states. An L1 result is never
@@ -518,8 +518,8 @@ export default async function TermsPage() {
             &quot;Unverified&quot; is not a negative assessment. unverified means vet402 does not have grounds to publish either pass or fail yet. It is not a failure and is never counted as one: it is an entry not yet reached by the rolling schedule, an entry whose failing probe has not met the publication gate, an entry recorded as path_template, or the remainder after the three above. The remainder includes a latest reason of rate_limited, tls, request_shape, or unsafe_target. It also includes a latest reason of method_undeclared, for which no request was sent before 2026-09-02, and body_over_cap, for which a 402 came back and the body was not read to the end. A listing that declares no HTTP method, or a method other than GET, POST, HEAD, or DELETE, is measured with GET, and two consecutive failures of that probe can be published as fail.
           </p>
           <p>
-            Results age. We re-test on a published cadence and update results automatically, but
-            between measurements the world can change faster than we do. Always read a result
+            Results age. vet402 re-tests on a published cadence and updates results automatically, but
+            between measurements the world can change faster than vet402 does. Always read a result
             together with its timestamp, and treat the live result page — not any copy,
             screenshot, or badge — as the only current statement.
           </p>
@@ -528,8 +528,8 @@ export default async function TermsPage() {
             in section 8 applies to verification results exactly as it applies to scores: it is
             free, needs no account, and one person reads that inbox. A dispute filed through the
             signed route runs one fresh L0 probe of the endpoint immediately, recorded like any
-            other probe under the same publication gate; it does not trigger a new purchase. We
-            publish corrections openly and record them in a corrections log. We do not promise a
+            other probe under the same publication gate; it does not trigger a new purchase. vet402
+            publishes corrections openly and records them in a corrections log. vet402 does not promise a
             minute at which a dispute filed on the record form is measured.{" "}
             {formDisputeQueueSentence(l0ProbeScheduleLabel())}
           </p>
@@ -538,14 +538,14 @@ export default async function TermsPage() {
               記録頁に「disputed」の印を付ける実装は無いので、付けるとは書かない。 */}
           <p id="l1-disputes" className="scroll-mt-24">
             <strong>Disputing a purchase (L1) result.</strong> If you think a purchase record is
-            wrong — for example that we paid and your endpoint did deliver, or that a failure was
-            on our side rather than yours — use the same routes. While we look at it, the record
-            stays as it was recorded; we do not delete or edit it because a dispute was filed. The
+            wrong — for example that vet402 paid and your endpoint did deliver, or that a failure was
+            on vet402&apos;s side rather than yours — use the same routes. While vet402 looks at it, the record
+            stays as it was recorded; vet402 does not delete or edit it because a dispute was filed. The
             record page does not currently carry a &quot;disputed&quot; marker while a dispute is
             open, and a dispute does not start a new purchase: the signed route re-runs the L0
             probe only. One person compares the record with the on-chain transfer and the response
-            we stored, and tells you what we concluded. If our measurement or our attribution was
-            wrong, we publish a correction on{" "}
+            vet402 stored, and tells you what vet402 concluded. If vet402&apos;s measurement or its attribution was
+            wrong, vet402 publishes a correction on{" "}
             <a className="doc-link" href="/corrections">
               /corrections
             </a>{" "}
@@ -567,9 +567,9 @@ export default async function TermsPage() {
           </p>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              <strong>Investment decisions.</strong> Nothing we publish is investment advice, a
+              <strong>Investment decisions.</strong> Nothing vet402 publishes is investment advice, a
               research report, a solicitation, or a recommendation to buy, sell, or hold any
-              token, security, or other asset, and nothing we publish says anything about the
+              token, security, or other asset, and nothing vet402 publishes says anything about the
               value or prospects of any project or business. Do not use scores or verification
               results to make, justify, or market an investment decision.
             </li>
@@ -579,8 +579,8 @@ export default async function TermsPage() {
               </strong>{" "}
               Scores and results describe addresses and endpoints, not people (section 6), and
               they must not be used as a factor in deciding whether a person gets a loan, a
-              policy, a job, a home, or any similar benefit. They are not a consumer report and we
-              are not a consumer reporting agency.
+              policy, a job, a home, or any similar benefit. They are not a consumer report and vet402
+              is not a consumer reporting agency.
             </li>
             <li>
               <strong>Clipped or altered republication.</strong> If you quote a result, you must
@@ -592,10 +592,10 @@ export default async function TermsPage() {
           </ul>
           <p>
             Using the service for any of these is a breach of section 4 (acceptable use), and
-            section 10 (your responsibility to us) applies to claims that arise from it. We wrote
+            section 10 (your responsibility to vet402) applies to claims that arise from it. vet402 wrote
             this section because a snapshot that is accurate on the day it is taken becomes a
-            false statement when someone strips the date off and waves it around; we do not want
-            our measurements doing that to anyone.
+            false statement when someone strips the date off and waves it around; vet402 does not want
+            its measurements doing that to anyone.
           </p>
         </section>
 
@@ -605,37 +605,37 @@ export default async function TermsPage() {
             <span>Badges</span>
           </h2>
           <p>
-            We may offer verification badges — small images or SVG embeds that show an
-            endpoint&apos;s current verification status. If we do, this section is the license for
+            vet402 may offer verification badges — small images or SVG embeds that show an
+            endpoint&apos;s current verification status. If it does, this section is the license for
             them.
           </p>
           <p>
-            <strong>What we grant.</strong> If an endpoint you operate has a current verification
-            result, we grant you a limited, non-exclusive, non-transferable, non-sublicensable,
+            <strong>What vet402 grants.</strong> If an endpoint you operate has a current verification
+            result, vet402 grants you a limited, non-exclusive, non-transferable, non-sublicensable,
             revocable permission to display the badge for that endpoint on your own site and
-            materials. The badge is ours; this is permission to display it, not a transfer of any
-            right in it, and it does not license our name or logo for any other use.
+            materials. The badge is vet402&apos;s; this is permission to display it, not a transfer of any
+            right in it, and it does not license vet402&apos;s name or logo for any other use.
           </p>
           <p>
             <strong>Display conditions.</strong> A badge must be embedded so that it reflects the
-            current result — use the live embed we serve rather than a saved copy, because a
+            current result — use the live embed vet402 serves rather than a saved copy, because a
             screenshot of Tuesday&apos;s badge is a statement about Tuesday that starts lying the
             moment things change, and if you freeze it, the lie is yours: keeping a stale badge on
-            display is the displayer&apos;s responsibility, not ours. The badge must link back to
+            display is the displayer&apos;s responsibility, not vet402&apos;s. The badge must link back to
             its live result page on vet402, must be reproduced without modification — no edits to
             its wording, marks, colors, or proportions, and no cropping the timestamp — and must
-            not be displayed in a way that suggests we endorse your business, audited anything
-            beyond the tested endpoint, or guarantee future performance. &quot;Verified by
+            not be displayed in a way that suggests vet402 endorses your business, audited anything
+            beyond the tested endpoint, or guarantees future performance. &quot;Verified by
             vet402&quot; means exactly what section 13 says a result means, and a badge may not be
             used to imply more.
           </p>
           <p>
-            <strong>Revocation.</strong> We may withdraw permission for a badge at any time — in
+            <strong>Revocation.</strong> vet402 may withdraw permission for a badge at any time — in
             particular when the underlying result changes, goes stale, or is corrected, or when a
             badge is being displayed in breach of this section. The live embed updates or goes
-            blank on its own. If you have displayed the badge any other way and we ask you to
+            blank on its own. If you have displayed the badge any other way and vet402 asks you to
             remove it, you will do so within 5 business days. Continuing to display a badge after
-            the permission behind it has ended is use of our mark without a license, and section
+            the permission behind it has ended is use of vet402&apos;s mark without a license, and section
             10 applies to claims that arise from a badge displayed in breach of this section.
           </p>
         </section>
@@ -681,16 +681,16 @@ export default async function TermsPage() {
           <p>
             <strong>Cancel.</strong> Cancel from the Stripe customer portal linked on Billing
             (&quot;Manage subscription&quot;). Access to the paid quota continues until the end of
-            the current period, then the account returns to Free. We do not refund unused lookups
+            the current period, then the account returns to Free. vet402 does not refund unused lookups
             or unused time on a cancelled period.
           </p>
           <p>
             <strong>Failed payment.</strong> If a renewal charge fails, Stripe retries. Until that
             finishes, Billing will say so and the current plan stays. If retries fail, the
             subscription ends and the account returns to Free. Card, invoices, and tax details are
-            managed in the portal by Stripe, not by us. Billing itself sends you nothing from
+            managed in the portal by Stripe, not by vet402. Billing itself sends you nothing from
             vet402. The service does send email in other places — record-change notifications you
-            asked for, replies about a dispute, and notices to a seller before we publish results
+            asked for, replies about a dispute, and notices to a seller before vet402 publishes results
             that name it — which is why Resend is named as a subprocessor in{" "}
             <a className="doc-link" href="/legal/privacy">
               the privacy policy

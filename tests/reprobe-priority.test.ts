@@ -425,5 +425,5 @@ test("送信後の文と記録頁は、その出品の判定で文を選ぶ", ()
   assert.match(home, /formDisputeQueueSummary\(l0ProbeScheduleLabel\(\)\)/);
   assert.doesNotMatch(home, /cannot by itself produce a pass/, "1 回の pass は公開判定になる（publishedVerdict）");
   assert.match(home.replace(/\s+/g, " "), /One failing probe does not publish a fail, and one passing probe becomes the published verdict until the next probe\./);
-  assert.match(read("src/app/legal/terms/page.tsx"), /We do not promise a/);
+  assert.match(read("src/app/legal/terms/page.tsx"), /vet402 does not promise a/);
 });
