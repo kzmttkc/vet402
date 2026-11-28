@@ -409,14 +409,23 @@ export async function settlementByTx(txHash: string): Promise<SettlementRef | nu
  * `method`（任意・大文字）: URL の問いを 1 つの method に絞る（2026-09-29 監査 7 周目）。無ければ従来どおり
  * GET → POST の順。支払う側（MCP の pay_if_trusted）は払う method の正規の resource_id を要る。
  */
-export async function resolve(q: string, opts: { method?: string } = {}): Promise<ResolveResult> {
+export type ResolveOpts = {
+  method?: string;
+  /**
+   * checkSeller（GET /api/v1/check・presign・MCP）だけが使う。URL で resource が当たったら
+   * 同ホストの endpoints（endpointsByDomain）を読まない。当たらなかったときだけ読む。
+   */
+  skipDomainEndpointsOnResourceHit?: boolean;
+};
+
+export async function resolve(q: string, opts: ResolveOpts = {}): Promise<ResolveResult> {
   return withNotFound((await resolveRaw(q, opts)).out);
 }
 
 /** resolve と同じ 1 本の読み取りで、鍵なし利用集計用の network（CAIP-2）も返す。公開 JSON には載せない。 */
 export async function resolveForRoute(
   q: string,
-  opts: { method?: string } = {},
+  opts: ResolveOpts = {},
 ): Promise<{ result: ResolveResult; usageNetwork?: string }> {
   const raw = await resolveRaw(q, opts);
   return { result: withNotFound(raw.out), usageNetwork: raw.usageNetwork };
@@ -424,7 +433,7 @@ export async function resolveForRoute(
 
 type ResolveRaw = { out: ResolveResult; usageNetwork?: string };
 
-async function resolveRaw(q: string, opts: { method?: string }): Promise<ResolveRaw> {
+async function resolveRaw(q: string, opts: ResolveOpts): Promise<ResolveRaw> {
   const query = classifyQuery(q);
   const out: ResolveResult = { query, disclaimer: DISCLAIMER };
   let usageNetwork: string | undefined;
@@ -433,12 +442,20 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
       const c = canonicalUrl(query.value);
       if (!c) return { out };
       // method が無ければ GET → POST の順に引く（§6.1 の既定に合わせる）。あればその method だけ。
-      // 同じホストの掲載（endpoints）は当たっても外れても返す。互いに依存しないので並列に読む（2026-11-28 依頼 V）。
       const host = new URL(c.url).hostname;
-      const [hit, endpoints] = await Promise.all([
-        opts.method ? resourceHit(opts.method, c.url) : resourceHitDefaultMethods(c.url),
-        endpointsByDomain(host, 50),
-      ]);
+      const readHit = () => (opts.method ? resourceHit(opts.method, c.url) : resourceHitDefaultMethods(c.url));
+      if (opts.skipDomainEndpointsOnResourceHit) {
+        const hit = await readHit();
+        if (hit) {
+          out.resource = hit.ref;
+          usageNetwork = usageNetworkOfEndpoint(hit.network);
+          return { out, usageNetwork };
+        }
+        out.endpoints = await endpointsByDomain(host, 50);
+        return { out, usageNetwork };
+      }
+      // 同じホストの掲載（endpoints）は当たっても外れても返す。互いに依存しないので並列に読む（2026-11-28 依頼 V）。
+      const [hit, endpoints] = await Promise.all([readHit(), endpointsByDomain(host, 50)]);
       if (hit) {
         out.resource = hit.ref;
         usageNetwork = usageNetworkOfEndpoint(hit.network);

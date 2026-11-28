@@ -12,7 +12,7 @@
 // ============================================================
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { decide as decideFn } from "@/lib/decision/decide";
-import type { resolve as resolveFn, resolveForRoute as resolveForRouteFn } from "@/lib/resolve/lookup";
+import type { resolve as resolveFn, resolveForRoute as resolveForRouteFn, ResolveOpts } from "@/lib/resolve/lookup";
 import { takeResolveModuleCold } from "@/lib/resolve/lookup";
 import { runDbMissTimingPhase, sliceWithApp } from "@/lib/db/miss-timing";
 import { usageChainOf } from "@/lib/api/decision-usage";
@@ -243,6 +243,7 @@ export async function checkSeller(
 ): Promise<CheckSellerOutput> {
   const now = (deps.now ?? (() => new Date()))();
   const method = input.method ? input.method.toUpperCase() : undefined;
+  const resolveOpts = { ...(method ? { method } : {}), skipDomainEndpointsOnResourceHit: true } satisfies ResolveOpts;
   const miss = timing?.miss ?? (timing ? (timing.miss = {}) : undefined);
   let resolved: Awaited<ReturnType<typeof resolveFn>>;
   if (miss) {
@@ -250,11 +251,11 @@ export async function checkSeller(
     miss.db_resolve_cold = takeResolveModuleCold();
     const read = async () => {
       if (deps.resolveForRoute) {
-        const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
+        const bundle = await deps.resolveForRoute(input.url, resolveOpts);
         if (bundle.usageNetwork) deps.captureUsageNetwork?.(bundle.usageNetwork);
         return bundle.result;
       }
-      return deps.resolve(input.url, method ? { method } : {});
+      return deps.resolve(input.url, resolveOpts);
     };
     const { value, slice } = await runDbMissTimingPhase("resolve", read);
     resolved = value;
@@ -266,11 +267,11 @@ export async function checkSeller(
     miss.db_resolve_qn = s.qn;
     miss.db_resolve_app = s.app;
   } else if (deps.resolveForRoute) {
-    const bundle = await deps.resolveForRoute(input.url, method ? { method } : {});
+    const bundle = await deps.resolveForRoute(input.url, resolveOpts);
     resolved = bundle.result;
     if (bundle.usageNetwork) deps.captureUsageNetwork?.(bundle.usageNetwork);
   } else {
-    resolved = await deps.resolve(input.url, method ? { method } : {});
+    resolved = await deps.resolve(input.url, resolveOpts);
   }
   const resource = resolved.resource;
   const decideReq = {
