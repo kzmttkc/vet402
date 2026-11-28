@@ -1,0 +1,7 @@
+{
+  "category": "services-endpoints",
+  "description": "Independent x402 verification API on Base: seller delivery checks, trust scores, and a paid RWA facts lane with CDP Bazaar discovery.",
+  "logoUrl": "/logos/vet402.png",
+  "name": "vet402",
+  "websiteUrl": "https://vet402.com/docs/api"
+}

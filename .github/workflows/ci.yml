@@ -85,6 +85,9 @@ jobs:
       # 数字を新しくしたいときだけ `npm run refresh-numbers`（fetch + rebase の後に）→ commit。
       - name: Submission numbers are consistent with scripts/refresh-numbers.json
         run: node scripts/refresh-numbers.mjs --check
+      # I5: listing drafts are generated from docs/openapi.yaml. Observe-only first: print drift counts, do not fail the job.
+      - name: Listing drafts drift (observe)
+        run: npm run listings:check -- --observe
 
   build:
     name: production build

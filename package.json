@@ -74,6 +74,8 @@
     "indexer:settlements": "tsx scripts/index-settlements.ts",
     "settlements:rollup": "tsx scripts/settlements-rollup.ts",
     "registry:inbox": "tsx scripts/registry-inbox.ts",
+    "listings:generate": "tsx scripts/listings/generate.ts",
+    "listings:check": "tsx scripts/listings/generate.ts --check",
     "rwa:test": "tsx --test packages/rwa/test/*.test.ts"
   },
   "dependencies": {

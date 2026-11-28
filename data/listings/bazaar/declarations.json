@@ -1,0 +1,225 @@
+{
+  "declarations": [
+    {
+      "accepts": [
+        {
+          "amount": "10000",
+          "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "extra": {
+            "name": "USD Coin",
+            "version": "2"
+          },
+          "maxTimeoutSeconds": 120,
+          "network": "eip155:8453",
+          "payTo": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+          "scheme": "exact"
+        }
+      ],
+      "amount": "10000",
+      "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      "extensions": {
+        "bazaar": {
+          "info": {
+            "input": {
+              "method": "GET",
+              "queryParams": {
+                "chain": "4663"
+              },
+              "type": "http"
+            },
+            "output": {
+              "example": {
+                "address": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+                "as_of": "2026-01-01T00:00:00.000Z",
+                "as_of_block": 1,
+                "chain_id": 4663,
+                "disclaimer": "Rebuilt from public chain data only.",
+                "gaps": [],
+                "identity_binding": "unknown",
+                "method_version": "rwa-recon-0.3",
+                "r0": "present",
+                "r1_status": "partial",
+                "r2": "no_declaration"
+              },
+              "type": "json"
+            }
+          },
+          "schema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "properties": {
+              "input": {
+                "properties": {
+                  "method": {
+                    "enum": [
+                      "GET"
+                    ]
+                  },
+                  "queryParams": {
+                    "properties": {
+                      "chain": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "chain"
+                    ],
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "http"
+                  }
+                },
+                "required": [
+                  "type",
+                  "method",
+                  "queryParams"
+                ],
+                "type": "object"
+              },
+              "output": {
+                "properties": {
+                  "example": {
+                    "type": "object"
+                  },
+                  "type": {
+                    "const": "json"
+                  }
+                },
+                "required": [
+                  "type",
+                  "example"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "input",
+              "output"
+            ],
+            "type": "object"
+          }
+        }
+      },
+      "method": "GET",
+      "network": "eip155:8453",
+      "operationId": "getRwaFactsPaidBase",
+      "path": "/api/v1/rwa/paid/base/facts/{address}",
+      "payTo": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+      "paymentRequired402": {
+        "accepts": [
+          {
+            "amount": "10000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            },
+            "maxTimeoutSeconds": 120,
+            "network": "eip155:8453",
+            "payTo": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+            "scheme": "exact"
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "method": "GET",
+                "queryParams": {
+                  "chain": "4663"
+                },
+                "type": "http"
+              },
+              "output": {
+                "example": {
+                  "address": "0x973cD8a91A771C2C04C6036888F8175D6b4F6227",
+                  "as_of": "2026-01-01T00:00:00.000Z",
+                  "as_of_block": 1,
+                  "chain_id": 4663,
+                  "disclaimer": "Rebuilt from public chain data only.",
+                  "gaps": [],
+                  "identity_binding": "unknown",
+                  "method_version": "rwa-recon-0.3",
+                  "r0": "present",
+                  "r1_status": "partial",
+                  "r2": "no_declaration"
+                },
+                "type": "json"
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "properties": {
+                "input": {
+                  "properties": {
+                    "method": {
+                      "enum": [
+                        "GET"
+                      ]
+                    },
+                    "queryParams": {
+                      "properties": {
+                        "chain": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "chain"
+                      ],
+                      "type": "object"
+                    },
+                    "type": {
+                      "const": "http"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "method",
+                    "queryParams"
+                  ],
+                  "type": "object"
+                },
+                "output": {
+                  "properties": {
+                    "example": {
+                      "type": "object"
+                    },
+                    "type": {
+                      "const": "json"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "example"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "input",
+                "output"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "resource": {
+          "description": "vet402 RWA facts JSON for one wallet on Robinhood Chain (eip155:4663). Same JSON as the free route. Payment settles in USDC on Base (eip155:8453) via the CDP x402 facilitator.",
+          "mimeType": "application/json",
+          "serviceName": "vet402 RWA facts",
+          "tags": [
+            "rwa",
+            "facts",
+            "base",
+            "usdc",
+            "x402"
+          ],
+          "url": "https://vet402.com/api/v1/rwa/paid/base/facts/0xE9B08727131E34010b34006c660D4c1B436EC25f"
+        },
+        "x402Version": 2
+      },
+      "resourceUrl": "https://vet402.com/api/v1/rwa/paid/base/facts/0xE9B08727131E34010b34006c660D4c1B436EC25f"
+    }
+  ],
+  "generatedFrom": "openapi.info.x-vet402-listings"
+}
