@@ -18,10 +18,14 @@ export function PricingPageDetails() {
           How the monthly score quota works
         </h2>
         <p className="doc-p">
-          The quota counts authenticated score API calls: one unit per <code className="text-brand-deep">GET /api/v1/score</code>, one
-          unit per <code className="text-brand-deep">GET /api/v1/resources/{"{resource_id}"}/decision</code> sent with a key, and{" "}
-          <code className="text-brand-deep">N</code> units for{" "}
-          <code className="text-brand-deep">POST /api/v1/scores/batch</code> with <code className="text-brand-deep">N</code> targets.
+          The quota counts calls made with an API key. A score lookup (
+          <code className="text-brand-deep">GET /api/v1/agents/{"{agent_id}"}/score</code>,{" "}
+          <code className="text-brand-deep">/api/v1/wallets/{"{address}"}/score</code>, or{" "}
+          <code className="text-brand-deep">/api/v1/payees/{"{address}"}/score</code>) and a keyed{" "}
+          <code className="text-brand-deep">GET /api/v1/resources/{"{resource_id}"}/decision</code> are one unit each;{" "}
+          <code className="text-brand-deep">POST /api/v1/scores/batch</code> with <code className="text-brand-deep">N</code> targets is{" "}
+          <code className="text-brand-deep">N</code> units. Other keyed routes also spend units; responses that spend units carry{" "}
+          <code className="text-brand-deep">X-RateLimit-Used</code>.
           One quota pool covers the account and is shared across its API keys. The counter resets at 00:00 UTC on the first day of each calendar
           month; unused units do not roll over.
         </p>
@@ -65,7 +69,7 @@ export function PricingPageDetails() {
           Measurement is not for sale
         </h2>
         <p className="doc-p">
-          Paid tiers raise lookup quotas and dashboard features. They do not change how vet402 measures sellers, how often vet402 buys
+          Paid tiers raise the monthly lookup quota and add score history. They do not change how vet402 measures sellers, how often vet402 buys
           on the public record, or how results are published or corrected. See the{" "}
           <Link href="/integrity" className="doc-link">
             Integrity Terms
