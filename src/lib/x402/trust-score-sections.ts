@@ -6,15 +6,15 @@ export const TRUST_SCORE_PAGE = {
   path: "/x402/trust-score",
   title: "x402 trust score: what vet402 publishes instead",
   description:
-    "vet402 discontinued the 0 to 100 trust score in September 2026. An x402 trust read today is delivery facts, ALLOW WARN BLOCK, and purchase records from real payments.",
+    "vet402 deprecated its 0 to 100 trust score in September 2026. In its place vet402 publishes delivery facts from its own paid purchases and an ALLOW, WARN, or BLOCK recommendation.",
   lead: [
-    "Search results for x402 trust score often point at third-party 0 to 100 scores. vet402 stopped publishing that scale in September 2026.",
+    "vet402 deprecated its own 0 to 100 trust score in September 2026 and does not report that number as a measurement.",
     "Instead, vet402 pays x402 sellers with its own funds, records whether each paid call delivered, and answers GET /api/v1/check and GET /api/v1/resources/{resourceId}/decision with ALLOW, WARN, or BLOCK.",
   ] as const,
   sections: {
     discontinued: {
-      title: "Why there is no 0 to 100 score",
-      body: `The blog post why-agent-payments-need-a-trust-score explains the rename from Vouch to vet402 and why the old score API was retired. The FAQ states that a 0 to 100 score is a separate, older signal and is never printed as an L0 to L2 result.`,
+      title: "Why vet402 shows no 0 to 100 score",
+      body: `The September 2026 editor's note on the blog post Why agent-to-agent payments need a trust score marks the score it describes as deprecated. The methodology page keeps a 0 to 100 score apart from L0 to L2 results, so vet402 does not print a score as a measurement.`,
     },
     delivered: {
       title: "What delivered means",
@@ -32,7 +32,7 @@ export const TRUST_SCORE_PAGE = {
     },
     window: {
       title: "Freshness",
-      body: `ALLOW needs a delivery within ${L1_WINDOW_DAYS} days on the decision path. Stale delivery moves the recommendation toward WARN (l1_stale). Counts on this site come from the public ledger read; cite retrievedAt or as_of with every figure.`,
+      body: `ALLOW needs a delivery within ${L1_WINDOW_DAYS} days on the decision path. Stale delivery moves the recommendation toward WARN (l1_stale). Counts on this site come from the public ledger read. Cite retrievedAt or as_of with each figure.`,
     },
   },
 } as const;

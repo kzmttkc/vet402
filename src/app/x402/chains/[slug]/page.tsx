@@ -9,7 +9,7 @@ import { safeJsonLd } from "@/lib/util/json-ld";
 import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 import { publicChainLabel } from "@/lib/observatory/chains";
 import { chainHeldLines } from "@/lib/observatory/chain-page-words";
-import { getIndexableHostsOnChainCached } from "@/lib/sellers/seller-index";
+import { getIndexableHostsOnChainCached, SELLER_INDEX_DELIVERY_WINDOW_DAYS } from "@/lib/sellers/seller-index";
 
 export function generateStaticParams() {
   return GUIDE_CHAINS.map((c) => ({ slug: c.slug }));
@@ -155,7 +155,7 @@ export default async function ChainGuidePage({ params }: { params: Promise<Param
               <Link href="/sellers" className="doc-link">
                 /sellers
               </Link>{" "}
-              (delivery in the last 30 days or a signed payee claim). vet402 does not list hosts that failed to
+              (delivery in the last {SELLER_INDEX_DELIVERY_WINDOW_DAYS} days or a signed payee claim). vet402 does not list hosts that failed to
               deliver or that do not pass that gate.
             </p>
             <ul className="mt-4 columns-1 gap-x-8 sm:columns-2 lg:columns-3">

@@ -80,7 +80,7 @@ export default async function TrustScorePage() {
         <p className="doc-p">{PAGE.sections.discontinued.body}</p>
         <p className="doc-p">
           <Link href="/blog/why-agent-payments-need-a-trust-score" className="doc-link">
-            Why agent payments need a trust score
+            Why agent-to-agent payments need a trust score
           </Link>
           .
         </p>

@@ -111,7 +111,13 @@ export async function readIndexableHostsOnNetwork(db: Db, networkFilter: string)
 async function collectIndexableHostsOnNetwork(networkFilter: string): Promise<string[]> {
   const db = getDb();
   if (!db) return [];
-  return readIndexableHostsOnNetwork(db, networkFilter);
+  // C1: keep only hosts that are also in the /sellers index set (board hosts that pass the I4 gate).
+  const [onNetwork, indexable] = await Promise.all([
+    readIndexableHostsOnNetwork(db, networkFilter),
+    getIndexableSellerHostsCached(),
+  ]);
+  const allowed = new Set(indexable);
+  return onNetwork.filter((h) => allowed.has(h));
 }
 
 export const getIndexableHostsOnChainCached: (networkFilter: string) => Promise<string[]> = unstable_cache(

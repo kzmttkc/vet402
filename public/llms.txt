@@ -22,7 +22,7 @@ It also matches the sellers it paid to registered ERC-8004 agents. A seller chec
 ## Check a seller before paying
 
 - [x402 seller reputation API](https://vet402.com/x402/seller-reputation-api): key-less GET /api/v1/check and decision fields (ALLOW, WARN, BLOCK) from real purchases.
-- [x402 trust score](https://vet402.com/x402/trust-score): vet402 discontinued the 0 to 100 score in September 2026. Delivery facts and recommendations instead.
+- [x402 trust score](https://vet402.com/x402/trust-score): vet402 deprecated its 0 to 100 score in September 2026. It publishes delivery facts and an ALLOW, WARN or BLOCK recommendation instead.
 - [How a seller check works](https://vet402.com/x402/check-a-seller): read the purchases vet402 made and the ALLOW, WARN or BLOCK decision they support.
 - [Check by URL, no key](https://vet402.com/docs/api): `GET https://vet402.com/api/v1/check?url=` followed by the URL-encoded x402 URL
 - [Scan a 402 before signing, no key](https://vet402.com/docs/api): `POST https://vet402.com/api/v1/check/presign` with the 402 body the seller returned. Probe latency for one seller checked again and for the first check of distinct sellers (p50, p99, run time): https://vet402.com/data/presign-latency.json

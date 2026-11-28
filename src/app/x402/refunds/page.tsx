@@ -179,8 +179,8 @@ export default async function RefundsPage() {
           {live && stats && readAt ? (
             <>
               {refundStatsSentence(stats, readAt)} The breakdown by chain is in{" "}
-              <Link href="/x402/report/2026-11" className="doc-link">
-                State of x402: November 2026
+              <Link href="/x402/chains" className="doc-link">
+                x402 settlements by chain
               </Link>
               .
             </>

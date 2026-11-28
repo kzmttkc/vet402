@@ -132,7 +132,7 @@ export default async function McpDocsPage() {
             <code className="text-brand-deep">claude mcp add --transport http vet402 https://vet402.com/mcp</code>
           </p>
           <p className="text-[0.84375rem] text-brand">
-            Claude.ai: open Settings, Connectors, add a custom connector with URL{" "}
+            Claude Desktop and Claude.ai: open Settings, Connectors, add a custom connector with URL{" "}
             <code className="text-brand-deep">https://vet402.com/mcp</code>.
           </p>
           <p className="text-[0.84375rem] text-brand">

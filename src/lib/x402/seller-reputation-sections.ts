@@ -39,7 +39,7 @@ export const SELLER_REPUTATION_API = {
 export const SELLER_REPUTATION_CHECK_FIELDS: readonly { field: string; meaning: string }[] = [
   { field: "recommendation", meaning: "ALLOW, WARN, or BLOCK from vet402 purchase records" },
   { field: "delivery", meaning: "paid_attempts, delivered, settled_not_delivered, window_days for the seller URL" },
-  { field: "reason_codes", meaning: "codes that explain the recommendation; listed at /docs/api#reason-codes" },
+  { field: "reason_codes", meaning: "codes that explain the recommendation, listed at /docs/api#reason-codes" },
   { field: "verified_terms", meaning: "pay_to, asset, amount, network, scheme from the last delivered purchase" },
   { field: "l1_purchases", meaning: "recent signed attempts with chain, status, and settlement when recorded" },
   { field: "rules_version", meaning: "version of the published decision rules" },
