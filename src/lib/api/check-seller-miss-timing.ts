@@ -32,7 +32,11 @@ function durLine(name: string, ms: number | undefined): string | null {
   return `${name};dur=${ms.toFixed(1)}`;
 }
 
-/** cache miss のときだけ細分段を足す（fresh / prefetch は親の cache;dur のみ）。 */
+/**
+ * この要求の中で売り手を読んだ時だけ細分段を足す。direct・coalesced に加えて、fresh でも 60 秒の check cache に
+ * 値が無く、この要求の中で読んだ時（初めての売り手の多く）は段が入る。他の呼び手が残した値を返した fresh と
+ * prefetch は miss が空なので、親の cache;dur だけになる（2026-11-28: 初回の売り手の 96/99 が fresh で段が出なかった）。
+ */
 export function formatPresignCheckTiming(
   cacheMs: number,
   cachePath: string,
@@ -41,7 +45,7 @@ export function formatPresignCheckTiming(
 ): string {
   const desc = cachePath ? `;desc="${cachePath}"` : "";
   const parts = [`cache;dur=${cacheMs.toFixed(1)}${desc}`];
-  if (isCheckSellerMissPath(cachePath) && miss) {
+  if (miss) {
     for (const line of [
       durLine("db_resolve", miss.db_resolve),
       durLine("db_outcomes", miss.db_outcomes),

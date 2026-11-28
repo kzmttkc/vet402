@@ -172,10 +172,29 @@ test("checkSeller: timing 付きの出力は timing なしと同じ（verified_t
   assert.ok(timing.catalogPayees?.length);
 });
 
-test("formatPresignCheckTiming: fresh では細分段を出さない", () => {
-  const s = formatPresignCheckTiming(5, "fresh", 1, { db_resolve: 9, db_outcomes: 8 });
-  assert.match(s, /^cache;dur=5.0;desc="fresh", terms;dur=1.0$/);
-  assert.doesNotMatch(s, /db_resolve/);
+test("formatPresignCheckTiming: 他の呼び手が残した fresh・prefetch（miss が空）では細分段を出さない", () => {
+  for (const path of ["fresh", "prefetch"]) {
+    const s = formatPresignCheckTiming(5, path, 1, undefined);
+    assert.equal(s, `cache;dur=5.0;desc="${path}", terms;dur=1.0`);
+    assert.equal(formatPresignCheckTiming(5, path, 1, {}), s);
+  }
+});
+
+test("formatPresignCheckTiming: この要求の中で読んだ fresh（初めての売り手）でも細分段を出す", () => {
+  const s = formatPresignCheckTiming(5, "fresh", 1, { db_resolve: 9, db_outcomes: 8, db_decide: 2, db_l1_recent: 3 });
+  assert.equal(s, 'cache;dur=5.0;desc="fresh", db_resolve;dur=9.0, db_outcomes;dur=8.0, db_decide;dur=2.0, db_l1_recent;dur=3.0, terms;dur=1.0');
+});
+
+test("presign: 60 秒の cache に値が無く、この要求で読んだ fresh では Server-Timing に段が出る", async () => {
+  __setCheckSellerCacheForTests(((fn: () => Promise<unknown>) => async () => fn()) as unknown as Parameters<typeof makeGetCheckSellerCached>[0]);
+  const d = depsFromOutput(baseOutput(true));
+  const res = await handlePresign(post(CHALLENGE), d);
+  assert.equal(res.status, 200);
+  const timing = res.headers.get("server-timing") ?? "";
+  assert.match(timing, /cache;dur=[0-9.]+;desc="fresh"/);
+  assert.match(timing, /db_resolve;dur=[0-9.]+/);
+  assert.match(timing, /db_outcomes;dur=12\.0/);
+  assert.doesNotMatch(timing, /https?:|example/);
 });
 
 test("checkSeller: decide と l1Purchases は並列に始まる（l1 は decide の終わりを待たない）", async () => {
