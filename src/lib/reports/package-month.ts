@@ -15,8 +15,9 @@ import {
 } from "@/lib/observatory/monthly-freeze";
 export const DEFAULT_REPORTS_ORIGIN = "https://vet402.com";
 
-/** observatory-bundle.ts と同じ見出し禁止（公開 export に無い列）。 */
-const FORBIDDEN_HEADER_TOKENS = ["challenge_402", "payment_payload", "caller_hash", "raw_"] as const;
+/** 公開 export に無い列の断片。L1 の証拠 2 列は src で名指さない決まり（tests/l1-purchase-evidence.pg.test.ts）なので、
+ *  ここには書かず、見出しの EXPORT_CSV_COLUMNS との完全一致で締め出す（試験は tests/reports-package-month.test.ts）。 */
+const FORBIDDEN_HEADER_TOKENS = ["caller_hash", "raw_"] as const;
 
 /** C2: 束に入れてはいけない列名・サマリ鍵の断片（小文字で照合）。 */
 export const REPORTS_PACKAGE_FORBIDDEN_COLUMN_TOKENS = [

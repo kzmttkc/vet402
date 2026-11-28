@@ -163,3 +163,15 @@ test("frozenAt が無い summary は日付を作らずに止める", () => {
     /frozenAt is missing/,
   );
 });
+
+test("L1 の証拠 2 列と呼び手のハッシュは束の見出しに出ない", () => {
+  const files = buildMonthlyReportBundleFiles(fixtureInput());
+  for (const rel of ["zenodo/vet402-ledger-2026-10.csv", "huggingface/vet402-ledger-2026-10.csv", "dune/vet402-ledger-2026-10.csv"]) {
+    const header = headerLineOfCsv(files[rel]!);
+    for (const token of ["challenge_402", "payment_payload", "caller_hash", "raw_"]) {
+      assert.ok(!header.includes(token), `${rel} header has ${token}`);
+    }
+  }
+  const withEvidence = [...EXPORT_CSV_COLUMNS, "challenge_402"].join(",");
+  assert.throws(() => assertMonthlyPackageColumns(withEvidence), /column count/);
+});
