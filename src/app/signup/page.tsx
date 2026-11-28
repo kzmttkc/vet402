@@ -9,6 +9,9 @@ import { signupAction, type SignupState } from "./actions";
 import { buttonClass } from "@/components/ui/Button";
 import CodeBlock from "@/components/docs/CodeBlock";
 import { SITE_URL } from "@/lib/site-url";
+import { BILLING_PLANS } from "@/lib/billing/plans";
+
+const FREE_MONTHLY_SCORE_LOOKUPS = BILLING_PLANS.free.monthlyLimit.toLocaleString("en-US");
 
 // 2026-08-06 growth: failure-reason allowlist for the signup_failed event.
 // PII guard — analytics props must never carry user input (email/name/invite
@@ -233,7 +236,10 @@ export default function SignupPage() {
             <span>Free API key</span>
             <span>
               {/* この頁のシアン1点。無料枠という事実。 */}
-              Tier: <span className="text-signal">Free. 1,000 score lookups / month</span>
+              Tier:{" "}
+              <span className="text-signal">
+                Free. {FREE_MONTHLY_SCORE_LOOKUPS} score lookups / month
+              </span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -251,7 +257,7 @@ export default function SignupPage() {
         <p className="mx-auto mt-3 max-w-[56ch] text-center text-brand-lift">
           A key is for score lookups on the score API. Seller checks need no key.
           The observatory, a resource decision, and payee lookup stay public without one.
-          Free: 1,000 score lookups a month. No card.{" "}
+          Free: {FREE_MONTHLY_SCORE_LOOKUPS} score lookups a month. No card.{" "}
           <Link href="/observatory/methodology" className="doc-link">
             How vet402 counts score lookups and seller checks
           </Link>

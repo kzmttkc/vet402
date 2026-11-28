@@ -24,6 +24,7 @@ import { BILLING_PLANS } from "@/lib/billing/plans";
 import { pageMetadata, breadcrumbJsonLd } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { CREDENTIALS } from "@/lib/about/credentials";
+import { LEGAL_NOTICE_DISPLAY } from "@/lib/legal/document-dates";
 
 export const metadata: Metadata = pageMetadata({
   // 2026-08-13 [m2]: 二重サフィックス解消（template が " | vet402" を付ける）。
@@ -69,7 +70,7 @@ export default async function LegalNoticePage() {
             <span>Instrument: legal notice</span>
             <span>
               {/* この頁のシアン1点。改訂日という事実。 */}
-              Revision: <span className="text-signal">November 16, 2026</span>
+              Revision: <span className="text-signal">{LEGAL_NOTICE_DISPLAY}</span>
             </span>
           </div>
           <div className="doc-head-col">
@@ -81,7 +82,7 @@ export default async function LegalNoticePage() {
         <div>
           <h1 className="doc-title mt-8">Legal Notice</h1>
           <div className="rule-double mx-auto mt-6 w-full max-w-[34ch]" />
-          <p className="doc-note mt-3 text-center">Last updated: November 16, 2026</p>
+          <p className="doc-note mt-3 text-center">Last updated: {LEGAL_NOTICE_DISPLAY}</p>
         </div>
 
         <section className="space-y-2">
@@ -145,9 +146,12 @@ export default async function LegalNoticePage() {
                   })}
                 </ul>
                 <p className="mt-2">
-                  Prices are in US dollars. The listed price is the full amount charged each month;
-                  no tax is added on top at checkout. The price that applies is the one shown on the
-                  Billing page when you pay.
+                  Prices are in US dollars. The listed price is the full amount charged each billing
+                  period; Japan consumption tax is not added on top at checkout. vet402 operates as a
+                  consumption-tax-exempt sole proprietorship in Japan and is not registered as a
+                  qualified invoice issuer under Japan&apos;s invoice system, so qualified invoices
+                  cannot be issued. The price that applies is the one shown on the Billing page when
+                  you pay.
                 </p>
               </dd>
             </div>

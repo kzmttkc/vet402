@@ -550,7 +550,7 @@ test("[guard] 公平-3 3.9-3: 料金の数は BILLING_PLANS と getPlanLimit で
   for (const id of ["free", "pro", "scale"] as const) {
     assert.equal(BILLING_PLANS[id].monthlyLimit, getPlanLimit(id), `${id} の表の回数が getPlanLimit と違う`);
   }
-  assert.equal(getPlanLimit("free"), 1_000);
+  assert.equal(getPlanLimit("free"), 3_000);
   assert.equal(getPlanLimit("pro"), 50_000);
   assert.equal(getPlanLimit("scale"), 500_000);
 });
@@ -564,7 +564,7 @@ test("[fix] 公平-3 3.9-3: ホームは料金表を埋め込まず /pricing へ
   const tiers = renderToStaticMarkup(PricingSection({ titleId: "pricing-title" }));
   assert.doesNotMatch(tiers, /Access tiers|>A\./, "メモの付録の見出しが料金表に混ざっていない");
   assert.doesNotMatch(tiers, /score history|priority support|highest rate limit/);
-  for (const n of ["1,000", "50,000", "500,000", "$49", "$199"]) assert.ok(tiers.includes(n), `${n} が表に無い`);
+  for (const n of ["3,000", "50,000", "500,000", "$49", "$199"]) assert.ok(tiers.includes(n), `${n} が表に無い`);
   const memo = renderToStaticMarkup(PricingSection({ number: "A.", title: "Access tiers" }));
   assert.match(memo, /A\./);
   assert.match(memo, /Access tiers/);

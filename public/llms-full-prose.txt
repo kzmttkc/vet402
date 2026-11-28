@@ -77,7 +77,7 @@ What the API returns today is a different, older thing. It is a 0 to 100 trust o
 - https://vet402.com/x402/chains: purchase results by chain, from the same ledger as the observatory.
 - https://vet402.com/x402/statistics: paid purchase attempts, settled on-chain, delivered, and counts by chain from `/api/v1/observatory/state`.
 - [State of x402: November 2026](https://vet402.com/x402/report/2026-11): delivery after payment across vet402's purchases, by chain, as of 2026-11-09 (UTC).
-- https://vet402.com/signup — get an API key (free tier: 1,000 lookups / month)
+- https://vet402.com/signup — get an API key (free tier: 3,000 lookups / month)
 - https://vet402.com/blog — notes on agent-to-agent payments, x402, and verification
 - https://vet402.com/blog/rss.xml — the same posts as RSS
 - https://vet402.com/llms-full.txt — full FAQ and blog text, generated from the same modules the HTML uses

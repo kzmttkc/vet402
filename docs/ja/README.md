@@ -39,7 +39,7 @@ npm i @vet402/middleware   # x402トランザクションゲート（Express / N
 npm i @vet402/mcp-server   # Cursor / Claude Desktop向けMCPツール
 ```
 
-APIキーは <https://vet402.com/signup>（無料枠 1,000 lookups/月・カード不要）。
+APIキーは <https://vet402.com/signup>（無料枠 3,000 lookups/月・カード不要）。
 最小のエージェント実装例は [`examples/hackathon-starter/`](../../examples/hackathon-starter/) にある——
 「支払う前に確認し、明確な ALLOW が無ければ支払わない」fail-closed の型。
 

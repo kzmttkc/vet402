@@ -1,7 +1,7 @@
 export const BILLING_PLANS = {
   free: {
     name: "Free",
-    monthlyLimit: 1_000,
+    monthlyLimit: 3_000,
     // 2026-09-29: 特商法の表示と最終確認画面が同じ数字を引くための数値。priceLabel と一致させる。
     monthlyUsd: 0,
     priceLabel: "$0",

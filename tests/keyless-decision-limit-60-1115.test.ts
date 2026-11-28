@@ -50,7 +50,7 @@ test("docs and static copy use 60 for /decision key-less, not hard-coded 10", ()
 });
 
 test("billing plan monthly limits unchanged", () => {
-  assert.equal(BILLING_PLANS.free.monthlyLimit, 1_000);
+  assert.equal(BILLING_PLANS.free.monthlyLimit, 3_000);
   assert.equal(BILLING_PLANS.pro.monthlyLimit, 50_000);
   assert.equal(BILLING_PLANS.scale.monthlyLimit, 500_000);
 });

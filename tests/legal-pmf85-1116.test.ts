@@ -79,15 +79,23 @@ test("terms §12: survival includes sections 13 through 16", () => {
   assert.match(terms, /sections 13 through 16/);
 });
 
-test("terms and privacy: revision and last-updated dates match the November 2026 legal revisions", () => {
-  for (const [f, display] of [
-    ["src/app/legal/terms/page.tsx", "November 16, 2026"],
-    ["src/app/legal/privacy/page.tsx", "November 26, 2026"],
+test("terms and privacy: revision and last-updated dates match the November 2026 legal revisions", async () => {
+  const {
+    LEGAL_TERMS_PRIVACY_DISPLAY,
+    LEGAL_PRIVACY_DISPLAY,
+  } = await import("@/lib/legal/document-dates");
+  for (const [f, display, dateConst] of [
+    ["src/app/legal/terms/page.tsx", LEGAL_TERMS_PRIVACY_DISPLAY, "LEGAL_TERMS_PRIVACY_DISPLAY"],
+    ["src/app/legal/privacy/page.tsx", LEGAL_PRIVACY_DISPLAY, null],
   ] as const) {
     const src = read(f);
-    assert.match(src, new RegExp(`Revision: <span className="text-signal">${display}<\\/span>`));
-    assert.match(src, new RegExp(`Last updated: ${display}`));
-    assert.match(src, new RegExp(`>${display}<`));
+    if (dateConst) {
+      assert.match(src, new RegExp(`\\{${dateConst}\\}`));
+    } else {
+      assert.match(src, new RegExp(`Revision: <span className="text-signal">${display}<\\/span>`));
+      assert.match(src, new RegExp(`Last updated: ${display}`));
+    }
+    assert.equal(display, f.includes("terms") ? "November 28, 2026" : "November 26, 2026");
     for (const stale of [
       "September 29, 2026",
       "November 2, 2026",
