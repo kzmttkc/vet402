@@ -265,21 +265,25 @@ export async function checkSeller(
   let purchases: L1PurchaseOut[] = [];
   if (resource) {
     decideReq.observatoryId = resource.observatory_id;
-    const [decisionOut, purchasesOut] = await Promise.all([
-      deps.decide(decideReq),
-      (async () => {
-        if (!miss) return deps.l1Purchases(resource.observatory_id);
-        const t0 = performance.now();
-        const rows = await deps.l1Purchases(resource.observatory_id);
-        miss.db_l1_recent = performance.now() - t0;
-        return rows;
-      })(),
-    ]);
-    decision = decisionOut;
-    purchases = purchasesOut;
-    if (timing && decision) {
-      const facts = decision.facts as SellerFacts;
-      if (Array.isArray(facts.payees)) timing.catalogPayees = [...facts.payees];
+    // decide と l1Purchases は互いに依存しないので並列に読む。l1Purchases の失敗は、直列の時と同じく
+    // decision がある時だけ投げる（decision が無ければ以前は l1Purchases を読まずに not_in_catalog を返していた）。
+    const t0 = performance.now();
+    const l1Settled = deps.l1Purchases(resource.observatory_id).then(
+      (rows) => {
+        if (miss) miss.db_l1_recent = performance.now() - t0;
+        return { ok: true as const, rows };
+      },
+      (error: unknown) => ({ ok: false as const, error }),
+    );
+    decision = await deps.decide(decideReq);
+    const l1 = await l1Settled;
+    if (decision) {
+      if (!l1.ok) throw l1.error;
+      purchases = l1.rows;
+      if (timing) {
+        const payees = (decision.facts as { payees?: unknown }).payees;
+        if (Array.isArray(payees)) timing.catalogPayees = payees.filter((p): p is string => typeof p === "string");
+      }
     }
   }
   if (!resource || !decision) {

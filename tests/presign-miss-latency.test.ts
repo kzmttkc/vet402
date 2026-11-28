@@ -178,42 +178,49 @@ test("formatPresignCheckTiming: fresh では細分段を出さない", () => {
   assert.doesNotMatch(s, /db_resolve/);
 });
 
-test("local miss benchmark: parallel decide+l1 は直列より短い（モック遅延）", async () => {
-  const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-  let decideMs = 0;
-  let l1Ms = 0;
-  const slowDeps = {
-    resolve: async () => ({ resource: { observatory_id: OBS, canonical_url: URL, method: "GET" }, endpoints: [] }),
-    decide: async (req: { missTiming?: { db_outcomes?: number } }) => {
-      const t0 = performance.now();
-      await delay(30);
-      decideMs = performance.now() - t0;
-      if (req.missTiming) req.missTiming.db_outcomes = decideMs;
-      return {
-        recommendation: "ALLOW",
-        reason_codes: [],
-        reasons: [],
-        facts: { l0: { status: "pass" }, l1: { n_attempts: 0, n_delivered: 0, n_settled: 0, last_attempt_at: null }, l2: { status: "undeclared" }, payees: [] },
-        verified_terms: null,
-        verified_pay_to_by_network: [],
-        scoredAt: "2026-11-28T00:00:00.000Z",
-        freshness: { l0: null, l1: null, l2: null },
-        spending_halted: false,
-        evidence_age: null,
-        rules_version: "2026-11-13.1",
-      };
-    },
+test("checkSeller: decide と l1Purchases は並列に始まる（l1 は decide の終わりを待たない）", async () => {
+  const order: string[] = [];
+  let releaseDecide!: () => void;
+  const decideGate = new Promise<void>((r) => (releaseDecide = r));
+  const base = depsFromOutput(baseOutput(true));
+  const deps = {
+    ...base,
+    decide: (async (req: DecideRequest) => {
+      order.push("decide:start");
+      await decideGate;
+      order.push("decide:end");
+      return (base.decide as unknown as (r: DecideRequest) => Promise<unknown>)(req);
+    }) as unknown as CheckSellerDeps["decide"],
     l1Purchases: async () => {
-      const t0 = performance.now();
-      await delay(25);
-      l1Ms = performance.now() - t0;
+      order.push("l1:start");
       return [];
     },
-  } as unknown as CheckSellerDeps;
+  } as CheckSellerDeps;
   const timing: CheckSellerCacheTiming = { miss: {} };
-  const t0 = performance.now();
-  await checkSeller(slowDeps, { url: URL }, timing);
-  const wall = performance.now() - t0;
-  assert.ok(wall < decideMs + l1Ms - 15, `parallel wall ${wall} vs sequential sum ${decideMs + l1Ms}`);
-  assert.ok((timing.miss?.db_l1_recent ?? 0) >= 20);
+  const run = checkSeller(deps, { url: URL }, timing);
+  await new Promise((r) => setImmediate(r));
+  assert.ok(order.includes("l1:start"), `l1 started before decide finished: ${order.join(",")}`);
+  assert.ok(!order.includes("decide:end"));
+  releaseDecide();
+  await run;
+  assert.equal(typeof timing.miss?.db_l1_recent, "number");
+});
+
+test("checkSeller: decision が無い時は l1Purchases の失敗で落ちず、直列の時と同じ not_in_catalog を返す", async () => {
+  const base = depsFromOutput(baseOutput(true), true);
+  const deps = { ...base, decide: (async () => null) as unknown as CheckSellerDeps["decide"] } as CheckSellerDeps;
+  const out = await checkSeller(deps, { url: URL });
+  assert.equal(out.not_in_catalog, true);
+  assert.deepEqual(out.l1_purchases, []);
+});
+
+test("checkSeller: decide が落ちたら投げる（l1 の並列読みが失敗を隠さない）", async () => {
+  const base = depsFromOutput(baseOutput(true));
+  const deps = {
+    ...base,
+    decide: (async () => {
+      throw new Error("decide read failed");
+    }) as unknown as CheckSellerDeps["decide"],
+  } as CheckSellerDeps;
+  await assert.rejects(checkSeller(deps, { url: URL }), /decide read failed/);
 });

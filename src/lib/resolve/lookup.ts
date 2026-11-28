@@ -353,16 +353,19 @@ async function resolveRaw(q: string, opts: { method?: string }): Promise<Resolve
       const c = canonicalUrl(query.value);
       if (!c) return { out };
       // method が無ければ GET → POST の順に引く（§6.1 の既定に合わせる）。あればその method だけ。
-      const hit = opts.method
-        ? await resourceHit(opts.method, c.url)
-        : ((await resourceHit("GET", c.url)) ?? (await resourceHit("POST", c.url)));
+      // 同じホストの掲載（endpoints）は当たっても外れても返す。互いに依存しないので並列に読む（2026-11-28 依頼 V）。
+      const host = new URL(c.url).hostname;
+      const [hit, endpoints] = await Promise.all([
+        opts.method
+          ? resourceHit(opts.method, c.url)
+          : (async () => (await resourceHit("GET", c.url)) ?? (await resourceHit("POST", c.url)))(),
+        endpointsByDomain(host, 50),
+      ]);
       if (hit) {
         out.resource = hit.ref;
         usageNetwork = usageNetworkOfEndpoint(hit.network);
-        return { out, usageNetwork };
       }
-      const host = new URL(c.url).hostname;
-      out.endpoints = await endpointsByDomain(host, 50);
+      out.endpoints = endpoints;
       return { out, usageNetwork };
     }
     case "domain": {
