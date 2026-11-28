@@ -64,7 +64,7 @@ export default async function PrivacyPage() {
             on the Protection of Personal Information (APPI).
           </p>
           <p>
-            vet402 is operated by KIZUNA Creation. See our{" "}
+            vet402 is operated by KIZUNA Creation. See the{" "}
             <a className="doc-link" href="/legal/notice">
               Legal Notice
             </a>{" "}
@@ -77,40 +77,40 @@ export default async function PrivacyPage() {
         </section>
 
         <section className="space-y-2">
-          <h2 className="sec-head">Data we collect</h2>
+          <h2 className="sec-head">Data vet402 collects</h2>
           <ul className="list-disc space-y-1 pl-5">
             <li>Account email address</li>
             <li>API usage logs (agent IDs, wallet addresses queried, scores returned)</li>
             <li>Customer whitelist/blacklist entries you configure</li>
-            <li>Billing metadata via Stripe (we do not store card numbers)</li>
+            <li>Billing metadata via Stripe (vet402 does not store card numbers)</li>
             <li>
               Request metadata for security and rate-limiting — including the IP address a request
               is made from — kept only as long as needed to run those controls. The raw IP address
               stored with a free verification request is cleared after 90 days.
             </li>
             <li>
-              The public blockchain addresses and ERC-8004 agent identifiers we score, together
-              with the on-chain activity we read about them and the scores we derive (see{" "}
+              The public blockchain addresses and ERC-8004 agent identifiers vet402 scores, together
+              with the on-chain activity vet402 reads about them and the scores vet402 derives (see{" "}
               <a className="doc-link" href="#scored-third-parties">
-                people we score who are not our customers
+                people vet402 scores who are not its customers
               </a>{" "}
               below)
             </li>
             <li>
-              If you ask us to correct a score, whatever you send us to make that case — which may
+              If you ask vet402 to correct a score, whatever you send vet402 to make that case — which may
               include an email address and a wallet signature you provide voluntarily
             </li>
             {/* 2026-09-04 外部監査 E・P1-12: 3 つの保存先が未開示だった。列は実測。 */}
             <li>
               <strong>Record notifications you asked for</strong> (<code>record_subscriptions</code>):
               the email address you entered, which endpoint record it follows, what kind of
-              notification it is, the free-text reason you gave if you gave one, the last verdict we
+              notification it is, the free-text reason you gave if you gave one, the last verdict vet402
               notified you about, and a one-way hash of the IP address the request came from (used
               to rate-limit sign-ups, never stored in the clear)
             </li>
             <li>
               <strong>Notification consent</strong> (<code>record_subscriptions</code>): a one-way
-              hash of the link we emailed you to confirm or stop record notifications, and when you
+              hash of the link vet402 emailed you to confirm or stop record notifications, and when you
               confirmed or unsubscribed. Nothing but the confirmation email is sent until you
               confirm, and every notification carries a one-click unsubscribe link
             </li>
@@ -121,7 +121,7 @@ export default async function PrivacyPage() {
             </li>
             <li>
               <strong>Pre-publication notices to sellers</strong>: the business contact email
-              address we wrote to, the seller&apos;s name and endpoints, the measurement facts in the
+              address vet402 wrote to, the seller&apos;s name and endpoints, the measurement facts in the
               message, and any reply. See{" "}
               <a className="doc-link" href="#seller-notices">
                 emails vet402 sends to sellers before vet402 publishes
@@ -141,16 +141,16 @@ export default async function PrivacyPage() {
               <code>mcp:check_my_x402_endpoint</code> and <code>mcp:find_x402_sellers</code>. The
               client name is one of a short fixed list:{" "}
               <code>vet402-hermes/</code>, <code>vet402-sdk/</code> or <code>vet402-mcp/</code>{" "}
-              followed by a version number for the tools we publish, <code>self-monitor</code> for
-              the monitoring tools we run ourselves, <code>crawler</code>, <code>site</code> for
+              followed by a version number for the tools vet402 publishes, <code>self-monitor</code> for
+              the monitoring tools vet402 runs itself, <code>crawler</code>, <code>site</code> for
               calls made by pages on vet402.com, <code>browser</code>, <code>other</code>, or{" "}
               <code>rate_limited</code> when a key-less call hits the per-IP limit. MCP
               calls can also get <code>cursor</code>, <code>grok-bot</code>, <code>claude</code>,{" "}
-              <code>chatgpt</code> or <code>paybox</code>. We read the User-Agent header, the client
+              <code>chatgpt</code> or <code>paybox</code>. vet402 reads the User-Agent header, the client
               name an MCP client sends when it connects, and for browsers whether the request came
               from a vet402.com page, only to pick that name. Since 2026-11-26,{" "}
               <code>client_usage_daily_network</code> holds a count per UTC day, client name, API route
-              and network when the network is known from the endpoint record. We do not store the User-Agent text, the
+              and network when the network is known from the endpoint record. vet402 does not store the User-Agent text, the
               IP address, the URL or query being looked up, or any API key with these counts
             </li>
             <li>
@@ -235,8 +235,8 @@ export default async function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="sec-head">Wallet addresses</h2>
           <p>
-            Wallet addresses are public blockchain identifiers. We treat them as pseudonymous data
-            and do not intentionally collect direct personal identifiers beyond your email.
+            Wallet addresses are public blockchain identifiers. vet402 treats them as pseudonymous data
+            and does not intentionally collect direct personal identifiers beyond your email.
           </p>
         </section>
 
@@ -251,7 +251,7 @@ export default async function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="sec-head">Legal basis (GDPR / UK GDPR)</h2>
           <p>
-            Where the EU or UK GDPR applies, we rely on the following lawful bases. If you are in a
+            Where the EU or UK GDPR applies, vet402 relies on the following lawful bases. If you are in a
             jurisdiction with a different framework (for example Japan&apos;s APPI or a US state law),
             equivalent bases apply under that law.
           </p>
@@ -336,7 +336,7 @@ export default async function PrivacyPage() {
           {/* 2026-09-04 外部監査 E・P1-12: 上の 3 つに保持期間も削除経路も書かれていなかった。
               自動失効の仕組みは無いので、無い仕組みを在ると書かずに、人が消すと書く。 */}
           <p>
-            Record notifications, waitlist entries and disputes are kept until you ask us to remove
+            Record notifications, waitlist entries and disputes are kept until you ask vet402 to remove
             them, because each of them exists to be acted on later: a notification has to outlive
             the change it is watching for, and a dispute is part of the record of a correction. None
             of the three expires automatically — no scheduler deletes them — so the route is a
@@ -344,13 +344,13 @@ export default async function PrivacyPage() {
             <a className="doc-link" href={SUPPORT_MAILTO}>
               {SUPPORT_EMAIL}
             </a>{" "}
-            and say which one you mean; we remove it by hand within 7 days and confirm to the same
+            and say which one you mean; vet402 removes it by hand within 7 days and confirms to the same
             address. Replying to a notification email reaches the same inbox and counts as the same
-            request. Where a dispute has already produced a published correction, we remove your
-            contact details and keep the fact that a correction was issued, which is the entry other
+            request. Where a dispute has already produced a published correction, vet402 removes your
+            contact details and keeps the fact that a correction was issued, which is the entry other
             people rely on — the grounds for that are in{" "}
             <a className="doc-link" href="#scored-third-parties">
-              people we score who are not our customers
+              people vet402 scores who are not its customers
             </a>{" "}
             below.
           </p>
@@ -380,9 +380,9 @@ export default async function PrivacyPage() {
         <section className="space-y-2">
           <h2 className="sec-head">Subprocessors and third parties</h2>
           <p>
-            We use the providers below to run the service. Each processes only the data its function
-            needs, under its own data-processing terms. We do not sell personal data, and we do not
-            share it with anyone for their own marketing. For Clarity, Microsoft is also an
+            vet402 uses the providers below to run the service. Each processes only the data its function
+            needs, under its own data-processing terms. vet402 does not sell personal
+            data and does not share it with anyone for their own marketing. For Clarity, Microsoft is also an
             independent controller of the data it receives. See{" "}
             <a className="doc-link" href="#session-analytics">
               session analytics
@@ -400,15 +400,15 @@ export default async function PrivacyPage() {
             </li>
             <li>
               <strong>Stripe</strong> (US) — billing and payment processing for paid plans; holds
-              card data directly, which we never see or store.
+              card data directly, which vet402 never sees or stores.
             </li>
             <li>
               <strong>Alchemy</strong> (US) — Base blockchain RPC and indexing; receives the public
-              wallet addresses we read on-chain data for.
+              wallet addresses vet402 reads on-chain data for.
             </li>
             <li>
               <strong>Blockscout</strong> — block-explorer API used to read public on-chain data;
-              receives the public wallet addresses we query.
+              receives the public wallet addresses vet402 queries.
             </li>
             {/* 2026-10-14: eth_getLogs の予備の読み先（LOG_SCAN_FALLBACK_RPC_URLS）。Base の公開 RPC が
                 10/8 に getLogs を断り始め、索引が 5 日止まったため。渡るのはサーバーからの読み取りで、
@@ -416,8 +416,8 @@ export default async function PrivacyPage() {
                 （決済の索引）。照会した人の IP は渡らない。 */}
             <li>
               <strong>Tenderly</strong> public Base RPC gateway (<code>base.gateway.tenderly.co</code>).
-              A fallback for reading public event logs on Base when our main RPC does not answer. It
-              receives the read requests our servers send to the chain, which can include the ID of the
+              A fallback for reading public event logs on Base when vet402&apos;s main RPC does not answer. It
+              receives the read requests vet402&apos;s servers send to the chain, which can include the ID of the
               agent being looked up and the payout addresses of sellers. Both are already public on that chain.
             </li>
             <li>
@@ -493,8 +493,8 @@ export default async function PrivacyPage() {
               <a className="doc-link" href="#seller-notices">
                 above
               </a>
-              ); receives the recipient email address and the body of that message. We do not use it
-              for marketing email and we send no newsletter.
+              ); receives the recipient email address and the body of that message. vet402 does not use it for
+              marketing email and sends no newsletter.
             </li>
             {/* 2026-10-31 オーナー承認: Microsoft Clarity（NEXT_PUBLIC_CLARITY_PROJECT_ID）。中身は #session-analytics。 */}
             <li>
@@ -513,9 +513,9 @@ export default async function PrivacyPage() {
             </li>
           </ul>
           <p>
-            This list can change as the service evolves; the current list lives on this page, and we
+            This list can change as the service evolves; the current list lives on this page, and vet402
             will update it here before a new subprocessor starts handling personal data. If you need
-            it confirmed in writing for a procurement review, ask us by email.
+            it confirmed in writing for a procurement review, ask vet402 by email.
           </p>
         </section>
 
@@ -579,7 +579,7 @@ export default async function PrivacyPage() {
           </ul>
           <p>
             Personal data originating in the EEA or UK is therefore transferred to and processed in
-            third countries, including the United States and Japan. We rely on our providers&apos;
+            third countries, including the United States and Japan. vet402 relies on its providers&apos;
             standard data-processing terms, including standard contractual clauses where they apply,
             for those transfers. Each of these countries has its own data-protection law, and the
             protection there may differ from the protection where you live.
@@ -588,7 +588,7 @@ export default async function PrivacyPage() {
 
         {/* 2026-09-29 監査 4 周目: APPI 23 条の安全管理措置のうち公表する要点。書くのは実装にあるものだけ。 */}
         <section id="security" className="scroll-mt-24 space-y-2">
-          <h2 className="sec-head">How we protect your data</h2>
+          <h2 className="sec-head">How vet402 protects your data</h2>
           <ul className="list-disc space-y-1 pl-5">
             <li>
               <strong>Responsibility.</strong> KIZUNA Creation is responsible for handling personal
@@ -611,7 +611,7 @@ export default async function PrivacyPage() {
               by a scheduled job.
             </li>
             <li>
-              <strong>Facilities.</strong> We run no servers of our own; the data sits with the
+              <strong>Facilities.</strong> vet402 runs no servers of its own; the data sits with the
               providers named above, in the countries named above.
             </li>
           </ul>
@@ -742,18 +742,18 @@ export default async function PrivacyPage() {
             The lawyer-review flag on the underlying balance STANDS — nothing
             here may be presented as a settled legal conclusion. */}
         <section id="scored-third-parties" className="scroll-mt-24 space-y-2">
-          <h2 className="sec-head">People we score who are not our customers</h2>
+          <h2 className="sec-head">People vet402 scores who are not its customers</h2>
           <p>
             vet402 scores blockchain addresses and agent identifiers that belong to third parties —
-            people and businesses who never opened an account with us. If one of those addresses can
-            be traced to you, the data-protection law where you live may treat our score as personal
-            data about you, and you have rights over it even though you are not our customer.
+            people and businesses who never opened an account with vet402. If one of those addresses can
+            be traced to you, the data-protection law where you live may treat vet402&apos;s score as personal
+            data about you, and you have rights over it even though you are not a vet402 customer.
           </p>
           <p>
-            The data involved is the public on-chain address, the public transaction activity we
-            read about it, and the score we derive from that activity. We do not attach names,
+            The data involved is the public on-chain address, the public transaction activity vet402
+            reads about it, and the score vet402 derives from that activity. vet402 does not attach names,
             contact details, or off-chain identity to an address unless the person behind it gives
-            them to us — for example by using the correction route.
+            them to vet402 — for example by using the correction route.
           </p>
           {/* 2026-08-14 (B-1 暫定実装・CEO判断/オーナー承認): 旧文は「append-only が
               正当な利益で消去要求を上回りうる」という立場表明で止まっていた。
@@ -762,34 +762,34 @@ export default async function PrivacyPage() {
               (根拠なし) 削除/匿名化。機械的拒否はしない。B-1 の弁護士レビュー
               自体は据え置き——これは暫定の最適解であり確定法解釈ではない。 */}
           <p>
-            <strong>How we handle erasure and objection, concretely.</strong> You can ask us to
-            correct a score built on a factual error, and you can object to our scoring your
+            <strong>How vet402 handles erasure and objection, concretely.</strong> You can ask vet402 to
+            correct a score built on a factual error, and you can object to vet402 scoring your
             address. The free route for both — no account, no fee — is{" "}
             <a className="doc-link" href="/legal/terms#corrections">
               section 8 of the Terms
             </a>
-            , and every factual correction we make is published on our{" "}
+            , and every factual correction vet402 makes is published on the{" "}
             <a className="doc-link" href="/corrections">
               corrections log
             </a>
             . You also have the rights to erasure (Art. 17) and to restriction of processing (Art.
-            18), and we weigh every verified request <strong>individually</strong> — we do not
-            refuse by policy, and &quot;we never delete anything&quot; is not an answer we give.
-            Where a legal ground we may rely on — freedom of expression and information (Art. 85),
+            18), and vet402 weighs every verified request <strong>individually</strong> — vet402 does not
+            refuse by policy, and &quot;vet402 never deletes anything&quot; is not an answer it gives.
+            Where a legal ground vet402 may rely on — freedom of expression and information (Art. 85),
             the establishment, exercise, or defense of legal claims, or fraud prevention — outweighs
-            your request in your specific situation, we respond with <strong>restriction rather
-            than nothing</strong>: we stop publishing or stop scoring the entry concerned, annotate
-            it, and correct anything inaccurate, instead of leaving it up unchanged. Where no such
-            ground prevails, we delete or anonymize the data. What we will not do is silently
-            rewrite our own record to hide a mistake we made — accountability for our errors and
-            your rights over your data are not in conflict, and we intend to honor both. Either
-            way we tell you our decision and our reasons, and if you disagree you can complain to
+            your request in your specific situation, vet402 responds with <strong>restriction rather
+            than nothing</strong>: it stops publishing or stops scoring the entry concerned, annotates
+            it, and corrects anything inaccurate, instead of leaving it up unchanged. Where no such
+            ground prevails, vet402 deletes or anonymizes the data. What vet402 will not do is silently
+            rewrite its own record to hide a mistake it made — accountability for its errors and
+            your rights over your data are not in conflict, and vet402 intends to honor both. Either
+            way vet402 tells you its decision and its reasons, and if you disagree you can complain to
             your data-protection authority.
           </p>
           <p>
             <strong>A score is an opinion, not an accusation of fact.</strong> A low score or a
-            BLOCK is our read of a public record on a given day, not a statement that any person is a
-            criminal or a fraudster; the distinction, and why we draw it, is set out in{" "}
+            BLOCK is vet402&apos;s read of a public record on a given day, not a statement that any person is a
+            criminal or a fraudster; the distinction, and why vet402 draws it, is set out in{" "}
             <a className="doc-link" href="/legal/terms">
               sections 6 and 7 of the Terms
             </a>
@@ -801,13 +801,13 @@ export default async function PrivacyPage() {
           <h2 className="sec-head">Your rights over your data</h2>
           <p>
             Depending on where you are, you may have the right to <strong>access</strong> the
-            personal data we hold about you (GDPR Art. 15), to have it <strong>corrected</strong>{" "}
-            if it is wrong (Art. 16), to have it <strong>deleted</strong> (Art. 17), to ask us to{" "}
+            personal data vet402 holds about you (GDPR Art. 15), to have it <strong>corrected</strong>{" "}
+            if it is wrong (Art. 16), to have it <strong>deleted</strong> (Art. 17), to ask vet402 to{" "}
             <strong>restrict</strong> a particular use of it (Art. 18), to <strong>object to</strong>{" "}
-            processing based on our legitimate interests (Art. 21), to receive it in a{" "}
+            processing based on vet402&apos;s legitimate interests (Art. 21), to receive it in a{" "}
             <strong>portable</strong> format (Art. 20), and to <strong>withdraw consent</strong>{" "}
-            where we relied on consent. We weigh each request on its own facts — none of these is
-            answered with a blanket policy — and we do not make automated decisions with legal or
+            where vet402 relied on consent. vet402 weighs each request on its own facts — none of these is
+            answered with a blanket policy — and vet402 does not make automated decisions with legal or
             similarly significant effects about you as a user of this site.
           </p>
           <p>
@@ -821,17 +821,16 @@ export default async function PrivacyPage() {
             <a className="doc-link" href={SUPPORT_MAILTO}>
               {SUPPORT_EMAIL}
             </a>{" "}
-            from the address on the account, or tell us which address it was. One person reads that
-            inbox; we aim to acknowledge within 5 business days (Japan time) and to complete the
-            request within 30 days. There is no charge. We will say no only where the law lets us —
-            for example where we must keep billing records for tax purposes — and we will say which
-            exception we are relying on rather than just declining. If you are unhappy with how we
+            from the address on the account, or tell vet402 which address it was. One person reads that
+            inbox; vet402 aims to acknowledge within 5 business days (Japan time) and to complete the
+            request within 30 days. There is no charge. vet402 will say no only where the law allows it — for example where
+            vet402 must keep billing records for tax purposes — and will say which exception it is relying on rather than just declining. If you are unhappy with how vet402
             handled it, you can complain to your local data-protection authority.
           </p>
           <p>
-            Two things we cannot do, and would rather say plainly than leave you to discover.
-            First, we cannot erase the blockchain: wallet addresses and their transaction history
-            are public records on Base that we read, not records we created or control, so deleting
+            Two things vet402 cannot do, and would rather say plainly than leave you to discover.
+            First, vet402 cannot erase the blockchain: wallet addresses and their transaction history
+            are public records on Base that vet402 reads, not records vet402 created or controls, so deleting
             your vet402 account does not remove anything from the chain. Second, if you believe a
             trust <em>score</em> about an address is wrong — which is a different problem from a
             privacy request — the route for that is in{" "}
