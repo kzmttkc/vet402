@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { generateListingFiles, LISTING_OUTPUT_PATHS } from "@/lib/listings/generate-from-openapi";
+import {
+  MCP_REGISTRY_PUBLISHED_LATEST,
+  compareSemver,
+  generateListingFiles,
+  LISTING_OUTPUT_PATHS,
+} from "@/lib/listings/generate-from-openapi";
 import { loadOpenApiFromRepo } from "@/lib/listings/load-openapi";
 import { countLineDrift, stableStringify } from "@/lib/listings/stable-json";
 import type { ListingDestination } from "@/lib/listings/types";
@@ -113,6 +118,38 @@ test("an openapi edit reaches the generated drafts", () => {
     writeFileSync(yamlPath, readFileSync(yamlPath, "utf8").replace("name: rwa-facts", "name: rwa-facts-edited"));
     assert.equal(runGenerator(dir).status, 0);
     assert.match(readFileSync(join(dir, LISTING_OUTPUT_PATHS["pay-sh-paymd"]), "utf8"), /name: 'rwa-facts-edited'/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("mcp server.json version is not below the version already published in the MCP registry", () => {
+  const doc = JSON.parse(readFileSync(join(ROOT, "data/listings/mcp/server.json"), "utf8")) as { version?: string };
+  assert.ok(compareSemver(doc.version ?? "", MCP_REGISTRY_PUBLISHED_LATEST) >= 0, `${doc.version} < ${MCP_REGISTRY_PUBLISHED_LATEST}`);
+  // 2026-11-28 に registry.modelcontextprotocol.io で見た公開済みの最新版。下げない。
+  assert.ok(compareSemver(MCP_REGISTRY_PUBLISHED_LATEST, "1.0.2") >= 0);
+  // npm の @vet402/mcp-server の版（0.3.x）を MCP レジストリの版に使わない。
+  const pkg = JSON.parse(readFileSync(join(ROOT, "packages/mcp-server/package.json"), "utf8")) as { version: string };
+  if (compareSemver(pkg.version, MCP_REGISTRY_PUBLISHED_LATEST) < 0) assert.notEqual(doc.version, pkg.version);
+});
+
+test("compareSemver orders by major, minor, patch and rejects other forms", () => {
+  assert.ok(compareSemver("1.0.2", "0.3.3") > 0);
+  assert.ok(compareSemver("1.0.10", "1.0.2") > 0);
+  assert.equal(compareSemver("1.0.2", "1.0.2"), 0);
+  assert.throws(() => compareSemver("1.0", "1.0.2"), /MAJOR\.MINOR\.PATCH/);
+});
+
+test("the generator stops when the openapi serverVersion is below the published version", () => {
+  const dir = tempRepoCopy();
+  try {
+    const yamlPath = join(dir, "docs/openapi.yaml");
+    const yaml = readFileSync(yamlPath, "utf8");
+    assert.match(yaml, /serverVersion: 1\.0\.2/);
+    writeFileSync(yamlPath, yaml.replace("serverVersion: 1.0.2", "serverVersion: 0.3.3"));
+    const out = runGenerator(dir);
+    assert.notEqual(out.status, 0);
+    assert.match(out.stderr, /below the published 1\.0\.2/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -4168,6 +4168,7 @@
           "directory": "packages/mcp-server",
           "url": "https://github.com/vet402/vet402"
         },
+        "serverVersion": "1.0.2",
         "title": "vet402",
         "websiteUrl": "https://vet402.com/docs/mcp"
       },
