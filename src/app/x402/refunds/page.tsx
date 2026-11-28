@@ -2,8 +2,7 @@
 // /x402/refunds（2026-11-12 SEO）。「x402 refund」の問いに、方式ごとの答えと vet402 の実購買の数で答える。
 //
 // WHY: 検索の上位は IETF の個人草案と解説記事で、払った後に何が返ってきたかの数は無い。
-// 数は 11 月の月報（/x402/report/2026-11、2026-11-09 UTC の固定値）と同じ値だけを使い、
-// 日付を添える（読まれる日に古くならないよう、動く値を書かない）。
+// 数は公開の observatory state 読みから出す（トップページと同じ台帳）。読んだ日付を添える。
 // 方式の説明は x402 の仕様（specs/schemes/exact と auth-capture）に合わせる。
 // 公開文: we/our/us・セミコロン・ダッシュを使わない。vet402 は資金を預からず、返金もしない。
 // ============================================================
@@ -12,11 +11,10 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { articleJsonLd, breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { safeJsonLd } from "@/lib/util/json-ld";
+import { getObservatoryStatsCached } from "@/lib/observatory/cached-reads";
 
 const REFUNDS_PATH = "/x402/refunds";
 const REFUNDS_UPDATED = "2026-11-12";
-/** 数の出どころ。11 月の月報と同じ固定値（2026-11-09 UTC）。 */
-const REFUNDS_SNAPSHOT = { date: "2026-11-09", settled: 14427, noUsableContent: 504, settled4xx: 746 } as const;
 
 const REFUNDS_TITLE = "x402 refunds: what a buyer can do after paying";
 const REFUNDS_DESCRIPTION =
@@ -26,27 +24,17 @@ const SPEC_EXACT = "https://github.com/x402-foundation/x402/tree/main/specs/sche
 const SPEC_AUTH_CAPTURE = "https://github.com/x402-foundation/x402/tree/main/specs/schemes/auth-capture";
 const IETF_DRAFT = "https://datatracker.ietf.org/doc/draft-hopley-x402-refund-receipt/";
 
-const FAQ = [
-  {
-    question: "Can an x402 payment be refunded?",
-    answer:
-      "It depends on the scheme and the payment flow in the 402. By default the exact scheme settles only after the seller's handler succeeds, so a failed call is not charged. Under the exact scheme's upfront flow a settled transfer is final. The auth-capture scheme adds void and refund for the seller, and reclaim for the buyer once the capture deadline passes.",
-  },
-  {
-    question: "Who can issue a refund under auth-capture?",
-    answer:
-      "The seller side. Capture, void and refund need the resource server's consent, and a refund returns up to the amount captured and not yet refunded. The buyer's own recovery path is reclaim, which opens once the capture deadline passes on a hold that was never captured.",
-  },
-  {
-    question: "How often does a paid x402 call come back with nothing?",
-    answer: `As of ${REFUNDS_SNAPSHOT.date} (UTC), vet402 had ${REFUNDS_SNAPSHOT.settled} settled payments. ${REFUNDS_SNAPSHOT.noUsableContent} of them came back with no usable content, and ${REFUNDS_SNAPSHOT.settled4xx} came back with a 4xx. vet402 holds those 4xx calls out of its delivered rates, because its request may differ from what the seller expects. On /sellers, some of these can count on the seller's side. That needs a settled 400 or 422 on Base with a structured input validation error for input vet402 sent as declared, and seller-side failures at that listing on two different UTC days.`,
-  },
-  {
-    question: "How can a buyer avoid needing a refund?",
-    answer:
-      "Before paying, read what came back when vet402 last paid that seller. vet402 publishes the purchases it made from each listing it bought from, with the settlement it re-read on chain and whether content came back.",
-  },
-] as const;
+function fmt(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
+function refundStatsSentence(stats: Awaited<ReturnType<typeof getObservatoryStatsCached>>, readAt: string): string {
+  const date = readAt.slice(0, 10);
+  const settled = stats.l1.settled;
+  const noUsable = stats.l1.settledNotDelivered;
+  const settled4xx = stats.l1.inconclusiveSettled;
+  return `As of ${date} (UTC), vet402 had ${fmt(settled)} settled payments. ${fmt(noUsable)} of them came back with no usable content, and ${fmt(settled4xx)} came back with a 4xx. vet402 holds those 4xx calls out of its delivered rates, because its request may differ from what the seller expects. On /sellers, some of these can count on the seller's side. That needs a settled 400 or 422 on Base with a structured input validation error for input vet402 sent as declared, and seller-side failures at that listing on two different UTC days.`;
+}
 
 export const metadata: Metadata = pageMetadata({
   title: REFUNDS_TITLE,
@@ -57,13 +45,43 @@ export const metadata: Metadata = pageMetadata({
   modifiedTime: REFUNDS_UPDATED,
 });
 
+export const revalidate = 300;
+
 export default async function RefundsPage() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  const stats = await getObservatoryStatsCached().catch(() => null);
+  const live = stats !== null && stats.l1.settled > 0 && stats.readAt;
+  const readAt = stats?.readAt ?? null;
+  const faqNoContentAnswer = live
+    ? refundStatsSentence(stats, readAt!)
+    : "vet402 publishes settled counts and how often a paid call came back with nothing on State of x402 and GET /api/v1/observatory/state. Cite retrievedAt from that JSON.";
+  const FAQ = [
+    {
+      question: "Can an x402 payment be refunded?",
+      answer:
+        "It depends on the scheme and the payment flow in the 402. By default the exact scheme settles only after the seller's handler succeeds, so a failed call is not charged. Under the exact scheme's upfront flow a settled transfer is final. The auth-capture scheme adds void and refund for the seller, and reclaim for the buyer once the capture deadline passes.",
+    },
+    {
+      question: "Who can issue a refund under auth-capture?",
+      answer:
+        "The seller side. Capture, void and refund need the resource server's consent, and a refund returns up to the amount captured and not yet refunded. The buyer's own recovery path is reclaim, which opens once the capture deadline passes on a hold that was never captured.",
+    },
+    {
+      question: "How often does a paid x402 call come back with nothing?",
+      answer: faqNoContentAnswer,
+    },
+    {
+      question: "How can a buyer avoid needing a refund?",
+      answer:
+        "Before paying, read what came back when vet402 last paid that seller. vet402 publishes the purchases it made from each listing it bought from, with the settlement it re-read on chain and whether content came back.",
+    },
+  ] as const;
   const article = articleJsonLd({
     headline: REFUNDS_TITLE,
     description: REFUNDS_DESCRIPTION,
     path: REFUNDS_PATH,
     datePublished: REFUNDS_UPDATED,
+    dateModified: readAt?.slice(0, 10) ?? REFUNDS_UPDATED,
   });
   const breadcrumb = breadcrumbJsonLd([
     { name: "Home", path: "/" },
@@ -79,7 +97,6 @@ export default async function RefundsPage() {
       acceptedAnswer: { "@type": "Answer", text: item.answer },
     })),
   };
-  const s = REFUNDS_SNAPSHOT;
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
@@ -92,6 +109,13 @@ export default async function RefundsPage() {
           <div className="doc-head-col">
             <span>Independent Measurement</span>
             <span>After an agent pays</span>
+            {live && readAt ? (
+              <span>
+                Ledger read <time dateTime={readAt}>{readAt.slice(0, 16).replace("T", " ")} UTC</time>
+              </span>
+            ) : (
+              <span>Ledger unread</span>
+            )}
           </div>
           <div className="doc-head-col">
             <span>vet402</span>
@@ -151,21 +175,25 @@ export default async function RefundsPage() {
           <span>How often a paid call comes back with nothing</span>
         </h2>
         <p className="doc-p">
-          vet402 buys from x402 sellers with its own wallets and records what came back. As of {s.date} (UTC), it had{" "}
-          {s.settled} settled payments. {s.noUsableContent} of them came back with no usable content: a 5xx, a 202
-          Accepted, an empty 2xx body, or no status on record. {s.settled4xx} came back with a 4xx answer. vet402 holds
-          those 4xx calls out of its delivered rates, because the request it sent may differ from what the seller
-          expects. On{" "}
-          <Link href="/sellers" className="doc-link">
-            /sellers
-          </Link>
-          , some of these can count on the seller&apos;s side. That needs a settled 400 or 422 on Base with a
-          structured input validation error for input vet402 sent as declared, and seller-side failures at that
-          listing on two different UTC days. The breakdown by chain is in{" "}
-          <Link href="/x402/report/2026-11" className="doc-link">
-            State of x402: November 2026
-          </Link>
-          .
+          vet402 buys from x402 sellers with its own wallets and records what came back.{" "}
+          {live && stats && readAt ? (
+            <>
+              {refundStatsSentence(stats, readAt)} The breakdown by chain is in{" "}
+              <Link href="/x402/report/2026-11" className="doc-link">
+                State of x402: November 2026
+              </Link>
+              .
+            </>
+          ) : (
+            <>
+              Counts come from GET{" "}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <a href="/api/v1/observatory/state" className="doc-link">
+                /api/v1/observatory/state
+              </a>{" "}
+              with retrievedAt as the date to cite.
+            </>
+          )}
         </p>
 
         <h2 className="sec-head">
