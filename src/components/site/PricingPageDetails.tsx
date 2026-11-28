@@ -19,10 +19,10 @@ export function PricingPageDetails() {
         </h2>
         <p className="doc-p">
           The quota counts calls made with an API key. A score lookup (
-          <code className="text-brand-deep">GET /api/v1/agents/{"{agent_id}"}/score</code>,{" "}
+          <code className="text-brand-deep">GET /api/v1/agents/{"{agentId}"}/score</code>,{" "}
           <code className="text-brand-deep">/api/v1/wallets/{"{address}"}/score</code>, or{" "}
           <code className="text-brand-deep">/api/v1/payees/{"{address}"}/score</code>) and a keyed{" "}
-          <code className="text-brand-deep">GET /api/v1/resources/{"{resource_id}"}/decision</code> are one unit each;{" "}
+          <code className="text-brand-deep">GET /api/v1/resources/{"{resourceId}"}/decision</code> are one unit each;{" "}
           <code className="text-brand-deep">POST /api/v1/scores/batch</code> with <code className="text-brand-deep">N</code> targets is{" "}
           <code className="text-brand-deep">N</code> units. Other keyed routes also spend units; responses that spend units carry{" "}
           <code className="text-brand-deep">X-RateLimit-Used</code>.
@@ -30,7 +30,7 @@ export function PricingPageDetails() {
           month; unused units do not roll over.
         </p>
         <p className="doc-p">
-          Score history (<code className="text-brand-deep">GET /api/v1/agents/{"{agent_id}"}/history</code>) requires Pro or
+          Score history (<code className="text-brand-deep">GET /api/v1/agents/{"{agentId}"}/history</code>) requires Pro or
           Scale; Free receives <code className="text-brand-deep">403</code> on that path.
         </p>
       </section>
@@ -42,7 +42,7 @@ export function PricingPageDetails() {
         <p className="doc-p">
           Seller checks at <code className="text-brand-deep">GET /api/v1/check</code> need no API key and do not spend the monthly
           score quota. Requests without a key to{" "}
-          <code className="text-brand-deep">/api/v1/resources/{"{resource_id}"}/decision</code> and{" "}
+          <code className="text-brand-deep">/api/v1/resources/{"{resourceId}"}/decision</code> and{" "}
           <code className="text-brand-deep">/api/v1/resolve</code> also do not spend that quota; they are limited per IP instead
           (while keyless reads are available, <code className="text-brand-deep">/decision</code> allows{" "}
           {keylessDecisionPerMinute()} requests a minute per IP and <code className="text-brand-deep">/resolve</code> allows{" "}
