@@ -181,9 +181,11 @@ test("readSellerDetail の他チェーンは署名済み status を settle_faile
 
 test("売り手頁の題と dateModified は sellerHeadline の時刻", () => {
   const src = readFileSync("src/app/sellers/[host]/page.tsx", "utf8");
+  const jsonLd = readFileSync("src/lib/sellers/seller-json-ld.ts", "utf8");
   assert.match(src, /sellerHeadline\(detailForTitle\)/);
   assert.match(src, /sellerHeadline\(detail\)/);
-  assert.match(src, /dateModified: head\.at/);
+  assert.match(jsonLd, /dateModified: detail\.fetchedAt/);
+  assert.match(src, /sellerItemPageJsonLd\(detail/);
   assert.doesNotMatch(src, /dateModified: detail\.summary\.lastAttemptAt/);
 });
 

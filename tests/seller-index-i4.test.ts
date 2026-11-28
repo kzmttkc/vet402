@@ -60,8 +60,9 @@ test("seller index counts: sitemap URL count matches indexable page count", () =
 test("undelivered-only host stays noindex and out of structured data (page wiring)", () => {
   const page = read("src/app/sellers/[host]/page.tsx");
   assert.match(page, /noindex:\s*!indexable/);
-  assert.match(page, /\{indexable \? \(/);
-  assert.match(page, /@type":\s*"WebPage"/);
+  assert.match(page, /structuredData = indexable/);
+  assert.match(page, /sellerPurchaseRecordDatasetJsonLd/);
+  assert.match(page, /sellerItemPageJsonLd/);
 });
 
 test("sitemap-sellers.xml lists /sellers/ hosts from the index gate", async () => {

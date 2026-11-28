@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { breadcrumbJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
-import { SITE_URL } from "@/lib/site-url";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { sellerItemPageJsonLd, sellerReputationDatasetJsonLd } from "@/lib/sellers/seller-json-ld";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { paymentChainLabel } from "@/lib/observatory/chains";
 import { formatDaysForText } from "@/lib/decision/reason-explain";
@@ -83,23 +83,19 @@ export function ReputationSellerArticle({
   ]);
   // 2026-11-27 SEO: the page had only a BreadcrumbList. ItemPage names the seller host the record is
   // about and dates it with the read time, like the ERC-8004 agent pages.
-  const itemPage = indexable
-    ? {
-        "@context": "https://schema.org",
-        "@type": "ItemPage",
-        name: headline,
-        url: `${SITE_URL}${path}`,
-        dateModified: detail.fetchedAt,
-        isBasedOn: `${SITE_URL}/observatory/methodology`,
-        publisher: publisherOrg(),
-        about: { "@type": "Thing", name: host, identifier: host },
-      }
-    : null;
+  const description = `vet402 purchase records for ${host}: each listing vet402 bought with a real x402 payment where the latest purchase delivered a response, with delivery age on each row.`;
+  const structuredData = indexable
+    ? [
+        sellerItemPageJsonLd(detail, path, headline, description),
+        sellerReputationDatasetJsonLd(detail),
+        breadcrumb,
+      ]
+    : [];
 
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
       <article className="sheet">
-        {(indexable ? [itemPage, breadcrumb] : [])
+        {(structuredData.length > 0 ? structuredData : [])
           .filter((doc): doc is NonNullable<typeof doc> => doc !== null)
           .map((doc, i) => (
             <script key={i} type="application/ld+json" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: safeJsonLd(doc) }} />

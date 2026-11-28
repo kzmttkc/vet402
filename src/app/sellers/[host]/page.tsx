@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import { breadcrumbJsonLd, pageMetadata, publisherOrg } from "@/lib/seo";
-import { SITE_URL } from "@/lib/site-url";
+import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
+import { sellerItemPageJsonLd, sellerPurchaseRecordDatasetJsonLd } from "@/lib/sellers/seller-json-ld";
 import { safeJsonLd } from "@/lib/util/json-ld";
 import { PUBLIC_READ_REVALIDATE } from "@/lib/observatory/public-read-revalidate";
 import { resolveSellerPage, sellerHeadline, type SellerPageData } from "@/lib/sellers/board";
@@ -144,7 +144,7 @@ export default async function SellerPage({ params, searchParams }: Props) {
     .catch(() => null);
   const { page: rawPage } = await searchParams;
   const page = Math.max(1, Math.trunc(Number(rawPage ?? "1")) || 1);
-  // 構造化データ（2026-09-28 SEO 監査）: WebPage と BreadcrumbList。出し方は他の公開頁と同じ
+  // 構造化データ: I4 で索引対象のときだけ ItemPage + Dataset + BreadcrumbList（2026-11-28）。
   // （CSP の nonce 付き・safeJsonLd で "<" を逃がす）。ホスト名は DB 由来なので関門を必ず通す。
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const path = sellerPath(detail.host);
@@ -154,37 +154,26 @@ export default async function SellerPage({ params, searchParams }: Props) {
     { name: "Sellers", path: "/sellers" },
     { name: detail.host, path },
   ]);
+  const pageName = sellerHeading(detail.host, head.at, head.chain);
+  const pageDescription = sellerDescription(detail.host, head.chain);
+  const structuredData = indexable
+    ? [
+        sellerItemPageJsonLd(detail, path, pageName, pageDescription),
+        sellerPurchaseRecordDatasetJsonLd(detail),
+        breadcrumb,
+      ]
+    : [];
   return (
     <main className="px-4 pt-8 pb-4 sm:px-6 md:px-8 md:pt-12">
-      {indexable ? (
-        <>
-          <script
-            type="application/ld+json"
-            nonce={nonce}
-            suppressHydrationWarning
-            dangerouslySetInnerHTML={{
-              __html: safeJsonLd({
-                "@context": "https://schema.org",
-                "@type": "WebPage",
-                name: sellerHeading(detail.host, head.at, head.chain),
-                description: sellerDescription(detail.host, head.chain),
-                url: `${SITE_URL}${path}`,
-                inLanguage: "en",
-                isPartOf: { "@type": "WebSite", name: "vet402", url: SITE_URL },
-                publisher: publisherOrg(),
-                about: { "@type": "Thing", name: detail.host },
-                ...(head.at ? { dateModified: head.at } : {}),
-              }),
-            }}
-          />
-          <script
-            type="application/ld+json"
-            nonce={nonce}
-            suppressHydrationWarning
-            dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumb) }}
-          />
-        </>
-      ) : null}
+      {structuredData.map((doc, i) => (
+        <script
+          key={i}
+          type="application/ld+json"
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(doc) }}
+        />
+      ))}
       {/* 2026-09-29 第4巡: 帯は seller の側（確定）の行がある頁だけ。該当の行には同じ語（UNDER_RECHECK）の印が付く。
           2026-10-21 A-16: 見直しに期限は無い（コードに日付が無い）。期限を作らず、無いと書く。時期はカードごとの次の購入の目安だけ。 */}
       {detail.hasConfirmedSeller && (

@@ -88,13 +88,23 @@ test("llms.txt の Cite as は型で、時刻を渡した creditText はその�
 });
 
 test("Dataset を出す頁は共通ビルダを通る（手書きの Dataset を残さない）", () => {
-  for (const file of ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx"]) {
+  const viaDatasetJsonLd = ["src/app/observatory/state/page.tsx", "src/app/accuracy/page.tsx"];
+  for (const file of viaDatasetJsonLd) {
     const src = read(file);
     assert.ok(src.includes("datasetJsonLd({"), `${file} が共通ビルダを使っていない`);
     assert.ok(
       !/"@type":\s*"Dataset"/.test(src),
       `${file} に手書きの Dataset が残っている（ビルダと二重管理になる）`,
     );
+  }
+  const viaSellerJsonLd = ["src/app/sellers/[host]/page.tsx", "src/app/x402/sellers/[host]/page.tsx"];
+  for (const file of viaSellerJsonLd) {
+    const src = read(file);
+    assert.ok(
+      /seller(PurchaseRecord|Reputation)DatasetJsonLd/.test(src),
+      `${file} が seller-json-ld ビルダを使っていない`,
+    );
+    assert.ok(!/"@type":\s*"Dataset"/.test(src), `${file} に手書きの Dataset が残っている`);
   }
 });
 
