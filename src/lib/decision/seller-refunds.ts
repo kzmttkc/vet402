@@ -88,11 +88,19 @@ async function readRefundStatsCached(host: string): Promise<RefundStats | null> 
   }
 }
 
+/** 売り手ホストの返金集計を先に読み始める（decide が buildDecision と重ねる）。ホストが無ければ null。 */
+export function prefetchSellerRefundStats(canonicalUrl: string): Promise<RefundStats | null> | null {
+  const host = sellerHostOfCanonicalUrl(canonicalUrl);
+  if (!host) return null;
+  return readRefundStatsCached(host).catch(() => null);
+}
+
 /** 判定に refunds と（閾値を満たせば）理由コードを付ける。recommendation は変えない。 */
 export async function attachSellerRefundsToDecision(
   decision: DecisionResult,
   canonicalUrl: string,
   readStats: RefundStatsReader = readRefundStatsCached,
+  prefetched: Promise<RefundStats | null> | null | undefined = undefined,
 ): Promise<DecisionResult> {
   if (decision.role !== "payer") {
     return { ...decision, refunds: null };
@@ -103,7 +111,10 @@ export async function attachSellerRefundsToDecision(
   }
   let stats: RefundStats | null;
   try {
-    stats = await readStats(host);
+    stats =
+      prefetched !== undefined && prefetched !== null
+        ? await prefetched
+        : await readStats(host);
   } catch {
     return { ...decision, refunds: null };
   }

@@ -25,7 +25,7 @@ import { rowsOf } from "@/lib/settlements/upsert";
 import { l2EvidenceOf, loadSellerFacts, type SellerFactsLoaded } from "./seller-facts";
 import { loadBuyerFacts } from "./buyer-facts";
 import { decidePayer, decidePayee, l1BasisOf, DECISION_RULES_VERSION, type L1Basis, type Recommendation, type PayerOptions } from "./rules";
-import { attachSellerRefundsToDecision, type DecisionHostRefunds } from "./seller-refunds";
+import { attachSellerRefundsToDecision, prefetchSellerRefundStats, type DecisionHostRefunds } from "./seller-refunds";
 import { evidenceAgeOf, explainReasons, type EvidenceAge, type ReasonExplanation } from "./reason-explain";
 import { isSpendingHalted } from "@/lib/observatory/kill-switch";
 import { assertEvidenceContract, vet402Evidence } from "./evidence";
@@ -393,13 +393,17 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.result;
 
+  const registryP = registryStatusFor(req.observatoryId);
   const tOutcomes = req.missTiming ? performance.now() : 0;
   const loaded = await loadSellerFacts(req.observatoryId);
   if (req.missTiming) req.missTiming.db_outcomes = performance.now() - tOutcomes;
-  if (!loaded) return null;
+  if (!loaded) {
+    await registryP;
+    return null;
+  }
   const subject = subjectOf(loaded);
   const tDecideRest = req.missTiming ? performance.now() : 0;
-  const registry = await registryStatusFor(loaded.endpoint.id);
+  const refundsP = req.role === "payer" ? prefetchSellerRefundStats(loaded.endpoint.canonicalUrl) : null;
 
   let result: DecisionResult;
   if (req.role === "payer") {
@@ -414,6 +418,7 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         score = null; // 移行用の併記が取れなくても判定は落とさない
       }
     }
+    const registry = await registryP;
     result = await attachSellerRefundsToDecision(
       buildDecision({
         role: "payer",
@@ -441,9 +446,12 @@ export async function decide(req: DecideRequest): Promise<DecisionResult | null>
         l2PurchaseId: loaded.l2PurchaseId,
       }),
       loaded.endpoint.canonicalUrl,
+      undefined,
+      refundsP,
     );
   } else {
     const facts = await loadBuyerFacts(req.payerId);
+    const registry = await registryP;
     result = await attachSellerRefundsToDecision(
       buildDecision({ role: "payee", subject, payer: req.payerId, facts, operatorBlacklist: req.operatorBlacklist, registry, spendingHalted: halt.halted }),
       loaded.endpoint.canonicalUrl,
