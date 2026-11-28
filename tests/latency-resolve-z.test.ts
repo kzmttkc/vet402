@@ -202,3 +202,96 @@ test("resourceHitDefaultMethods と preferGetResourceHit: GET 優先は変わら
   assert.equal(preferGetResourceHit(g, p)?.ref.observatory_id, "g");
   assert.equal(preferGetResourceHit(null, p)?.ref.observatory_id, "p");
 });
+
+// 差分: 直す前（#170 の GET/POST 並列読み）と後で resolve の resource が一致すること。
+// 直す前の形は、変えていない getResourceWithNetwork（resourceRow: 完全一致 → 別名）を GET と POST で読み、GET を優先する。
+type FakeRow = { resource_id: string; status: string; observatory_id: string; method: string; last_seen: string | null };
+type FakeWorld = { rows: FakeRow[]; aliases: Record<string, string> };
+
+async function fakeDbFor(world: FakeWorld, url: string) {
+  const { PgDialect } = await import("drizzle-orm/pg-core");
+  const dialect = new PgDialect();
+  const asRow = (r: FakeRow) => ({
+    observatory_id: r.observatory_id,
+    endpoint_hash: endpointHash(url),
+    resource_id: r.resource_id,
+    canonical_url: url,
+    method: r.method,
+    payee_id: null,
+    status: r.status,
+    first_seen: null,
+    last_seen: r.last_seen,
+    network: "eip155:8453",
+  });
+  let executes = 0;
+  const db = {
+    get executes() {
+      return executes;
+    },
+    execute: async (q: Parameters<typeof dialect.sqlToQuery>[0]) => {
+      executes++;
+      const { sql: text, params } = dialect.sqlToQuery(q);
+      const flat = text.replace(/\s+/g, " ");
+      if (/FROM x402_resource_aliases/.test(flat)) {
+        const to = world.aliases[String(params[0])];
+        return { rows: to ? [{ resource_id: to }] : [] };
+      }
+      if (/FROM x402_endpoints WHERE resource_id IN/.test(flat)) {
+        return { rows: world.rows.filter((r) => params.includes(r.resource_id)).map(asRow) };
+      }
+      if (/FROM x402_endpoints WHERE resource_id = /.test(flat)) {
+        const hit = world.rows
+          .filter((r) => r.resource_id === params[0])
+          .sort((a, b) => (b.status === "active" ? 1 : 0) - (a.status === "active" ? 1 : 0))[0];
+        return { rows: hit ? [asRow(hit)] : [] };
+      }
+      return { rows: [] };
+    },
+  };
+  return db;
+}
+
+test("resourceHitDefaultMethods: 直す前（GET/POST 並列＋GET 優先）と同じ resource を返す", async () => {
+  const { getResourceWithNetwork } = await import("@/lib/resolve/lookup");
+  const URL = "https://resolve-diff.example/api";
+  const getId = toResourceId("GET", URL);
+  const postId = toResourceId("POST", URL);
+  const canonGet = toResourceId("GET", "https://resolve-diff.example/canonical-get");
+  const canonPost = toResourceId("POST", "https://resolve-diff.example/canonical-post");
+  const row = (resource_id: string, observatory_id: string, method: string, status = "active"): FakeRow => ({
+    resource_id,
+    observatory_id,
+    method,
+    status,
+    last_seen: null,
+  });
+  const worlds: Record<string, FakeWorld> = {
+    get_only: { rows: [row(getId, "g", "GET")], aliases: {} },
+    post_only: { rows: [row(postId, "p", "POST")], aliases: {} },
+    both: { rows: [row(getId, "g", "GET"), row(postId, "p", "POST")], aliases: {} },
+    neither: { rows: [], aliases: {} },
+    get_inactive_only: { rows: [row(getId, "g-off", "GET", "delisted")], aliases: {} },
+    get_active_beats_inactive: {
+      rows: [row(getId, "g-off", "GET", "delisted"), row(getId, "g-on", "GET")],
+      aliases: {},
+    },
+    get_via_alias: { rows: [row(canonGet, "g-alias", "GET")], aliases: { [getId]: canonGet } },
+    post_via_alias: { rows: [row(canonPost, "p-alias", "POST")], aliases: { [postId]: canonPost } },
+    get_alias_beats_post_exact: {
+      rows: [row(canonGet, "g-alias", "GET"), row(postId, "p", "POST")],
+      aliases: { [getId]: canonGet },
+    },
+  };
+  for (const [name, world] of Object.entries(worlds)) {
+    __setDbForTests(await fakeDbFor(world, URL));
+    const [before, beforePost] = await Promise.all([getResourceWithNetwork(getId), getResourceWithNetwork(postId)]);
+    const expected = preferGetResourceHit(before, beforePost);
+    const fakeAfter = await fakeDbFor(world, URL);
+    __setDbForTests(fakeAfter);
+    const after = await resourceHitDefaultMethods(URL);
+    assert.deepEqual(after, expected, `world ${name}: resolve の resource が直す前と違う`);
+    if (name === "get_only" || name === "both") {
+      assert.equal(fakeAfter.executes, 1, `world ${name}: GET が完全一致で当たれば問い合わせは 1 本`);
+    }
+  }
+});
